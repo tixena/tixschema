@@ -15,38 +15,38 @@ use tixschema::model_schema;
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Callsign(pub String);
+pub struct Callsign(String);
 
 /// A brand over a number a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Burgee(pub u32);
+pub struct Burgee(u32);
 
 /// A brand over a flag a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Signal(pub bool);
+pub struct Signal(bool);
 
 /// A brand over a brand a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Lanyard(pub Burgee);
+pub struct Lanyard(Burgee);
 
 /// A brand over a date a map is keyed by.
 #[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Postmark(pub DateTime<Utc>);
+pub struct Postmark(DateTime<Utc>);
 
 /// A brand that derives no `Hash`, which no map is keyed by.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Unhashed(pub String);
+pub struct Unhashed(String);
 
 /// An alias of a string a map is keyed by.
 #[model_schema()]
@@ -230,13 +230,13 @@ pub enum UntaggedConvoy<Stowed> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Logroll(pub HashMap<Callsign, u8>);
+pub struct Logroll(HashMap<Callsign, u8>);
 
 /// A brand over a map of the parameter keyed by an alias.
 #[model_schema(default_types(Stowed = String), no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Logroster<Stowed>(pub HashMap<Hull, Stowed>);
+pub struct Logroster<Stowed>(HashMap<Hull, Stowed>);
 
 /// A map keyed by a brand over a date, by a date alias, in a type that declares a parameter.
 #[cfg(feature = "chrono")]

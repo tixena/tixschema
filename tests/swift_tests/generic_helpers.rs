@@ -82,7 +82,7 @@ pub struct Register<Stowed>(pub HashMap<u32, Stowed>, pub u8);
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Hoard<Stowed>(pub HashMap<u32, Stowed>);
+pub struct Hoard<Stowed>(HashMap<u32, Stowed>);
 
 /// An alias of a tuple of the parameter.
 #[model_schema(default_types(Stowed = String))]
@@ -218,7 +218,10 @@ fn each_struct_is_written_as_serde_writes_it() {
         read_back(&Register(at_one("a".to_owned()), 2)),
         r#"[{"1":"a"},2]"#
     );
-    assert_eq!(read_back(&Hoard(at_one("a".to_owned()))), r#"{"1":"a"}"#);
+    assert_eq!(
+        read_back(&Hoard::new(at_one("a".to_owned())).unwrap()),
+        r#"{"1":"a"}"#
+    );
     let pairing: Pairing<String> = ("a".to_owned(), 1);
     assert_eq!(read_back(&pairing), r#"["a",1]"#);
     let numbering: Numbering<String> = at_one("a".to_owned());

@@ -50,9 +50,9 @@ impl DockFilingService<()> for FilingBackEnd {
         }
         Ok(format!(
             "{} {} {} {}",
-            slip.0,
-            ticket.0,
-            label.0,
+            slip.as_inner(),
+            ticket.as_inner(),
+            label.as_inner(),
             String::from_utf8(drained).unwrap()
         ))
     }

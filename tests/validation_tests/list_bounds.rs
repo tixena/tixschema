@@ -73,7 +73,7 @@ mod a_key_on_a_list {
     #[model_schema(minLength = 3, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Tag(pub String);
+    pub struct Tag(String);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Serialize)]
@@ -301,7 +301,9 @@ mod a_key_on_a_list {
 
     #[test]
     fn each_item_of_a_list_of_brands_is_held_by_the_brand() {
-        let tag = |text: &str| Tag(text.to_owned());
+        let tag = |text: &str| {
+            Tag::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap()).unwrap()
+        };
         assert_eq!(
             Tagged {
                 counted: vec![tag("abc")],

@@ -30,7 +30,7 @@ mod a_one_parameter_result {
     #[model_schema(minLength = 3)]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -66,7 +66,7 @@ mod a_one_parameter_result {
         serde_json::from_value::<Slug>(serde_json::json!("ab")).unwrap_err();
         assert_eq!(
             serde_json::from_value::<Slug>(serde_json::json!("abc")).unwrap(),
-            Slug("abc".to_owned())
+            Slug::new("abc".to_owned()).unwrap()
         );
 
         assert_eq!(
@@ -90,12 +90,12 @@ mod a_second_trait_with_fmt {
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct RecordId(pub ObjectId);
+    pub struct RecordId(ObjectId);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     /// What `value` prints as under `Debug`, the trait the module imports by name.
     fn debugged<T>(value: &T) -> String
@@ -107,7 +107,7 @@ mod a_second_trait_with_fmt {
 
     #[test]
     fn a_brand_is_displayed_as_the_value_it_holds() {
-        let slug = Slug("abc".to_owned());
+        let slug = Slug::new("abc".to_owned()).unwrap();
         assert_eq!(slug.to_string(), "abc");
         assert_eq!(debugged(&slug), "Slug(\"abc\")");
     }
@@ -116,7 +116,10 @@ mod a_second_trait_with_fmt {
     #[test]
     fn a_brand_over_an_id_is_displayed_as_the_id() {
         let id = ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap();
-        assert_eq!(RecordId(id).to_string(), "6a7cc592ca0574e6efdfe217");
+        assert_eq!(
+            RecordId::new(id).unwrap().to_string(),
+            "6a7cc592ca0574e6efdfe217"
+        );
     }
 }
 

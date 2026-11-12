@@ -68,7 +68,7 @@ pub enum Rubric {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Scholion(pub String);
+pub struct Scholion(String);
 
 /// An alias whose doc holds */ the end of a comment.
 #[model_schema()]
@@ -111,7 +111,7 @@ pub fn written() -> Vec<(&'static str, String)> {
                 mark: "m".to_owned(),
             }),
         ),
-        ("Scholion", json(&Scholion("s".to_owned()))),
+        ("Scholion", json(&Scholion::new("s".to_owned()).unwrap())),
         (
             "MarginaliaType",
             json::<Marginalia>(&Remarked {

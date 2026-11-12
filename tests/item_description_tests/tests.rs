@@ -107,13 +107,13 @@ pub enum EitherUnderRustName {
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub struct PlainBrand(pub String);
+pub struct PlainBrand(String);
 
 #[cfg(feature = "zod")]
 #[model_schema(name = "RenamedBrand")]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
-pub struct BrandUnderRustName(pub String);
+pub struct BrandUnderRustName(String);
 
 // The one shape with no surface name of its own: an alias is exported under the `Type` suffix, and
 // falls back to that exported name the way every declared item falls back to its own.
@@ -201,7 +201,7 @@ pub enum InvoicePayment {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct InvoiceNumber(pub String);
+pub struct InvoiceNumber(String);
 
 /// How many lines an invoice holds.
 #[cfg(all(feature = "typescript", feature = "zod"))]

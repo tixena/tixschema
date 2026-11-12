@@ -315,6 +315,20 @@ const TYPE_CHECK: &str = "`model_schema` argument `check`";
 /// What a refusal of a `preprocess` written in `#[model_schema(...)]` opens with.
 const TYPE_PREPROCESS: &str = "`model_schema` argument `preprocess`";
 
+/// What a sealed brand derives: each is written over the private slot without opening it.
+const BRAND_DERIVES: [&str; 10] = [
+    "Debug",
+    "Clone",
+    "Copy",
+    "PartialEq",
+    "Eq",
+    "PartialOrd",
+    "Ord",
+    "Hash",
+    "Serialize",
+    "Deserialize",
+];
+
 /// The types serde writes a key of as a number or a `bool`. The `bson` library refuses to write
 /// such a key, and reads a stored one back as text, which the type refuses.
 const BSON_REFUSED_KEY_TYPES: [&str; 15] = [
@@ -613,8 +627,16 @@ struct BrandedNewtypeOutput<'parts> {
     name: &'parts Ident,
     schema_example_tokens: &'parts proc_macro2::TokenStream,
     schema_impl_items: &'parts [proc_macro2::TokenStream],
+    sealed_access: &'parts SealedAccess,
     validate_method: &'parts proc_macro2::TokenStream,
     validation_tokens: &'parts proc_macro2::TokenStream,
+}
+
+/// What a sealed brand offers in place of its slot: the methods that build it and read it, and
+/// the `TryFrom` its inner converts through.
+struct SealedAccess {
+    methods: proc_macro2::TokenStream,
+    try_from: proc_macro2::TokenStream,
 }
 
 /// What a brand's own bound adds to it: the functions of its schema module, and what holds a
@@ -1674,11 +1696,11 @@ impl SchemaDocs {
 impl ExampleTest {
     /// The values the type's `schema_examples()` builds, handed to its schema module, which cannot
     /// name the type where the type is declared in a function body.
-    fn bridged(&self, schema_module: &syn::Ident) -> TokenStream {
+    fn bridged(&self, schema_module: &syn::Ident, seen_from: &TokenStream) -> TokenStream {
         let value_ty = &self.value_ty;
         quote! {
             impl #schema_module::Schema {
-                fn json_examples() -> ::std::vec::Vec<serde_json::Value> {
+                #seen_from fn json_examples() -> ::std::vec::Vec<serde_json::Value> {
                     <#value_ty>::schema_examples()
                 }
             }
@@ -1739,11 +1761,35 @@ impl ExampleTest {
         validates: bool,
         schema_module: Option<&syn::Ident>,
     ) -> TokenStream {
+        Self::written_seen_from(subject, validates, schema_module, &TokenStream::new())
+    }
+
+    /// [`Self::written`] for the examples `item_enum` writes.
+    fn written_for_enum(
+        item_enum: &syn::ItemEnum,
+        args: &ModelSchemaArgs,
+        validates: bool,
+        schema_module: Option<&syn::Ident>,
+    ) -> TokenStream {
+        Self::written(
+            Self::of_enum(item_enum, args).as_ref(),
+            validates,
+            schema_module,
+        )
+    }
+
+    /// [`Self::written`], with the bridge to the schema module written `bridge_visibility`.
+    fn written_seen_from(
+        subject: Option<&Self>,
+        validates: bool,
+        schema_module: Option<&syn::Ident>,
+        bridge_visibility: &TokenStream,
+    ) -> TokenStream {
         let bridge = subject
             .filter(|example| example.json_schema)
             .zip(schema_module)
             .map_or_else(TokenStream::new, |(example, module)| {
-                example.bridged(module)
+                example.bridged(module, bridge_visibility)
             });
         let Some(Self {
             blocks,
@@ -1787,20 +1833,6 @@ impl ExampleTest {
                 }
             }
         }
-    }
-
-    /// [`Self::written`] for the examples `item_enum` writes.
-    fn written_for_enum(
-        item_enum: &syn::ItemEnum,
-        args: &ModelSchemaArgs,
-        validates: bool,
-        schema_module: Option<&syn::Ident>,
-    ) -> TokenStream {
-        Self::written(
-            Self::of_enum(item_enum, args).as_ref(),
-            validates,
-            schema_module,
-        )
     }
 }
 
@@ -6862,7 +6894,7 @@ fn answered_shape(
 /// #[model_schema(minLength = 1)]
 /// #[derive(Deserialize, Serialize)]
 /// #[serde(transparent)]
-/// pub struct Route(pub Spot);
+/// pub struct Route(Spot);
 ///
 /// #[model_schema()]
 /// #[derive(Deserialize, Serialize)]
@@ -7189,6 +7221,61 @@ fn published_parameter_position(target: &FieldDef, parameters: &[String]) -> Opt
     parameters.iter().position(|declared| declared == name)
 }
 
+/// The `compile_error!` tokens for each slot of a brand written with a visibility: a pub slot is a
+/// way to build or edit the brand that skips `validate()`.
+fn branded_open_slot_errors(item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
+    item_struct
+        .fields
+        .iter()
+        .filter(|field| !matches!(field.vis, syn::Visibility::Inherited))
+        .map(|field| {
+            syn::Error::new_spanned(
+                &field.vis,
+                prefixed_guard_message(&format!(
+                    "type `{}`: a brand is sealed: its slot takes no `pub`. Drop the visibility, build the brand with `{}::new` or `TryFrom`, and read it with `as_inner()` or `into_inner()`",
+                    item_struct.ident, item_struct.ident
+                )),
+            )
+            .to_compile_error()
+        })
+        .collect()
+}
+
+/// The `compile_error!` tokens for each derive of a brand outside [`BRAND_DERIVES`]: one that
+/// builds a value from nothing, or from parts, builds a brand that skips `validate()`.
+fn branded_foreign_derive_errors(item_struct: &syn::ItemStruct) -> Vec<proc_macro2::TokenStream> {
+    let mut errors = Vec::new();
+    for attr in item_struct
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("derive"))
+    {
+        let _parsed = attr.parse_nested_meta(|nested| {
+            let foreign = nested
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.to_string())
+                .filter(|derived| !BRAND_DERIVES.contains(&derived.as_str()));
+            if let Some(derived) = foreign {
+                errors.push(
+                    syn::Error::new_spanned(
+                        &nested.path,
+                        prefixed_guard_message(&format!(
+                            "type `{}`: a brand is sealed: `#[derive({derived})]` is not allowed on it, because a derive builds a value without `validate()`. A brand derives only {}",
+                            item_struct.ident,
+                            BRAND_DERIVES.join(", ")
+                        )),
+                    )
+                    .to_compile_error(),
+                );
+            }
+            Ok(())
+        });
+    }
+    errors
+}
+
 /// The `compile_error!` tokens for every `cfg_attr`-wrapped serde attribute a branded newtype
 /// carries: on the type and on its inner slot, which is positional and so has no name to print.
 #[cfg(feature = "serde")]
@@ -7231,7 +7318,7 @@ const fn branded_cfg_attr_guard_errors(
 /// #[model_schema(pattern = "(")]
 /// #[derive(Deserialize, Serialize)]
 /// #[serde(transparent)]
-/// pub struct Label(pub String);
+/// pub struct Label(String);
 ///
 /// fn main() {}
 /// ```
@@ -7319,7 +7406,7 @@ fn branded_map_key_error(name: &Ident, inner_field: &Field) -> Option<proc_macro
 /// #[model_schema(minLength = 5, maxLength = 2)]
 /// #[derive(Deserialize, Serialize)]
 /// #[serde(transparent)]
-/// pub struct Label(pub String);
+/// pub struct Label(String);
 ///
 /// fn main() {}
 /// ```
@@ -7368,7 +7455,7 @@ fn branded_unmeetable_bound_errors(
 /// #[model_schema(minLength = 1)]
 /// #[derive(Deserialize, Serialize)]
 /// #[serde(transparent)]
-/// pub struct Route(pub Spot);
+/// pub struct Route(Spot);
 ///
 /// fn main() {}
 /// ```
@@ -7391,8 +7478,10 @@ fn branded_guard_errors(
     args: &ModelSchemaArgs,
 ) -> Vec<proc_macro2::TokenStream> {
     let inner_field = brand_field(item_struct).unwrap();
-    branded_cfg_attr_guard_errors(item_struct, inner_field)
+    branded_open_slot_errors(item_struct)
         .into_iter()
+        .chain(branded_foreign_derive_errors(item_struct))
+        .chain(branded_cfg_attr_guard_errors(item_struct, inner_field))
         .chain(branded_option_inner_error(&item_struct.ident, inner_field))
         .chain(branded_constraint_inner_error(
             &item_struct.generics,
@@ -7516,7 +7605,7 @@ fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
 /// #[model_schema(no_display)]
 /// #[derive(Serialize)]
 /// #[serde(transparent)]
-/// pub struct Tag<'text>(pub &'text str);
+/// pub struct Tag<'text>(&'text str);
 ///
 /// impl fmt::Display for Tag<'static> {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -7529,7 +7618,7 @@ fn tokens_write_a_lifetime(tokens: &proc_macro2::TokenStream) -> bool {
 /// #[model_schema(minLength = 2, default_types(Text = Kept))]
 /// #[derive(Serialize)]
 /// #[serde(transparent)]
-/// pub struct Stamp<Text>(pub Text);
+/// pub struct Stamp<Text>(Text);
 ///
 /// fn main() {}
 /// ```
@@ -10156,7 +10245,7 @@ fn embedded_type_identity() -> proc_macro2::TokenStream {
 /// #[model_schema(no_display)]
 /// #[derive(Serialize)]
 /// #[serde(transparent)]
-/// pub struct Tag<'text>(pub &'text str);
+/// pub struct Tag<'text>(&'text str);
 ///
 /// impl fmt::Display for Tag<'static> {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -10167,7 +10256,7 @@ fn embedded_type_identity() -> proc_macro2::TokenStream {
 /// #[model_schema(minLength = 2, default_types(Text = Tag<'static>))]
 /// #[derive(Serialize)]
 /// #[serde(transparent)]
-/// pub struct Stamp<Text>(pub Text);
+/// pub struct Stamp<Text>(Text);
 ///
 /// fn main() {}
 /// ```
@@ -10185,7 +10274,7 @@ fn embedded_type_identity() -> proc_macro2::TokenStream {
 ///    | |
 /// 17 | | #[derive(Serialize)]
 /// 18 | | #[serde(transparent)]
-/// 19 | | pub struct Stamp<Text>(pub Text);
+/// 19 | | pub struct Stamp<Text>(Text);
 ///    | |                               ^
 ///    | |                               |
 ///    | |_______________________________`held` escapes the function body here
@@ -11318,6 +11407,153 @@ fn branded_validate_method(
     }
 }
 
+/// The only ways to build a brand and to read its value: `new`, which holds the value to
+/// `validate()` where the brand has one, `TryFrom` over the inner type, `as_inner` and
+/// `into_inner`. Every slot serde skips is filled as serde fills it on a read.
+fn sealed_access(
+    item_struct: &syn::ItemStruct,
+    position: usize,
+    inner_field: &Field,
+    validates: bool,
+) -> SealedAccess {
+    let name = &item_struct.ident;
+    let (impl_generics, type_generics, where_clause) = item_struct.generics.split_for_impl();
+    let held = brand_member(position, inner_field);
+    let inner_ty = &inner_field.ty;
+    let generic = type_mentions_generic_param(inner_ty, &item_struct.generics);
+    let (accepts, given) = if generic {
+        (quote! { #inner_ty }, quote! { value })
+    } else {
+        (
+            quote! { impl ::core::convert::Into<#inner_ty> },
+            quote! { value.into() },
+        )
+    };
+    let built = match &item_struct.fields {
+        syn::Fields::Named(named) => {
+            let members = named.named.iter().filter_map(|field| field.ident.as_ref());
+            let values = named.named.iter().enumerate().map(|(index, _)| {
+                if index == position {
+                    given.clone()
+                } else {
+                    quote! { ::core::default::Default::default() }
+                }
+            });
+            quote! { Self { #(#members: #values),* } }
+        }
+        syn::Fields::Unnamed(slots) => {
+            let values = (0..slots.unnamed.len()).map(|index| {
+                if index == position {
+                    given.clone()
+                } else {
+                    quote! { ::core::default::Default::default() }
+                }
+            });
+            quote! { Self(#(#values),*) }
+        }
+        syn::Fields::Unit => quote! { Self },
+    };
+    let judged = if validates {
+        quote! { built.validate()?; }
+    } else {
+        proc_macro2::TokenStream::new()
+    };
+    let methods = quote! {
+        /// Builds the brand from a value, refused with the messages `validate()` gives where the
+        /// value breaks the brand's rules.
+        pub fn new(
+            value: #accepts,
+        ) -> ::core::result::Result<Self, ::std::vec::Vec<::std::string::String>> {
+            let built = #built;
+            #judged
+            ::core::result::Result::Ok(built)
+        }
+
+        /// The value the brand holds.
+        pub const fn as_inner(&self) -> &#inner_ty {
+            &self.#held
+        }
+
+        /// Gives the value the brand holds, consuming the brand.
+        pub fn into_inner(self) -> #inner_ty {
+            self.#held
+        }
+    };
+    let try_from = if type_parameter_named(&item_struct.generics, inner_ty) {
+        proc_macro2::TokenStream::new()
+    } else {
+        quote! {
+            impl #impl_generics ::core::convert::TryFrom<#inner_ty> for #name #type_generics #where_clause {
+                type Error = ::std::vec::Vec<::std::string::String>;
+
+                fn try_from(value: #inner_ty) -> ::core::result::Result<Self, Self::Error> {
+                    Self::new(value)
+                }
+            }
+        }
+    };
+    SealedAccess { methods, try_from }
+}
+
+/// Whether `ty` is one of `generics`' type parameters written alone, which core's blanket
+/// `TryFrom` already covers for a brand of that parameter.
+fn type_parameter_named(generics: &syn::Generics, ty: &syn::Type) -> bool {
+    let syn::Type::Path(path) = ty else {
+        return false;
+    };
+    path.qself.is_none()
+        && generics
+            .type_params()
+            .any(|param| path.path.is_ident(&param.ident))
+}
+
+/// `generics` with no bound and no `where` clause, which a type alias would carry unenforced.
+fn unbounded(generics: &syn::Generics) -> syn::Generics {
+    let mut bare = generics.clone();
+    bare.where_clause = None;
+    for param in &mut bare.params {
+        match param {
+            syn::GenericParam::Type(declared) => {
+                declared.bounds.clear();
+                declared.colon_token = None;
+            }
+            syn::GenericParam::Lifetime(declared) => {
+                declared.bounds.clear();
+                declared.colon_token = None;
+            }
+            syn::GenericParam::Const(_) => {}
+        }
+    }
+    bare
+}
+
+/// `vis` as written one module deeper, where it keeps naming the same place: a path that starts
+/// at `self` or `super` is taken from the module it is written in.
+fn one_module_deeper(vis: &syn::Visibility) -> proc_macro2::TokenStream {
+    match vis {
+        syn::Visibility::Public(_) => quote! { pub },
+        syn::Visibility::Inherited => quote! { pub(super) },
+        syn::Visibility::Restricted(restricted) => {
+            let path = &restricted.path;
+            if restricted.in_token.is_none() && path.is_ident("crate") {
+                return quote! { pub(crate) };
+            }
+            if path.is_ident("self") {
+                return quote! { pub(super) };
+            }
+            let first_is_crate = path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.ident == "crate");
+            if first_is_crate {
+                quote! { pub(in #path) }
+            } else {
+                quote! { pub(in super::#path) }
+            }
+        }
+    }
+}
+
 /// Assembles the final macro output for a branded newtype: the (possibly attribute-injected)
 /// struct, its `Display` impl, the schema module, which holds `Schema` where a surface or the
 /// `"jsonschema"` entry gives it a method, and the type's `impl`, which holds its delegates and
@@ -11333,10 +11569,11 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let delegate_impl_items = parts.delegate_impl_items;
     let schema_example_tokens = parts.schema_example_tokens;
     let validate_method = parts.validate_method;
-    let example_test = ExampleTest::written(
+    let example_test = ExampleTest::written_seen_from(
         parts.example_test.as_ref(),
         !validate_method.is_empty(),
         Some(parts.module_ident),
+        &quote! { pub(super) },
     );
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
@@ -11352,28 +11589,47 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     );
     let decode_with_impl = &parts.decode_with.type_impl;
 
+    let (sealing, sealing_try_from) = (&parts.sealed_access.methods, &parts.sealed_access.try_from);
+    let sealed = quote::format_ident!("__tixschema_sealed_{}", module_ident);
+    let vis = item_struct.vis.clone();
+    let mut sealed_struct = item_struct.clone();
+    sealed_struct.vis = syn::parse_quote!(pub);
+
+    let alias_generics = unbounded(&item_struct.generics);
+    let sealed_vis = one_module_deeper(&vis);
     let output = quote! {
-        #item_struct
-
-        #display_tokens
-
         pub mod #module_ident {
             use super::*;
 
             #module_items
+
+            #[doc(hidden)]
+            #sealed_vis mod #sealed {
+                use super::*;
+                use super as #module_ident;
+
+                #sealed_struct
+
+                #display_tokens
+
+                impl #impl_generics #name #type_generics #where_clause {
+                    #sealing
+                    #(#delegate_impl_items)*
+                    #schema_example_tokens
+                    #validate_method
+                    #bound_alone
+                    #bound_text_method
+                }
+
+                #sealing_try_from
+
+                #example_test
+
+                #decode_with_impl
+            }
         }
 
-        impl #impl_generics #name #type_generics #where_clause {
-            #(#delegate_impl_items)*
-            #schema_example_tokens
-            #validate_method
-            #bound_alone
-            #bound_text_method
-        }
-
-        #example_test
-
-        #decode_with_impl
+        #vis type #name #alias_generics = #module_ident::#sealed::#name #type_generics;
     };
 
     log::trace!("{output}");
@@ -11536,6 +11792,13 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
     let (bound_text_method, counted_as) = branded_bound_text_method(&item_struct);
     record_counted(&rust_ident, counted_as);
 
+    let sealed_access = sealed_access(
+        &item_struct,
+        position,
+        inner_field,
+        !validate_method.is_empty(),
+    );
+
     let (decode_with, read_struct) = branded_read(
         item_struct,
         args,
@@ -11555,6 +11818,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         name: &name,
         schema_example_tokens: &schema_example_tokens,
         schema_impl_items: &schema_impl_items,
+        sealed_access: &sealed_access,
         validate_method: &validate_method,
         validation_tokens: &bound.module_items,
     })
@@ -11662,12 +11926,12 @@ fn brand_decode_with(
 /// #[model_schema()]
 /// #[derive(Deserialize, Serialize)]
 /// #[serde(transparent)]
-/// pub struct Badge(pub Slug);
+/// pub struct Badge(Slug);
 ///
 /// #[model_schema()]
 /// #[derive(Deserialize, Serialize)]
 /// #[serde(transparent)]
-/// pub struct Slug(pub String);
+/// pub struct Slug(String);
 ///
 /// #[model_schema()]
 /// #[derive(Deserialize, Serialize)]

@@ -165,21 +165,21 @@ pub enum UntaggedBulletin<Stowed> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Datebook(pub HashMap<NaiveDate, String>);
+pub struct Datebook(HashMap<NaiveDate, String>);
 
 /// A brand with a named member over a map under a time.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Hourbook {
-    pub hours: HashMap<NaiveTime, String>,
+    hours: HashMap<NaiveTime, String>,
 }
 
 /// A brand over a map of the parameter under a date and time.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Logsheet<Stowed>(pub HashMap<NaiveDateTime, Stowed>);
+pub struct Logsheet<Stowed>(HashMap<NaiveDateTime, Stowed>);
 
 /// The date every map of these models is keyed by.
 pub const fn day() -> NaiveDate {

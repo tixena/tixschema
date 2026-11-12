@@ -52,7 +52,7 @@ struct NumBrandOverBrand(NumBrand);
 struct StructBrand(PlainStruct);
 
 #[model_schema(no_display, default_types(IdType = String))]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(transparent)]
 struct GenericBrand<IdType>(IdType);
 
@@ -121,7 +121,7 @@ struct BoundBrandSlot(GenericBrand<String>);
 /// A republished binding carrying an example: the `.meta({ examples })` lands on the raw `const`'s
 /// value, which `.meta()` returns unchanged.
 /// ```rust example
-/// ExampledSlot(CorrelationId("corr-1".to_string()))
+/// ExampledSlot(CorrelationId::new("corr-1").unwrap())
 /// ```
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -150,7 +150,7 @@ struct HoldsBrands {
 }
 
 #[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(transparent)]
 struct NamedWrapper {
     inner: CorrelationId,
@@ -556,7 +556,7 @@ fn the_typescript_surface_of_a_republished_binding_is_unchanged() {
 
 #[test]
 fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
-    let branded = CorrelationId("corr-1".to_owned());
+    let branded = CorrelationId::new("corr-1".to_owned()).unwrap();
     assert_eq!(serde_json::to_string(&branded).unwrap(), "\"corr-1\"");
 
     let aliased: CorrelationRef = branded.clone();
@@ -578,14 +578,14 @@ fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
         exampled
     );
 
-    let bound = BoundBrandSlot(GenericBrand("corr-1".to_owned()));
+    let bound = BoundBrandSlot(GenericBrand::new("corr-1".to_owned()).unwrap());
     assert_eq!(serde_json::to_string(&bound).unwrap(), "\"corr-1\"");
     assert_eq!(
         serde_json::from_str::<BoundBrandSlot>("\"corr-1\"").unwrap(),
         bound
     );
 
-    let slotted = BrandSlot::<String>(GenericBrand("corr-1".to_owned()));
+    let slotted = BrandSlot::<String>(GenericBrand::new("corr-1".to_owned()).unwrap());
     assert_eq!(serde_json::to_string(&slotted).unwrap(), "\"corr-1\"");
     assert_eq!(
         serde_json::from_str::<BrandSlot<String>>("\"corr-1\"").unwrap(),
@@ -595,24 +595,26 @@ fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
     let held = SlotHolder::<CorrelationId>(branded);
     assert_eq!(serde_json::to_string(&held).unwrap(), "\"corr-1\"");
 
-    let forward: ForwardBrandRef = LateBrand("late-1".to_owned());
+    let forward: ForwardBrandRef = LateBrand::new("late-1".to_owned()).unwrap();
     assert_eq!(serde_json::to_string(&forward).unwrap(), "\"late-1\"");
 }
 
 #[test]
 fn every_branded_inner_writes_the_value_its_target_writes() {
-    let slotted: SlotBrandRef = SlotBrand(MetricSlot::Weekly);
+    let slotted: SlotBrandRef = SlotBrand::new(MetricSlot::Weekly).unwrap();
     assert_eq!(serde_json::to_string(&slotted).unwrap(), "\"Weekly\"");
-    let flagged: BoolBrandRef = BoolBrand(true);
+    let flagged: BoolBrandRef = BoolBrand::new(true).unwrap();
     assert_eq!(serde_json::to_string(&flagged).unwrap(), "true");
-    let counted: NumBrandRef = NumBrand(-7);
+    let counted: NumBrandRef = NumBrand::new(-7_i32).unwrap();
     assert_eq!(serde_json::to_string(&counted).unwrap(), "-7");
-    let twice: NumBrandOverBrandRef = NumBrandOverBrand(NumBrand(-7));
+    let twice: NumBrandOverBrandRef =
+        NumBrandOverBrand::new(NumBrand::new(-7_i32).unwrap()).unwrap();
     assert_eq!(serde_json::to_string(&twice).unwrap(), "-7");
 
-    let structured = StructBrand(PlainStruct {
+    let structured = StructBrand::new(PlainStruct {
         label: "l".to_owned(),
-    });
+    })
+    .unwrap();
     assert_eq!(
         serde_json::to_string(&structured).unwrap(),
         "{\"label\":\"l\"}"
@@ -629,9 +631,9 @@ fn every_branded_inner_writes_the_value_its_target_writes() {
         "{\"label\":\"l\"}"
     );
 
-    let bound: GenericBrandBoundAlias = GenericBrand("g".to_owned());
+    let bound: GenericBrandBoundAlias = GenericBrand::new("g".to_owned()).unwrap();
     assert_eq!(serde_json::to_string(&bound).unwrap(), "\"g\"");
-    let parameterized: GenericBrandAlias<String> = GenericBrand("g".to_owned());
+    let parameterized: GenericBrandAlias<String> = GenericBrand::new("g".to_owned()).unwrap();
     assert_eq!(serde_json::to_string(&parameterized).unwrap(), "\"g\"");
 }
 
@@ -639,18 +641,19 @@ fn every_branded_inner_writes_the_value_its_target_writes() {
 fn an_alias_of_a_built_expression_writes_its_targets_wire_form() {
     let key: SlotKey = "k".to_owned();
     assert_eq!(serde_json::to_string(&key).unwrap(), "\"k\"");
-    let listed: BrandList = vec![CorrelationId("l".to_owned())];
+    let listed: BrandList = vec![CorrelationId::new("l".to_owned()).unwrap()];
     assert_eq!(serde_json::to_string(&listed).unwrap(), "[\"l\"]");
-    let named: BrandsByName = HashMap::from([("n".to_owned(), CorrelationId("v".to_owned()))]);
+    let named: BrandsByName =
+        HashMap::from([("n".to_owned(), CorrelationId::new("v".to_owned()).unwrap())]);
     assert_eq!(serde_json::to_string(&named).unwrap(), "{\"n\":\"v\"}");
-    let paired: BrandPair = (CorrelationId("p".to_owned()), 3_i64);
+    let paired: BrandPair = (CorrelationId::new("p".to_owned()).unwrap(), 3_i64);
     assert_eq!(serde_json::to_string(&paired).unwrap(), "[\"p\",3]");
 }
 
 #[cfg(feature = "chrono")]
 #[test]
 fn a_datetime_brand_writes_the_timestamp_its_target_writes() {
-    let stamped = StampBrand(Utc.with_ymd_and_hms(2020, 1, 2, 3, 4, 5).unwrap());
+    let stamped = StampBrand::new(Utc.with_ymd_and_hms(2020, 1, 2, 3, 4, 5).unwrap()).unwrap();
     assert_eq!(
         serde_json::to_string(&stamped).unwrap(),
         "\"2020-01-02T03:04:05Z\""
@@ -664,12 +667,12 @@ fn a_datetime_brand_writes_the_timestamp_its_target_writes() {
 #[test]
 fn a_brand_in_a_composite_is_written_as_the_bare_value_in_every_position() {
     let held = HoldsBrands {
-        direct: CorrelationId("a".to_owned()),
-        keyed: HashMap::from([(CorrelationId("k".to_owned()), 1_i64)]),
-        listed: vec![CorrelationId("l".to_owned())],
-        maybe: Some(CorrelationId("m".to_owned())),
-        paired: (CorrelationId("p".to_owned()), 2_i64),
-        valued: HashMap::from([("v".to_owned(), CorrelationId("w".to_owned()))]),
+        direct: CorrelationId::new("a".to_owned()).unwrap(),
+        keyed: HashMap::from([(CorrelationId::new("k".to_owned()).unwrap(), 1_i64)]),
+        listed: vec![CorrelationId::new("l".to_owned()).unwrap()],
+        maybe: Some(CorrelationId::new("m".to_owned()).unwrap()),
+        paired: (CorrelationId::new("p".to_owned()).unwrap(), 2_i64),
+        valued: HashMap::from([("v".to_owned(), CorrelationId::new("w".to_owned()).unwrap())]),
     };
     let wire = serde_json::to_value(&held).unwrap();
     assert_eq!(wire["direct"], serde_json::json!("a"));
@@ -680,16 +683,20 @@ fn a_brand_in_a_composite_is_written_as_the_bare_value_in_every_position() {
     assert_eq!(wire["valued"], serde_json::json!({ "v": "w" }));
     assert_eq!(serde_json::from_value::<HoldsBrands>(wire).unwrap(), held);
 
-    let named = NamedWrapper {
-        inner: CorrelationId("n".to_owned()),
-    };
+    let named = NamedWrapper::new(CorrelationId::new("n".to_owned()).unwrap()).unwrap();
     assert_eq!(serde_json::to_string(&named).unwrap(), "\"n\"");
     assert_eq!(
-        serde_json::to_string(&BrandOrNumber::Brand(CorrelationId("b".to_owned()))).unwrap(),
+        serde_json::to_string(&BrandOrNumber::Brand(
+            CorrelationId::new("b".to_owned()).unwrap()
+        ))
+        .unwrap(),
         "\"b\""
     );
     assert_eq!(
-        serde_json::to_string(&SoleBrand::Brand(CorrelationId("s".to_owned()))).unwrap(),
+        serde_json::to_string(&SoleBrand::Brand(
+            CorrelationId::new("s".to_owned()).unwrap()
+        ))
+        .unwrap(),
         "\"s\""
     );
     assert_eq!(

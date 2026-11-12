@@ -124,7 +124,7 @@ pub struct Tag(pub i64);
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Plain(pub i64);
+pub struct Plain(i64);
 
 /// An externally tagged enum over an `i64`.
 #[model_schema()]
@@ -162,7 +162,7 @@ pub struct Deep {
 ///     maybe: Some(5),
 ///     named: Wrapper::Named { n: 5 },
 ///     pair: Wrapper::Pair(3, 4),
-///     plain: Plain(8),
+///     plain: Plain::new(8).unwrap(),
 ///     shared: Arc::new(15),
 ///     tag: Tag(6),
 ///     wrapped: Wrapper::Wrapped(2),
@@ -216,12 +216,12 @@ pub enum EitherOne {
 /// A transparent struct beyond what a JavaScript `number` holds exactly.
 ///
 /// ```rust example
-/// FarPlain(far())
+/// FarPlain::new(far()).unwrap()
 /// ```
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct FarPlain(pub i64);
+pub struct FarPlain(i64);
 
 /// An enum with an `i64` member under a default.
 #[model_schema()]

@@ -319,11 +319,11 @@ fn the_readme_shows_the_reads_of_the_documents_parcel() {
 fn a_bounded_brand_declared_above_an_untagged_enum_chooses_its_variant() {
     let bounded: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct ChoicePin(pub String);
+        pub struct ChoicePin(String);
     };
     let unbounded: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct ChoiceNote(pub String);
+        pub struct ChoiceNote(String);
     };
     let alias: Item = syn::parse_quote! {
         pub type ChoiceAlias = ChoicePin;
@@ -380,11 +380,11 @@ fn a_bounded_brand_declared_above_an_untagged_enum_chooses_its_variant() {
 fn a_brand_over_an_optional_converted_value_calls_its_closure_with_try() {
     let hoard: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct OptionalHoard(pub Option<HashMap<u32, String>>);
+        pub struct OptionalHoard(Option<HashMap<u32, String>>);
     };
     let hoards: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct OptionalHoards(pub Option<Vec<HashMap<u32, String>>>);
+        pub struct OptionalHoards(Option<Vec<HashMap<u32, String>>>);
     };
     for (item, call) in [
         (
@@ -415,7 +415,7 @@ fn a_brand_over_an_optional_converted_value_calls_its_closure_with_try() {
 fn a_brand_over_an_optional_date_calls_its_closure_with_try() {
     let landfall: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct OptionalLandfall(pub Option<DateTime<Utc>>);
+        pub struct OptionalLandfall(Option<DateTime<Utc>>);
     };
     let written = emitted(&landfall);
     let call = concat!(

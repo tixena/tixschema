@@ -60,14 +60,14 @@ struct Pilot {
 
 fn game() -> Game {
     Game {
-        best: Score(84_u32),
-        last: Some(Score(72_u32)),
+        best: Score::new(84_u32).unwrap(),
+        last: Some(Score::new(72_u32).unwrap()),
         nicknames: vec![Nickname("ace".to_owned())],
         past_ranks: vec![Rank::Rookie],
         rank: Rank::TopSeed,
-        scores: vec![Score(72_u32), Score(84_u32)],
-        seal: Sealed("wax".to_owned()),
-        seals: vec![Sealed(3_u32)],
+        scores: vec![Score::new(72_u32).unwrap(), Score::new(84_u32).unwrap()],
+        seal: Sealed::new("wax".to_owned()).unwrap(),
+        seals: vec![Sealed::new(3_u32).unwrap()],
     }
 }
 
@@ -94,11 +94,11 @@ fn a_list_of_a_type_written_as_one_value_is_matched_through_its_elements() {
     let game = Game::MONGO_FIELDS;
     let scores: game_schema::ListField<Game, Score> = game.scores();
     assert_eq!(
-        shown(scores.elem_match(scores.element().gt(Score(5_u32)).unwrap())),
+        shown(scores.elem_match(scores.element().gt(Score::new(5_u32).unwrap()).unwrap())),
         r#"{ "scores": { "$elemMatch": { "$gt": Int64(5) } } }"#
     );
     assert_eq!(
-        shown(scores.contains(Score(84_u32)).unwrap()),
+        shown(scores.contains(Score::new(84_u32).unwrap()).unwrap()),
         r#"{ "scores": { "$eq": Int64(84) } }"#
     );
     let nicknames: game_schema::ListField<Game, Nickname> = game.nicknames();
@@ -118,12 +118,12 @@ fn bare_and_under_an_option_it_is_a_plain_value_with_every_comparison() {
     let game = Game::MONGO_FIELDS;
     let best: game_schema::Field<Game, Score> = game.best();
     assert_eq!(
-        shown(best.gt(Score(80_u32)).unwrap()),
+        shown(best.gt(Score::new(80_u32).unwrap()).unwrap()),
         r#"{ "best": { "$gt": Int64(80) } }"#
     );
     let last: game_schema::OptionalField<Game, Score> = game.last();
     assert_eq!(
-        shown(last.lte(Score(72_u32)).unwrap()),
+        shown(last.lte(Score::new(72_u32).unwrap()).unwrap()),
         r#"{ "last": { "$lte": Int64(72) } }"#
     );
     assert_eq!(
@@ -142,12 +142,12 @@ fn a_generic_one_is_held_with_its_arguments_and_its_path() {
     let game = Game::MONGO_FIELDS;
     let seal: game_schema::Field<Game, Sealed<String>> = game.seal();
     assert_eq!(
-        shown(seal.ne(Sealed("lead".to_owned())).unwrap()),
+        shown(seal.ne(Sealed::new("lead".to_owned()).unwrap()).unwrap()),
         r#"{ "seal": { "$ne": "lead" } }"#
     );
     let seals: game_schema::ListField<Game, Sealed<u32>> = game.seals();
     assert_eq!(
-        shown(seals.elem_match(seals.element().lt(Sealed(9_u32)).unwrap())),
+        shown(seals.elem_match(seals.element().lt(Sealed::new(9_u32).unwrap()).unwrap())),
         r#"{ "seals": { "$elemMatch": { "$lt": Int64(9) } } }"#
     );
     let whole: sealed_schema::MongoFields<
@@ -156,7 +156,7 @@ fn a_generic_one_is_held_with_its_arguments_and_its_path() {
         sealed_schema::Field<Sealed<u32>, Sealed<u32>>,
     > = Sealed::<u32>::MONGO_FIELDS;
     assert_eq!(
-        shown(whole.gte(Sealed(1_u32)).unwrap()),
+        shown(whole.gte(Sealed::new(1_u32).unwrap()).unwrap()),
         r#"{ "": { "$gte": Int64(1) } }"#
     );
 }
@@ -168,14 +168,17 @@ fn what_is_asked_of_its_own_path_is_written_at_the_key_that_holds_it() {
     assert_eq!(
         shown(
             game.best()
-                .nest(Score::MONGO_FIELDS.gt(Score(80_u32)).unwrap())
+                .nest(Score::MONGO_FIELDS.gt(Score::new(80_u32).unwrap()).unwrap())
         ),
         r#"{ "best": { "$gt": Int64(80) } }"#
     );
     assert_eq!(
         shown(
-            game.last()
-                .nest(Score::MONGO_FIELDS.set(Score(90_u32)).unwrap())
+            game.last().nest(
+                Score::MONGO_FIELDS
+                    .set(Score::new(90_u32).unwrap())
+                    .unwrap()
+            )
         ),
         r#"{ "$set": { "last": Int64(90) } }"#
     );
@@ -194,16 +197,42 @@ fn no_operator_of_a_list_of_one_writes_an_empty_key() {
     let game = Game::MONGO_FIELDS;
     let written: Vec<Document> = vec![
         game.scores()
-            .elem_match(game.scores().element().gt(Score(5_u32)).unwrap())
+            .elem_match(
+                game.scores()
+                    .element()
+                    .gt(Score::new(5_u32).unwrap())
+                    .unwrap(),
+            )
             .into(),
-        game.scores().contains(Score(84_u32)).unwrap().into(),
-        game.scores().contains_any([Score(1_u32)]).unwrap().into(),
-        game.scores().contains_none([Score(1_u32)]).unwrap().into(),
+        game.scores()
+            .contains(Score::new(84_u32).unwrap())
+            .unwrap()
+            .into(),
+        game.scores()
+            .contains_any([Score::new(1_u32).unwrap()])
+            .unwrap()
+            .into(),
+        game.scores()
+            .contains_none([Score::new(1_u32).unwrap()])
+            .unwrap()
+            .into(),
         game.scores().size(2).into(),
-        game.scores().push(Score(90_u32)).unwrap().into(),
-        game.scores().pull(Score(72_u32)).unwrap().into(),
-        game.scores().set([Score(1_u32)]).unwrap().into(),
-        game.scores().set_on_insert([Score(1_u32)]).unwrap().into(),
+        game.scores()
+            .push(Score::new(90_u32).unwrap())
+            .unwrap()
+            .into(),
+        game.scores()
+            .pull(Score::new(72_u32).unwrap())
+            .unwrap()
+            .into(),
+        game.scores()
+            .set([Score::new(1_u32).unwrap()])
+            .unwrap()
+            .into(),
+        game.scores()
+            .set_on_insert([Score::new(1_u32).unwrap()])
+            .unwrap()
+            .into(),
         game.past_ranks()
             .elem_match(game.past_ranks().element().eq(Rank::Rookie).unwrap())
             .into(),
@@ -228,13 +257,16 @@ fn each_path_is_found_in_what_serde_stores_for_the_row() {
     let stored = row.as_document().unwrap();
     let game = Game::MONGO_FIELDS;
     let held = [
-        looked_up(stored, game.best().eq(Score(0_u32)).unwrap()),
+        looked_up(stored, game.best().eq(Score::new(0_u32).unwrap()).unwrap()),
         looked_up(stored, game.last().exists(true)),
         looked_up(stored, game.nicknames().size(1)),
         looked_up(stored, game.past_ranks().size(1)),
         looked_up(stored, game.rank().eq(Rank::Rookie).unwrap()),
         looked_up(stored, game.scores().size(2)),
-        looked_up(stored, game.seal().eq(Sealed(String::new())).unwrap()),
+        looked_up(
+            stored,
+            game.seal().eq(Sealed::new(String::new()).unwrap()).unwrap(),
+        ),
         looked_up(stored, game.seals().size(1)),
     ];
     let expected = [
@@ -281,7 +313,7 @@ fn a_brand_declared_inside_a_function_builds() {
     assert_eq!(
         shown(
             Callsign::MONGO_FIELDS
-                .eq(Callsign("maverick".to_owned()))
+                .eq(Callsign::new("maverick".to_owned()).unwrap())
                 .unwrap()
         ),
         r#"{ "": { "$eq": "maverick" } }"#

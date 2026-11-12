@@ -177,7 +177,7 @@ pub struct Gunwale {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct StrakeCode(pub String);
+pub struct StrakeCode(String);
 
 /// A map keyed by a brand.
 #[model_schema(enable = ["jsonschema"])]

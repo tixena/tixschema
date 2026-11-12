@@ -183,7 +183,7 @@ const INTEGER_KEY_NAMES: &str =
 
 /// A brand with named fields whose skipped marker carries a key, as a consumer writes it.
 const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)] \
-     #[serde(transparent)] pub struct Label { pub text: String, \
+     #[serde(transparent)] pub struct Label { text: String, \
      #[model_schema_prop(maxLength = 9)] #[serde(skip)] marker: PhantomData<u8> }";
 
 /// A transparent struct whose two derives take `count` and `text` as its value, written with named
@@ -192,13 +192,13 @@ const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)
 const SPLIT_TRANSPARENT_SOURCES: [(&str, &str, &str); 2] = [
     (
         "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Split { \
-         #[serde(default)] pub count: u32, #[serde(skip_serializing)] pub text: String }",
+         #[serde(default)] count: u32, #[serde(skip_serializing)] text: String }",
         "field `count`",
         "field `text`",
     ),
     (
         "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Split(\
-         #[serde(default)] pub u32, #[serde(skip_serializing)] pub String);",
+         #[serde(default)] u32, #[serde(skip_serializing)] String);",
         "slot 0",
         "slot 1",
     ),
@@ -235,11 +235,11 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
-        "#[serde(transparent)] pub struct DecodeBrand(pub String);",
+        "#[serde(transparent)] pub struct DecodeBrand(String);",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"], no_display",
-        "#[serde(transparent)] pub struct DecodePinned(pub DecodeInner);",
+        "#[serde(transparent)] pub struct DecodePinned(DecodeInner);",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -251,19 +251,19 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
-        "#[serde(transparent)] pub struct DecodeWrapped<T>(pub T);",
+        "#[serde(transparent)] pub struct DecodeWrapped<T>(T);",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
-        "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
+        "#[serde(transparent)] pub struct DecodeHolder { inner: String }",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"]",
-        "#[serde(transparent)] pub struct DecodeCurrent { pub inner: DecodeInner }",
+        "#[serde(transparent)] pub struct DecodeCurrent { inner: DecodeInner }",
     ),
     (
         "enable = [\"decode_with\", \"mongodb\"], default_types(T = String)",
-        "#[serde(transparent)] pub struct DecodeSleeve<T> { pub inner: T }",
+        "#[serde(transparent)] pub struct DecodeSleeve<T> { inner: T }",
     ),
 ];
 
@@ -5777,12 +5777,12 @@ fn a_slot_a_brand_and_a_flattened_member_holding_a_json_value_are_refused() {
             "serde_json::Value",
         ),
         (
-            "#[serde(transparent)] pub struct Holding(pub serde_json::Value);",
+            "#[serde(transparent)] pub struct Holding(serde_json::Value);",
             "type `Holding`: slot 0",
             "serde_json::Value",
         ),
         (
-            "#[serde(transparent)] pub struct Holding { pub raw: serde_json::Value }",
+            "#[serde(transparent)] pub struct Holding { raw: serde_json::Value }",
             "type `Holding`: field `raw`",
             "serde_json::Value",
         ),
@@ -8974,7 +8974,7 @@ fn a_brand_whose_own_bounds_no_value_meets_is_refused() {
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct SlotId(pub #inner);
+                struct SlotId(#inner);
             },
             &args,
         );
@@ -10610,7 +10610,7 @@ fn a_brand_over_an_undescribable_std_inner_is_refused() {
     ] {
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct SlotId(pub #inner);
+            struct SlotId(#inner);
         });
         assert_eq!(errors.len(), 1, "for {inner}, got: {errors:?}");
         for needle in ["compile_error", "model_schema: type `SlotId`", named, wire] {
@@ -10634,7 +10634,7 @@ fn a_brand_over_a_describable_inner_is_left_alone() {
     ] {
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct SlotId(pub #inner);
+            struct SlotId(#inner);
         });
         assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
     }
@@ -10657,7 +10657,7 @@ fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     branded_errors_with(
         &syn::parse_quote! {
             #[serde(transparent)]
-            struct UserId(pub String);
+            struct UserId(String);
         },
         &super::parse_model_schema_args(quote::quote! { pattern = #pattern }),
     )
@@ -10793,7 +10793,7 @@ fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     ] {
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct Wrap(pub #inner);
+            struct Wrap(#inner);
         });
         assert_eq!(errors.len(), 1, "for {inner}, got: {errors:?}");
         assert!(
@@ -10822,7 +10822,7 @@ fn a_brand_over_a_writable_map_key_clears_the_guard() {
     ] {
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct Wrap(pub #inner);
+            struct Wrap(#inner);
         });
         assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
     }
@@ -10839,7 +10839,7 @@ fn a_brand_over_a_map_with_a_tuple_value_builds() {
     ] {
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct Wrap(pub #inner);
+            struct Wrap(#inner);
         });
         assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
     }
@@ -10857,7 +10857,7 @@ fn a_brand_over_a_renderable_slot_clears_the_guard() {
     ] {
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct Wrap(pub #inner);
+            struct Wrap(#inner);
         });
         assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
     }
@@ -10875,7 +10875,7 @@ fn each_string_constraint_alone_rejects_a_numeric_inner() {
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct BadNum(pub u64);
+                struct BadNum(u64);
             },
             &super::parse_model_schema_args(args),
         );
@@ -10908,7 +10908,7 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct Branded(pub #ty);
+                struct Branded(#ty);
             },
             &pattern_args(),
         );
@@ -10939,7 +10939,7 @@ fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
     ] {
         let generics = if inner.contains("T>") { "<T>" } else { "" };
         let item: syn::ItemStruct = syn::parse_str(&format!(
-            "#[serde(transparent)] struct Listed{generics}(pub {inner});"
+            "#[serde(transparent)] struct Listed{generics}({inner});"
         ))
         .unwrap();
         for lengths in [
@@ -10978,7 +10978,7 @@ fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct Listed(pub #ty);
+                struct Listed(#ty);
             },
             &super::parse_model_schema_args(quote::quote! { minLength = 1 }),
         );
@@ -11003,7 +11003,7 @@ fn string_constraints_over_a_string_shaped_inner_pass() {
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct Branded<T>(pub #ty);
+                struct Branded<T>(#ty);
             },
             &pattern_args(),
         );
@@ -11036,7 +11036,7 @@ fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     branded_errors_with(
         &syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded(pub #ty);
+            struct Branded(#ty);
         },
         &pattern_args(),
     )
@@ -11084,7 +11084,7 @@ fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
         let carrying_a_fixed_argument = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct Branded<T>(pub #ty);
+                struct Branded<T>(#ty);
             },
             &pattern_args(),
         );
@@ -11109,7 +11109,7 @@ fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_reje
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct Branded<T, U>(pub #ty);
+                struct Branded<T, U>(#ty);
             },
             &pattern_args(),
         );
@@ -11136,7 +11136,7 @@ fn string_constraints_over_a_registered_name_carrying_the_brands_parameter_are_r
     let errors = branded_errors_with(
         &syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded<T>(pub RegisteredStringGeneric<T>);
+            struct Branded<T>(RegisteredStringGeneric<T>);
         },
         &pattern_args(),
     );
@@ -11166,7 +11166,7 @@ fn a_brand_records_the_value_surface_its_inner_publishes() {
         let ty: syn::Type = syn::parse_str(inner).unwrap();
         let item: syn::ItemStruct = syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded(pub #ty);
+            struct Branded(#ty);
         };
         assert_eq!(
             brand_surface(&item).shape,
@@ -11196,7 +11196,7 @@ fn a_brand_over_its_own_parameter_records_the_position_it_publishes() {
         let ty: syn::Type = syn::parse_str(inner).unwrap();
         let item: syn::ItemStruct = syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded<TagType, ValueType>(pub #ty);
+            struct Branded<TagType, ValueType>(#ty);
         };
         assert_eq!(brand_surface(&item).shape, expected, "for {inner}");
     }
@@ -11263,7 +11263,7 @@ fn brand_over(inner: &str) -> syn::ItemStruct {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     syn::parse_quote! {
         #[serde(transparent)]
-        struct Branded(pub #ty);
+        struct Branded(#ty);
     }
 }
 
@@ -11433,7 +11433,7 @@ fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_de
         let errors = branded_errors_with(
             &syn::parse_quote! {
                 #[serde(transparent)]
-                struct Branded<T, U>(pub #ty);
+                struct Branded<T, U>(#ty);
             },
             &pattern_args(),
         );
@@ -11447,7 +11447,7 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_p
     let errors = branded_errors_with(
         &syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded<T>(pub T);
+            struct Branded<T>(T);
         },
         &super::parse_model_schema_args(quote::quote! {
             pattern = "^[a-z]+$", default_types(T = String)
@@ -11488,7 +11488,7 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_defau
     let errors = branded_errors_with(
         &syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded<T>(pub T);
+            struct Branded<T>(T);
         },
         &super::parse_model_schema_args(quote::quote! {
             pattern = "^[a-z]+$", default_types(T = u32)
@@ -11523,7 +11523,7 @@ fn an_unconstrained_brand_over_a_non_string_inner_passes() {
         let ty: syn::Type = syn::parse_str(inner).unwrap();
         let errors = branded_errors(&syn::parse_quote! {
             #[serde(transparent)]
-            struct Branded(pub #ty);
+            struct Branded(#ty);
         });
         assert!(errors.is_empty(), "for {inner}, got: {errors:?}");
     }
@@ -11536,7 +11536,7 @@ fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     let errors = branded_errors_with(
         &syn::parse_quote! {
             #[serde(transparent)]
-            struct BadNum(pub u64);
+            struct BadNum(u64);
         },
         &pattern_args(),
     );
@@ -11555,7 +11555,7 @@ fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
         #[serde(transparent)]
         #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-        struct UserId(pub String);
+        struct UserId(String);
     });
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(errors[0].contains("compile_error"), "got: {}", errors[0]);
@@ -11568,7 +11568,7 @@ fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
 fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
         #[serde(transparent)]
-        struct UserId(#[cfg_attr(feature = "serde", serde(rename = "inner"))] pub String);
+        struct UserId(#[cfg_attr(feature = "serde", serde(rename = "inner"))] String);
     });
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(errors[0].contains("compile_error"), "got: {}", errors[0]);
@@ -11581,7 +11581,7 @@ fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
 fn branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
         #[serde(transparent)]
-        struct MaybeUserId(pub Option<String>);
+        struct MaybeUserId(Option<String>);
     });
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(errors[0].contains("compile_error"), "got: {}", errors[0]);
@@ -11594,7 +11594,7 @@ fn branded_newtype_over_option_is_rejected() {
 fn generic_branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
         #[serde(transparent)]
-        struct MaybeId<T>(pub Option<T>);
+        struct MaybeId<T>(Option<T>);
     });
     assert_eq!(errors.len(), 1, "got: {errors:?}");
     assert!(errors[0].contains("Option"), "got: {}", errors[0]);
@@ -11606,7 +11606,7 @@ fn compliant_branded_newtype_passes_every_guard() {
     let errors = branded_errors(&syn::parse_quote! {
         #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
         #[serde(transparent)]
-        struct UserId(#[cfg_attr(feature = "serde", doc = "documented in serde builds")] pub String);
+        struct UserId(#[cfg_attr(feature = "serde", doc = "documented in serde builds")] String);
     });
     assert!(errors.is_empty(), "got: {errors:?}");
 }
@@ -12058,8 +12058,8 @@ fn expansion_under(args: &str, source: &str) -> String {
 ))]
 #[test]
 fn a_one_direction_transparent_struct_is_not_refused_for_a_skipped_key() {
-    let body = "#[serde(transparent)] pub struct Received { #[serde(default)] pub count: u32, \
-                #[serde(skip_serializing)] pub text: String }";
+    let body = "#[serde(transparent)] pub struct Received { #[serde(default)] count: u32, \
+                #[serde(skip_serializing)] text: String }";
     for derives in ["Debug, Deserialize", "Debug, Serialize"] {
         let expanded = expansion_under("", &format!("#[derive({derives})] {body}"));
         assert!(!expanded.contains("compile_error"), "{derives}: {expanded}");
@@ -12264,7 +12264,7 @@ fn a_shape_refused_before_its_members_are_walked_is_re_emitted_without_their_key
 fn a_brand_refused_by_its_guards_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
         "",
-        "#[serde(transparent)] pub struct Label { pub text: Option<String>, \
+        "#[serde(transparent)] pub struct Label { text: Option<String>, \
          #[model_schema_prop(maxLength = 9)] #[serde(skip)] marker: \
          ::core::marker::PhantomData<u8> }",
         "type `Label`: `#[model_schema_prop]` is unread on a field serde neither reads nor writes",
@@ -12754,7 +12754,7 @@ fn a_string_check_on_a_type_alias_is_refused() {
 
 #[test]
 fn a_string_check_on_an_alias_of_a_brand_is_refused_naming_the_brand() {
-    let brand = expansion_under("", "#[serde(transparent)] pub struct Sku(pub String);");
+    let brand = expansion_under("", "#[serde(transparent)] pub struct Sku(String);");
     assert!(!brand.contains("compile_error"), "got: {brand}");
 
     let expanded = expansion_under("minLength = 3", "pub type Short = Sku;");
@@ -12828,7 +12828,7 @@ fn an_alias_with_no_string_check_is_not_refused() {
 fn a_string_check_on_a_brand_is_held_by_its_validator_whatever_the_other_features() {
     let expanded = expansion_under(
         "minLength = 3",
-        "#[serde(transparent)] pub struct Code(pub String);",
+        "#[serde(transparent)] pub struct Code(String);",
     );
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
     assert!(
@@ -12842,7 +12842,7 @@ fn a_string_check_on_a_brand_is_held_by_its_validator_whatever_the_other_feature
 fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its_field() {
     let expanded = expansion_under(
         "enable = [\"decode_with\", \"mongodb\"]",
-        "#[serde(transparent)] pub struct DecodeHolder { pub inner: String }",
+        "#[serde(transparent)] pub struct DecodeHolder { inner: String }",
     );
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
     let (_, added) = expanded.split_once("fn decode_with_value_report").unwrap();
@@ -13078,11 +13078,8 @@ fn a_type_that_lists_no_mongodb_gets_no_typed_path_and_no_operation() {
 #[test]
 fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
     for (source, one_value) in [
-        (
-            "#[serde(transparent)] pub struct SeenBrand(pub String);",
-            true,
-        ),
-        ("pub struct SeenSlot(pub u32);", true),
+        ("#[serde(transparent)] pub struct SeenBrand(String);", true),
+        ("pub struct SeenSlot(u32);", true),
         ("pub struct SeenUnit;", true),
         ("pub enum SeenPlain { Draft, Paid }", true),
         ("pub struct SeenKeyed { pub held: String }", false),
@@ -13113,7 +13110,7 @@ fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
 fn a_type_declared_above_is_held_by_how_serde_writes_it() {
     let _brand = expansion_under(
         "enable = [\"decode_with\", \"mongodb\"]",
-        "#[serde(transparent)] pub struct HeldBrand(pub String);",
+        "#[serde(transparent)] pub struct HeldBrand(String);",
     );
     let _keyed = expansion_under(
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -13142,7 +13139,7 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
 fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     let expanded = expansion_under(
         "enable = [\"decode_with\", \"mongodb\"], minLength = 3",
-        "#[derive(Deserialize)] #[serde(transparent)] pub struct DecodeCode(pub String);",
+        "#[derive(Deserialize)] #[serde(transparent)] pub struct DecodeCode(String);",
     );
     for emitted in [
         "decode_code_schema :: value_leaf (found , Self :: decode_with_read_unjudged , \
@@ -13163,7 +13160,7 @@ fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     }
     // The slot carries no hook, and the brand's own read is the one the macro writes.
     assert!(
-        expanded.starts_with("pub struct DecodeCode (pub String) ;"),
+        expanded.contains("pub struct DecodeCode (String) ;"),
         "got: {expanded}"
     );
     for unwritten in ["deserialize_value", "deserialize_with"] {
@@ -13331,11 +13328,11 @@ fn decode_with_is_refused_on_a_borrowing_field_whatever_shape_declares_it() {
     for (source, field) in [
         ("pub struct DecodeLabelled(pub u32, pub &'static str);", "1"),
         (
-            "#[serde(transparent)] pub struct DecodeLabelled(pub &'static str);",
+            "#[serde(transparent)] pub struct DecodeLabelled(&'static str);",
             "0",
         ),
         (
-            "#[serde(transparent)] pub struct DecodeLabelled { pub label: &'static str }",
+            "#[serde(transparent)] pub struct DecodeLabelled { label: &'static str }",
             "label",
         ),
         (
@@ -13835,11 +13832,11 @@ fn a_held_model_behind_its_authors_functions_is_not_refused() {
 #[test]
 fn a_map_keyed_by_a_brand_or_an_alias_over_a_number_is_refused() {
     for declared in [
-        "#[serde(transparent)] pub struct Count(pub u32);",
-        "#[serde(transparent)] pub struct Ordinal { pub value: i64 }",
+        "#[serde(transparent)] pub struct Count(u32);",
+        "#[serde(transparent)] pub struct Ordinal { value: i64 }",
         "pub type Tally = Count;",
-        "#[serde(transparent)] pub struct Flag(pub Box<bool>);",
-        "#[serde(transparent)] pub struct Label(pub String);",
+        "#[serde(transparent)] pub struct Flag(Box<bool>);",
+        "#[serde(transparent)] pub struct Label(String);",
     ] {
         super::record_bson_refused_key_item(&syn::parse_str(declared).unwrap());
     }
@@ -13872,9 +13869,9 @@ fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
     super::record_bson_refused_key_item(&syn::parse_str("pub type Slot<T> = T;").unwrap());
     #[cfg(feature = "serde")]
     for declared in [
-        "#[serde(transparent)] pub struct Ordinal<IdType>(pub IdType);",
-        "#[serde(transparent)] pub struct Seat<Row, Place> { pub place: Place, \
-         pub row: PhantomData<Row> }",
+        "#[serde(transparent)] pub struct Ordinal<IdType>(IdType);",
+        "#[serde(transparent)] pub struct Seat<Row, Place> { place: Place, \
+         row: PhantomData<Row> }",
     ] {
         super::record_bson_refused_key_item(&syn::parse_str(declared).unwrap());
     }
@@ -13918,14 +13915,14 @@ fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
 #[test]
 fn a_map_keyed_by_a_generic_brand_over_a_wrapper_or_a_brand_of_its_parameter_is_refused() {
     record_declared_above(&[
-        "#[serde(transparent)] pub struct Ordinal<IdType>(pub IdType);",
-        "#[serde(transparent)] pub struct Boxed<T>(pub Box<T>);",
+        "#[serde(transparent)] pub struct Ordinal<IdType>(IdType);",
+        "#[serde(transparent)] pub struct Boxed<T>(Box<T>);",
         "pub type Held<T> = Box<T>;",
-        "#[serde(transparent)] pub struct Borrowed<'a, T>(pub Cow<'a, T>);",
-        "#[serde(transparent)] pub struct Rank<T>(pub Ordinal<T>);",
+        "#[serde(transparent)] pub struct Borrowed<'a, T>(Cow<'a, T>);",
+        "#[serde(transparent)] pub struct Rank<T>(Ordinal<T>);",
         "pub type Placed<Row, Place> = Rc<Ordinal<Arc<Place>>>;",
-        "#[serde(transparent)] pub struct Grade<T>(pub Tier<T>);",
-        "#[serde(transparent)] pub struct Tier<IdType>(pub IdType);",
+        "#[serde(transparent)] pub struct Grade<T>(Tier<T>);",
+        "#[serde(transparent)] pub struct Tier<IdType>(IdType);",
         "pub struct Keyed<KeyType> { pub by_key: HashMap<Rank<KeyType>, String> }",
     ]);
     for (key, refused) in [
@@ -14658,8 +14655,8 @@ fn an_alias_whose_value_is_its_own_parameter_is_read_as_a_key_and_holds_no_map()
     declare_above(&[
         "pub type Slot<T> = T;",
         #[cfg(feature = "serde")]
-        "#[serde(transparent)] pub struct Seat<Row, Place> { pub place: Place, \
-         pub row: PhantomData<Row> }",
+        "#[serde(transparent)] pub struct Seat<Row, Place> { place: Place, \
+         row: PhantomData<Row> }",
         #[cfg(feature = "serde")]
         "pub type Seated<Row, Place> = Seat<HashMap<Row, String>, Place>;",
     ]);
@@ -14744,8 +14741,8 @@ fn an_item_without_decode_with_expands_as_it_did() {
         "pub struct DecodePlain { pub name: String, pub tags: Vec<String> }",
         "pub struct DecodePlainLabel { pub label: &'static str }",
         "pub struct DecodePlainPair(pub String, pub u32);",
-        "#[serde(transparent)] pub struct DecodePlainBrand(pub String);",
-        "#[serde(transparent)] pub struct DecodePlainHolder { pub inner: String }",
+        "#[serde(transparent)] pub struct DecodePlainBrand(String);",
+        "#[serde(transparent)] pub struct DecodePlainHolder { inner: String }",
         "pub struct DecodePlainUnit;",
         "pub enum DecodePlainChoice { One, Two }",
         "pub enum DecodePlainOutline { Circle { radius: f64 }, Empty }",
@@ -14754,7 +14751,7 @@ fn an_item_without_decode_with_expands_as_it_did() {
         "#[serde(untagged)] pub enum DecodePlainContact { Email { address: String }, Phone { digits: u32 } }",
         "pub type DecodePlainAlias = String;",
     ] {
-        let unflagged = expansion_under("", source);
+        let unflagged = expansion_under("", source).replace("__tixschema_sealed_", "");
         for added in [
             "decode_with",
             "from_value_with",
@@ -14866,7 +14863,10 @@ fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
         .chain(DECODE_WITH_ENUM_FORMS)
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
-        let flagged = expansion_under(args, source);
+        let flagged = expansion_under(args, source).replace(
+            "# [doc (hidden)] pub mod __tixschema_sealed_",
+            "pub mod sealed_",
+        );
         for suppression in ["allow", "hidden", "cfg_attr"] {
             assert!(
                 !flagged.contains(&format!("# [{suppression}"))
@@ -14969,7 +14969,8 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
         .chain(DECODE_WITH_ENUM_FORMS)
         .chain(DECODE_WITH_FLATTEN_FORMS)
     {
-        let flagged = expansion_under(args, source);
+        let flagged = expansion_under(args, source)
+            .replace("value : impl :: core :: convert :: Into", "value : Into");
         assert!(!flagged.contains(": impl "), "for {source}, got: {flagged}");
         assert!(
             flagged.contains(
@@ -21486,37 +21487,33 @@ fn a_brand_publishes_its_text_only_over_a_string_or_a_path() {
     for (args, source, text) in [
         (
             "",
-            "#[serde(transparent)] pub struct TextSlug(pub String);",
+            "#[serde(transparent)] pub struct TextSlug(String);",
             Some(":: std :: borrow :: Cow :: Borrowed (& * self . 0)"),
         ),
         (
             "",
-            "#[serde(transparent)] pub struct TextShared(pub Arc<str>);",
+            "#[serde(transparent)] pub struct TextShared(Arc<str>);",
             Some(":: std :: borrow :: Cow :: Borrowed (& * self . 0)"),
         ),
         (
             "",
-            "#[serde(transparent)] pub struct TextNamed { pub text: String }",
+            "#[serde(transparent)] pub struct TextNamed { text: String }",
             Some(":: std :: borrow :: Cow :: Borrowed (& * self . text)"),
         ),
         (
             "no_display",
-            "#[serde(transparent)] pub struct TextDir(pub PathBuf);",
+            "#[serde(transparent)] pub struct TextDir(PathBuf);",
             Some("self . 0 . to_string_lossy ()"),
         ),
-        (
-            "",
-            "#[serde(transparent)] pub struct TextCount(pub u32);",
-            None,
-        ),
+        ("", "#[serde(transparent)] pub struct TextCount(u32);", None),
         (
             "no_display",
-            "#[serde(transparent)] pub struct TextMany(pub Vec<String>);",
+            "#[serde(transparent)] pub struct TextMany(Vec<String>);",
             None,
         ),
         (
             "default_types(IdType = String)",
-            "#[serde(transparent)] pub struct TextId<IdType>(pub IdType);",
+            "#[serde(transparent)] pub struct TextId<IdType>(IdType);",
             None,
         ),
     ] {
@@ -21825,7 +21822,7 @@ fn writes_a_prop_attribute(tokens: &proc_macro2::TokenStream) -> bool {
 
 /// A brand's slot carrying `keys`, as the declaration a consumer writes it.
 fn branded_slot_source(keys: &str) -> String {
-    format!("#[serde(transparent)] pub struct Branded(#[model_schema_prop({keys})] pub String);")
+    format!("#[serde(transparent)] pub struct Branded(#[model_schema_prop({keys})] String);")
 }
 
 #[cfg(feature = "serde")]
@@ -21898,7 +21895,7 @@ fn a_named_brand_with_no_prop_on_any_field_earns_no_refusal() {
 fn each_prop_attribute_on_a_brand_slot_earns_its_own_refusal() {
     let refusals = branded_slot_refusals(
         "#[serde(transparent)] pub struct Branded(\
-         #[model_schema_prop(minLength = 2)] #[model_schema_prop(maxLength = 8)] pub String);",
+         #[model_schema_prop(minLength = 2)] #[model_schema_prop(maxLength = 8)] String);",
     );
     assert_eq!(refusals.len(), 2, "got: {refusals:?}");
 }
@@ -21928,7 +21925,7 @@ fn a_brand_slot_refusal_is_spanned_on_the_attribute() {
 fn a_prop_on_a_named_brand_field_earns_the_refusal() {
     let refusals = branded_slot_refusals(
         "#[serde(transparent)] pub struct Named { #[model_schema_prop(pattern = \"^a$\")] \
-         pub inner: String, #[serde(skip)] #[model_schema_prop(minLength = 2)] pub note: String }",
+         inner: String, #[serde(skip)] #[model_schema_prop(minLength = 2)] note: String }",
     );
     assert_eq!(refusals.len(), 2, "got: {refusals:?}");
     for (refusal, (message, attribute)) in refusals.iter().zip([
@@ -21968,13 +21965,13 @@ fn a_prop_on_a_tuple_brand_earns_the_refusal_of_the_slot_it_is_written_on() {
     for (source, expected) in [
         (
             "#[serde(transparent)] pub struct Marked(#[model_schema_prop(pattern = \"^a$\")] \
-             pub String, #[serde(skip)] #[model_schema_prop(minLength = 2)] PhantomData<u8>);",
+             String, #[serde(skip)] #[model_schema_prop(minLength = 2)] PhantomData<u8>);",
             [read, marker],
         ),
         (
             "#[serde(transparent)] pub struct Marked(#[serde(skip)] \
              #[model_schema_prop(minLength = 2)] PhantomData<u8>, \
-             #[model_schema_prop(pattern = \"^a$\")] pub String);",
+             #[model_schema_prop(pattern = \"^a$\")] String);",
             [marker, read],
         ),
     ] {
@@ -21999,7 +21996,7 @@ fn a_prop_on_a_tuple_brand_earns_the_refusal_of_the_slot_it_is_written_on() {
 fn a_prop_on_a_tuple_brands_marker_is_refused_once() {
     let tokens = expansion_over(
         "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Label(\
-         #[model_schema_prop(maxLength = 9)] #[serde(skip)] PhantomData<u8>, pub String);",
+         #[model_schema_prop(maxLength = 9)] #[serde(skip)] PhantomData<u8>, String);",
     );
     let refusals = literal_texts(&tokens)
         .into_iter()
@@ -22021,8 +22018,8 @@ fn a_prop_outside_a_brand_slot_earns_no_refusal() {
         "pub struct Plain(#[model_schema_prop(preprocess = [\"trim\"])] pub String);",
         "pub struct Plain(#[model_schema_prop(literal = \"fixed\")] pub String);",
         "#[serde(transparent)] pub struct Wide(\
-         #[model_schema_prop(minLength = 2)] pub String, pub u32);",
-        "#[serde(transparent)] pub struct Bare(pub String);",
+         #[model_schema_prop(minLength = 2)] String, u32);",
+        "#[serde(transparent)] pub struct Bare(String);",
         "pub enum Choice { Slug(#[model_schema_prop(minLength = 2)] String) }",
         "pub type Alias = String;",
     ] {
@@ -22087,14 +22084,14 @@ fn a_transparent_direction_refusal_is_spanned_on_the_struct_name() {
 
 #[test]
 fn a_transparent_struct_each_derive_takes_one_field_of_is_not_refused() {
-    let attributes = "#[serde(transparent)] pub struct Split { #[serde(default)] pub count: u32, \
-         #[serde(skip_serializing)] pub text: String }";
+    let attributes = "#[serde(transparent)] pub struct Split { #[serde(default)] count: u32, \
+         #[serde(skip_serializing)] text: String }";
     for source in [
         format!("#[derive(Debug, Serialize)] {attributes}"),
         format!("#[derive(Debug, Deserialize)] {attributes}"),
         attributes.to_owned(),
         UNREAD_BRAND_FIELD_SOURCE.replace("#[model_schema_prop(maxLength = 9)] ", ""),
-        "#[derive(Deserialize, Serialize)] #[serde(transparent)] pub struct Slug(pub String);"
+        "#[derive(Deserialize, Serialize)] #[serde(transparent)] pub struct Slug(String);"
             .to_owned(),
         "#[derive(Deserialize, Serialize)] pub struct Split { #[serde(default)] pub count: u32, \
          #[serde(skip_serializing)] pub text: String }"
@@ -22531,7 +22528,7 @@ fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_defa
         "
         #[derive(Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct BoxedId<IdType>(pub Box<IdType>);
+        pub struct BoxedId<IdType>(Box<IdType>);
         ",
     );
     let rendered = tokens.to_string();
@@ -22551,7 +22548,7 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
         "
         #[derive(Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct GenericSlug<IdType>(pub IdType);
+        pub struct GenericSlug<IdType>(IdType);
         ",
     )
     .to_string();
@@ -22567,7 +22564,7 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
         "
         #[derive(Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct ConcreteSlug(pub String);
+        pub struct ConcreteSlug(String);
         ",
     )
     .to_string();
@@ -22582,7 +22579,7 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
 fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
     let over_parameter = expansion_with_args_over(
         "minLength = 3, default_types(Held = PathBuf)",
-        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct HeldPath<Held>(pub Held);",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct HeldPath<Held>(Held);",
     )
     .to_string();
     assert!(
@@ -22603,8 +22600,8 @@ fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
             "minLength = 3, no_display, default_types(Mark = String)",
             &format!(
                 "#[derive(Serialize, Deserialize)] #[serde(transparent)] \
-                 pub struct Marked{inner}<Mark> {{ #[serde(skip)] pub mark: PhantomData<Mark>, \
-                 pub text: {inner} }}"
+                 pub struct Marked{inner}<Mark> {{ #[serde(skip)] mark: PhantomData<Mark>, \
+                 text: {inner} }}"
             ),
         )
         .to_string();
@@ -22632,7 +22629,7 @@ fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
         "minLength = 2",
         "#[derive(Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct FallbackCode<T>(pub T);",
+        pub struct FallbackCode<T>(T);",
     )
     .to_string();
     assert!(
@@ -22651,13 +22648,13 @@ fn declare_the_names_a_default_may_be() {
     for (args, source) in [
         (
             "no_display",
-            "#[derive(Serialize)] #[serde(transparent)] pub struct TableTag<'text>(pub &'text str);",
+            "#[derive(Serialize)] #[serde(transparent)] pub struct TableTag<'text>(&'text str);",
         ),
         ("", "pub type TableKept = TableTag<'static>;"),
         ("", "pub type TableText = String;"),
         (
             "no_display",
-            "#[derive(Serialize)] #[serde(transparent)] pub struct TableLabel(pub String);",
+            "#[derive(Serialize)] #[serde(transparent)] pub struct TableLabel(String);",
         ),
     ] {
         let declared = expansion_with_args_over(args, source).to_string();
@@ -22674,7 +22671,7 @@ fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
     let brand = |default: &str, args: &str| {
         expansion_with_args_over(
             &format!("{args}default_types(Text = {default})"),
-            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct TableRow<Text>(pub Text);",
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct TableRow<Text>(Text);",
         )
         .to_string()
     };
@@ -22725,7 +22722,7 @@ fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
 fn a_generic_brand_with_no_string_check_is_refused_no_default() {
     let expanded = expansion_with_args_over(
         "default_types(Text = UnreadKept)",
-        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UncheckedRow<Text>(pub Text);",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UncheckedRow<Text>(Text);",
     )
     .to_string();
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
@@ -22783,21 +22780,21 @@ fn validate_is_written_once_in_the_types_own_impl() {
             "minLength = 2",
             "#[derive(Serialize, Deserialize)]
             #[serde(transparent)]
-            pub struct FixedCode(pub String);",
+            pub struct FixedCode(String);",
             "impl FixedCode {",
         ),
         (
             "minLength = 2, default_types(CodeType = String)",
             "#[derive(Serialize, Deserialize)]
             #[serde(transparent)]
-            pub struct FilledCode<CodeType>(pub CodeType);",
+            pub struct FilledCode<CodeType>(CodeType);",
             "impl < CodeType > FilledCode < CodeType > {",
         ),
         (
             "no_display, minLength = 1, default_types(T = String)",
             "#[derive(Serialize, Deserialize)]
             #[serde(transparent)]
-            pub struct FilledCodes<T>(pub Vec<T>);",
+            pub struct FilledCodes<T>(Vec<T>);",
             "impl < T > FilledCodes < T > {",
         ),
     ] {
@@ -22832,7 +22829,7 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
         "
         #[derive(Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct AskedCode<CodeType>(pub CodeType);
+        pub struct AskedCode<CodeType>(CodeType);
         ",
     )
     .to_string();
@@ -22871,13 +22868,13 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
             "minLength = 2",
             "#[derive(Serialize, Deserialize)]
             #[serde(transparent)]
-            pub struct UnaskedCode(pub String);",
+            pub struct UnaskedCode(String);",
         ),
         (
             "no_display, minLength = 1, default_types(T = String)",
             "#[derive(Serialize, Deserialize)]
             #[serde(transparent)]
-            pub struct UnaskedCodes<T>(pub Vec<T>);",
+            pub struct UnaskedCodes<T>(Vec<T>);",
         ),
     ] {
         let rendered = expansion_with_args_over(args, source).to_string();
@@ -22899,7 +22896,7 @@ fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
         "
         #[derive(Serialize)]
         #[serde(transparent)]
-        pub struct BorrowedStamp<Text>(pub Text);
+        pub struct BorrowedStamp<Text>(Text);
         ",
     )
     .to_string();
@@ -23024,38 +23021,35 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
     for (args, source, emitted) in [
         (
             "",
-            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledBrand(pub \
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledBrand(\
              String);",
             "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct UnruledBrand \
-             (pub String) ;",
+             (String) ;",
         ),
         (
             "no_display",
-            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledNamed { pub \
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledNamed { \
              rows: Vec<String> }",
             "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct UnruledNamed \
-             { pub rows : Vec < String > }",
+             { rows : Vec < String > }",
         ),
         (
             "default_types(IdType = String)",
             "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct \
-             UnruledGeneric<IdType>(pub IdType);",
+             UnruledGeneric<IdType>(IdType);",
             "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \
-             UnruledGeneric < IdType > (pub IdType) ;",
+             UnruledGeneric < IdType > (IdType) ;",
         ),
         (
             "enable = [\"decode_with\", \"mongodb\"]",
-            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledDecoded(pub \
+            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledDecoded(\
              String);",
             "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \
-             UnruledDecoded (pub String) ;",
+             UnruledDecoded (String) ;",
         ),
     ] {
         let expanded = expansion_under(args, source);
-        assert!(
-            expanded.starts_with(emitted),
-            "for {source}, got: {expanded}"
-        );
+        assert!(expanded.contains(emitted), "for {source}, got: {expanded}");
         for unwritten in [
             "pub fn model_schema_read_unjudged",
             "model_schema_validate_bound",

@@ -1280,7 +1280,7 @@ impl Own<'_> {
     /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
     /// #[serde(transparent)]
-    /// pub struct Score(pub u32);
+    /// pub struct Score(u32);
     ///
     /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
@@ -1291,8 +1291,8 @@ impl Own<'_> {
     ///
     /// fn main() -> Result<(), game_schema::WriteError> {
     ///     let f = Game::MONGO_FIELDS;
-    ///     let _ = f.best().gt(Score(80))?;
-    ///     let _ = f.scores().elem_match(f.scores().element().gt(Score(5))?);
+    ///     let _ = f.best().gt(Score::new(80_u32).unwrap())?;
+    ///     let _ = f.scores().elem_match(f.scores().element().gt(Score::new(5_u32).unwrap())?);
     ///     Ok(())
     /// }
     /// ```
@@ -1314,7 +1314,7 @@ impl Own<'_> {
     /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
     /// #[serde(transparent)]
-    /// pub struct Score(pub u32);
+    /// pub struct Score(u32);
     ///
     /// #[model_schema(enable = ["decode_with", "mongodb"])]
     /// #[derive(Debug, Deserialize, Serialize)]
@@ -1325,8 +1325,8 @@ impl Own<'_> {
     ///
     /// fn main() -> Result<(), game_schema::WriteError> {
     ///     let f = Game::MONGO_FIELDS;
-    ///     let _ = f.best().gt(Score(80))?;
-    ///     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
+    ///     let _ = f.best().gt(Score::new(80_u32).unwrap())?;
+    ///     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score::new(5_u32).unwrap())?);
     ///     Ok(())
     /// }
     /// ```
@@ -1335,7 +1335,7 @@ impl Own<'_> {
     /// error[E0308]: `?` operator has incompatible types
     ///   --> tests/zz_probe.rs:23:35
     ///    |
-    /// 23 |     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score(5))?);
+    /// 23 |     let _ = f.scores().elem_match(Score::MONGO_FIELDS.gt(Score::new(5_u32).unwrap())?);
     ///    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Element<Score>`, found `Filter<Score>`
     ///    |
     ///    = note: `?` operator cannot convert from `__tixschema_mongodb::Filter<Score>` to `__tixschema_mongodb::Element<Score>`

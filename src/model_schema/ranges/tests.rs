@@ -499,7 +499,7 @@ fn a_type_declared_above_that_writes_a_map_is_refused_flattened_beside_a_member(
         NONE
     );
     assert_eq!(
-        refused("#[serde(transparent)] pub struct Wrapped(pub BTreeMap<String, u8>);"),
+        refused("#[serde(transparent)] pub struct Wrapped(BTreeMap<String, u8>);"),
         NONE
     );
     assert_eq!(
@@ -958,7 +958,7 @@ fn a_lone_slot_that_writes_a_map_is_refused_under_a_tag_alone() {
         NONE
     );
     assert_eq!(
-        refused("#[serde(transparent)] pub struct TallyBrand(pub BTreeMap<String, u8>);"),
+        refused("#[serde(transparent)] pub struct TallyBrand(BTreeMap<String, u8>);"),
         NONE
     );
     assert_eq!(
@@ -1265,7 +1265,7 @@ fn declare_non_object_fillings() {
     declare_entry_fillings();
     for declared in [
         "#[serde(transparent)] pub struct Code(String);",
-        "pub struct Tally(pub u32);",
+        "pub struct Tally(u32);",
         "#[serde(untagged)] pub enum TextOrCrate { Text(String), Boxed(Crate) }",
         "pub struct MaybeCrate(pub Option<Crate>);",
     ] {
@@ -1642,7 +1642,7 @@ fn keyed_by(subject: &str, field: &str, held: &str) -> String {
 #[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_with_a_key_serde_reads_no_entry_of_is_refused_naming_the_key() {
-    let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(pub u32);");
+    let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(u32);");
     for (rest, key) in [
         ("BTreeMap<isize, u8>", "isize"),
         ("HashMap<bool, u8>", "bool"),
@@ -1688,14 +1688,14 @@ fn a_variant_that_flattens_a_map_keyed_by_a_number_is_refused_naming_the_variant
 #[test]
 fn a_type_declared_above_that_holds_a_map_keyed_by_a_number_is_refused_flattened() {
     for declared in [
-        "#[serde(transparent)] pub struct Depths(pub BTreeMap<u32, u8>);",
-        "pub struct Slotted(pub Option<HashMap<bool, u8>>);",
+        "#[serde(transparent)] pub struct Depths(BTreeMap<u32, u8>);",
+        "pub struct Slotted(Option<HashMap<bool, u8>>);",
         "pub struct Charted { pub marks: Vec<BTreeMap<i16, u8>> }",
     ] {
         assert_eq!(refused(declared), NONE, "{declared}");
     }
     assert_eq!(
-        refused_generic("#[serde(transparent)] pub struct Over<T>(pub T);"),
+        refused_generic("#[serde(transparent)] pub struct Over<T>(T);"),
         NONE
     );
     assert_eq!(refusals(expanded("type Ladder = BTreeMap<i32, u8>;")), NONE);
@@ -1744,7 +1744,7 @@ fn a_type_declared_above_that_holds_a_map_keyed_by_a_number_is_refused_flattened
 #[test]
 fn a_map_flattened_with_a_key_serde_reads_from_text_builds() {
     let _: Vec<String> = refused("pub enum Bearing { North, South }");
-    let _: Vec<String> = refused("#[serde(transparent)] pub struct Mark(pub String);");
+    let _: Vec<String> = refused("#[serde(transparent)] pub struct Mark(String);");
     let _: Vec<String> = refused("pub struct Counted { pub by_number: BTreeMap<u32, u8> }");
     for source in [
         "pub struct Lettered { #[serde(flatten)] pub rest: BTreeMap<char, u8> }",
@@ -1932,7 +1932,7 @@ fn buffered(subject: &str, held: &str, tagged: bool) -> String {
 #[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_or_one_under_a_tag_alone_with_a_map_keyed_by_a_number_is_refused() {
-    let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(pub u32);");
+    let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(u32);");
     for (written, key) in [
         ("BTreeMap<u32, u8>", "u32"),
         ("Option<HashMap<bool, u8>>", "bool"),

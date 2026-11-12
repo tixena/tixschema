@@ -112,7 +112,7 @@ pub enum UntaggedScroll<Leaf> {
 #[model_schema(name = "CallNumber", default_types(Leaf = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Shelfmark<Leaf>(pub Leaf);
+pub struct Shelfmark<Leaf>(Leaf);
 
 /// Each type above, named by its Rust ident after its declaration.
 #[model_schema(default_types(Leaf = String))]

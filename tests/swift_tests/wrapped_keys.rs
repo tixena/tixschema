@@ -22,13 +22,13 @@ use super::wrapped_keys_models::{postmark_swift, regatta_swift, stowed_regatta_s
 #[model_schema(check = ["turning"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Sheave(pub String);
+pub struct Sheave(String);
 
 /// A brand with a check over [`Sheave`] that a map is keyed by.
 #[model_schema(check = ["raised"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Gaff(pub Sheave);
+pub struct Gaff(Sheave);
 
 /// A map keyed by the brand over a brand.
 #[model_schema()]
@@ -210,7 +210,7 @@ fn a_variant_member_and_a_generic_holder_read_the_key_the_same_way() {
 
 /// The check of [`Sheave`]: a sheave that turns.
 fn turning(value: &Sheave) -> Result<(), Vec<String>> {
-    if value.0 == "seized" {
+    if value.as_inner() == "seized" {
         Err(vec!["seized does not turn".to_owned()])
     } else {
         Ok(())
@@ -219,7 +219,7 @@ fn turning(value: &Sheave) -> Result<(), Vec<String>> {
 
 /// The check of [`Gaff`]: a gaff that is raised.
 fn raised(value: &Gaff) -> Result<(), Vec<String>> {
-    if value.0.0 == "lowered" {
+    if value.as_inner().as_inner() == "lowered" {
         Err(vec!["lowered is not raised".to_owned()])
     } else {
         Ok(())
@@ -256,15 +256,25 @@ fn serde_judges_each_brand_of_a_key_as_it_reads_it_and_validate_the_brand_s_own_
         );
     }
     let raised = Topmast {
-        gaffs: HashMap::from([(Gaff(Sheave("rope".to_owned())), 1)]),
+        gaffs: HashMap::from([(
+            Gaff::new(Sheave::new("rope".to_owned()).unwrap()).unwrap(),
+            1,
+        )]),
     };
     assert_eq!(
         serde_json::to_string(&raised).unwrap(),
         r#"{"gaffs":{"rope":1}}"#
     );
-    assert_eq!(Gaff(Sheave("seized".to_owned())).validate(), Ok(()));
     assert_eq!(
-        Gaff(Sheave("lowered".to_owned())).validate(),
+        Gaff::new(
+            Sheave::model_schema_read_unjudged(serde_json::to_value("seized".to_owned()).unwrap())
+                .unwrap()
+        )
+        .map(|_| ()),
+        Ok(())
+    );
+    assert_eq!(
+        Gaff::new(Sheave::new("lowered".to_owned()).unwrap()).map(|_| ()),
         Err(vec!["lowered is not raised".to_owned()])
     );
 }

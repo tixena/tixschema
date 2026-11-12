@@ -10,7 +10,7 @@ mod bounded_at_the_field {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct BoundAbove(pub String);
+    pub struct BoundAbove(String);
 
     #[model_schema(enable = ["jsonschema"])]
     pub type BoundTitle = String;
@@ -38,12 +38,12 @@ mod bounded_at_the_field {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct BoundBelow(pub String);
+    pub struct BoundBelow(String);
 
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct BoundDir(pub PathBuf);
+    pub struct BoundDir(PathBuf);
 
     fn held(
         bare: &str,
@@ -53,14 +53,14 @@ mod bounded_at_the_field {
         titled: &str,
     ) -> BoundHolder {
         BoundHolder {
-            bare: BoundAbove(bare.to_owned()),
-            dir: BoundDir(PathBuf::from(dir)),
-            free: BoundAbove(String::new()),
+            bare: BoundAbove::new(bare.to_owned()).unwrap(),
+            dir: BoundDir::new(PathBuf::from(dir)).unwrap(),
+            free: BoundAbove::new(String::new()).unwrap(),
             many: many
                 .iter()
-                .map(|item| BoundAbove((*item).to_owned()))
+                .map(|item| BoundAbove::new((*item).to_owned()).unwrap())
                 .collect(),
-            maybe: maybe.map(|text| BoundBelow(text.to_owned())),
+            maybe: maybe.map(|text| BoundBelow::new(text.to_owned()).unwrap()),
             titled: titled.to_owned(),
         }
     }
@@ -108,7 +108,7 @@ mod bounded_at_the_field {
     fn the_brand_keeps_no_bound_of_its_own() {
         assert_eq!(
             serde_json::from_value::<BoundAbove>(serde_json::json!("")).unwrap(),
-            BoundAbove(String::new())
+            BoundAbove::new(String::new()).unwrap()
         );
         assert_eq!(
             BoundAbove::json_schema(),
@@ -184,7 +184,7 @@ mod bounded_at_the_type_and_the_field {
     #[model_schema(minLength = 3)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     #[model_schema()]
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,7 +224,7 @@ mod bounded_at_the_type_and_the_field {
     pub struct Tuple(#[model_schema_prop(pattern = "^[a-z]+$")] pub Slug);
 
     fn slug(text: &str) -> Slug {
-        Slug(text.to_owned())
+        Slug::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap()).unwrap()
     }
 
     fn short(got: usize) -> String {
@@ -311,7 +311,7 @@ mod bounded_crane {
     #[model_schema(minLength = 2)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Code(pub String);
+    pub struct Code(String);
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -324,8 +324,14 @@ mod bounded_crane {
 
     fn crane(load: &str, spare: &str) -> Crane {
         Crane {
-            load_code: Code(load.to_owned()),
-            spare_code: Code(spare.to_owned()),
+            load_code: Code::model_schema_read_unjudged(
+                serde_json::to_value(load.to_owned()).unwrap(),
+            )
+            .unwrap(),
+            spare_code: Code::model_schema_read_unjudged(
+                serde_json::to_value(spare.to_owned()).unwrap(),
+            )
+            .unwrap(),
         }
     }
 

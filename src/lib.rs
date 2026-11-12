@@ -1289,7 +1289,7 @@ use tixschema::model_schema;
 #[model_schema(pattern = "^INV-[0-9]{6}$")]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct InvoiceNumber(pub String);
+pub struct InvoiceNumber(String);
 
 #[model_schema(name = "Invoice")]
 #[derive(Debug, Deserialize, Serialize)]
@@ -1316,7 +1316,7 @@ fn main() -> Result<(), serde_json::Error> {
     assert!(InvoiceNumber::zod_schema().contains(r#".brand<"InvoiceNumber">()"#));
     let read: InvoiceRecord =
         serde_json::from_str(r#"{"number":"INV-000042","totalCents":1250}"#)?;
-    assert_eq!(read.number.0, "INV-000042");
+    assert_eq!(read.number.as_inner(), "INV-000042");
     let refused = serde_json::from_str::<InvoiceRecord>(r#"{"number":"INV-42","totalCents":1}"#)
         .unwrap_err();
     assert!(refused.to_string().contains("does not match pattern '^INV-[0-9]{6}$'"));

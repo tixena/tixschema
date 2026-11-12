@@ -48,59 +48,59 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Hoarded(pub HashMap<u32, String>);
+pub struct Hoarded(HashMap<u32, String>);
 
 /// A brand with named members over a map under a key Swift wraps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Coffer {
-    pub by_number: HashMap<u32, String>,
+    by_number: HashMap<u32, String>,
 }
 
 /// A brand over a map of the parameter under a key Swift wraps.
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Stash<Stowed>(pub HashMap<u32, Stowed>);
+pub struct Stash<Stowed>(HashMap<u32, Stowed>);
 
 /// A brand over a list of maps under a key Swift wraps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Hoards(pub Vec<HashMap<u32, String>>);
+pub struct Hoards(Vec<HashMap<u32, String>>);
 
 /// A brand over a date.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct PlainLandfall(pub DateTime<Utc>);
+pub struct PlainLandfall(DateTime<Utc>);
 
 /// A brand over a date that names a function.
 #[model_schema(preprocess = ["unwrapped"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Ashore(pub DateTime<Utc>);
+pub struct Ashore(DateTime<Utc>);
 
 /// A brand over a list of dates, which counts them.
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Landings(pub Vec<DateTime<Utc>>);
+pub struct Landings(Vec<DateTime<Utc>>);
 
 /// A brand over a list of optional dates.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Sightings(pub Vec<Option<DateTime<Utc>>>);
+pub struct Sightings(Vec<Option<DateTime<Utc>>>);
 
 /// A brand over a list of dates that declares a parameter, which counts them.
 #[model_schema(no_display, maxLength = 2, default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Arrivals<Stowed> {
-    pub marker: PhantomData<Stowed>,
-    pub marks: Vec<DateTime<Utc>>,
+    marker: PhantomData<Stowed>,
+    marks: Vec<DateTime<Utc>>,
 }
 
 /// Each brand held as an optional member: the macro refuses a brand over an `Option` in this build.
@@ -197,11 +197,8 @@ where
 }
 
 /// The dates `marks` held by [`Arrivals`].
-const fn arrivals(marks: Vec<DateTime<Utc>>) -> Arrivals<String> {
-    Arrivals {
-        marker: PhantomData,
-        marks,
-    }
+fn arrivals(marks: Vec<DateTime<Utc>>) -> Arrivals<String> {
+    Arrivals::model_schema_read_unjudged(serde_json::to_value(marks).unwrap()).unwrap()
 }
 
 /// Every payload the run reads: a brand over each value Swift converts, alone and held as an
@@ -210,24 +207,43 @@ fn rows() -> Vec<Row> {
     let first = at(1_704_164_645_678);
     let second = at(1_709_208_000_100);
     let held = || at_one("a".to_owned());
-    let landings = Landings(Vec::new());
+    let landings = Landings::model_schema_read_unjudged(
+        serde_json::to_value(Vec::<DateTime<Utc>>::new()).unwrap(),
+    )
+    .unwrap();
     let crowded = arrivals(vec![first, second, first]);
     vec![
-        read_row("a map", "Hoarded", &Hoarded(held())),
-        read_row("an empty map", "Hoarded", &Hoarded(HashMap::new())),
+        read_row("a map", "Hoarded", &Hoarded::new(held()).unwrap()),
+        read_row(
+            "an empty map",
+            "Hoarded",
+            &Hoarded::new(HashMap::new()).unwrap(),
+        ),
         read_row(
             "a map under a named member",
             "Coffer",
-            &Coffer { by_number: held() },
+            &Coffer::new(held()).unwrap(),
         ),
-        read_row("a map of the parameter", "Stash<String>", &Stash(held())),
+        read_row(
+            "a map of the parameter",
+            "Stash<String>",
+            &Stash::new(held()).unwrap(),
+        ),
         read_row(
             "a list of maps",
             "Hoards",
-            &Hoards(vec![held(), HashMap::new()]),
+            &Hoards::new(vec![held(), HashMap::new()]).unwrap(),
         ),
-        read_row("an empty list of maps", "Hoards", &Hoards(Vec::new())),
-        read_row("a date", "PlainLandfall", &PlainLandfall(first)),
+        read_row(
+            "an empty list of maps",
+            "Hoards",
+            &Hoards::new(Vec::new()).unwrap(),
+        ),
+        read_row(
+            "a date",
+            "PlainLandfall",
+            &PlainLandfall::new(first).unwrap(),
+        ),
         payload_row::<Ashore>(
             "a date a function answers",
             "Ashore",
@@ -236,7 +252,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "a list of dates",
             "Landings",
-            &Landings(vec![first, second]),
+            &Landings::new(vec![first, second]).unwrap(),
         ),
         refused_row(
             "a list of dates, empty",
@@ -247,7 +263,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "a list of optional dates",
             "Sightings",
-            &Sightings(vec![Some(first), None]),
+            &Sightings::new(vec![Some(first), None]).unwrap(),
         ),
         read_row(
             "a list of dates that declares a parameter",
@@ -265,9 +281,9 @@ fn rows() -> Vec<Row> {
             "Lockers",
             &Lockers {
                 arrivals: Some(arrivals(vec![second])),
-                hoarded: Some(Hoarded(held())),
-                landfall: Some(PlainLandfall(first)),
-                stash: Some(Stash(held())),
+                hoarded: Some(Hoarded::new(held()).unwrap()),
+                landfall: Some(PlainLandfall::new(first).unwrap()),
+                stash: Some(Stash::new(held()).unwrap()),
             },
         ),
         read_row(
@@ -345,7 +361,7 @@ fn each_brand_whose_value_swift_converts_reads_and_writes_in_swift_as_serde_does
 #[test]
 fn a_brand_over_a_list_of_maps_is_written_as_serde_writes_it() {
     assert_eq!(
-        serde_json::to_string(&Hoards(vec![at_one("a".to_owned())])).unwrap(),
+        serde_json::to_string(&Hoards::new(vec![at_one("a".to_owned())]).unwrap()).unwrap(),
         r#"[{"1":"a"}]"#
     );
 }

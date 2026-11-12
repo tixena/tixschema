@@ -203,7 +203,7 @@ pub struct Lodged {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Banded(pub Tagged);
+pub struct Banded(Tagged);
 
 /// A holder that flattens the brand.
 #[model_schema(nonstrict)]
@@ -298,7 +298,7 @@ pub enum Loosed {
 #[model_schema(default_types(IdType = String), preprocess = ["unwrapped"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Sealing<IdType>(pub IdType);
+pub struct Sealing<IdType>(IdType);
 
 /// A type with a parameter whose members name a function: a list of the parameter, and a model.
 #[model_schema(default_types(CodeType = String))]

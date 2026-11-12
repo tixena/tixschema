@@ -198,7 +198,7 @@ fn a_type_that_reaches_itself_is_corrected_at_every_depth() {
 fn every_shape_takes_the_key_on_the_type() {
     read_out_of_its_envelope(&Stack(texts(&["a", "b"]), 2));
     read_out_of_its_envelope(&ClosedDock);
-    read_out_of_its_envelope(&Label("A".to_owned()));
+    read_out_of_its_envelope(&Label::new("A".to_owned()).unwrap());
     for grade in [Grade::Express, Grade::Standard] {
         read_out_of_its_envelope(&grade);
     }
@@ -252,7 +252,7 @@ fn a_type_with_a_parameter_takes_the_key_at_each_filling() {
 fn the_functions_of_a_type_run_in_the_order_written() {
     assert_eq!(
         serde_json::from_value::<Label>(json!({ "payload": "  A  " })).unwrap(),
-        Label("A".to_owned())
+        Label::new("A".to_owned()).unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Wrapped>(json!({ "payload": { "label": "A" } })).unwrap(),

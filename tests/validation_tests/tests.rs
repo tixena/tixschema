@@ -18,7 +18,7 @@ mod a_bound_the_fields_own_type_declares {
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Serialize)]
@@ -166,11 +166,11 @@ mod a_bound_the_fields_own_type_declares {
     }
 
     fn long() -> Slug {
-        Slug("abc".to_owned())
+        Slug::new("abc".to_owned()).unwrap()
     }
 
     fn short() -> Slug {
-        Slug("a".to_owned())
+        Slug::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap()).unwrap()
     }
 
     #[test]
@@ -564,7 +564,7 @@ mod a_bound_inside_an_untagged_variant {
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Tag(pub String);
+    pub struct Tag(String);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Serialize)]
@@ -682,12 +682,20 @@ mod a_bound_inside_an_untagged_variant {
     #[test]
     fn test_a_brand_behind_a_newtype_member_is_reached_and_named_by_its_holder() {
         assert_eq!(
-            Label::Bounded(Tag("a".to_owned())).validate().unwrap_err(),
+            Label::Bounded(
+                Tag::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                    .unwrap()
+            )
+            .validate()
+            .unwrap_err(),
             vec!["too short: minimum length is 3, got 1".to_owned()]
         );
         assert_eq!(
             LabelHolder {
-                label: Label::Bounded(Tag("a".to_owned())),
+                label: Label::Bounded(
+                    Tag::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                        .unwrap()
+                ),
             }
             .validate()
             .unwrap_err(),
@@ -703,7 +711,7 @@ mod a_bound_inside_an_untagged_variant {
         assert_eq!(refused.validate(), Ok(()));
         let admitted: Label = serde_json::from_str(r#""abc""#).unwrap();
         assert!(
-            matches!(&admitted, Label::Bounded(tag) if tag.0 == "abc"),
+            matches!(&admitted, Label::Bounded(tag) if tag.as_inner() == "abc"),
             "got: {admitted:?}"
         );
         assert_eq!(admitted.validate(), Ok(()));
@@ -771,7 +779,7 @@ mod a_check_the_enum_declares {
     #[model_schema(minLength = 2, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Label(pub String);
+    pub struct Label(String);
 
     #[model_schema(minLength = 1, maxLength = 5, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -978,13 +986,16 @@ mod a_check_the_enum_declares {
         .validate()
         .unwrap();
         Held::Branded {
-            label: Label("abcdefgh".to_owned()),
+            label: Label::new("abcdefgh".to_owned()).unwrap(),
         }
         .validate()
         .unwrap();
         assert_eq!(
             Held::Branded {
-                label: Label("a".to_owned())
+                label: Label::model_schema_read_unjudged(
+                    serde_json::to_value("a".to_owned()).unwrap()
+                )
+                .unwrap()
             }
             .validate()
             .unwrap_err(),
@@ -3716,11 +3727,11 @@ fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
     #[model_schema(pattern = "^[a-z0-9_]+$", minLength = 3, maxLength = 50)]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct SlugId(pub String);
+    pub struct SlugId(String);
 
-    SlugId("hello_world".to_owned()).validate().unwrap();
+    SlugId::new("hello_world".to_owned()).map(|_| ()).unwrap();
 
-    let errors = SlugId("ab".to_owned()).validate().unwrap_err();
+    let errors = SlugId::new("ab".to_owned()).map(|_| ()).unwrap_err();
     assert_eq!(
         errors,
         vec!["too short: minimum length is 3, got 2".to_owned()]

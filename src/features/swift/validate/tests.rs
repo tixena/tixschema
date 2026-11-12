@@ -61,15 +61,15 @@ fn a_property_named_after_a_local_of_the_method_is_read_through_self() {
 fn a_brand_over_a_string_carries_the_member_that_answers_its_text() {
     let code: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct TextCode(pub String);
+        pub struct TextCode(String);
     };
     let sealed: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct TextSealedCode(pub TextCode);
+        pub struct TextSealedCode(TextCode);
     };
     let count: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct TextCount(pub u32);
+        pub struct TextCount(u32);
     };
     assert!(
         emitted(&code).contains("public var swiftSchemaBoundText: String { value }"),
@@ -96,11 +96,11 @@ fn a_brand_over_a_string_carries_the_member_that_answers_its_text() {
 fn a_length_on_a_named_type_is_measured_through_the_member_or_as_the_string() {
     let code: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct MeasuredCode(pub String);
+        pub struct MeasuredCode(String);
     };
     let sealed: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct MeasuredSealedCode(pub MeasuredCode);
+        pub struct MeasuredSealedCode(MeasuredCode);
     };
     let title: Item = syn::parse_quote! {
         pub type MeasuredTitle = String;
@@ -148,7 +148,7 @@ fn a_length_on_a_named_type_is_measured_through_the_member_or_as_the_string() {
 fn a_map_keyed_by_a_brand_with_a_check_judges_each_key_under_its_step() {
     let pitch: Item = syn::parse_quote! {
         #[serde(transparent)]
-        pub struct ScalePitch(pub u32);
+        pub struct ScalePitch(u32);
     };
     let checks = [FunctionName {
         name: "withinScale".to_owned(),

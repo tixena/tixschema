@@ -38,6 +38,10 @@ mod one_derive;
 mod read;
 
 #[cfg(test)]
+#[path = "branded_newtype_tests/sealed.rs"]
+mod sealed;
+
+#[cfg(test)]
 #[path = "branded_newtype_tests/tests.rs"]
 mod tests;
 

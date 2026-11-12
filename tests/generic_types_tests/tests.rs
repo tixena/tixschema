@@ -251,10 +251,13 @@ mod declared_default_bounds {
 
     #[test]
     fn the_declared_defaults_validate_method_runs_the_same_checks_the_default_schema_enforces() {
-        let valid = ConstrainedId("64de3d95ff45b119e5b53a7e".to_owned());
+        let valid = ConstrainedId::new("64de3d95ff45b119e5b53a7e".to_owned()).unwrap();
         valid.validate().unwrap();
 
-        let short = ConstrainedId("short".to_owned());
+        let short = ConstrainedId::<String>::model_schema_read_unjudged(
+            serde_json::to_value("short".to_owned()).unwrap(),
+        )
+        .unwrap();
         let errors = short.validate().unwrap_err();
         assert!(
             errors
@@ -266,8 +269,8 @@ mod declared_default_bounds {
 
     #[test]
     fn another_instantiation_has_the_generated_validate_and_none_of_the_defaults_bounds() {
-        assert_eq!(ConstrainedId(1_u32).validate(), Ok(()));
-        assert_eq!(ConstrainedId(0_u32).validate(), Ok(()));
+        assert_eq!(ConstrainedId::new(1_u32).map(|_| ()), Ok(()));
+        assert_eq!(ConstrainedId::new(0_u32).map(|_| ()), Ok(()));
     }
 }
 
@@ -1433,7 +1436,7 @@ pub type Boxed<ValueType> = Vec<ValueType>;
 #[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tagged<ValueType>(pub ValueType);
+pub struct Tagged<ValueType>(ValueType);
 
 /// One parameter in a map's key position, one in its value position — what
 /// [`KeyedByParameter`] holds for a struct, held here for an alias. Consumed only by the surface
@@ -1678,7 +1681,7 @@ pub struct ListedDefault<Items> {
 )]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ConstrainedId<IdType>(pub IdType);
+pub struct ConstrainedId<IdType>(IdType);
 
 /// A declared default naming a *constrained* generic brand at exactly its own default. The fold
 /// comparison has to key on the plain rendering — not the `.min`/`.max`/`.check` chain
@@ -1832,7 +1835,7 @@ fn a_generic_item_expands_to_rust_that_compiles() {
 
     let boxed: Boxed<u32> = vec![1_u32];
     assert_eq!(boxed.len(), 1);
-    assert_eq!(Tagged("t".to_owned()).0, "t");
+    assert_eq!(Tagged::new("t".to_owned()).unwrap().as_inner(), "t");
 
     let quintet = Quintet {
         alpha: 1_u32,
@@ -1882,10 +1885,10 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
 
     let referrer = Referrer {
         boxed: vec![1_u32],
-        tagged: Tagged("t".to_owned()),
+        tagged: Tagged::new("t".to_owned()).unwrap(),
     };
     assert_eq!(referrer.boxed.len(), 1);
-    assert_eq!(referrer.tagged.0, "t");
+    assert_eq!(referrer.tagged.as_inner(), "t");
 
     let counted = CountedFolder {
         boxed: vec![true],
@@ -1893,12 +1896,12 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
             created_at: false,
             document_id: 1_u32,
         },
-        tagged: Tagged(2_u32),
+        tagged: Tagged::new(2_u32).unwrap(),
     };
     assert_eq!(counted.boxed.len(), 1);
     assert!(!counted.doc.created_at);
     assert_eq!(counted.doc.document_id, 1);
-    assert_eq!(counted.tagged.0, 2);
+    assert_eq!(*counted.tagged.as_inner(), 2);
 }
 
 /// The two argument kinds no build reaches without their own feature, named the same way.

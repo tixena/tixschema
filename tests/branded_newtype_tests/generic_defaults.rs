@@ -15,8 +15,8 @@ mod a_marker_parameter {
     #[serde(transparent)]
     pub struct MarkedPath<Mark> {
         #[serde(skip)]
-        pub mark: PhantomData<Mark>,
-        pub path: PathBuf,
+        mark: PhantomData<Mark>,
+        path: PathBuf,
     }
 
     #[model_schema(minLength = 3, default_types(Mark = String))]
@@ -24,8 +24,8 @@ mod a_marker_parameter {
     #[serde(transparent)]
     pub struct MarkedText<Mark> {
         #[serde(skip)]
-        pub mark: PhantomData<Mark>,
-        pub text: String,
+        mark: PhantomData<Mark>,
+        text: String,
     }
 
     /// A marker that implements no `Display`.
@@ -34,10 +34,10 @@ mod a_marker_parameter {
 
     #[test]
     fn a_path_inner_is_judged_at_every_filling() {
-        let short = MarkedPath::<u32> {
-            path: PathBuf::from("ab"),
-            mark: PhantomData,
-        };
+        let short = MarkedPath::<u32>::model_schema_read_unjudged(
+            serde_json::to_value(PathBuf::from("ab")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(short.validate(), Err(vec![TOO_SHORT.to_owned()]));
         let counted = serde_json::from_str::<MarkedPath<u32>>(r#""ab""#).unwrap_err();
         assert!(counted.to_string().contains(TOO_SHORT), "got: {counted}");
@@ -49,10 +49,10 @@ mod a_marker_parameter {
 
     #[test]
     fn a_string_inner_is_judged_at_every_filling() {
-        let short = MarkedText::<u32> {
-            text: "ab".to_owned(),
-            mark: PhantomData,
-        };
+        let short = MarkedText::<u32>::model_schema_read_unjudged(
+            serde_json::to_value("ab".to_owned()).unwrap(),
+        )
+        .unwrap();
         assert_eq!(short.validate(), Err(vec![TOO_SHORT.to_owned()]));
         let refused = serde_json::from_str::<MarkedText<Opaque>>(r#""ab""#).unwrap_err();
         assert!(refused.to_string().contains(TOO_SHORT), "got: {refused}");
@@ -72,22 +72,22 @@ mod a_path_default {
     #[model_schema(no_display, minLength = 3, default_types(Held = PathBuf))]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Located<Held>(pub Held);
+    pub struct Located<Held>(Held);
 
     #[test]
     fn the_default_is_measured_as_a_path_and_no_other_filling() {
         assert_eq!(
-            Located(PathBuf::from("ab")).validate(),
+            Located::new(PathBuf::from("ab")).map(|_| ()),
             Err(vec![TOO_SHORT.to_owned()])
         );
         let refused = serde_json::from_str::<Located<PathBuf>>(r#""ab""#).unwrap_err();
         assert!(refused.to_string().contains(TOO_SHORT), "got: {refused}");
-        assert_eq!(Located(7_u32).validate(), Ok(()));
+        assert_eq!(Located::new(7_u32).map(|_| ()), Ok(()));
         assert_eq!(
             serde_json::from_str::<Located<u32>>("7").unwrap(),
-            Located(7)
+            Located::new(7_u32).unwrap()
         );
-        assert_eq!(Located(vec![7_u8]).validate(), Ok(()));
+        assert_eq!(Located::new(vec![7_u8]).map(|_| ()), Ok(()));
     }
 }
 
@@ -102,16 +102,16 @@ mod beside_a_type_named_string {
     #[model_schema(minLength = 2)]
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(transparent)]
-    pub struct Code<T>(pub T);
+    pub struct Code<T>(T);
 
     #[test]
     fn the_checks_run_at_the_standard_string() {
         assert_eq!(
-            Code("a".to_owned()).validate(),
+            Code::new("a".to_owned()).map(|_| ()),
             Err(vec!["too short: minimum length is 2, got 1".to_owned()])
         );
         let _: String = String;
-        assert_eq!(Code(7_u32).validate(), Ok(()));
+        assert_eq!(Code::new(7_u32).map(|_| ()), Ok(()));
         let refused = serde_json::from_str::<Code<StdString>>(r#""a""#).unwrap_err();
         assert!(
             refused
@@ -119,6 +119,9 @@ mod beside_a_type_named_string {
                 .contains("too short: minimum length is 2, got 1"),
             "got: {refused}"
         );
-        assert_eq!(serde_json::from_str::<Code<u32>>("7").unwrap().0, 7);
+        assert_eq!(
+            *serde_json::from_str::<Code<u32>>("7").unwrap().as_inner(),
+            7
+        );
     }
 }

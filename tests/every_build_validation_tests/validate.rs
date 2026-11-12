@@ -46,24 +46,27 @@ fn a_tuple_struct_reports_each_broken_slot() {
 #[test]
 fn a_brand_reports_its_broken_rule() {
     assert_eq!(
-        Username("ab".to_owned()).validate().unwrap_err(),
+        Username::new("ab".to_owned()).map(|_| ()).unwrap_err(),
         ["too short: minimum length is 3, got 2"]
     );
-    assert_eq!(Username("abc".to_owned()).validate(), Ok(()));
+    assert_eq!(Username::new("abc".to_owned()).map(|_| ()), Ok(()));
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn a_field_typed_with_an_alias_of_a_brand_reports_the_brands_rule() {
     let broken = Profile {
-        display_login: Username("ab".to_owned()),
+        display_login: Username::model_schema_read_unjudged(
+            serde_json::to_value("ab".to_owned()).unwrap(),
+        )
+        .unwrap(),
     };
     assert_eq!(
         broken.validate().unwrap_err(),
         ["'displayLogin': too short: minimum length is 3, got 2"]
     );
     let kept = Profile {
-        display_login: Username("abc".to_owned()),
+        display_login: Username::new("abc".to_owned()).unwrap(),
     };
     assert_eq!(kept.validate(), Ok(()));
 }

@@ -170,7 +170,7 @@ pub struct Carton {
 #[model_schema(minLength = 2, check = ["knownTray"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Tray(pub String);
+pub struct Tray(String);
 
 /// A member whose own bound is held beside what the brand it holds declares.
 #[model_schema()]
@@ -219,7 +219,7 @@ impl ParcelClientService<()> for Desk {
 }
 
 fn known_tray(value: &Tray) -> Result<(), Vec<String>> {
-    if value.0 == "XX" {
+    if value.as_inner() == "XX" {
         return Err(vec!["a tray is known".to_owned()]);
     }
     Ok(())
@@ -606,7 +606,8 @@ fn a_brand_under_a_members_own_bound_judges_itself_as_it_is_read() {
         "what the Rust read answers"
     );
     let held = Rack {
-        tray: Tray("XX".to_owned()),
+        tray: Tray::model_schema_read_unjudged(serde_json::to_value("XX".to_owned()).unwrap())
+            .unwrap(),
     };
     assert_eq!(
         held.validate(),
@@ -627,7 +628,7 @@ fn a_brand_under_a_members_own_bound_judges_itself_as_it_is_read() {
         pinned(
             "a rack of a tray",
             &Rack {
-                tray: Tray("TR".to_owned()),
+                tray: Tray::new("TR".to_owned()).unwrap(),
             },
             &[],
             "Rack.fromJson(@)",

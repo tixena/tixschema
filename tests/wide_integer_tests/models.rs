@@ -101,7 +101,7 @@ pub struct WideBorrowed<'held> {
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct WideId(pub i64);
+pub struct WideId(i64);
 
 /// A struct of two slots, each written at its position.
 #[model_schema()]

@@ -139,7 +139,7 @@ macro_rules! declare_slug {
         #[model_schema(minLength = 1, maxLength = 8, enable = ["jsonschema"])]
         #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
         #[serde(transparent)]
-        pub struct $name(pub $inner);
+        pub struct $name($inner);
     };
 }
 
@@ -172,7 +172,7 @@ pub struct Written {
 #[model_schema(minLength = 1, maxLength = 8, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct WrittenSlug(pub String);
+pub struct WrittenSlug(String);
 
 /// The substituted item's surface under the written twin's name, so the two can be compared as
 /// the one description they are — the name is the only thing about them that differs. The JSON

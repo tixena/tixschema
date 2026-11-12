@@ -129,7 +129,7 @@ pub struct Ballast {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Wharfage(pub Tonnage);
+pub struct Wharfage(Tonnage);
 
 /// An alias of [`Tonnage`].
 #[model_schema()]
@@ -268,7 +268,7 @@ pub enum Waybilled<Held> {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Imprint(pub ObjectId);
+pub struct Imprint(ObjectId);
 
 /// An enum under a tag alone whose newtype variants hold an `ObjectId`, owned, in a `Box` and
 /// under [`Imprint`].

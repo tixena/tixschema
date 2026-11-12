@@ -179,16 +179,20 @@ fn struct_and_brand_rows() -> Vec<Row> {
                 counts: keyed(&2),
             },
         ),
-        read_row("a brand", "Daybook", &Daybook(keyed(&"d".to_owned()))),
+        read_row(
+            "a brand",
+            "Daybook",
+            &Daybook::new(keyed(&"d".to_owned())).unwrap(),
+        ),
         read_row(
             "a brand with a named member",
             "Chronicle",
-            &Chronicle { by_at: keyed(&3) },
+            &Chronicle::new(keyed(&3)).unwrap(),
         ),
         read_row(
             "a brand that declares a parameter",
             "Diary<String>",
-            &Diary(keyed(&"d".to_owned())),
+            &Diary::new(keyed(&"d".to_owned())).unwrap(),
         ),
         read_row(
             "a list, a list of optionals, an optional list and an optional",
@@ -226,7 +230,7 @@ fn struct_and_brand_rows() -> Vec<Row> {
         read_row(
             "a brand over a list",
             "Daybooks",
-            &Daybooks(vec![keyed(&"d".to_owned())]),
+            &Daybooks::new(vec![keyed(&"d".to_owned())]).unwrap(),
         ),
     ]
 }
@@ -353,21 +357,21 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "a brand under a key that is no date",
             "Daybook",
-            &Daybook(once("d".to_owned())),
+            &Daybook::new(once("d".to_owned())).unwrap(),
             "input contains invalid characters at line 1 column 12",
             BAD_KEY,
         ),
         refused_row(
             "a brand with a named member under a key that is no date",
             "Chronicle",
-            &Chronicle { by_at: once(3) },
+            &Chronicle::new(once(3)).unwrap(),
             "input contains invalid characters at line 1 column 12",
             BAD_KEY,
         ),
         refused_row(
             "a brand that declares a parameter under a key that is no date",
             "Diary<String>",
-            &Diary(once("d".to_owned())),
+            &Diary::new(once("d".to_owned())).unwrap(),
             "input contains invalid characters at line 1 column 12",
             BAD_KEY,
         ),
@@ -399,7 +403,7 @@ fn refused_struct_and_brand_rows() -> Vec<Row> {
         refused_row(
             "a brand over a list under a key that is no date",
             "Daybooks",
-            &Daybooks(vec![once("d".to_owned())]),
+            &Daybooks::new(vec![once("d".to_owned())]).unwrap(),
             "input contains invalid characters at line 1 column 13",
             BAD_KEY,
         ),

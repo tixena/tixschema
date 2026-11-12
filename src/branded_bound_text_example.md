@@ -7,7 +7,7 @@ use tixschema::model_schema;
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Label(pub String);
+pub struct Label(String);
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
@@ -17,7 +17,7 @@ pub struct Record {
 }
 
 fn main() {
-    let empty = Record { latest: Label(String::new()) };
+    let empty = Record { latest: Label::new(String::new()).unwrap() };
     assert!(empty.validate().is_err());
 }
 ```

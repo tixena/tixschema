@@ -2725,11 +2725,11 @@ fn a_tuple_struct_and_a_slot_over_text_a_list_or_a_tuple_claim_no_key() {
     for source in [
         "pub struct Code(pub String, pub u32);",
         "pub struct Code(pub String);",
-        "#[serde(transparent)] pub struct Code(pub String);",
-        "pub struct Code(pub Vec<Inner>);",
-        "pub struct Code(pub Option<Vec<Inner>>);",
+        "#[serde(transparent)] pub struct Code(String);",
+        "pub struct Code(Vec<Inner>);",
+        "pub struct Code(Option<Vec<Inner>>);",
         "pub struct Code(pub (String, u32));",
-        "#[serde(transparent)] pub struct Code { pub inner: Vec<Inner> }",
+        "#[serde(transparent)] pub struct Code { inner: Vec<Inner> }",
     ] {
         let emitted = type_impl_of(source);
         assert!(
@@ -2811,7 +2811,7 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
 fn a_single_slot_struct_is_read_with_the_types_own_reader() {
     for source in [
         "pub struct Code(pub String);",
-        "#[serde(transparent)] pub struct Code(pub String);",
+        "#[serde(transparent)] pub struct Code(String);",
         "pub struct Code(#[serde(deserialize_with = \"code_schema::deserialize_value\")] pub String);",
         "pub struct Code(#[serde(with = \"as_text\")] pub Vec<Inner>);",
     ] {
@@ -2902,8 +2902,8 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is(
         );
     }
     assert_eq!(
-        type_impl_of("#[serde(transparent)] pub struct Code<T> { pub inner: T }"),
-        type_impl_of("#[serde(transparent)] pub struct Code<T>(pub T);"),
+        type_impl_of("#[serde(transparent)] pub struct Code<T> { inner: T }"),
+        type_impl_of("#[serde(transparent)] pub struct Code<T>(T);"),
     );
 }
 
@@ -2933,7 +2933,7 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
         if cfg!(feature = "bson") {
             named.extend(reads_of("bson"));
         }
-        let source = format!("#[serde(transparent)] pub struct Code {{ pub inner: {field} }}");
+        let source = format!("#[serde(transparent)] pub struct Code {{ inner: {field} }}");
         assert_eq!(
             added_impls(&source),
             [("impl Code".to_owned(), named)],
@@ -2951,21 +2951,21 @@ fn a_transparent_struct_with_a_named_field_gets_a_fields_walker_whatever_it_hold
 
 #[test]
 fn a_transparent_struct_is_walked_as_the_one_field_serde_reads_it_as() {
-    let alone = type_impl_of("#[serde(transparent)] pub struct Code { pub inner: Inner }");
+    let alone = type_impl_of("#[serde(transparent)] pub struct Code { inner: Inner }");
     for source in [
-        "#[serde(transparent)] pub struct Code { #[serde(skip)] pub cached: u8, pub inner: Inner }",
-        "#[serde(transparent)] pub struct Code { pub inner: Inner, #[serde(skip_deserializing)] pub seen: u8 }",
-        "#[serde(transparent)] pub struct Code { #[serde(default, skip_serializing)] pub hits: u8, pub inner: Inner }",
-        "#[serde(transparent)] pub struct Code { pub inner: Inner, pub marker: PhantomData<u8> }",
-        "#[serde(transparent)] pub struct Code { pub inner: Inner, pub marker: core::marker::PhantomData<u8> }",
+        "#[serde(transparent)] pub struct Code { #[serde(skip)] cached: u8, inner: Inner }",
+        "#[serde(transparent)] pub struct Code { inner: Inner, #[serde(skip_deserializing)] seen: u8 }",
+        "#[serde(transparent)] pub struct Code { #[serde(default, skip_serializing)] hits: u8, inner: Inner }",
+        "#[serde(transparent)] pub struct Code { inner: Inner, marker: PhantomData<u8> }",
+        "#[serde(transparent)] pub struct Code { inner: Inner, marker: core::marker::PhantomData<u8> }",
         "#[serde(rename = \"code\", transparent)] pub struct Code { pub inner: Inner }",
         "#[serde(bound(deserialize = \"\"), transparent)] pub struct Code { pub inner: Inner }",
     ] {
         assert_eq!(type_impl_of(source), alone, "for {source}");
     }
     for refused in [
-        "#[serde(transparent)] pub struct Code { pub inner: Inner, pub other: Inner }",
-        "#[serde(transparent)] pub struct Code { #[serde(default)] pub inner: Inner }",
+        "#[serde(transparent)] pub struct Code { inner: Inner, other: Inner }",
+        "#[serde(transparent)] pub struct Code { #[serde(default)] inner: Inner }",
     ] {
         let walk = fields_walk_of(refused);
         assert!(
@@ -3008,13 +3008,13 @@ fn a_transparent_tuple_struct_is_walked_as_the_one_slot_serde_reads_it_as() {
         );
     }
     assert_eq!(
-        type_impl_of("#[serde(transparent)] pub struct Code<T>(pub T, pub PhantomData<T>);"),
-        type_impl_of("#[serde(transparent)] pub struct Code<T>(pub T);"),
+        type_impl_of("#[serde(transparent)] pub struct Code<T>(T, PhantomData<T>);"),
+        type_impl_of("#[serde(transparent)] pub struct Code<T>(T);"),
     );
     for positional in [
         "pub struct Code(pub Inner, #[serde(skip)] pub u8);",
-        "#[serde(transparent)] pub struct Code(pub Inner, pub Inner);",
-        "#[serde(transparent)] pub struct Code(#[serde(default)] pub Inner, #[serde(default)] pub u8);",
+        "#[serde(transparent)] pub struct Code(Inner, Inner);",
+        "#[serde(transparent)] pub struct Code(#[serde(default)] Inner, #[serde(default)] u8);",
     ] {
         let walk = issues_walk_of(positional);
         assert!(
@@ -4426,7 +4426,7 @@ fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
             "< Inner > :: decode_with_value_named (object)",
         ),
         (
-            "#[serde(transparent)] pub struct Code { pub inner: Box<Inner> }",
+            "#[serde(transparent)] pub struct Code { inner: Box<Inner> }",
             "< Inner > :: decode_with_value_named (object)",
         ),
         (
@@ -4438,7 +4438,7 @@ fn every_struct_shape_answers_whether_an_object_names_a_value_of_it() {
             "! object . is_empty ()",
         ),
         (
-            "#[serde(transparent)] pub struct Wrap<T>(pub T);",
+            "#[serde(transparent)] pub struct Wrap<T>(T);",
             "! object . is_empty ()",
         ),
         (
@@ -4660,7 +4660,7 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
              :: String :: as_str) . collect () }",
         ),
         (
-            "#[serde(transparent)] pub struct Wrap<T>(pub T);",
+            "#[serde(transparent)] pub struct Wrap<T>(T);",
             "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
              (object . clone ()) ; out . extend (wrap_schema :: value_leaf (found , Self :: decode_with_read_unjudged , | _ | :: core :: option :: Option :: None , \
              path . to_vec () , & [(\"TypeParam\" , & [\"T\"] , 0)] , issue) . filter (| _ | ! \
@@ -4673,7 +4673,7 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
              . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
-            "#[serde(transparent)] pub struct Maybe<T>(pub Option<T>);",
+            "#[serde(transparent)] pub struct Maybe<T>(Option<T>);",
             ", _ : & mut :: std :: vec :: Vec < I > ,) -> :: std :: vec :: Vec < & 'a str > { object \
              . keys () . map (:: std :: string :: String :: as_str) . collect () }",
         ),
@@ -4686,7 +4686,7 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
              (:: std :: string :: String :: as_str) . collect () }",
         ),
         (
-            "#[serde(transparent)] pub struct Stamp { #[serde(with = \"as_text\")] pub inner: HashMap<String, i32> }",
+            "#[serde(transparent)] pub struct Stamp { #[serde(with = \"as_text\")] inner: HashMap<String, i32> }",
             "-> :: std :: vec :: Vec < & 'a str > { let found = & serde_json :: Value :: Object \
              (object . clone ()) ; out . extend (stamp_schema :: value_leaf (found , Self :: decode_with_read_unjudged , | _ | :: core :: option :: Option :: None , \
              path . to_vec () , & [(\"Map\" , & [] , 1) , (\"I32\" , & [] , 0)] , issue) . \
@@ -4718,7 +4718,7 @@ fn a_single_slot_struct_serde_flattens_walks_what_it_holds_as_a_flattened_field_
 fn a_single_slot_struct_over_an_id_takes_every_key_and_lists_nothing() {
     for source in [
         "pub struct Marker(pub ObjectId);",
-        "#[serde(transparent)] pub struct Marker { pub inner: Option<ObjectId> }",
+        "#[serde(transparent)] pub struct Marker { inner: Option<ObjectId> }",
     ] {
         let emitted = type_impl_of(source);
         for written in [
@@ -5658,7 +5658,7 @@ fn a_function_is_named_after_its_field_and_writes_the_key_serde_does() {
 fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
     for (source, declared, arguments, text) in [
         (
-            "#[serde(transparent)] pub struct Row(pub String);",
+            "#[serde(transparent)] pub struct Row(String);",
             "pubstructMongoFields<Root,Whole>{",
             "",
             true,
@@ -5670,7 +5670,7 @@ fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
             false,
         ),
         (
-            "#[serde(transparent)] pub struct Row { pub held: String, #[serde(skip)] pub cached: u8 }",
+            "#[serde(transparent)] pub struct Row { held: String, #[serde(skip)] cached: u8 }",
             "pubstructMongoFields<Root,Whole>{",
             "",
             true,
@@ -5725,13 +5725,13 @@ fn a_type_serde_writes_as_one_value_is_the_path_of_that_value() {
             "for {source}, missing `{written}` in: {on_the_type}"
         );
     }
-    let (brand, _brand) = typed_paths_of("#[serde(transparent)] pub struct Row(pub String);", &[]);
+    let (brand, _brand) = typed_paths_of("#[serde(transparent)] pub struct Row(String);", &[]);
     assert!(
         brand.contains("impl<Root,Value>MongoFields<Root,self::Field<Root,Value>>{"),
         "got: {brand}"
     );
     let (generic, _generic) = typed_paths_of(
-        "#[serde(transparent)] pub struct Row<Value> { pub held: String, pub kept: PhantomData<Value> }",
+        "#[serde(transparent)] pub struct Row<Value> { held: String, kept: PhantomData<Value> }",
         &[],
     );
     assert!(
@@ -5894,11 +5894,11 @@ fn a_renaming_written_as_a_list_counts_by_what_serde_writes() {
 #[test]
 fn a_struct_or_an_enum_is_written_as_one_value_or_under_keys_of_its_own() {
     for (source, one_value) in [
-        ("#[serde(transparent)] pub struct Row(pub String);", true),
-        ("pub struct Row(pub u32);", true),
+        ("#[serde(transparent)] pub struct Row(String);", true),
+        ("pub struct Row(u32);", true),
         ("pub struct Row;", true),
         (
-            "#[serde(transparent)] pub struct Row { pub held: String, #[serde(skip)] pub cached: u8 }",
+            "#[serde(transparent)] pub struct Row { held: String, #[serde(skip)] cached: u8 }",
             true,
         ),
         ("pub enum Row { Draft, Paid }", true),

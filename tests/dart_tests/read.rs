@@ -35,7 +35,7 @@ pub struct Item {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slip(pub String);
+pub struct Slip(String);
 
 /// A type with a parameter.
 #[model_schema(default_types(Held = String))]
@@ -64,7 +64,7 @@ pub struct Hold {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Wrapped(pub Item);
+pub struct Wrapped(Item);
 
 /// A tuple struct one slot of which holds a model.
 #[model_schema()]
@@ -133,13 +133,13 @@ fn every_declared_type_is_constructible() {
     };
     assert_eq!(hold.by_dock.len(), 2);
     assert_eq!(hold.filled.held.len(), 1);
-    assert_eq!(Wrapped(item.clone()).0.label, "A");
+    assert_eq!(Wrapped::new(item.clone()).unwrap().as_inner().label, "A");
     assert_eq!(Lot("a".to_owned(), item.clone()).1.label, "A");
     let load: Load = vec![item];
     assert_eq!(load.len(), 1);
     let shelfmarks = [
-        Shelfmark::Coded(Slip("AB".to_owned())),
-        Shelfmark::Listed(vec![Slip("AB".to_owned())]),
+        Shelfmark::Coded(Slip::new("AB".to_owned()).unwrap()),
+        Shelfmark::Listed(vec![Slip::new("AB".to_owned()).unwrap()]),
         Shelfmark::Shelved(true),
     ];
     assert_eq!(shelfmarks.len(), 3);

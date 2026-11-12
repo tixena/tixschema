@@ -274,7 +274,7 @@ Rust reads a model declared below its holder unjudged, so the two differ there: 
 #[model_schema(pattern = "^[A-Z]+$", check = ["unreserved"])]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tag(pub String);
+pub struct Tag(String);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]

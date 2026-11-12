@@ -203,7 +203,7 @@ pub enum Grade {
 #[model_schema(check = ["upperCase"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 /// A type with a parameter, whose check is written once over every filling.
 #[model_schema(default_types(CodeType = String), check = ["withACode"])]
@@ -217,7 +217,7 @@ pub struct Crate<CodeType> {
 #[model_schema(no_display, default_types(CodeType = String), check = ["holdingACode"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Batch<CodeType>(pub Vec<CodeType>);
+pub struct Batch<CodeType>(Vec<CodeType>);
 
 /// A type with a parameter that holds a value of the parameter itself, in a key of its own.
 #[model_schema(default_types(IdType = String), check = ["withEntries"])]
@@ -352,7 +352,7 @@ fn rated(value: &Grade) -> Result<(), Vec<String>> {
 }
 
 fn upper_case(value: &Code) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
     Ok(())
@@ -366,7 +366,7 @@ fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
 }
 
 fn holding_a_code<CodeType>(value: &Batch<CodeType>) -> Result<(), Vec<String>> {
-    if value.0.is_empty() {
+    if value.as_inner().is_empty() {
         return Err(vec!["a batch holds at least one code".to_owned()]);
     }
     Ok(())
@@ -534,8 +534,35 @@ fn enum_cases() -> Vec<Case> {
     ]
 }
 
-/// The cases of the brands and of the types with a parameter, each at two fillings.
-fn brand_and_generic_cases() -> Vec<Case> {
+/// A brand over a list, over a string and over a number.
+fn batch_cases() -> Vec<Case> {
+    vec![
+        case(
+            "Batch<String>, empty",
+            &Batch::<String>::model_schema_read_unjudged(
+                serde_json::to_value(Vec::<String>::new()).unwrap(),
+            )
+            .unwrap(),
+            Batch::<String>::new(Vec::new()).map(|_| ()),
+        ),
+        case(
+            "Batch<u32>, empty",
+            &Batch::<u32>::model_schema_read_unjudged(
+                serde_json::to_value(Vec::<u32>::new()).unwrap(),
+            )
+            .unwrap(),
+            Batch::<u32>::new(Vec::new()).map(|_| ()),
+        ),
+        case(
+            "Batch<u32>",
+            &Batch::new(vec![7_u32]).unwrap(),
+            Batch::new(vec![7_u32]).map(|_| ()),
+        ),
+    ]
+}
+
+/// The cases of the brands and of the type with a parameter, each at two fillings.
+fn brand_and_crate_cases() -> Vec<Case> {
     let filled = |codes: Vec<String>| Crate {
         codes,
         label: "c".to_owned(),
@@ -544,20 +571,17 @@ fn brand_and_generic_cases() -> Vec<Case> {
         codes,
         label: "c".to_owned(),
     };
-    let owned = |entries: Vec<String>| Ledger {
-        entries,
-        owner_id: "o".to_owned(),
-    };
     vec![
         case(
             "Code, in lower case",
-            &Code("ab".to_owned()),
-            Code("ab".to_owned()).validate(),
+            &Code::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
+                .unwrap(),
+            Code::new("ab".to_owned()).map(|_| ()),
         ),
         case(
             "Code",
-            &Code("AB".to_owned()),
-            Code("AB".to_owned()).validate(),
+            &Code::new("AB".to_owned()).unwrap(),
+            Code::new("AB".to_owned()).map(|_| ()),
         ),
         case(
             "Crate<String>, empty",
@@ -575,21 +599,16 @@ fn brand_and_generic_cases() -> Vec<Case> {
             counted(Vec::new()).validate(),
         ),
         case("Crate<u32>", &counted(vec![7]), counted(vec![7]).validate()),
-        case(
-            "Batch<String>, empty",
-            &Batch::<String>(Vec::new()),
-            Batch::<String>(Vec::new()).validate(),
-        ),
-        case(
-            "Batch<u32>, empty",
-            &Batch::<u32>(Vec::new()),
-            Batch::<u32>(Vec::new()).validate(),
-        ),
-        case(
-            "Batch<u32>",
-            &Batch(vec![7_u32]),
-            Batch(vec![7_u32]).validate(),
-        ),
+    ]
+}
+
+/// The cases of the types that hold a value of their own parameter, each at two fillings.
+fn ledger_and_archive_cases() -> Vec<Case> {
+    let owned = |entries: Vec<String>| Ledger {
+        entries,
+        owner_id: "o".to_owned(),
+    };
+    vec![
         case(
             "Ledger<String>, no entry",
             &owned(Vec::new()),
@@ -640,7 +659,9 @@ fn brand_and_generic_cases() -> Vec<Case> {
 pub fn shape_cases() -> Vec<Case> {
     let mut cases = struct_cases();
     cases.extend(enum_cases());
-    cases.extend(brand_and_generic_cases());
+    cases.extend(brand_and_crate_cases());
+    cases.extend(batch_cases());
+    cases.extend(ledger_and_archive_cases());
     cases
 }
 

@@ -35,7 +35,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     #[model_schema()]
     #[derive(Deserialize, Serialize)]
@@ -169,7 +169,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Tag(pub String);
+    pub struct Tag(String);
 
     #[model_schema()]
     #[derive(Deserialize, Serialize)]
@@ -192,7 +192,7 @@ pub mod a_message_annotated_with_a_constraint {
     #[model_schema(check = ["bayInUpperCase"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Bay(pub String);
+    pub struct Bay(String);
 
     /// A message that holds two brands, each with a rule of its own.
     #[model_schema()]
@@ -262,16 +262,17 @@ pub mod a_message_annotated_with_a_constraint {
 
         async fn dock(&self, _ctx: &(), req: DockRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached
-                .lock()
-                .unwrap()
-                .push(format!("{}:{}", req.bay.0, req.slug.0));
+            self.reached.lock().unwrap().push(format!(
+                "{}:{}",
+                req.bay.as_inner(),
+                req.slug.as_inner()
+            ));
             Ok(Admitted { admitted: true })
         }
 
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Admitted, GateError> {
             ready(()).await;
-            self.reached.lock().unwrap().push(req.slug.0);
+            self.reached.lock().unwrap().push(req.slug.into_inner());
             Ok(Admitted { admitted: true })
         }
 
@@ -284,7 +285,7 @@ pub mod a_message_annotated_with_a_constraint {
         async fn label(&self, _ctx: &(), req: LabelRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(match req.label {
-                Label::Bounded(tag) => format!("tagged:{}", tag.0),
+                Label::Bounded(tag) => format!("tagged:{}", tag.as_inner()),
                 Label::Free(free) => format!("free:{free}"),
             });
             Ok(Admitted { admitted: true })
@@ -393,7 +394,7 @@ pub mod a_message_annotated_with_a_constraint {
     }
 
     fn bay_in_upper_case(value: &Bay) -> Result<(), Vec<String>> {
-        if value.0.chars().any(char::is_lowercase) {
+        if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a bay is upper case".to_owned()]);
         }
         Ok(())

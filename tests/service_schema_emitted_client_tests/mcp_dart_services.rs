@@ -62,7 +62,7 @@ pub enum McpVersionError {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct McpDocumentId(pub String);
+pub struct McpDocumentId(String);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Serialize)]

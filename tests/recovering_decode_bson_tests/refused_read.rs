@@ -38,37 +38,37 @@ struct DockedManifest {
 
 /// A brand that names a check alone.
 #[model_schema(check = ["dockedInUpperCase"])]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockCode(String);
 
 /// A brand held to a bound as well.
 #[model_schema(minLength = 2, check = ["labelledInUpperCase"])]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockLabel(String);
 
 /// A brand over a list, which publishes no `Display`: its length counts the items.
 #[model_schema(no_display, minLength = 2, check = ["dockedOnce"])]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockCodes(Vec<String>);
 
 /// A brand over a number.
 #[model_schema(check = ["dockedAboveZero"])]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockCount(i32);
 
 /// A brand over a path, measured by the text serde writes for it.
 #[model_schema(no_display, minLength = 3)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockDir(PathBuf);
 
 /// A brand written with a named field.
 #[model_schema(maxLength = 3)]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockSlug {
     text: String,
@@ -76,7 +76,7 @@ struct DockSlug {
 
 /// A brand with a parameter, whose bound is its declared default's.
 #[model_schema(minLength = 2, default_types(CodeType = String))]
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct DockTag<CodeType>(CodeType);
 
@@ -169,21 +169,21 @@ fn manifest_of(held: &DockedParcel) -> DockedManifest {
 }
 
 fn docked_in_upper_case(value: &DockCode) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a dock code is upper case".to_owned()]);
     }
     Ok(())
 }
 
 fn labelled_in_upper_case(value: &DockLabel) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a dock label is upper case".to_owned()]);
     }
     Ok(())
 }
 
 fn docked_above_zero(value: &DockCount) -> Result<(), Vec<String>> {
-    if value.0 <= 0_i32 {
+    if *value.as_inner() <= 0_i32 {
         return Err(vec!["a dock count is above zero".to_owned()]);
     }
     Ok(())
@@ -191,10 +191,10 @@ fn docked_above_zero(value: &DockCount) -> Result<(), Vec<String>> {
 
 fn docked_once(value: &DockCodes) -> Result<(), Vec<String>> {
     let repeated: Vec<String> = value
-        .0
+        .as_inner()
         .iter()
         .enumerate()
-        .filter(|(index, code)| value.0[..*index].contains(code))
+        .filter(|(index, code)| value.as_inner()[..*index].contains(code))
         .map(|(index, code)| format!("'{index}': {code} is docked twice"))
         .collect();
     if repeated.is_empty() {
@@ -209,7 +209,7 @@ fn shelf_of(held: &DockLabel) -> DockedShelf {
     DockedShelf {
         boxed_label: Box::new(held.clone()),
         first_label: held.clone(),
-        label_list: vec![DockLabel("OK".to_owned()), held.clone()],
+        label_list: vec![DockLabel::new("OK".to_owned()).unwrap(), held.clone()],
         labels_by_dock: HashMap::from([("north".to_owned(), held.clone())]),
         spare_label: Some(held.clone()),
     }
@@ -346,33 +346,51 @@ fn a_document_that_keeps_every_rule_is_read_and_written_back_as_it_was() {
 
 #[test]
 fn a_brand_that_names_a_check_alone_is_refused_as_it_is_read() {
-    let lower = DockCode("abc".to_owned());
+    let lower =
+        DockCode::model_schema_read_unjudged(serde_json::to_value("abc".to_owned()).unwrap())
+            .unwrap();
     assert_eq!(
         lower.validate(),
         Err(vec!["a dock code is upper case".to_owned()])
     );
     read_as_validated(&lower, lower.validate());
-    let upper = DockCode("ABC".to_owned());
+    let upper = DockCode::new("ABC".to_owned()).unwrap();
     assert_eq!(upper.validate(), Ok(()));
     read_as_validated(&upper, upper.validate());
 }
 
 #[test]
 fn a_brand_is_refused_with_every_message_validate_answers_of_the_value_read() {
-    let refused = DockLabel("a".to_owned()).validate().unwrap_err().join("; ");
+    let refused = DockLabel::new("a".to_owned())
+        .map(|_| ())
+        .unwrap_err()
+        .join("; ");
     assert_eq!(
         refused,
         "too short: minimum length is 2, got 1; a dock label is upper case"
     );
     for text in ["a", "A", "ab", "AB"] {
-        let held = DockLabel(text.to_owned());
+        let held =
+            DockLabel::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap())
+                .unwrap();
         read_as_validated(&held, held.validate());
     }
 }
 
 #[test]
 fn a_brand_over_a_list_is_refused_as_validate_answers_of_the_list_read() {
-    let codes = |written: &[&str]| DockCodes(written.iter().map(|&code| code.to_owned()).collect());
+    let codes = |written: &[&str]| {
+        DockCodes::model_schema_read_unjudged(
+            serde_json::to_value(
+                written
+                    .iter()
+                    .map(|&code| code.to_owned())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    };
     assert_eq!(
         codes(&["a", "b", "a"]).validate(),
         Err(vec!["'2': a is docked twice".to_owned()])
@@ -386,27 +404,33 @@ fn a_brand_over_a_list_is_refused_as_validate_answers_of_the_list_read() {
 #[test]
 fn a_brand_over_a_number_is_refused_as_its_check_answers() {
     assert_eq!(
-        DockCount(0).validate(),
+        DockCount::new(0_i32).map(|_| ()),
         Err(vec!["a dock count is above zero".to_owned()])
     );
-    for held in [DockCount(0), DockCount(7)] {
+    for held in [
+        DockCount::model_schema_read_unjudged(serde_json::to_value(0_i32).unwrap()).unwrap(),
+        DockCount::new(7_i32).unwrap(),
+    ] {
         read_as_validated(&held, held.validate());
     }
 }
 
 #[test]
 fn a_brand_over_a_path_and_one_with_a_named_field_are_refused_as_their_bounds_answer() {
-    let short = DockDir(PathBuf::from("/a"));
+    let short =
+        DockDir::model_schema_read_unjudged(serde_json::to_value(PathBuf::from("/a")).unwrap())
+            .unwrap();
     assert_eq!(
         short.validate(),
         Err(vec!["too short: minimum length is 3, got 2".to_owned()])
     );
     read_as_validated(&short, short.validate());
-    let long = DockDir(PathBuf::from("/etc"));
+    let long = DockDir::new(PathBuf::from("/etc")).unwrap();
     read_as_validated(&long, long.validate());
 
-    let slug = |text: &str| DockSlug {
-        text: text.to_owned(),
+    let slug = |text: &str| {
+        DockSlug::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap())
+            .unwrap()
     };
     assert_eq!(
         slug("abcd").validate(),
@@ -420,23 +444,29 @@ fn a_brand_over_a_path_and_one_with_a_named_field_are_refused_as_their_bounds_an
 
 #[test]
 fn a_generic_brand_is_refused_at_its_declared_default_and_read_at_any_other_filling() {
-    let short = DockTag("a".to_owned());
+    let short = DockTag::<String>::model_schema_read_unjudged(
+        serde_json::to_value("a".to_owned()).unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         short.validate(),
         Err(vec!["too short: minimum length is 2, got 1".to_owned()])
     );
     read_as_validated(&short, short.validate());
-    let long = DockTag("ab".to_owned());
+    let long = DockTag::new("ab".to_owned()).unwrap();
     read_as_validated(&long, long.validate());
     // The bound is the declared default's, so one digit is read at another filling.
-    let counted = DockTag(7_i32);
+    let counted = DockTag::new(7_i32).unwrap();
     assert_eq!(counted.validate(), Ok(()));
     read_as_validated(&counted, counted.validate());
 }
 
 #[test]
 fn a_document_names_every_broken_brand_it_holds_at_its_full_path() {
-    let held = shelf_of(&DockLabel("a".to_owned()));
+    let held = shelf_of(
+        &DockLabel::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+            .unwrap(),
+    );
     let refused = held.validate().unwrap_err().join("; ");
     assert_eq!(
         refused,
@@ -455,7 +485,7 @@ fn a_document_names_every_broken_brand_it_holds_at_its_full_path() {
         read_document::<DockedShelf>(written(&held)),
         Err(told_by_this_major(&refused))
     );
-    let sound = shelf_of(&DockLabel("AB".to_owned()));
+    let sound = shelf_of(&DockLabel::new("AB".to_owned()).unwrap());
     assert_eq!(read_document::<DockedShelf>(written(&sound)), Ok(sound));
 }
 

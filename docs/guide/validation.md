@@ -71,7 +71,7 @@ A field typed with a [branded newtype](generics-and-brands.md#branded-newtypes) 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct FullPath(pub String);
+pub struct FullPath(String);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
@@ -83,7 +83,7 @@ pub struct GroupTag {
 }
 ```
 
-- `validate()` reports `'sort_field': too short: minimum length is 1, got 0` for `Some(FullPath(String::new()))`, and nothing for an empty `source`.
+- `validate()` reports `'sort_field': too short: minimum length is 1, got 0` for `Some(FullPath::model_schema_read_unjudged(serde_json::json!("")).unwrap())`, a value `FullPath::new("")` refuses before a brand exists, and nothing for an empty `source`.
 - The Zod schema writes the checks onto the brand's own schema, so the parsed value keeps its brand: `FullPath$Schema.check(z.minLength(1, { error: ... }))`.
 - The JSON Schema narrows the brand's document from inside an `allOf`: `{ "allOf": [{ "type": "string" }, { "minLength": 1 }] }`.
 
@@ -209,7 +209,7 @@ Every list takes the two keys: `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `Binary
 #[model_schema(pattern = "^[a-z]+$", minLength = 1, maxLength = 3)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tag(pub String);
+pub struct Tag(String);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
@@ -229,7 +229,7 @@ The validator and the hook a list publishes, `validate_{field}_value(&list)` and
 #[model_schema(no_display)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tags(pub Vec<String>);
+pub struct Tags(Vec<String>);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
@@ -435,7 +435,7 @@ Each message opens with where the broken value sits in the payload, in single qu
 #[model_schema(minLength = 2)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
@@ -472,7 +472,7 @@ pub struct Manifest {
 let broken = || Package {
     item_label: String::new(),
     listed_item_codes: Vec::new(),
-    parcel_code: Code("a".to_string()),
+    parcel_code: Code::model_schema_read_unjudged(serde_json::json!("a")).unwrap(),
 };
 let manifest = Manifest {
     first_parcel: broken(),
@@ -642,7 +642,7 @@ The messages come in the order `validate()` reports them: member by member as de
 #[model_schema(minLength = 2, check = ["labelInUpperCase"])]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Label(pub String);
+pub struct Label(String);
 
 fn label_in_upper_case(value: &Label) -> Result<(), Vec<String>> {
     if value.0.chars().any(char::is_lowercase) {
@@ -654,7 +654,7 @@ fn label_in_upper_case(value: &Label) -> Result<(), Vec<String>> {
 #[model_schema(no_display, minLength = 3)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Dir(pub PathBuf);
+pub struct Dir(PathBuf);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
@@ -738,7 +738,7 @@ A field carrying no `model_schema_prop` of its own may still hold a type that de
 #[model_schema(minLength = 3)]
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Slug(pub String);
+pub struct Slug(String);
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]

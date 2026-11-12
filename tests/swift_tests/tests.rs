@@ -83,7 +83,7 @@ pub enum Untagged {
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct CorrelationId(pub String);
+pub struct CorrelationId(String);
 
 #[model_schema()]
 pub type UserId = String;
@@ -548,7 +548,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     serde_json::to_string(&AdjacentTagged::Flag(true)).unwrap();
     serde_json::to_string(&Untagged::Count { count: 1 }).unwrap();
 
-    let correlation_id = CorrelationId("id-1".to_owned());
+    let correlation_id = CorrelationId::new("id-1".to_owned()).unwrap();
     let correlation_round_trip: CorrelationId =
         serde_json::from_str(&serde_json::to_string(&correlation_id).unwrap()).unwrap();
     assert_eq!(correlation_round_trip, correlation_id);

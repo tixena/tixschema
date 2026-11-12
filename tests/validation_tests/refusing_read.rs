@@ -135,7 +135,7 @@ mod a_read_refuses_what_validate_refuses {
     #[model_schema(minLength = 2)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Code(pub String);
+    pub struct Code(String);
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -898,7 +898,7 @@ mod a_read_refuses_what_validate_refuses {
             "'loadCode': too short: minimum length is 2, got 1"
         );
         let read: Crane = serde_json::from_str(r#"{"loadCode":"ab"}"#).unwrap();
-        assert_eq!(read.load_code, Code("ab".to_owned()));
+        assert_eq!(read.load_code, Code::new("ab".to_owned()).unwrap());
     }
 
     /// The read names the brand by the path `validate()` names it by: below the variant's name,
@@ -906,10 +906,16 @@ mod a_read_refuses_what_validate_refuses {
     #[test]
     fn a_bounded_brand_in_a_variants_member_refuses_under_the_path_validate_names() {
         let coded = Sorted::Coded {
-            parcel_code: Code("a".to_owned()),
+            parcel_code: Code::model_schema_read_unjudged(
+                serde_json::to_value("a".to_owned()).unwrap(),
+            )
+            .unwrap(),
         };
         let under_a_key = SortedUnderAKey::Coded {
-            parcel_code: Code("a".to_owned()),
+            parcel_code: Code::model_schema_read_unjudged(
+                serde_json::to_value("a".to_owned()).unwrap(),
+            )
+            .unwrap(),
         };
         assert_eq!(
             [coded.validate(), under_a_key.validate()],
@@ -935,7 +941,7 @@ mod a_read_refuses_what_validate_refuses {
             "'held.parcelCode': too short: minimum length is 2, got 1"
         );
         let kept = Sorted::Coded {
-            parcel_code: Code("ab".to_owned()),
+            parcel_code: Code::new("ab".to_owned()).unwrap(),
         };
         read_as_validated(&kept, kept.validate());
     }

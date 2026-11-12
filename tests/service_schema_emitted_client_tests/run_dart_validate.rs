@@ -130,19 +130,19 @@ pub struct Manifest {
 #[model_schema(minLength = 2, pattern = "^[A-Z]+$", check = ["upperCase"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 /// A brand with no rule, which a field's own bound measures.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Mark(pub String);
+pub struct Mark(String);
 
 /// A brand over a brand over a string, with no rule of its own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Plaque(pub Mark);
+pub struct Plaque(Mark);
 
 /// A member typed with the brand over a brand, under a length of its own.
 #[model_schema()]
@@ -237,13 +237,13 @@ pub struct Docket {
 #[model_schema(minLength = 2, default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Tag<IdType>(pub IdType);
+pub struct Tag<IdType>(IdType);
 
 /// A brand over a list, whose lengths count its items.
 #[model_schema(no_display, minLength = 1, maxLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Batch(pub Vec<String>);
+pub struct Batch(Vec<String>);
 
 /// A type with a parameter, whose check is written once over every filling.
 #[model_schema(default_types(CodeType = String), check = ["withACode"])]
@@ -258,7 +258,7 @@ pub struct Crate<CodeType> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slogans(pub Vec<String>);
+pub struct Slogans(Vec<String>);
 
 /// An alias of a list.
 #[model_schema()]
@@ -268,13 +268,13 @@ pub type Mottos = Vec<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeSlogans(pub Slogans);
+pub struct SomeSlogans(Slogans);
 
 /// A generic brand whose declared default is a list.
 #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Carried<T>(pub T);
+pub struct Carried<T>(T);
 
 /// Members typed with the names above, each under a length of its own.
 #[model_schema()]
@@ -299,7 +299,7 @@ pub type Queue = indexmap::IndexSet<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeQueue(pub Queue);
+pub struct SomeQueue(Queue);
 
 #[cfg(feature = "indexmap")]
 #[model_schema()]
@@ -486,7 +486,7 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
 }
 
 fn upper_case(value: &Code) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
     Ok(())
@@ -874,7 +874,7 @@ fn gauge(
         item_count,
         item_label: item_label.to_owned(),
         short_note: short_note.map(ToOwned::to_owned),
-        sort_mark: short_note.map(|_| Mark(String::new())),
+        sort_mark: short_note.map(|_| Mark::new(String::new()).unwrap()),
         spare_count,
         unit_weight,
     }
@@ -933,7 +933,7 @@ held: passes
 #[test]
 fn a_brand_over_a_brand_is_measured_on_its_text() {
     let shield = |text: &str| Shield {
-        plaque: Plaque(Mark(text.to_owned())),
+        plaque: Plaque::new(Mark::new(text.to_owned()).unwrap()).unwrap(),
     };
     let cases = [
         pinned(
@@ -1115,44 +1115,52 @@ pub fn brand_cases() -> Vec<Case> {
     vec![
         compared(
             "Code, short and in lower case",
-            &Code("a".to_owned()),
-            Code("a".to_owned()).validate(),
+            &Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+                .unwrap(),
+            Code::new("a".to_owned()).map(|_| ()),
             "Code.fromJsonUnjudged(@)",
         ),
         compared(
             "Code",
-            &Code("AB".to_owned()),
-            Code("AB".to_owned()).validate(),
+            &Code::new("AB".to_owned()).unwrap(),
+            Code::new("AB".to_owned()).map(|_| ()),
             "Code.fromJsonUnjudged(@)",
         ),
         compared(
             "Tag<String>, short",
-            &Tag("a".to_owned()),
-            Tag("a".to_owned()).validate(),
+            &Tag::<String>::model_schema_read_unjudged(
+                serde_json::to_value("a".to_owned()).unwrap(),
+            )
+            .unwrap(),
+            Tag::new("a".to_owned()).map(|_| ()),
             tagged,
         ),
         compared(
             "Tag<String>",
-            &Tag("ab".to_owned()),
-            Tag("ab".to_owned()).validate(),
+            &Tag::new("ab".to_owned()).unwrap(),
+            Tag::new("ab".to_owned()).map(|_| ()),
             tagged,
         ),
         compared(
             "Tag<int>, at no default",
-            &Tag(7_u32),
-            Tag(7_u32).validate(),
+            &Tag::new(7_u32).unwrap(),
+            Tag::new(7_u32).map(|_| ()),
             "Tag<int>.fromJsonUnjudged(@, (e) => e as int)",
         ),
         compared(
             "Batch, empty",
-            &Batch(Vec::new()),
-            Batch(Vec::new()).validate(),
+            &Batch::model_schema_read_unjudged(serde_json::to_value(Vec::<String>::new()).unwrap())
+                .unwrap(),
+            Batch::new(Vec::new()).map(|_| ()),
             "Batch.fromJsonUnjudged(@)",
         ),
         compared(
             "Batch, three codes",
-            &Batch(texts(&["a", "b", "c"])),
-            Batch(texts(&["a", "b", "c"])).validate(),
+            &Batch::model_schema_read_unjudged(
+                serde_json::to_value(texts(&["a", "b", "c"])).unwrap(),
+            )
+            .unwrap(),
+            Batch::new(texts(&["a", "b", "c"])).map(|_| ()),
             "Batch.fromJsonUnjudged(@)",
         ),
     ]
@@ -1175,10 +1183,16 @@ pub fn counted_name_cases() -> Vec<Case> {
         },
     };
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
-        slogans: Slogans(texts(&vec!["w"; slogans])),
+        slogans: Slogans::new(texts(&vec!["w"; slogans])).unwrap(),
         mottos: texts(&vec!["w"; mottos]),
-        some: SomeSlogans(Slogans(texts(&vec!["w"; some]))),
-        carried: Carried(texts(&vec!["w"; carried])),
+        some: SomeSlogans::model_schema_read_unjudged(
+            serde_json::to_value(Slogans::new(texts(&vec!["w"; some])).unwrap()).unwrap(),
+        )
+        .unwrap(),
+        carried: Carried::model_schema_read_unjudged(
+            serde_json::to_value(texts(&vec!["w"; carried])).unwrap(),
+        )
+        .unwrap(),
     };
     let (kept, empty, wide) = (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
     vec![
@@ -1682,7 +1696,8 @@ fn a_length_on_an_alias_of_an_index_set_counts_the_items() {
     };
     let lineup = |queue: usize, some: usize| Lineup {
         queue: items(queue),
-        some: SomeQueue(items(some)),
+        some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(items(some)).unwrap())
+            .unwrap(),
     };
     let reader = "Lineup.fromJsonUnjudged(@)";
     let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));

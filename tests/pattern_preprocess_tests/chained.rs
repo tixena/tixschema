@@ -27,14 +27,14 @@ pub struct Bay {
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Bounded(pub String);
+pub struct Bounded(String);
 
 /// A brand held to a bound of its own, whose function trims what the bound measures.
 #[cfg(feature = "serde")]
 #[model_schema(minLength = 2, preprocess = ["trimmed"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Coded(pub String);
+pub struct Coded(String);
 
 /// A member of a variant of each tagging, and a slot of one.
 #[model_schema()]
@@ -296,7 +296,7 @@ fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
     assert_eq!(
         serde_json::from_value::<Shelved>(json!({ "label": { "payload": "AB" } })).unwrap(),
         Shelved {
-            label: Arc::new(Bounded("AB".to_owned()))
+            label: Arc::new(Bounded::new("AB".to_owned()).unwrap())
         }
     );
     assert_eq!(
@@ -314,13 +314,16 @@ fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
 fn the_bound_of_a_brand_measures_what_its_function_answered() {
     assert_eq!(
         serde_json::from_value::<Coded>(json!(" AB ")).unwrap(),
-        Coded("AB".to_owned())
+        Coded::new("AB".to_owned()).unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Coded>(json!(" A "))
             .unwrap_err()
             .to_string(),
-        Coded("A".to_owned()).validate().unwrap_err().join("; ")
+        Coded::new("A".to_owned())
+            .map(|_| ())
+            .unwrap_err()
+            .join("; ")
     );
 }
 

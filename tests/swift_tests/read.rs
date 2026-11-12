@@ -977,7 +977,7 @@ fn the_untagged_enum_that_holds_a_bounded_brand_is_built_and_written_by_serde() 
     assert_eq!(
         serde_json::to_value([
             Sorted::Brief("abc".to_owned()),
-            Sorted::Coded(Slug("abcd".to_owned())),
+            Sorted::Coded(Slug::new("abcd".to_owned()).unwrap()),
             Sorted::Counted { sorted_count: 1 },
             Sorted::Listed(vec![parcel.clone()]),
             Sorted::Whole(parcel),

@@ -27,52 +27,52 @@ mod a_brand_is_read_as_a_model_is {
     #[model_schema(check = ["upperCase"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Code(pub String);
+    pub struct Code(String);
 
     /// A brand held to a bound and to a check.
     #[model_schema(minLength = 2, check = ["labelInUpperCase"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Label(pub String);
+    pub struct Label(String);
 
     /// A brand over a number.
     #[model_schema(check = ["aboveZero"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Count(pub u32);
+    pub struct Count(u32);
 
     /// A brand over a path, measured by the text serde writes for it.
     #[model_schema(no_display, minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Dir(pub PathBuf);
+    pub struct Dir(PathBuf);
 
     /// A brand over a list: its length counts the items, and its check reads them.
     #[model_schema(no_display, minLength = 2, check = ["withoutARepeat"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Codes(pub Vec<String>);
+    pub struct Codes(Vec<String>);
 
     /// A brand written with a named field.
     #[model_schema(maxLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Slug {
-        pub text: String,
+        text: String,
     }
 
     /// A brand over a string that publishes no `Display`.
     #[model_schema(no_display, maxLength = 3, check = ["plainInLowerCase"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Plain(pub String);
+    pub struct Plain(String);
 
     /// A brand with a parameter: its bound is its declared default's, and its check is written
     /// once over every filling.
     #[model_schema(minLength = 2, default_types(CodeType = String), check = ["notEmpty"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Tag<CodeType>(pub CodeType)
+    pub struct Tag<CodeType>(CodeType)
     where
         CodeType: Default + PartialEq;
 
@@ -81,13 +81,13 @@ mod a_brand_is_read_as_a_model_is {
     #[model_schema(minLength = 2, default_types(CodeType = String), check = ["notBlank"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Shown<CodeType: Display>(pub CodeType);
+    pub struct Shown<CodeType: Display>(CodeType);
 
     /// The same brand with the `Display` bound in a `where` clause.
     #[model_schema(minLength = 2, default_types(CodeType = String), check = ["spelledNotBlank"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Spelled<CodeType>(pub CodeType)
+    pub struct Spelled<CodeType>(CodeType)
     where
         CodeType: Display;
 
@@ -115,7 +115,7 @@ mod a_brand_is_read_as_a_model_is {
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
     #[serde(transparent)]
     pub struct Inbound {
-        pub text: String,
+        text: String,
     }
 
     /// Holds an inbound text under a bound of the field's own, which is measured on the brand's
@@ -152,21 +152,21 @@ mod a_brand_is_read_as_a_model_is {
     }
 
     fn upper_case(value: &Code) -> Result<(), Vec<String>> {
-        if value.0.chars().any(char::is_lowercase) {
+        if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a code is upper case".to_owned()]);
         }
         Ok(())
     }
 
     fn label_in_upper_case(value: &Label) -> Result<(), Vec<String>> {
-        if value.0.chars().any(char::is_lowercase) {
+        if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a label is upper case".to_owned()]);
         }
         Ok(())
     }
 
     fn above_zero(value: &Count) -> Result<(), Vec<String>> {
-        if value.0 == 0 {
+        if *value.as_inner() == 0 {
             return Err(vec!["a count is above zero".to_owned()]);
         }
         Ok(())
@@ -174,10 +174,10 @@ mod a_brand_is_read_as_a_model_is {
 
     fn without_a_repeat(value: &Codes) -> Result<(), Vec<String>> {
         let repeated: Vec<String> = value
-            .0
+            .as_inner()
             .iter()
             .enumerate()
-            .filter(|(index, code)| value.0[..*index].contains(code))
+            .filter(|(index, code)| value.as_inner()[..*index].contains(code))
             .map(|(index, code)| format!("'{index}': {code} is listed twice"))
             .collect();
         if repeated.is_empty() {
@@ -188,7 +188,7 @@ mod a_brand_is_read_as_a_model_is {
     }
 
     fn plain_in_lower_case(value: &Plain) -> Result<(), Vec<String>> {
-        if value.0.chars().any(char::is_uppercase) {
+        if value.as_inner().chars().any(char::is_uppercase) {
             return Err(vec!["a plain label is lower case".to_owned()]);
         }
         Ok(())
@@ -198,7 +198,7 @@ mod a_brand_is_read_as_a_model_is {
     where
         CodeType: Default + PartialEq,
     {
-        if value.0 == CodeType::default() {
+        if *value.as_inner() == CodeType::default() {
             return Err(vec!["a tag is not empty".to_owned()]);
         }
         Ok(())
@@ -208,7 +208,7 @@ mod a_brand_is_read_as_a_model_is {
     where
         CodeType: Display,
     {
-        if value.0.to_string().trim().is_empty() {
+        if value.as_inner().to_string().trim().is_empty() {
             return Err(vec!["a shown value is not blank".to_owned()]);
         }
         Ok(())
@@ -218,18 +218,27 @@ mod a_brand_is_read_as_a_model_is {
     where
         CodeType: Display,
     {
-        if value.0.to_string().trim().is_empty() {
+        if value.as_inner().to_string().trim().is_empty() {
             return Err(vec!["a spelled value is not blank".to_owned()]);
         }
         Ok(())
     }
 
     fn label(text: &str) -> Label {
-        Label(text.to_owned())
+        Label::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap()).unwrap()
     }
 
     fn codes(written: &[&str]) -> Codes {
-        Codes(written.iter().map(|&code| code.to_owned()).collect())
+        Codes::model_schema_read_unjudged(
+            serde_json::to_value(
+                written
+                    .iter()
+                    .map(|&code| code.to_owned())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
     }
 
     /// A shelf that holds `held` in every place it holds a label, after a sound one in its list.
@@ -274,13 +283,15 @@ mod a_brand_is_read_as_a_model_is {
 
     #[test]
     fn a_brand_that_names_a_check_alone_is_refused_as_it_is_read() {
-        let lower = Code("abc".to_owned());
+        let lower =
+            Code::model_schema_read_unjudged(serde_json::to_value("abc".to_owned()).unwrap())
+                .unwrap();
         assert_eq!(
             lower.validate(),
             Err(vec!["a code is upper case".to_owned()])
         );
         read_as_validated(&lower, lower.validate());
-        let upper = Code("ABC".to_owned());
+        let upper = Code::new("ABC".to_owned()).unwrap();
         assert_eq!(upper.validate(), Ok(()));
         read_as_validated(&upper, upper.validate());
     }
@@ -301,23 +312,28 @@ mod a_brand_is_read_as_a_model_is {
     #[test]
     fn a_brand_over_a_number_is_read_as_its_check_answers() {
         assert_eq!(
-            Count(0).validate(),
+            Count::new(0_u32).map(|_| ()),
             Err(vec!["a count is above zero".to_owned()])
         );
-        for held in [Count(0), Count(7)] {
+        for held in [
+            Count::model_schema_read_unjudged(serde_json::to_value(0_u32).unwrap()).unwrap(),
+            Count::new(7_u32).unwrap(),
+        ] {
             read_as_validated(&held, held.validate());
         }
     }
 
     #[test]
     fn a_brand_over_a_path_is_read_as_its_bound_answers() {
-        let short = Dir(PathBuf::from("/a"));
+        let short =
+            Dir::model_schema_read_unjudged(serde_json::to_value(PathBuf::from("/a")).unwrap())
+                .unwrap();
         assert_eq!(
             short.validate(),
             Err(vec!["too short: minimum length is 3, got 2".to_owned()])
         );
         read_as_validated(&short, short.validate());
-        let long = Dir(PathBuf::from("/etc"));
+        let long = Dir::new(PathBuf::from("/etc")).unwrap();
         read_as_validated(&long, long.validate());
     }
 
@@ -344,8 +360,9 @@ mod a_brand_is_read_as_a_model_is {
 
     #[test]
     fn a_brand_with_a_named_field_is_read_as_its_bound_answers() {
-        let slug = |text: &str| Slug {
-            text: text.to_owned(),
+        let slug = |text: &str| {
+            Slug::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap())
+                .unwrap()
         };
         assert_eq!(
             slug("abcd").validate(),
@@ -359,7 +376,10 @@ mod a_brand_is_read_as_a_model_is {
 
     #[test]
     fn a_brand_that_publishes_no_display_is_read_as_validate_answers() {
-        let plain = |text: &str| Plain(text.to_owned());
+        let plain = |text: &str| {
+            Plain::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap())
+                .unwrap()
+        };
         assert_eq!(
             refusal(&plain("ABCD").validate().unwrap_err()),
             "too long: maximum length is 3, got 4; a plain label is lower case"
@@ -372,15 +392,18 @@ mod a_brand_is_read_as_a_model_is {
 
     #[test]
     fn a_brand_that_states_display_itself_is_judged_and_read() {
-        let blank = Shown(" ".to_owned());
+        let blank = Shown::<String>::model_schema_read_unjudged(
+            serde_json::to_value(" ".to_owned()).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             refusal(&blank.validate().unwrap_err()),
             "too short: minimum length is 2, got 1; a shown value is not blank"
         );
-        let held = Shown("ab".to_owned());
+        let held = Shown::new("ab".to_owned()).unwrap();
         assert_eq!(held.to_string(), "ab");
         read_as_validated(&held, held.validate());
-        let spelled = Spelled(7_u32);
+        let spelled = Spelled::new(7_u32).unwrap();
         assert_eq!(spelled.to_string(), "7");
         read_as_validated(&spelled, spelled.validate());
     }
@@ -388,24 +411,31 @@ mod a_brand_is_read_as_a_model_is {
     #[test]
     fn a_generic_brand_is_judged_at_its_declared_default_and_read_at_any_other_filling() {
         assert_eq!(
-            refusal(&Tag(String::new()).validate().unwrap_err()),
+            refusal(&Tag::new(String::new()).map(|_| ()).unwrap_err()),
             "too short: minimum length is 2, got 0; a tag is not empty"
         );
         for text in ["", "a", "ab"] {
-            let held = Tag(text.to_owned());
+            let held = Tag::<String>::model_schema_read_unjudged(
+                serde_json::to_value(text.to_owned()).unwrap(),
+            )
+            .unwrap();
             read_as_validated(&held, held.validate());
         }
         // The bound is the declared default's, so one digit is read at another filling.
-        let counted = Tag(7_u32);
+        let counted = Tag::new(7_u32).unwrap();
         assert_eq!(counted.validate(), Ok(()));
         read_as_validated(&counted, counted.validate());
-        assert_eq!(serde_json::from_str::<Tag<u32>>("7").ok(), Some(Tag(7)));
+        assert_eq!(
+            serde_json::from_str::<Tag<u32>>("7").ok(),
+            Some(Tag::new(7_u32).unwrap())
+        );
         // The check is written once over every filling.
-        let zero = Tag(0_u32);
+        let zero =
+            Tag::<u32>::model_schema_read_unjudged(serde_json::to_value(0_u32).unwrap()).unwrap();
         assert_eq!(zero.validate(), Err(vec!["a tag is not empty".to_owned()]));
         read_as_validated(&zero, zero.validate());
         // A filling with no `Display` is read as well: nothing renders the value there.
-        let listed = Tag(vec![7_u8]);
+        let listed = Tag::new(vec![7_u8]).unwrap();
         assert_eq!(listed.validate(), Ok(()));
         read_as_validated(&listed, listed.validate());
     }
@@ -430,9 +460,11 @@ mod a_brand_is_read_as_a_model_is {
     fn a_list_of_brands_names_each_broken_item_by_its_index() {
         let held = Listing {
             listed: vec![
-                Dir(PathBuf::from("/a")),
-                Dir(PathBuf::from("/etc")),
-                Dir(PathBuf::from("/b")),
+                Dir::model_schema_read_unjudged(serde_json::to_value(PathBuf::from("/a")).unwrap())
+                    .unwrap(),
+                Dir::new(PathBuf::from("/etc")).unwrap(),
+                Dir::model_schema_read_unjudged(serde_json::to_value(PathBuf::from("/b")).unwrap())
+                    .unwrap(),
             ],
         };
         let refused = serde_json::from_str::<Listing>(r#"{"listed":["/a","/etc","/b"]}"#)
@@ -471,8 +503,9 @@ mod a_brand_is_read_as_a_model_is {
     /// bound written on a field typed with it is still measured on the brand's text.
     #[test]
     fn a_brand_that_is_only_read_is_judged_and_still_measured_by_a_field() {
-        let inbound = |text: &str| Inbound {
-            text: text.to_owned(),
+        let inbound = |text: &str| {
+            Inbound::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap())
+                .unwrap()
         };
         assert_eq!(
             serde_json::from_str::<Inbound>(r#""abcdef""#).map_err(|refused| refused.to_string()),

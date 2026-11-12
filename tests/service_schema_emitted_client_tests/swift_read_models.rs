@@ -62,13 +62,13 @@ pub struct Decking {
 #[model_schema(pattern = "^[0-9]+$")]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Pin(pub String);
+pub struct Pin(String);
 
 /// A brand that names a check, which chooses none.
 #[model_schema(check = ["signetPressed"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Signet(pub String);
+pub struct Signet(String);
 
 /// An untagged enum whose variants one payload fits several of: a bound on a slot, a brand with a
 /// bound, a bound on a named member, a list and a map of models, and a model.
@@ -148,7 +148,7 @@ impl TrackingClientService<()> for TrackingBackEnd {
 }
 
 fn signet_pressed(value: &Signet) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a signet is pressed in upper case".to_owned()]);
     }
     Ok(())

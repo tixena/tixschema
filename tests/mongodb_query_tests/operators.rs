@@ -18,7 +18,7 @@ fn line_item() -> LineItem {
 #[test]
 fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
     let invoice = Invoice::MONGO_FIELDS;
-    let id = InvoiceId(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap());
+    let id = InvoiceId::new(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap()).unwrap();
     assert_eq!(
         shown(invoice.id().eq(id).unwrap()),
         r#"{ "_id": { "$eq": ObjectId(507f1f77bcf86cd799439011) } }"#

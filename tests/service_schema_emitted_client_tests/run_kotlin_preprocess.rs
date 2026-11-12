@@ -410,13 +410,13 @@ pub struct Pile(pub Vec<String>, pub u32);
 #[model_schema(preprocess = ["unwrapped", "trimmed"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Caption(pub String);
+pub struct Caption(String);
 
 /// A brand with a parameter.
 #[model_schema(default_types(IdType = String), preprocess = ["trimmed"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Inked<IdType>(pub IdType);
+pub struct Inked<IdType>(IdType);
 
 /// An enum of unit variants.
 #[model_schema(preprocess = ["unwrapped"])]

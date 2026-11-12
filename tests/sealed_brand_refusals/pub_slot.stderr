@@ -1,0 +1,5 @@
+error: model_schema: type `LabelText`: a brand is sealed: its slot takes no `pub`. Drop the visibility, build the brand with `LabelText::new` or `TryFrom`, and read it with `as_inner()` or `into_inner()`
+ --> tests/sealed_brand_refusals/pub_slot.rs:9:22
+  |
+9 | pub struct LabelText(pub String);
+  |                      ^^^

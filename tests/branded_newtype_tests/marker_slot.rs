@@ -30,12 +30,12 @@ mod beside_the_lone_slot {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct MarkedAfter(pub String, #[serde(skip)] pub PhantomData<u8>);
+    pub struct MarkedAfter(String, #[serde(skip)] PhantomData<u8>);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct MarkedBefore(#[serde(skip)] pub PhantomData<u8>, pub String);
+    pub struct MarkedBefore(#[serde(skip)] PhantomData<u8>, String);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -47,7 +47,7 @@ mod beside_the_lone_slot {
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct SlotAlone(pub String);
+    pub struct SlotAlone(String);
 
     /// What is written for the struct of one slot, under the names of the brand `pascal`, whose
     /// snake case is `snake` and whose camel case is `camel`.
@@ -67,8 +67,8 @@ mod beside_the_lone_slot {
 
     #[test]
     fn serde_writes_and_reads_the_slot_alone() {
-        let after = MarkedAfter("abc".to_owned(), PhantomData);
-        let before = MarkedBefore(PhantomData, "def".to_owned());
+        let after = MarkedAfter::new("abc".to_owned()).unwrap();
+        let before = MarkedBefore::new("def".to_owned()).unwrap();
         assert_eq!(
             serde_json::to_value(&after).unwrap(),
             serde_json::json!("abc")
@@ -78,12 +78,12 @@ mod beside_the_lone_slot {
             serde_json::json!("def")
         );
         assert_eq!(
-            serde_json::to_value(SlotAlone("abc".to_owned())).unwrap(),
+            serde_json::to_value(SlotAlone::new("abc".to_owned()).unwrap()).unwrap(),
             serde_json::to_value(&after).unwrap()
         );
         assert_eq!(
             serde_json::from_value::<SlotAlone>(serde_json::json!("def")).unwrap(),
-            SlotAlone("def".to_owned())
+            SlotAlone::new("def".to_owned()).unwrap()
         );
         assert_eq!(
             serde_json::from_value::<MarkedAfter>(serde_json::json!("abc")).unwrap(),
@@ -205,8 +205,8 @@ mod beside_the_lone_slot {
 
     #[test]
     fn each_is_displayed_as_the_slot_it_reads() {
-        assert_eq!(MarkedAfter("x".to_owned(), PhantomData).to_string(), "x");
-        assert_eq!(MarkedBefore(PhantomData, "y".to_owned()).to_string(), "y");
+        assert_eq!(MarkedAfter::new("x".to_owned()).unwrap().to_string(), "x");
+        assert_eq!(MarkedBefore::new("y".to_owned()).unwrap().to_string(), "y");
     }
 }
 
@@ -223,17 +223,17 @@ mod bounded_after_the_marker {
     #[model_schema(no_display, maxLength = 2)]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct CountedMarked(#[serde(skip)] pub PhantomData<u8>, pub Vec<String>);
+    pub struct CountedMarked(#[serde(skip)] PhantomData<u8>, Vec<String>);
 
     #[model_schema(minLength = 2, default_types(TextType = String))]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct FilledMarked<TextType>(#[serde(skip)] pub PhantomData<u8>, pub TextType);
+    pub struct FilledMarked<TextType>(#[serde(skip)] PhantomData<u8>, TextType);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct LooseMarked(#[serde(skip)] pub PhantomData<u8>, pub String);
+    pub struct LooseMarked(#[serde(skip)] PhantomData<u8>, String);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -245,21 +245,21 @@ mod bounded_after_the_marker {
     #[model_schema(minLength = 2)]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct ShortMarked(#[serde(skip)] pub PhantomData<u8>, pub String);
+    pub struct ShortMarked(#[serde(skip)] PhantomData<u8>, String);
 
     #[test]
     fn validate_measures_the_slot_serde_reads() {
         assert_eq!(
-            ShortMarked(PhantomData, "a".to_owned()).validate(),
+            ShortMarked::new("a".to_owned()).map(|_| ()),
             Err(vec![TOO_SHORT.to_owned()])
         );
-        assert_eq!(ShortMarked(PhantomData, "ab".to_owned()).validate(), Ok(()));
+        assert_eq!(ShortMarked::new("ab".to_owned()).map(|_| ()), Ok(()));
         assert_eq!(
-            FilledMarked::<String>(PhantomData, "a".to_owned()).validate(),
+            FilledMarked::<String>::new("a".to_owned()).map(|_| ()),
             Err(vec![TOO_SHORT.to_owned()])
         );
         assert_eq!(
-            CountedMarked(PhantomData, vec!["a".to_owned(); 3]).validate(),
+            CountedMarked::new(vec!["a".to_owned(); 3]).map(|_| ()),
             Err(vec!["too long: maximum length is 2, got 3".to_owned()])
         );
     }
@@ -268,7 +268,7 @@ mod bounded_after_the_marker {
     fn the_read_refuses_what_validate_refuses() {
         assert_eq!(
             serde_json::from_str::<ShortMarked>(r#""ab""#).unwrap(),
-            ShortMarked(PhantomData, "ab".to_owned())
+            ShortMarked::new("ab".to_owned()).unwrap()
         );
         for refused in [
             serde_json::from_str::<ShortMarked>(r#""a""#).unwrap_err(),
@@ -289,7 +289,7 @@ mod bounded_after_the_marker {
     fn a_bound_on_a_field_typed_with_it_measures_the_slot() {
         assert_eq!(
             LooseMarkedHolder {
-                slug: LooseMarked(PhantomData, "abcd".to_owned()),
+                slug: LooseMarked::new("abcd".to_owned()).unwrap(),
             }
             .validate(),
             Err(vec![

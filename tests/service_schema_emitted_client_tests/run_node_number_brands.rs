@@ -248,17 +248,17 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct WharfBerthNumber(pub u32);
+pub struct WharfBerthNumber(u32);
 
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct WharfTicketNumber(pub i64);
+pub struct WharfTicketNumber(i64);
 
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct WharfBerthLabel(pub String);
+pub struct WharfBerthLabel(String);
 
 #[model_schema()]
 pub type WharfBerthAlias = WharfBerthNumber;
@@ -336,14 +336,14 @@ impl WharfClientService<()> for WharfBackEnd {
         let joined: Vec<String> = berths
             .unwrap_or_default()
             .iter()
-            .map(|each| each.0.to_string())
+            .map(|each| each.into_inner().to_string())
             .collect();
         Ok(format!(
             "{}|{}|{}|{}|{}",
-            berth.0,
-            ticket.map_or(0, |each| each.0),
-            label.map_or_else(String::new, |each| each.0),
-            since.map_or(0, |each| each.0),
+            berth.as_inner(),
+            ticket.map_or(0, WharfTicketNumber::into_inner),
+            label.map_or_else(String::new, WharfBerthLabel::into_inner),
+            since.map_or(0, WharfBerthAlias::into_inner),
             joined.join(",")
         ))
     }
@@ -358,8 +358,13 @@ impl WharfClientService<()> for WharfBackEnd {
     ) -> Result<(String, WharfTicketNumber), WharfError> {
         ready(()).await;
         Ok((
-            format!("{note}|{}|{}|{}", berth.0, ticket.0, label.0),
-            WharfTicketNumber(ticket.0 + 1),
+            format!(
+                "{note}|{}|{}|{}",
+                berth.as_inner(),
+                ticket.as_inner(),
+                label.as_inner()
+            ),
+            WharfTicketNumber::new(ticket.as_inner() + 1).unwrap(),
         ))
     }
 }
@@ -385,9 +390,9 @@ impl WharfFilingClientService<()> for WharfBackEnd {
         }
         Ok(format!(
             "{}|{}|{}|{}",
-            berth.0,
-            ticket.0,
-            label.0,
+            berth.as_inner(),
+            ticket.as_inner(),
+            label.as_inner(),
             String::from_utf8(drained).unwrap()
         ))
     }

@@ -103,7 +103,7 @@ pub enum BoundTagged {
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct BoundBerth(pub u32);
+pub struct BoundBerth(u32);
 
 /// A message whose members a path reads as a number, a `bool`, an `i64`, a brand over a number and
 /// a list.
@@ -344,7 +344,7 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
             req.page_size,
             req.pinned,
             req.tally,
-            req.berth.map(|berth| berth.0)
+            req.berth.map(BoundBerth::into_inner)
         ))
     }
 
@@ -661,7 +661,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
 fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
     let client = RenamedPathBoundServiceClient::new(Dispatched::default());
     let answer = poll_once(client.typed(BoundTyped {
-        berth: Some(BoundBerth(12)),
+        berth: Some(BoundBerth::new(12_u32).unwrap()),
         label: "l".to_owned(),
         page_size: 7,
         pages: Vec::new(),

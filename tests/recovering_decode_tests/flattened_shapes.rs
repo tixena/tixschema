@@ -157,7 +157,7 @@ struct Newest(Option<Version>);
 
 /// A generic brand: serde reads it as whatever fills it.
 #[model_schema(enable = ["decode_with"], default_types(T = String))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Wrap<T>(T);
 
@@ -732,7 +732,7 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     );
 
     let outer = Outer {
-        body: Wrap(Version { number: 3_i32 }),
+        body: Wrap::new(Version { number: 3_i32 }).unwrap(),
         id: "i".to_owned(),
     };
     let outer_written = serde_json::to_value(&outer).unwrap();

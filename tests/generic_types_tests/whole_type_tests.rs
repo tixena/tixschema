@@ -513,7 +513,7 @@ mod wire {
     fn the_whole_type_writes_the_keys_its_schemas_describe() {
         let entry = ArchiveEntry::<String, f64, String, u32, String> {
             stamp: ArchiveStamp {
-                archive_id: ArchiveId("doc-1".to_owned()),
+                archive_id: ArchiveId::new("doc-1".to_owned()).unwrap(),
             },
             created_at: 1.5_f64,
             tags: vec!["a".to_owned()],
@@ -538,7 +538,7 @@ mod wire {
     fn the_generic_enums_write_the_shapes_their_schemas_describe() {
         assert_eq!(
             serde_json::to_value(ArchiveEvent::Created {
-                id: ArchiveId::<String>("doc-1".to_owned()),
+                id: ArchiveId::<String>::new("doc-1".to_owned()).unwrap(),
             })
             .unwrap(),
             serde_json::json!({ "kind": "created", "id": "doc-1" })
@@ -578,7 +578,7 @@ use tixschema::model_schema;
 #[model_schema(default_types(IdType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ArchiveId<IdType>(pub IdType);
+pub struct ArchiveId<IdType>(IdType);
 
 /// The level between the brand and the whole type, so the argument the entry supplies is forwarded
 /// twice before it reaches the brand that spends it.
@@ -692,7 +692,7 @@ pub struct TwoLoopedFillings {
 #[test]
 fn every_fixture_expands_in_this_build() {
     let stamp = ArchiveStamp {
-        archive_id: ArchiveId::<String>("doc-1".to_owned()),
+        archive_id: ArchiveId::<String>::new("doc-1".to_owned()).unwrap(),
     };
     let entry = ArchiveEntry::<String, f64, String, u32, String> {
         byte_size: None,

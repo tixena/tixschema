@@ -374,7 +374,7 @@ struct Placement {
 
 /// A brand over an id: serde writes it as the id it holds.
 #[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct OwnerId(ObjectId);
 
@@ -385,7 +385,7 @@ struct Wrapper(String);
 
 /// A brand whose own reader refuses text shorter than three characters.
 #[model_schema(enable = ["decode_with", "mongodb"], minLength = 3)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Code(String);
 
@@ -403,13 +403,13 @@ struct Pinned(Version);
 
 /// A brand over text.
 #[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct RecordId(String);
 
 /// A brand over another brand: serde writes it as the text the inner one holds.
 #[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct OwnerRef(RecordId);
 
@@ -436,7 +436,7 @@ struct Referenced {
 
 /// A `transparent` struct with a named field over an id: serde writes it as the id it holds.
 #[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Owner {
     id: ObjectId,
@@ -459,13 +459,13 @@ struct Assigned {
 
 /// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
 #[model_schema(enable = ["decode_with", "mongodb"], no_display)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Tags(Vec<String>, #[serde(skip)] u8);
 
 /// A `transparent` tuple struct whose value is its second slot, over an id.
 #[model_schema(enable = ["decode_with", "mongodb"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Keeper(#[serde(skip)] u8, ObjectId);
 
@@ -512,7 +512,7 @@ struct Plain {
 
 /// A generic brand.
 #[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Tagged<T>(T);
 
@@ -2117,9 +2117,9 @@ fn a_tuple_and_a_tuple_struct_stored_as_no_list_are_listed_at_the_value() {
 #[test]
 fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_them() {
     let labelled = Labelled {
-        owner: OwnerId(oid("6a7cc592ca0574e6efdfe217")),
+        owner: OwnerId::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
         ping: Ping,
-        pinned: Pinned(Version { number: 3 }),
+        pinned: Pinned::new(Version { number: 3 }).unwrap(),
         wrapper: Wrapper("w".to_owned()),
     };
     assert_eq!(
@@ -2200,7 +2200,7 @@ fn a_unit_struct_and_a_brand_over_a_model_type_are_read_from_a_document() {
         calls += 1;
         pinned_schema::Verdict::Reject
     });
-    assert_eq!(pinned, Ok(Pinned(Version { number: 3 })));
+    assert_eq!(pinned, Ok(Pinned::new(Version { number: 3 }).unwrap()));
     assert_eq!(calls, 0);
 
     let keyed = Ping::from_bson_with(doc! { "x": 1_i32 }, |_raw, _found| {
@@ -2249,9 +2249,9 @@ fn a_brand_over_a_model_type_hands_its_fields_walk_to_that_type() {
 #[test]
 fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_holds() {
     let referenced = Referenced {
-        owner: OwnerRef(RecordId("abc".to_owned())),
-        pair: PairRef(Pair("a".to_owned(), 1)),
-        status: StatusRef(Status::Draft),
+        owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
+        pair: PairRef::new(Pair("a".to_owned(), 1)).unwrap(),
+        status: StatusRef::new(Status::Draft).unwrap(),
     };
     let stored_row = written(&referenced);
     assert_eq!(
@@ -2301,12 +2301,8 @@ fn a_brand_over_text_and_a_tuple_struct_list_nothing_in_a_document_and_return_no
 #[test]
 fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_holds() {
     let assigned = Assigned {
-        current: Current {
-            version: Version { number: 3 },
-        },
-        owner: Owner {
-            id: oid("6a7cc592ca0574e6efdfe217"),
-        },
+        current: Current::new(Version { number: 3 }).unwrap(),
+        owner: Owner::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
     };
     assert_eq!(
         written(&assigned),
@@ -2394,12 +2390,7 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
         calls += 1;
         current_schema::Verdict::Reject
     });
-    assert_eq!(
-        current,
-        Ok(Current {
-            version: Version { number: 3 }
-        })
-    );
+    assert_eq!(current, Ok(Current::new(Version { number: 3 }).unwrap()));
     assert_eq!(calls, 0);
 
     let refused = Current::from_bson_with(doc! { "number": "3" }, |_raw, _found| {
@@ -2424,14 +2415,14 @@ fn a_transparent_struct_over_a_model_type_is_read_from_a_document_as_that_type()
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
     let filing = Filing {
-        keeper: Keeper(0, oid("6a7cc592ca0574e6efdfe217")),
-        stamped: Stamped(Version { number: 3 }, 0),
-        tags: Tags(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()], 0),
+        keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
+        stamped: Stamped::new(Version { number: 3 }).unwrap(),
+        tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
     };
     let stored = written(&Filing {
-        keeper: Keeper(9, oid("6a7cc592ca0574e6efdfe217")),
-        stamped: Stamped(Version { number: 3 }, 9),
-        tags: Tags(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()], 9),
+        keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
+        stamped: Stamped::new(Version { number: 3 }).unwrap(),
+        tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
     });
     assert_eq!(
         stored,
@@ -2533,7 +2524,7 @@ fn a_transparent_tuple_struct_over_a_model_type_is_read_from_a_document_as_that_
         calls += 1;
         stamped_schema::Verdict::Reject
     });
-    assert_eq!(stamped, Ok(Stamped(Version { number: 3 }, 0)));
+    assert_eq!(stamped, Ok(Stamped::new(Version { number: 3 }).unwrap()));
     assert_eq!(calls, 0);
 
     let refused = Stamped::from_bson_with(doc! { "number": "3" }, |_raw, _found| {
@@ -2577,7 +2568,7 @@ fn a_constrained_brand_is_refused_with_its_own_message() {
             coded_schema::Verdict::Reject
         }),
         Ok(Coded {
-            code: Code("abc".to_owned())
+            code: Code::new("abc".to_owned()).unwrap()
         })
     );
 }
@@ -2684,7 +2675,7 @@ fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
             items: vec![Version { number: 1 }],
             total: 1,
         },
-        tagged: Tagged(oid("6a7cc592ca0574e6efdfe217")),
+        tagged: Tagged::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
     };
     let mut calls = 0_u32;
     let read = Listing::from_bson_with(written(&listing), |_raw, _found| {

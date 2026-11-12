@@ -67,7 +67,7 @@ mod tests {
             (
                 "keywords",
                 "pattern",
-                "Keywords",
+                "__tixschema_sealed_keywords_schema::Keywords",
                 "this type holds no string for the bound to measure",
                 "    pub keywords: Keywords,",
             ),
@@ -95,7 +95,7 @@ mod tests {
         let errors = errors_of("length_on_a_later_brand");
         let refusals: Vec<&Reported> = errors
             .iter()
-            .filter(|error| error.source == "pub struct Behind(pub Vec<String>);")
+            .filter(|error| error.source == "pub struct Behind(Vec<String>);")
             .collect();
         assert_eq!(
             refusals.len(),

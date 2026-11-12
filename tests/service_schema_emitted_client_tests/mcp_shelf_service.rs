@@ -17,7 +17,7 @@ use tixschema::{model_schema, service_schema};
 #[model_schema(enable = ["jsonschema"], maxLength = 4)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct ShelfLabel(pub String);
+pub struct ShelfLabel(String);
 
 /// Keeps goods in the slots of aisles.
 #[service_schema(transports = ["mcp"])]
@@ -73,7 +73,7 @@ impl ShelfService<()> for Shelves {
         aisle: ShelfLabel,
         slot: String,
     ) -> impl Future<Output = Result<String, BookError>> {
-        ready(Ok(format!("{}/{slot}", aisle.0)))
+        ready(Ok(format!("{}/{slot}", aisle.as_inner())))
     }
 
     fn suggest_slots(
@@ -82,7 +82,7 @@ impl ShelfService<()> for Shelves {
         typed: ShelfLabel,
         _chosen: HashMap<String, String>,
     ) -> impl Future<Output = Result<Vec<String>, BookError>> {
-        ready(Ok(vec![typed.0]))
+        ready(Ok(vec![typed.into_inner()]))
     }
 }
 

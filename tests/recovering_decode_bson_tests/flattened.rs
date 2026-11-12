@@ -506,7 +506,7 @@ struct Paper {
 
 /// A generic brand filled with a struct, flattened.
 #[model_schema(enable = ["decode_with", "mongodb"], default_types(T = String))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Wrap<T>(T);
 
@@ -1585,7 +1585,7 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     );
 
     let outer = Outer {
-        body: Wrap(Version { number: 3_i32 }),
+        body: Wrap::new(Version { number: 3_i32 }).unwrap(),
         id: "i".to_owned(),
     };
     assert_eq!(written(&outer), doc! { "number": 3_i32, "id": "i" });
@@ -1728,13 +1728,14 @@ fn a_flattened_id_reads_what_serde_wrote_with_no_call() {
 #[test]
 fn a_flattened_option_not_seen_that_is_absent_is_no_issue() {
     reads_what_serde_wrote(&Pocket {
-        body: Wrap(None),
+        body: Wrap::new(None).unwrap(),
         id: "i".to_owned(),
     });
     reads_what_serde_wrote(&Pocket {
-        body: Wrap(Some(Body {
+        body: Wrap::new(Some(Body {
             text: "t".to_owned(),
-        })),
+        }))
+        .unwrap(),
         id: "i".to_owned(),
     });
     reads_what_serde_wrote(&DirectMaybe {

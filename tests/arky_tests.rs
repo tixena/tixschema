@@ -47,7 +47,7 @@ mod tests {
     #[model_schema(enable = ["arky"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Sku(pub String);
+    pub struct Sku(String);
 
     fn note() -> Note {
         Note {
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn a_brand_converts_to_the_value_it_wraps() {
-        let sku = Sku("SKU-7".to_owned());
+        let sku = Sku::new("SKU-7".to_owned()).unwrap();
         let value = Value::try_from(&sku).unwrap();
         assert_eq!(value, text("SKU-7"));
         assert_eq!(Sku::try_from(&value).unwrap(), sku);

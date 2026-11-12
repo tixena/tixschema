@@ -181,15 +181,15 @@ fn each_model_is_written_as_serde_writes_it() {
             shifted.to_owned(),
         ),
         (
-            read_back(&Daybook(once("d".to_owned()))),
+            read_back(&Daybook::new(once("d".to_owned())).unwrap()),
             r#"{"2024-01-02T03:04:05.678Z":"d"}"#.to_owned(),
         ),
         (
-            read_back(&Chronicle { by_at: once(3) }),
+            read_back(&Chronicle::new(once(3)).unwrap()),
             r#"{"2024-01-02T03:04:05.678Z":3}"#.to_owned(),
         ),
         (
-            read_back(&Diary(HashMap::from([(second(), "d".to_owned())]))),
+            read_back(&Diary::new(HashMap::from([(second(), "d".to_owned())])).unwrap()),
             r#"{"2024-02-29T12:00:00.100Z":"d"}"#.to_owned(),
         ),
     ] {
@@ -205,11 +205,11 @@ fn a_date_of_whole_seconds_or_finer_than_milliseconds_is_written_as_chrono_write
     let whole = DateTime::from_timestamp(1_704_164_645, 0).unwrap();
     let finer = DateTime::from_timestamp(1_704_164_645, 678_901_000).unwrap();
     assert_eq!(
-        read_back(&Daybook(HashMap::from([(whole, "d".to_owned())]))),
+        read_back(&Daybook::new(HashMap::from([(whole, "d".to_owned())])).unwrap()),
         r#"{"2024-01-02T03:04:05Z":"d"}"#
     );
     assert_eq!(
-        read_back(&Daybook(HashMap::from([(finer, "d".to_owned())]))),
+        read_back(&Daybook::new(HashMap::from([(finer, "d".to_owned())])).unwrap()),
         r#"{"2024-01-02T03:04:05.678901Z":"d"}"#
     );
 }
@@ -525,7 +525,7 @@ fn a_list_or_an_optional_of_maps_keyed_by_a_date_hands_on_each_storage_with_no_t
         r#"{"listed":[],"listed_or_none":[],"maybe_listed":[{"2024-01-02T03:04:05.678Z":"t"}]}"#
     );
     assert_eq!(
-        read_back(&Daybooks(vec![once("d".to_owned())])),
+        read_back(&Daybooks::new(vec![once("d".to_owned())]).unwrap()),
         r#"[{"2024-01-02T03:04:05.678Z":"d"}]"#
     );
     for (swift, held, parameter) in [

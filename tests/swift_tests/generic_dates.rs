@@ -49,8 +49,8 @@ pub struct Voyage<Stowed> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Landfall<Stowed> {
-    pub at: DateTime<Utc>,
-    pub marker: PhantomData<Stowed>,
+    at: DateTime<Utc>,
+    marker: PhantomData<Stowed>,
 }
 
 /// A tuple struct of a date and the parameter.
@@ -169,10 +169,7 @@ fn each_model_is_written_as_serde_writes_it() {
         r#"{"at":"2024-01-02T03:04:05.678Z","at_millis":1709208000100,"held":"a","marks":["2024-01-02T03:04:05.678Z","2024-02-29T12:00:00.100Z"],"seen":"2024-02-29T12:00:00.100Z"}"#
     );
     assert_eq!(
-        read_back(&Landfall::<String> {
-            at: first,
-            marker: PhantomData,
-        }),
+        read_back(&Landfall::<String>::new(first).unwrap()),
         r#""2024-01-02T03:04:05.678Z""#
     );
     assert_eq!(

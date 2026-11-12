@@ -551,7 +551,7 @@ pub enum Speed {
 #[model_schema(default_types(IdType = String), preprocess = ["trimmed"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Mark<IdType>(pub IdType);
+pub struct Mark<IdType>(IdType);
 
 /// A class whose function reads a text as an object.
 #[model_schema(preprocess = ["labelled"])]

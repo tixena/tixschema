@@ -14,21 +14,21 @@ mod a_length_on_a_brand_over_a_list {
     #[model_schema(no_display, minLength = 1, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct NameConfig(pub Vec<ListPart>);
+    pub struct NameConfig(Vec<ListPart>);
 
     /// The named form, over a slice behind a `Box`.
     #[model_schema(no_display, minLength = 1, maxLength = 2, enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
     pub struct Shelf {
-        pub rows: Box<[String]>,
+        rows: Box<[String]>,
     }
 
     /// A brand that declares a type parameter and holds a list of it.
     #[model_schema(no_display, maxLength = 2, default_types(T = String), enable = ["jsonschema"])]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Batch<T>(pub Vec<T>);
+    pub struct Batch<T>(Vec<T>);
 
     #[model_schema()]
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -50,31 +50,35 @@ mod a_length_on_a_brand_over_a_list {
     #[test]
     fn validate_counts_the_list_the_brand_holds() {
         assert_eq!(
-            NameConfig(Vec::new()).validate().unwrap_err(),
+            NameConfig::new(Vec::new()).map(|_| ()).unwrap_err(),
             vec!["too short: minimum length is 1, got 0"]
         );
-        assert_eq!(NameConfig(parts(4)).validate(), Ok(()));
+        assert_eq!(NameConfig::new(parts(4)).map(|_| ()), Ok(()));
 
-        let shelf = |rows: &[&str]| Shelf {
-            rows: rows.iter().map(|row| (*row).to_owned()).collect(),
+        let shelf = |rows: &[&str]| {
+            Shelf::new(
+                rows.iter()
+                    .map(|row| (*row).to_owned())
+                    .collect::<Box<[String]>>(),
+            )
         };
         assert_eq!(
-            shelf(&[]).validate().unwrap_err(),
+            shelf(&[]).map(|_| ()).unwrap_err(),
             vec!["too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            shelf(&["a", "b", "c"]).validate().unwrap_err(),
+            shelf(&["a", "b", "c"]).map(|_| ()).unwrap_err(),
             vec!["too long: maximum length is 2, got 3"]
         );
         assert_eq!(
-            shelf(&["a row of any length", ""]).validate(),
+            shelf(&["a row of any length", ""]).map(|_| ()),
             Ok(()),
             "no row is measured"
         );
 
         assert_eq!(
-            Batch(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()])
-                .validate()
+            Batch::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()])
+                .map(|_| ())
                 .unwrap_err(),
             vec!["too long: maximum length is 2, got 3"]
         );
@@ -91,9 +95,10 @@ mod a_length_on_a_brand_over_a_list {
         );
         assert_eq!(
             serde_json::from_str::<NameConfig>(r#"[{"value":"a"}]"#).unwrap(),
-            NameConfig(vec![ListPart {
+            NameConfig::new(vec![ListPart {
                 value: "a".to_owned()
             }])
+            .unwrap()
         );
         assert_eq!(
             serde_json::from_str::<Shelf>(r#"["a","b","c"]"#)
@@ -110,7 +115,7 @@ mod a_length_on_a_brand_over_a_list {
         );
         assert_eq!(
             serde_json::from_str::<Batch<u32>>("[1,2]").unwrap(),
-            Batch(vec![1, 2])
+            Batch::new(vec![1, 2]).unwrap()
         );
     }
 
@@ -124,8 +129,14 @@ mod a_length_on_a_brand_over_a_list {
             "'name_config': too short: minimum length is 1, got 0"
         );
         let built = Template {
-            name_config: NameConfig(Vec::new()),
-            shelf: Some(Shelf { rows: Box::new([]) }),
+            name_config: NameConfig::model_schema_read_unjudged(
+                &mut serde_json::Deserializer::from_str("[]"),
+            )
+            .unwrap(),
+            shelf: Some(
+                Shelf::model_schema_read_unjudged(&mut serde_json::Deserializer::from_str("[]"))
+                    .unwrap(),
+            ),
         };
         assert_eq!(
             built.validate().unwrap_err(),
@@ -203,7 +214,7 @@ mod a_length_through_a_name {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Keywords(pub Vec<String>);
+    pub struct Keywords(Vec<String>);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -217,12 +228,12 @@ mod a_length_through_a_name {
     #[model_schema(no_display, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct LaterKeywords(pub Vec<String>);
+    pub struct LaterKeywords(Vec<String>);
 
     #[model_schema(no_display, minLength = 1, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct SomeKeywords(pub Keywords);
+    pub struct SomeKeywords(Keywords);
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -234,7 +245,7 @@ mod a_length_through_a_name {
     #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>), enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Held<T>(pub T);
+    pub struct Held<T>(T);
 
     fn words(count: usize) -> Vec<String> {
         vec!["w".to_owned(); count]
@@ -242,8 +253,8 @@ mod a_length_through_a_name {
 
     fn article(keywords: usize, below: usize) -> Article {
         Article {
-            keywords: Keywords(words(keywords)),
-            below: LaterKeywords(words(below)),
+            keywords: Keywords::new(words(keywords)).unwrap(),
+            below: LaterKeywords::new(words(below)).unwrap(),
         }
     }
 
@@ -280,10 +291,15 @@ mod a_length_through_a_name {
     #[test]
     fn a_brand_over_a_brand_over_a_list_takes_the_two_lengths_on_the_type() {
         assert_eq!(
-            SomeKeywords(Keywords(Vec::new())).validate().unwrap_err(),
+            SomeKeywords::new(Keywords::new(Vec::new()).unwrap())
+                .map(|_| ())
+                .unwrap_err(),
             vec!["too short: minimum length is 1, got 0"]
         );
-        assert_eq!(SomeKeywords(Keywords(words(2))).validate(), Ok(()));
+        assert_eq!(
+            SomeKeywords::new(Keywords::new(words(2)).unwrap()).map(|_| ()),
+            Ok(())
+        );
         assert_eq!(
             serde_json::from_str::<SomeKeywords>("[]")
                 .unwrap_err()
@@ -291,7 +307,7 @@ mod a_length_through_a_name {
             "too short: minimum length is 1, got 0"
         );
         let collected = |count| Collected {
-            some: SomeKeywords(Keywords(words(count))),
+            some: SomeKeywords::new(Keywords::new(words(count)).unwrap()).unwrap(),
         };
         assert_eq!(
             collected(3).validate().unwrap_err(),
@@ -303,10 +319,10 @@ mod a_length_through_a_name {
     #[test]
     fn a_generic_brand_whose_default_is_a_list_counts_the_default_filling() {
         assert_eq!(
-            Held(Vec::<String>::new()).validate().unwrap_err(),
+            Held::new(Vec::<String>::new()).map(|_| ()).unwrap_err(),
             vec!["too short: minimum length is 1, got 0"]
         );
-        assert_eq!(Held(words(1)).validate(), Ok(()));
+        assert_eq!(Held::new(words(1)).map(|_| ()), Ok(()));
         assert_eq!(
             serde_json::from_str::<Held<Vec<String>>>("[]")
                 .unwrap_err()
@@ -382,7 +398,7 @@ mod a_length_through_an_alias_of_an_index_set {
     #[model_schema(no_display, minLength = 1, enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct SomeQueue(pub Queue);
+    pub struct SomeQueue(Queue);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -400,7 +416,8 @@ mod a_length_through_an_alias_of_an_index_set {
     fn roster(queued: usize, some: usize) -> Roster {
         Roster {
             queue: queue(queued),
-            some: SomeQueue(queue(some)),
+            some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(queue(some)).unwrap())
+                .unwrap(),
         }
     }
 
@@ -422,7 +439,7 @@ mod a_length_through_an_alias_of_an_index_set {
             ]
         );
         assert_eq!(
-            SomeQueue(queue(0)).validate().unwrap_err(),
+            SomeQueue::new(queue(0)).map(|_| ()).unwrap_err(),
             vec!["too short: minimum length is 1, got 0"]
         );
     }
@@ -452,7 +469,7 @@ mod a_length_through_an_alias_of_an_index_set {
             serde_json::from_str::<Roster>(r#"{"queue":["a"],"some":["a"]}"#).unwrap(),
             Roster {
                 queue: IndexSet::from(["a".to_owned()]),
-                some: SomeQueue(IndexSet::from(["a".to_owned()])),
+                some: SomeQueue::new(IndexSet::from(["a".to_owned()])).unwrap(),
             }
         );
     }

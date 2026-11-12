@@ -47,7 +47,7 @@ pub struct Gauge {
 #[model_schema(check = ["value"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Stamp(pub String);
+pub struct Stamp(String);
 
 /// A second type whose check shares its name with one of its members.
 #[model_schema(check = ["tag"])]
@@ -169,7 +169,7 @@ fn validate(value: &Gauge) -> Result<(), Vec<String>> {
 }
 
 fn value(value: &Stamp) -> Result<(), Vec<String>> {
-    if value.0.is_empty() {
+    if value.as_inner().is_empty() {
         return refused("a stamp is not empty");
     }
     Ok(())
@@ -324,7 +324,10 @@ fn variant_and_member_rows() -> Vec<Row> {
 
 fn emitted_member_rows() -> Vec<Row> {
     let (small, large) = (Gauge { size: 3 }, Gauge { size: 10 });
-    let (stamped, blank) = (Stamp("a".to_owned()), Stamp(String::new()));
+    let (stamped, blank) = (
+        Stamp::new("a".to_owned()).unwrap(),
+        Stamp::model_schema_read_unjudged(serde_json::to_value(String::new()).unwrap()).unwrap(),
+    );
     let (crate_y, crate_x) = (named("y"), named("x"));
     let (sized, empty) = (Plain { size: 1 }, Plain { size: 0 });
     vec![

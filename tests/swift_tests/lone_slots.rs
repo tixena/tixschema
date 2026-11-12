@@ -239,9 +239,10 @@ fn a_flattened_struct_of_one_slot_and_brand_join_their_keys_to_the_holder() {
         monikers_by_name: HashMap::new(),
         stacks: Vec::new(),
         stacks_by_name: HashMap::new(),
-        twined: Twined(Twine {
+        twined: Twined::new(Twine {
             twine: "t".to_owned(),
-        }),
+        })
+        .unwrap(),
     };
     let written = read_back(&laden);
     for key in [r#"{"label":"l","#, r#""count":2,"#, r#""twine":"t"}"#] {
@@ -273,7 +274,7 @@ fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
     assert_eq!(
         read_back(&Girthed {
             count: 1,
-            girth: Girth(Sling::Slack),
+            girth: Girth::new(Sling::Slack).unwrap(),
         }),
         r#"{"count":1,"Slack":null}"#
     );

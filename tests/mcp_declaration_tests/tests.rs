@@ -643,7 +643,7 @@ fn the_stand_in_serves_every_operation_of_every_service() {
     answered(DocumentService::lookup(
         &Archive,
         &ctx,
-        DocumentId("doc-1".to_owned()),
+        DocumentId::new("doc-1".to_owned()).unwrap(),
     ))
     .unwrap_err();
     answered(DocumentService::touch_document(
@@ -678,7 +678,7 @@ fn a_value_each_message_writes_passes_the_schema_the_tool_lists() {
     })
     .unwrap();
     let answer = serde_json::to_value(VersionResponse { version: 7 }).unwrap();
-    let identifier = serde_json::to_value(DocumentId("doc-1".to_owned())).unwrap();
+    let identifier = serde_json::to_value(DocumentId::new("doc-1".to_owned()).unwrap()).unwrap();
     let error = serde_json::to_value(VersionError::NotFound).unwrap();
     assert_eq!(error, json!({ "errorCode": "not-found" }));
     for (tool, instance, field) in [

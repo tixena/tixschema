@@ -113,7 +113,7 @@ pub enum ReceivedAt {
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Sku(pub String);
+pub struct Sku(String);
 
 #[model_schema(default_types(ItemType = String))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,8 +268,8 @@ fn test_every_declared_type_is_constructible() {
     let received_ats = [ReceivedAt::Epoch(0), ReceivedAt::Iso(String::new())];
     assert_eq!(received_ats.len(), 2);
 
-    let sku = Sku(String::new());
-    assert_eq!(sku.0, "");
+    let sku = Sku::new(String::new()).unwrap();
+    assert_eq!(sku.as_inner(), "");
 
     let page = Page {
         items: vec!["a".to_owned()],
@@ -646,7 +646,7 @@ fn test_branded_newtype_wraps_the_inner_value() {
 #[test]
 #[cfg(feature = "serde")]
 fn test_branded_newtype_wire_shape_is_the_bare_inner_value() {
-    let value = serde_json::to_value(Sku("ABC-123".to_owned())).unwrap();
+    let value = serde_json::to_value(Sku::new("ABC-123".to_owned()).unwrap()).unwrap();
     assert_eq!(value, serde_json::json!("ABC-123"));
 }
 

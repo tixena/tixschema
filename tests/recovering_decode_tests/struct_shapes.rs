@@ -50,13 +50,13 @@ struct Loose(
 
 /// A brand: serde writes it as the text it holds.
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct RecordId(String);
 
 /// A brand over another brand: serde writes it as the text the inner one holds.
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct OwnerRef(RecordId);
 
@@ -81,7 +81,7 @@ struct Wrapper(String);
 
 /// A brand whose own reader refuses text shorter than three characters.
 #[model_schema(enable = ["decode_with"], minLength = 3)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Code(String);
 
@@ -109,7 +109,7 @@ struct Latest(Option<Version>);
 
 /// A `transparent` struct with a named field: serde writes it as the text the field holds.
 #[model_schema(enable = ["decode_with", "jsonschema"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Slug {
     text: String,
@@ -133,7 +133,7 @@ struct Revisions {
 
 /// A `transparent` struct beside whose field is one serde neither writes nor reads.
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Cached {
     #[serde(skip)]
@@ -143,10 +143,10 @@ struct Cached {
 
 /// A `transparent` struct whose field is read and written through a hook: a number as text.
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Counted {
-    #[serde(with = "super::as_text")]
+    #[serde(with = "crate::tests::as_text")]
     count: u32,
 }
 
@@ -166,13 +166,13 @@ struct Etched {
 
 /// A `transparent` tuple struct beside whose value is a slot serde neither writes nor reads.
 #[model_schema(enable = ["decode_with"], no_display)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Tags(Vec<String>, #[serde(skip)] u8);
 
 /// A `transparent` tuple struct whose value is its second slot.
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Measured(#[serde(skip)] u8, String);
 
@@ -257,40 +257,31 @@ fn placement() -> Placement {
 
 fn labelled() -> Labelled {
     Labelled {
-        history: History(vec![Version { number: 1 }]),
-        id: RecordId("r-1".to_owned()),
+        history: History::new(vec![Version { number: 1 }]).unwrap(),
+        id: RecordId::new("r-1".to_owned()).unwrap(),
         kept: Kept(Version { number: 2 }),
         latest: Latest(None),
         ping: Ping,
-        pinned: Pinned(Version { number: 3 }),
+        pinned: Pinned::new(Version { number: 3 }).unwrap(),
         wrapper: Wrapper("w".to_owned()),
     }
 }
 
 fn titled() -> Titled {
     Titled {
-        cached: Cached {
-            hits: 0,
-            text: "c".to_owned(),
-        },
-        counted: Counted { count: 5 },
-        current: Current {
-            version: Version { number: 1 },
-        },
-        revisions: Revisions {
-            versions: vec![Version { number: 2 }],
-        },
-        slug: Slug {
-            text: "s".to_owned(),
-        },
+        cached: Cached::new("c".to_owned()).unwrap(),
+        counted: Counted::new(5_u32).unwrap(),
+        current: Current::new(Version { number: 1 }).unwrap(),
+        revisions: Revisions::new(vec![Version { number: 2 }]).unwrap(),
+        slug: Slug::new("s".to_owned()).unwrap(),
     }
 }
 
 fn filed() -> Filed {
     Filed {
-        measured: Measured(0, "m".to_owned()),
-        stamped: Stamped(Version { number: 1 }, 0),
-        tags: Tags(vec!["a".to_owned(), "b".to_owned()], 0),
+        measured: Measured::new("m".to_owned()).unwrap(),
+        stamped: Stamped::new(Version { number: 1 }).unwrap(),
+        tags: Tags::new(vec!["a".to_owned(), "b".to_owned()]).unwrap(),
     }
 }
 
@@ -608,7 +599,10 @@ fn a_brand_over_another_brand_is_read_as_the_value_the_inner_one_holds() {
         calls += 1;
         owner_ref_schema::Verdict::Reject
     });
-    assert_eq!(read.ok(), Some(OwnerRef(RecordId("abc".to_owned()))));
+    assert_eq!(
+        read.ok(),
+        Some(OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap())
+    );
     assert_eq!(calls, 0);
 
     let refused = OwnerRef::from_value_with(json!(5_i32), |_raw, _found| {
@@ -626,8 +620,8 @@ fn a_brand_over_another_brand_is_read_as_the_value_the_inner_one_holds() {
 fn a_brand_over_a_tuple_struct_walks_as_that_tuple_struct() {
     let mut calls = 0_u32;
     let referenced = Referenced {
-        owner: OwnerRef(RecordId("abc".to_owned())),
-        pair: PairRef(Pair("a".to_owned(), 1)),
+        owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
+        pair: PairRef::new(Pair("a".to_owned(), 1)).unwrap(),
     };
     let written = serde_json::to_value(&referenced).unwrap();
     assert_eq!(written, json!({ "owner": "abc", "pair": ["a", 1_i32] }));
@@ -691,7 +685,7 @@ fn a_constrained_brand_is_refused_with_its_own_message() {
     );
     assert_eq!(
         Code::from_value_with(json!("abc"), |_raw, _found| code_schema::Verdict::Reject),
-        Ok(Code("abc".to_owned()))
+        Ok(Code::new("abc".to_owned()).unwrap())
     );
 }
 
@@ -746,9 +740,7 @@ fn a_single_slot_struct_over_a_model_type_hands_its_fields_walk_to_that_type() {
 #[test]
 fn what_serde_wrote_for_a_transparent_struct_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
-    let slug = Slug {
-        text: "x".to_owned(),
-    };
+    let slug = Slug::new("x".to_owned()).unwrap();
     let written = serde_json::to_value(&slug).unwrap();
     assert_eq!(written, json!("x"));
     let read = Slug::from_value_with(written, |_raw, _found| {
@@ -948,10 +940,10 @@ fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_
 #[test]
 fn what_serde_wrote_for_a_transparent_tuple_struct_is_read_and_the_decider_never_runs() {
     let tags = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
-    let written = serde_json::to_value(Tags(tags.clone(), 9)).unwrap();
+    let written = serde_json::to_value(Tags::new(tags.clone()).unwrap()).unwrap();
     assert_eq!(written, json!(["a", "b", "c"]));
     let plain: Tags = serde_json::from_value(written.clone()).unwrap();
-    assert_eq!(plain, Tags(tags, 0));
+    assert_eq!(plain, Tags::new(tags).unwrap());
     let mut calls = 0_u32;
     let read = Tags::from_value_with(written, |_raw, _found| {
         calls += 1;
@@ -1005,10 +997,10 @@ fn a_value_a_transparent_tuple_struct_refuses_is_one_issue_at_the_path_the_struc
 
 #[test]
 fn a_transparent_tuple_struct_is_read_as_its_value_wherever_the_slot_is_written() {
-    let written = serde_json::to_value(Measured(9, "m".to_owned())).unwrap();
+    let written = serde_json::to_value(Measured::new("m".to_owned()).unwrap()).unwrap();
     assert_eq!(written, json!("m"));
     let plain: Measured = serde_json::from_value(written.clone()).unwrap();
-    assert_eq!(plain, Measured(0, "m".to_owned()));
+    assert_eq!(plain, Measured::new("m".to_owned()).unwrap());
     let mut calls = 0_u32;
     let read = Measured::from_value_with(written, |_raw, _found| {
         calls += 1;
@@ -1079,7 +1071,7 @@ fn a_transparent_tuple_struct_over_a_model_type_walks_as_that_type() {
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_slot_serde_reads_past_a_default_and_a_marker() {
-    let written = serde_json::to_value(Marked::<u8>(PhantomData, "m".to_owned(), 3)).unwrap();
+    let written = serde_json::to_value(Marked::<u8>::new("m".to_owned(), 3).unwrap()).unwrap();
     assert_eq!(written, json!("m"));
     let plain: Marked<u8> = serde_json::from_value(written.clone()).unwrap();
     assert_eq!(plain, Marked(PhantomData, "m".to_owned(), 0));

@@ -166,7 +166,7 @@ pub enum Handover {
 #[model_schema(preprocess = ["unwrapped", "trimmed"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Label(pub String);
+pub struct Label(String);
 
 /// The type that holds the parcel of the documents under a key.
 #[model_schema()]

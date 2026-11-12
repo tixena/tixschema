@@ -178,17 +178,21 @@ fn struct_and_brand_rows() -> Vec<Row> {
                 by_stowed: keyed([7_u32, 8], &1_u32),
             },
         ),
-        read_row("a brand", "Datebook", &Datebook(days)),
-        read_row("an empty brand", "Datebook", &Datebook(HashMap::new())),
+        read_row("a brand", "Datebook", &Datebook::new(days).unwrap()),
+        read_row(
+            "an empty brand",
+            "Datebook",
+            &Datebook::new(HashMap::new()).unwrap(),
+        ),
         read_row(
             "a brand with a named member",
             "Hourbook",
-            &Hourbook { hours },
+            &Hourbook::new(hours).unwrap(),
         ),
         read_row(
             "a brand that declares a parameter",
             "Logsheet<String>",
-            &Logsheet(moments),
+            &Logsheet::new(moments).unwrap(),
         ),
     ]
 }

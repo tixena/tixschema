@@ -35,7 +35,7 @@ pub struct BalanceResponse {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct DocumentId(pub String);
+pub struct DocumentId(String);
 
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -500,8 +500,8 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         _ctx: &Ctx,
         id: DocumentId,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        self.reach(format!("lookup-document {}", id.0));
-        ready(Self::version_of(&id.0))
+        self.reach(format!("lookup-document {}", id.as_inner()));
+        ready(Self::version_of(id.as_inner()))
     }
 
     fn rename_document(

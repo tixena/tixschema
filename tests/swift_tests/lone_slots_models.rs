@@ -166,7 +166,7 @@ pub struct Twine {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Twined(pub Twine);
+pub struct Twined(Twine);
 
 /// A struct of one slot over a text, a number, a model and a list, each under a key, in a list, as
 /// a map's value and as a type argument, and the one over a model flattened beside a flattened
@@ -211,7 +211,7 @@ pub struct Slung(pub Sling);
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Girth(pub Sling);
+pub struct Girth(Sling);
 
 /// [`Slung`] flattened beside a member of its holder's own.
 #[model_schema()]

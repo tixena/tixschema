@@ -38,13 +38,13 @@ struct CatalogByItem {
 
 /// A brand over an id: serde writes it as the id it holds.
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct OwnerId(ObjectId);
 
 /// A generic brand, which holds whatever fills its parameter.
 #[model_schema(enable = ["decode_with"], default_types(T = String))]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 struct Tagged<T>(T);
 
@@ -430,8 +430,8 @@ fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
     assert_eq!(
         read,
         Ok(Owned {
-            owner: OwnerId(ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap()),
-            tagged: Tagged(ObjectId::parse_str("6a7cc592ca0574e6efdfe218").unwrap()),
+            owner: OwnerId::new(ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap()).unwrap(),
+            tagged: Tagged::new(ObjectId::parse_str("6a7cc592ca0574e6efdfe218").unwrap()).unwrap(),
         })
     );
 

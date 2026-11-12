@@ -9,17 +9,17 @@ mod measured_through_the_inner_brand {
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Strand(pub String);
+    pub struct Strand(String);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Braid(pub Strand);
+    pub struct Braid(Strand);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Cord(pub Braid);
+    pub struct Cord(Braid);
 
     #[model_schema(enable = ["jsonschema"])]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,9 +35,9 @@ mod measured_through_the_inner_brand {
 
     fn held(badge: &str, medal: &str, spare: Option<&str>) -> CordHolder {
         CordHolder {
-            badge: Braid(Strand(badge.to_owned())),
-            medal: Cord(Braid(Strand(medal.to_owned()))),
-            spare: spare.map(|text| Braid(Strand(text.to_owned()))),
+            badge: Braid::new(Strand::new(badge.to_owned()).unwrap()).unwrap(),
+            medal: Cord::new(Braid::new(Strand::new(medal.to_owned()).unwrap()).unwrap()).unwrap(),
+            spare: spare.map(|text| Braid::new(Strand::new(text.to_owned()).unwrap()).unwrap()),
         }
     }
 

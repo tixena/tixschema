@@ -40,49 +40,49 @@ const BROKEN_SIGNAL: &str = r#"{"True":1}"#;
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Dinghy(pub i16);
+pub struct Dinghy(i16);
 
 /// A brand over a `u8` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Sloop(pub u8);
+pub struct Sloop(u8);
 
 /// A brand over a `u16` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Cutter(pub u16);
+pub struct Cutter(u16);
 
 /// A brand over a `u32` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Burgee(pub u32);
+pub struct Burgee(u32);
 
 /// A brand over an `i8` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Skiff(pub i8);
+pub struct Skiff(i8);
 
 /// A brand over an `i32` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Ketch(pub i32);
+pub struct Ketch(i32);
 
 /// A brand over an `i64` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Yawl(pub i64);
+pub struct Yawl(i64);
 
 /// A brand over an `f64` a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Gauge(pub f64);
+pub struct Gauge(f64);
 
 impl Eq for Gauge {}
 
@@ -94,7 +94,7 @@ impl PartialOrd for Gauge {
 
 impl Ord for Gauge {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.total_cmp(&other.0)
+        self.as_inner().total_cmp(other.as_inner())
     }
 }
 
@@ -102,13 +102,13 @@ impl Ord for Gauge {
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Signal(pub bool);
+pub struct Signal(bool);
 
 /// A brand over a brand over a number a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Lanyard(pub Burgee);
+pub struct Lanyard(Burgee);
 
 /// An alias of a number a map is keyed by.
 #[model_schema()]
@@ -122,7 +122,7 @@ pub type Beacon = bool;
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Rudder(pub Hull);
+pub struct Rudder(Hull);
 
 /// An alias of a brand over a number a map is keyed by.
 #[model_schema()]

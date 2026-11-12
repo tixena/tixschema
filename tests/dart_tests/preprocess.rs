@@ -67,13 +67,13 @@ pub struct Stack(
 #[model_schema(preprocess = ["unwrapped", "trimmed"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Label(pub String);
+pub struct Label(String);
 
 /// A brand with a parameter.
 #[model_schema(default_types(IdType = String), preprocess = ["unwrapped"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Tag<IdType>(pub IdType);
+pub struct Tag<IdType>(IdType);
 
 /// A type with a parameter.
 #[model_schema(default_types(CodeType = String), preprocess = ["unwrapped"])]
@@ -335,8 +335,8 @@ fn every_declared_type_is_constructible() {
     assert_eq!(serde_json::to_string(&ClosedDock).unwrap(), "{}");
     let stack = Stack("a".to_owned(), 2);
     assert_eq!((stack.0.as_str(), stack.1), ("a", 2));
-    assert_eq!(Label("A".to_owned()).0, "A");
-    assert_eq!(Tag(7_u32).0, 7);
+    assert_eq!(Label::new("A".to_owned()).unwrap().as_inner(), "A");
+    assert_eq!(*Tag::new(7_u32).unwrap().as_inner(), 7);
     let filled = Crate {
         codes: vec![7_u32],
         label: "A".to_owned(),

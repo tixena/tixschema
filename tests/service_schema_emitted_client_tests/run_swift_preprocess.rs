@@ -701,7 +701,7 @@ fn rust_keys_report() -> String {
             },
         ),
         rust_keys::<Strapped>("a flattened brand over the type", flat, &|held| {
-            listed(&held.banded.0.keys)
+            listed(&held.banded.as_inner().keys)
         }),
     ]
     .concat()

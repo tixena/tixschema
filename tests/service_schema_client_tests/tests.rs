@@ -15,7 +15,7 @@ pub mod a_bound_the_fields_own_type_declares {
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
-    pub struct Slug(pub String);
+    pub struct Slug(String);
 
     #[model_schema()]
     #[derive(Deserialize, Serialize)]
@@ -61,12 +61,12 @@ pub mod a_bound_the_fields_own_type_declares {
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Enrolled, EnrolError> {
             ready(()).await;
             Ok(Enrolled {
-                invoices: u32::try_from(req.slug.0.len()).unwrap(),
+                invoices: u32::try_from(req.slug.as_inner().len()).unwrap(),
             })
         }
 
         async fn withdraw(&self, _ctx: &(), req: EnrolRequest) {
-            let _read = ready(req.slug.0.len()).await;
+            let _read = ready(req.slug.as_inner().len()).await;
         }
     }
 
@@ -200,9 +200,14 @@ pub mod a_bound_the_fields_own_type_declares {
         // proof it was not touched.
         let transport = ProbeTransport::new(&[]);
         let client = enrol_amqp_client::EnrolServiceClient::new(transport);
-        let answered = poll_once(client.enrol(EnrolRequest {
-            slug: Slug("ab".to_owned()),
-        }))
+        let answered = poll_once(
+            client.enrol(EnrolRequest {
+                slug: Slug::model_schema_read_unjudged(
+                    serde_json::to_value("ab".to_owned()).unwrap(),
+                )
+                .unwrap(),
+            }),
+        )
         .unwrap();
         let reported = match &answered {
             Err(enrol_service_schema::CallError::Fault(reported)) => Some(reported),
@@ -237,7 +242,7 @@ pub mod a_bound_the_fields_own_type_declares {
     fn a_message_whose_bound_its_fields_type_declares_is_satisfiable_end_to_end() {
         let client = enrol_amqp_client::EnrolServiceClient::new(EnrolLoopback);
         let answered = poll_once(client.enrol(EnrolRequest {
-            slug: Slug("abcd".to_owned()),
+            slug: Slug::new("abcd".to_owned()).unwrap(),
         }))
         .unwrap();
         assert_eq!(
@@ -251,15 +256,20 @@ pub mod a_bound_the_fields_own_type_declares {
     fn a_one_way_send_is_measured_against_the_same_bound_a_call_is() {
         let client = enrol_amqp_client::EnrolServiceClient::new(EnrolLoopback);
         poll_once(client.withdraw(EnrolRequest {
-            slug: Slug("abcd".to_owned()),
+            slug: Slug::new("abcd".to_owned()).unwrap(),
         }))
         .unwrap()
         .unwrap();
         let refused = ProbeTransport::new(&[]);
         let refusing = enrol_amqp_client::EnrolServiceClient::new(refused);
-        let reported = poll_once(refusing.withdraw(EnrolRequest {
-            slug: Slug("ab".to_owned()),
-        }))
+        let reported = poll_once(
+            refusing.withdraw(EnrolRequest {
+                slug: Slug::model_schema_read_unjudged(
+                    serde_json::to_value("ab".to_owned()).unwrap(),
+                )
+                .unwrap(),
+            }),
+        )
         .unwrap()
         .unwrap_err();
         assert_eq!(reported.field(), Some("slug"));

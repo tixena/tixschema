@@ -245,25 +245,25 @@ pub struct Docks {
 #[model_schema(minLength = 2, maxLength = 4, pattern = "^[A-Z]+$", check = ["unreserved"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Code(pub String);
+pub struct Code(String);
 
 /// A brand over a list, whose two lengths count its items.
 #[model_schema(no_display, minLength = 1, maxLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Roster(pub Vec<String>);
+pub struct Roster(Vec<String>);
 
 /// A brand with a parameter, bounded at its declared default.
 #[model_schema(minLength = 3, default_types(IdType = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct UserId<IdType>(pub IdType);
+pub struct UserId<IdType>(IdType);
 
 /// A brand that declares no bound: a field typed with it writes its own.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slug(pub String);
+pub struct Slug(String);
 
 #[model_schema()]
 pub type Title = String;
@@ -272,13 +272,13 @@ pub type Title = String;
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Badge(pub Slug);
+pub struct Badge(Slug);
 
 /// A brand with a parameter whose declared default is a brand.
 #[model_schema(minLength = 3, default_types(WrapType = Slug))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Wrapped<WrapType>(pub WrapType);
+pub struct Wrapped<WrapType>(WrapType);
 
 /// A brand's own bounds under the field that holds it, and a field's bound on a brand declared
 /// above, on one declared below, on a brand over a brand, and on an alias of a string declared
@@ -307,7 +307,7 @@ pub struct Entry {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct LateSlug(pub String);
+pub struct LateSlug(String);
 
 #[model_schema()]
 pub type LateTitle = String;
@@ -422,7 +422,7 @@ pub struct Crate<CodeType> {
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Slogans(pub Vec<String>);
+pub struct Slogans(Vec<String>);
 
 /// An alias of a list.
 #[model_schema()]
@@ -432,7 +432,7 @@ pub type Mottos = Vec<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeSlogans(pub Slogans);
+pub struct SomeSlogans(Slogans);
 
 /// Members filled with a list of each item type at a brand declared below.
 #[model_schema()]
@@ -446,7 +446,7 @@ pub struct Hauler {
 #[model_schema(no_display, minLength = 1, default_types(T = Vec<String>))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Carried<T>(pub T);
+pub struct Carried<T>(T);
 
 /// Members typed with the names above, each under a length of its own.
 #[model_schema()]
@@ -488,7 +488,7 @@ pub type Queue = indexmap::IndexSet<String>;
 #[model_schema(no_display, minLength = 1)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct SomeQueue(pub Queue);
+pub struct SomeQueue(Queue);
 
 /// Members typed with the alias of an `IndexSet` and with a brand over it, each under a length.
 #[cfg(feature = "indexmap")]
@@ -571,7 +571,7 @@ fn sealed_parcel(value: &Parcel) -> Result<(), Vec<String>> {
 }
 
 fn unreserved(value: &Code) -> Result<(), Vec<String>> {
-    if value.0 == "NONE" {
+    if value.as_inner() == "NONE" {
         return Err(vec!["a code is not NONE".to_owned()]);
     }
     Ok(())
@@ -982,8 +982,15 @@ fn holder_rows() -> Vec<Row> {
 
 /// A brand, a brand over a list, a brand with a parameter, and a field that holds or bounds one.
 fn brand_rows() -> Vec<Row> {
-    let code = |text: &str| Code(text.to_owned());
-    let badge = |text: &str| Badge(Slug(text.to_owned()));
+    let code = |text: &str| {
+        Code::model_schema_read_unjudged(serde_json::to_value(text.to_owned()).unwrap()).unwrap()
+    };
+    let badge = |text: &str| {
+        Badge::model_schema_read_unjudged(
+            serde_json::to_value(Slug::new(text.to_owned()).unwrap()).unwrap(),
+        )
+        .unwrap()
+    };
     let rows = [
         ("Code, short and in lower case", code("a")),
         ("Code, too long", code("ABCDE")),
@@ -994,9 +1001,27 @@ fn brand_rows() -> Vec<Row> {
         .iter()
         .map(|(name, held)| row(name, "Code", held, held.validate()))
         .collect();
-    let (none, three) = (Roster(Vec::new()), Roster(texts(&["a", "b", "c"])));
-    let (named, numbered) = (UserId("ab".to_owned()), UserId(7_u32));
-    let (short, wrapped, counted) = (badge("a"), Wrapped(Slug("ab".to_owned())), Wrapped(7_u32));
+    let (none, three) = (
+        Roster::model_schema_read_unjudged(serde_json::to_value(Vec::<String>::new()).unwrap())
+            .unwrap(),
+        Roster::model_schema_read_unjudged(serde_json::to_value(texts(&["a", "b", "c"])).unwrap())
+            .unwrap(),
+    );
+    let (named, numbered) = (
+        UserId::<String>::model_schema_read_unjudged(
+            serde_json::to_value("ab".to_owned()).unwrap(),
+        )
+        .unwrap(),
+        UserId::new(7_u32).unwrap(),
+    );
+    let (short, wrapped, counted) = (
+        badge("a"),
+        Wrapped::<Slug>::model_schema_read_unjudged(
+            serde_json::to_value(Slug::new("ab".to_owned()).unwrap()).unwrap(),
+        )
+        .unwrap(),
+        Wrapped::new(7_u32).unwrap(),
+    );
     listed.extend([
         row("Roster, empty", "Roster", &none, none.validate()),
         row("Roster, three", "Roster", &three, three.validate()),
@@ -1029,24 +1054,26 @@ fn brand_rows() -> Vec<Row> {
 /// below, a brand over a brand, and an alias of a string declared above and below.
 fn entry_rows() -> Vec<Row> {
     let broken = Entry {
-        badge: Badge(Slug("ab".to_owned())),
-        code: Code("a".to_owned()),
-        late_slug: LateSlug("ab".to_owned()),
+        badge: Badge::new(Slug::new("ab".to_owned()).unwrap()).unwrap(),
+        code: Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+            .unwrap(),
+        late_slug: LateSlug::new("ab".to_owned()).unwrap(),
         late_titled: "t".to_owned(),
-        slug: Slug("A".to_owned()),
-        spare_slug: Some(Slug("ab".to_owned())),
+        slug: Slug::new("A".to_owned()).unwrap(),
+        spare_slug: Some(Slug::new("ab".to_owned()).unwrap()),
         titled: "t".to_owned(),
-        user: UserId("ab".to_owned()),
+        user: UserId::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
+            .unwrap(),
     };
     let kept = Entry {
-        badge: Badge(Slug("abc".to_owned())),
-        code: Code("AB".to_owned()),
-        late_slug: LateSlug("abc".to_owned()),
+        badge: Badge::new(Slug::new("abc".to_owned()).unwrap()).unwrap(),
+        code: Code::new("AB".to_owned()).unwrap(),
+        late_slug: LateSlug::new("abc".to_owned()).unwrap(),
         late_titled: "ti".to_owned(),
-        slug: Slug("a-b".to_owned()),
+        slug: Slug::new("a-b".to_owned()).unwrap(),
         spare_slug: None,
         titled: "ti".to_owned(),
-        user: UserId("abc".to_owned()),
+        user: UserId::new("abc".to_owned()).unwrap(),
     };
     vec![
         row(
@@ -1057,6 +1084,14 @@ fn entry_rows() -> Vec<Row> {
         ),
         row("Entry, held", "Entry", &kept, kept.validate()),
     ]
+}
+
+/// A `Carried` over `length` texts, read without the check its rules would hold it to.
+fn carried_texts_of(length: usize) -> Carried<Vec<String>> {
+    Carried::<Vec<String>>::model_schema_read_unjudged(
+        serde_json::to_value(texts(&vec!["w"; length])).unwrap(),
+    )
+    .unwrap()
 }
 
 /// The rows of a type that holds another at its own parameter under a check, and of members typed
@@ -1076,25 +1111,33 @@ fn counted_name_rows() -> Vec<Row> {
     };
     let (unfilled, filled) = (archived(&[]), archived(&["a"]));
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| Poster {
-        slogans: Slogans(texts(&vec!["w"; slogans])),
+        slogans: Slogans::new(texts(&vec!["w"; slogans])).unwrap(),
         mottos: texts(&vec!["w"; mottos]),
-        some: SomeSlogans(Slogans(texts(&vec!["w"; some]))),
-        carried: Carried(texts(&vec!["w"; carried])),
+        some: SomeSlogans::model_schema_read_unjudged(
+            serde_json::to_value(texts(&vec!["w"; some])).unwrap(),
+        )
+        .unwrap(),
+        carried: carried_texts_of(carried),
     };
     let (poster_kept, poster_empty, poster_wide) =
         (poster(1, 1, 1, 1), poster(0, 0, 0, 0), poster(3, 1, 3, 1));
     let hauler = |counted: usize, named: usize| Hauler {
-        counted: Carried(vec![1_i32; counted]),
-        named: Carried(texts(&vec!["w"; named])),
+        counted: Carried::new(vec![1_i32; counted]).unwrap(),
+        named: carried_texts_of(named),
     };
     let loader = |counted: usize, named: usize| Loader {
-        counted: Carried(vec![1_i32; counted]),
-        named: Carried(texts(&vec!["w"; named])),
+        counted: Carried::new(vec![1_i32; counted]).unwrap(),
+        named: carried_texts_of(named),
     };
     let (hauler_kept, hauler_empty) = (hauler(1, 1), hauler(0, 0));
     let (loader_kept, loader_empty) = (loader(1, 1), loader(0, 0));
-    let (carried_numbers, carried_texts) =
-        (Carried(Vec::<i32>::new()), Carried(Vec::<String>::new()));
+    let (carried_numbers, carried_texts) = (
+        Carried::<Vec<i32>>::model_schema_read_unjudged(
+            serde_json::to_value(Vec::<i32>::new()).unwrap(),
+        )
+        .unwrap(),
+        carried_texts_of(0),
+    );
     vec![
         row("Poster", "Poster", &poster_kept, poster_kept.validate()),
         row("Hauler", "Hauler", &hauler_kept, hauler_kept.validate()),
@@ -1676,7 +1719,8 @@ fn index_set_rows() -> Vec<Row> {
     };
     let lineup = |queue: usize, some: usize| Lineup {
         queue: items(queue),
-        some: SomeQueue(items(some)),
+        some: SomeQueue::model_schema_read_unjudged(serde_json::to_value(items(some)).unwrap())
+            .unwrap(),
     };
     let (kept, empty, wide) = (lineup(1, 1), lineup(0, 0), lineup(3, 3));
     vec![

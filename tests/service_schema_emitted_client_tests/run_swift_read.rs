@@ -536,8 +536,8 @@ fn struct_rows() -> Vec<Row> {
         parcel_list: vec![broken(), package("", "ab")],
     };
     let waybill = Waybill {
-        later_code: LaterCode("a".to_owned()),
-        short_code: Code("abcd".to_owned()),
+        later_code: LaterCode::new("a".to_owned()).unwrap(),
+        short_code: Code::new("abcd".to_owned()).unwrap(),
         titled: Title::from("t"),
     };
     let inspection = Inspection {
@@ -618,10 +618,16 @@ fn code_point_rows() -> Vec<Row> {
 /// A brand, a brand over a brand, a brand and a struct with a parameter, a unit struct and a
 /// tuple struct.
 fn wrapper_rows() -> Vec<Row> {
-    let short = Code("a".to_owned());
-    let sealed = SealedCode(Code("abcde".to_owned()));
-    let named = Docket("a".to_owned());
-    let numbered = Docket(7_u32);
+    let short =
+        Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap()).unwrap();
+    let sealed = SealedCode::model_schema_read_unjudged(
+        serde_json::to_value(Code::new("abcde".to_owned()).unwrap()).unwrap(),
+    )
+    .unwrap();
+    let named =
+        Docket::<String>::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+            .unwrap();
+    let numbered = Docket::new(7_u32).unwrap();
     let empty: Crate<String> = Crate {
         codes: Vec::new(),
         label: String::new(),
@@ -809,8 +815,9 @@ fn every_shape_refuses_what_its_validate_refuses_and_builds_it_unjudged() {
 #[test]
 fn a_model_its_holder_does_not_walk_judges_itself() {
     let waybill = Waybill {
-        later_code: LaterCode("ab".to_owned()),
-        short_code: Code("a".to_owned()),
+        later_code: LaterCode::new("ab".to_owned()).unwrap(),
+        short_code: Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
+            .unwrap(),
         titled: Title::from("ti"),
     };
     assert_eq!(
@@ -819,7 +826,10 @@ fn a_model_its_holder_does_not_walk_judges_itself() {
             "'shortCode': too short: minimum length is 2, got 1".to_owned()
         ])
     );
-    let sealed = SealedCode(Code("a".to_owned()));
+    let sealed = SealedCode::new(
+        Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap()).unwrap(),
+    )
+    .unwrap();
     assert_eq!(sealed.validate(), Ok(()));
     let reads = [
         (
@@ -1090,8 +1100,8 @@ a brand whose check refuses: refused at []
 ",
         "what the Rust read answers for each payload"
     );
-    assert_eq!(Pin("12".to_owned()).validate(), Ok(()));
-    assert!(Signet("s".to_owned()).validate().is_err());
+    assert_eq!(Pin::new("12".to_owned()).map(|_| ()), Ok(()));
+    assert!(Signet::new("s".to_owned()).map(|_| ()).is_err());
     let Some(swift) = printed(declared(), &[JUDGING, VARIANTS], &lines.join("\n")) else {
         return;
     };

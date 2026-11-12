@@ -199,7 +199,7 @@ pub struct Category {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(transparent)]
-pub struct CustomerId(pub String);
+pub struct CustomerId(String);
 
 #[model_schema(default_types(Amount = f64), enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -307,7 +307,7 @@ fn storefront() -> Storefront {
         },
         depth: measured(40.5),
         height: measured(180.0),
-        owner: CustomerId("customer-1".to_owned()),
+        owner: CustomerId::new("customer-1".to_owned()).unwrap(),
         phone: PhoneNumber {
             digits: "213000000".to_owned(),
         },
@@ -317,7 +317,7 @@ fn storefront() -> Storefront {
             number: 2,
         },
         reserved: counted(2),
-        reviewer: CustomerId("customer-2".to_owned()),
+        reviewer: CustomerId::new("customer-2".to_owned()).unwrap(),
         shelf: Shelf { label, position: 1 },
         shipping: address,
         stock: counted(12),

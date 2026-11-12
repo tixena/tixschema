@@ -111,7 +111,7 @@ pub struct SixtyTally {
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct SixtyId(pub i64);
+pub struct SixtyId(i64);
 
 /// An `i64` as a variant's one value and as its members, with no tag attribute.
 #[model_schema()]

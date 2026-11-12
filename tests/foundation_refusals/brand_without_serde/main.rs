@@ -7,6 +7,6 @@ use tixschema::model_schema;
 #[model_schema(minLength = 3)]
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Username(pub String);
+pub struct Username(String);
 
 fn main() {}
