@@ -2,7 +2,8 @@
 //! emitter writes it.
 
 /// `SwiftSchemaFit`, which reads one value and refuses an integer that does not fit, or one
-/// written with a fraction or an exponent, and reads a `Float` beyond its range as an infinity.
+/// written with a fraction or an exponent, or at a path `swiftSchemaFloated` names, and reads a
+/// `Float` beyond its range as an infinity.
 pub const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
@@ -14,10 +15,17 @@ pub const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodab
      catch let refused where !(refused is DecodingError) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
-     if let integer = value as? any FixedWidthInteger, let written = Self.written(decoder), \
-     written.exponent || written.count != \"\\(integer)\".utf8.count { throw \
+     if let integer = value as? any FixedWidthInteger, Self.fractional(decoder, integer) || \
+     Self.floated(decoder) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.floating(try single.decode(Double.self)))) } }; \
+     fileprivate static func fractional(_ decoder: Decoder, _ integer: any FixedWidthInteger) \
+     -> Bool { guard let written = written(decoder) else { return false }; return \
+     written.exponent || written.count != \"\\(integer)\".utf8.count }; \
+     private static func floated(_ decoder: Decoder) -> Bool { guard let paths = \
+     decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFloated\")!] as? Set<[String]> \
+     else { return false }; return paths.contains(decoder.codingPath.map { $0.intValue.map(\
+     String.init) ?? $0.stringValue }) }; \
      private static func written(_ decoder: Decoder) -> (count: Int, exponent: Bool)? { func \
      child(_ of: Any, _ label: String) -> Any? { Mirror(reflecting: of).children.first { \
      $0.label == label }?.value }; guard let values = child(decoder, \"values\") as? [Any], let \

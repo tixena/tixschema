@@ -39,7 +39,9 @@ const FIXED_WIDTH: [&str; 9] = [
 /// exponent mark, which `JSONDecoder`'s own decoder holds in stored properties it reads through
 /// `Mirror`; under any other decoder the number reads as Foundation reads it. A type parameter
 /// filled with a `Float` reads one beyond its range as a `Double` narrowed to an infinity of its
-/// sign, as serde reads an `f32`.
+/// sign, as serde reads an `f32`. It refuses too an integer whose coding path is one `userInfo`
+/// names under `swiftSchemaFloated`: the paths where the payload of a preprocess holds a float,
+/// which `JSONSerialization` writes back with no fraction.
 const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
@@ -51,10 +53,17 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      catch let refused where !(refused is DecodingError) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
-     if let integer = value as? any FixedWidthInteger, let written = Self.written(decoder), \
-     written.exponent || written.count != \"\\(integer)\".utf8.count { throw \
+     if let integer = value as? any FixedWidthInteger, Self.fractional(decoder, integer) || \
+     Self.floated(decoder) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.floating(try single.decode(Double.self)))) } }; \
+     fileprivate static func fractional(_ decoder: Decoder, _ integer: any FixedWidthInteger) \
+     -> Bool { guard let written = written(decoder) else { return false }; return \
+     written.exponent || written.count != \"\\(integer)\".utf8.count }; \
+     private static func floated(_ decoder: Decoder) -> Bool { guard let paths = \
+     decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFloated\")!] as? Set<[String]> \
+     else { return false }; return paths.contains(decoder.codingPath.map { $0.intValue.map(\
+     String.init) ?? $0.stringValue }) }; \
      private static func written(_ decoder: Decoder) -> (count: Int, exponent: Bool)? { func \
      child(_ of: Any, _ label: String) -> Any? { Mirror(reflecting: of).children.first { \
      $0.label == label }?.value }; guard let values = child(decoder, \"values\") as? [Any], let \
@@ -187,12 +196,12 @@ impl Locals {
         ["listed", "items"].map(|stem| numbered(stem, nth))
     }
 
-    /// The container the next map is read from, what its entries are gathered in, the key of one
-    /// entry, and that key as a number.
-    fn next_map(&mut self) -> [String; 4] {
+    /// The container the next map is read from, what its entries are gathered in, and the key of
+    /// one entry.
+    fn next_map(&mut self) -> [String; 3] {
         let nth = self.mapped;
         self.mapped += 1;
-        ["keyed", "entries", "entry", "number"].map(|stem| numbered(stem, nth))
+        ["keyed", "entries", "entry"].map(|stem| numbered(stem, nth))
     }
 }
 
@@ -712,7 +721,7 @@ fn block_end(statements: &str) -> Option<usize> {
 /// The helpers the statements of `read` name: [`FITTED`], [`flattened_function`] and [`buffered_function`].
 pub(super) fn helpers_for(read: &str) -> String {
     let mut helpers = String::new();
-    if read.contains("SwiftSchemaFit<") {
+    if read.contains("SwiftSchemaFit<") || read.contains("SwiftSchemaPayload") {
         helpers.push_str(FITTED);
         helpers.push_str("; ");
     }
@@ -807,7 +816,10 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         String::new()
     };
     let taking = names_taken(body) || names_taken(written.beside);
-    let opened = format!("{key}{payload}{twins}{}", helpers_for(&read));
+    let opened = format!(
+        "{key}{payload}{twins}{}",
+        helpers_for(&format!("{read}{payload}"))
+    );
     if let Some(refusing) = refused {
         return format!(
             "{opened}public {TAKING} {{ {body} }}; public {UNJUDGED} {{ {refusing}\
@@ -1003,7 +1015,7 @@ pub(super) fn counted(
             sink(&items)
         );
     }
-    let FieldDefType::Map(key, value) = &def.field_type else {
+    let FieldDefType::Map(_, value) = &def.field_type else {
         return shaped.read_whole(&shaped.real_type(), stem, source, sink);
     };
     let value_hint = format!("{}Value", shaped.hint);
@@ -1015,7 +1027,7 @@ pub(super) fn counted(
         shape: value_shape,
     };
     read_entries(
-        (key, value),
+        value,
         &shaped.real_type(),
         source,
         false,
@@ -1058,7 +1070,7 @@ fn map_unjudged(
     }
     let value_hint = format!("{hint}Value");
     read_entries(
-        (key, value),
+        value,
         &written_type(def, hint),
         source,
         false,
@@ -1079,12 +1091,12 @@ pub(super) fn store_entry(entries: &str, key: &str, held: &str, value: &FieldDef
     }
 }
 
-/// The statements that read from `source` the entries of a map whose `key` Swift keys natively
+/// The statements that read from `source` the entries of a map Swift keys natively by text
 /// into a `written`, each value read under its key by `value`, and hand the map to `sink`. Where
 /// `skips_taken`, no entry is read under a key the types around the holder took: a map flattened
 /// beside another member is refused, so no member of the holder takes one.
 pub(super) fn read_entries(
-    (key, entry_value): (&FieldDef, &FieldDef),
+    entry_value: &FieldDef,
     written: &str,
     source: &Source,
     skips_taken: bool,
@@ -1092,12 +1104,8 @@ pub(super) fn read_entries(
     sink: &dyn Fn(&str) -> String,
     locals: &mut Locals,
 ) -> String {
-    let [keyed, entries, entry, number] = locals.next_map();
-    let (refusal, named) = if matches!(map_keys(key), MapKeys::Whole) {
-        (whole_key(&keyed, &entry, &number), number)
-    } else {
-        (String::new(), format!("{entry}.stringValue"))
-    };
+    let [keyed, entries, entry] = locals.next_map();
+    let named = format!("{entry}.stringValue");
     let under = Source::Keyed {
         container: keyed.clone(),
         key: entry.clone(),
@@ -1115,7 +1123,7 @@ pub(super) fn read_entries(
     };
     format!(
         "let {keyed} = try {}; var {entries}: {written} = [:]; \
-         for {entry} in {keyed}.allKeys{skipped} {{ {refusal}{read} }}; {}",
+         for {entry} in {keyed}.allKeys{skipped} {{ {read} }}; {}",
         source.keyed(),
         sink(&entries)
     )
@@ -1128,17 +1136,6 @@ fn numbered(stem: &str, nth: usize) -> String {
     } else {
         format!("{stem}{nth}")
     }
-}
-
-/// The statement that reads the key `entry` of the container `keyed` as `number`, and refuses one
-/// that is no number as the read of a `[Int: Value]` does.
-fn whole_key(keyed: &str, entry: &str, number: &str) -> String {
-    format!(
-        "guard let {number} = Int({entry}.stringValue) else {{ \
-         throw DecodingError.typeMismatch(Int.self, DecodingError.Context(\
-         codingPath: {keyed}.codingPath + [{entry}], \
-         debugDescription: \"Expected Int key but found String key instead.\")) }}; "
-    )
 }
 
 /// The Swift type the emitter declares a value of `def` as.

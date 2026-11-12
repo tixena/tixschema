@@ -7,6 +7,7 @@
 //! client is measured against. Nothing here waits on a clock.
 
 use alloc::collections::BTreeMap;
+use core::cmp::Ordering;
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};
@@ -18,11 +19,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3,"echo":{"Err":"x"},"pull":{"Swung":{"arc":6}}},"strokes":2,"label":"a","frame":{"span":1,"oak":2,"echo":{"Ok":5},"pull":"Still"},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1},"chord":"Still"}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3,"echo":{"Err":"x"},"pull":{"Swung":{"arc":6}}},"strokes":2,"label":"a","frame":{"span":1,"oak":2,"echo":{"Ok":5},"pull":"Still"},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1},"reaches":{"3":1},"gauges":{"1.5":1},"slims":{"1.5":1},"chord":"Still"}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 122] = [
+pub const CASES: [(&str, &str, Option<&str>); 152] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -325,6 +326,76 @@ pub const CASES: [(&str, &str, Option<&str>); 122] = [
         Some(r#"{"Still":1}"#),
     ),
     ("an unknown text for a plain enum", "chord", Some(r#""x""#)),
+    (
+        "a float brand key with an exponent",
+        "gauges.1e3",
+        Some("1"),
+    ),
+    (
+        "a float brand key with a capital exponent",
+        "gauges.1E3",
+        Some("1"),
+    ),
+    (
+        "a float brand key with a signed exponent",
+        "gauges.1e+3",
+        Some("1"),
+    ),
+    ("a float brand key of minus zero", "gauges.-0", Some("1")),
+    ("a float brand key of zero", "gauges.0", Some("1")),
+    ("a float brand key beyond an f32", "gauges.1e39", Some("1")),
+    ("a float brand key beyond an f64", "gauges.1e400", Some("1")),
+    (
+        "a float brand key with a leading zero",
+        "gauges.01",
+        Some("1"),
+    ),
+    (
+        "a float brand key with a letter after it",
+        "gauges.1x",
+        Some("1"),
+    ),
+    (
+        "a float brand key with a space after it",
+        "gauges.1 ",
+        Some("1"),
+    ),
+    ("a float brand key of a minus alone", "gauges.-", Some("1")),
+    ("a float brand key that is no number", "gauges.x", Some("1")),
+    ("an f32 brand key with an exponent", "slims.1e3", Some("1")),
+    ("an f32 brand key of minus zero", "slims.-0", Some("1")),
+    ("an f32 brand key beyond its range", "slims.1e39", Some("1")),
+    (
+        "an f32 brand key beyond its range below zero",
+        "slims.-1e39",
+        Some("1"),
+    ),
+    ("an f32 brand key beyond an f64", "slims.1e400", Some("1")),
+    (
+        "an f32 brand key with a leading zero",
+        "slims.01",
+        Some("1"),
+    ),
+    ("an f32 brand key that is no number", "slims.x", Some("1")),
+    (
+        "an isize key with a letter after it",
+        "reaches.1x",
+        Some("1"),
+    ),
+    (
+        "an isize key with a space after it",
+        "reaches.1 ",
+        Some("1"),
+    ),
+    ("an isize key of a minus alone", "reaches.-", Some("1")),
+    ("an isize key with a leading zero", "reaches.01", Some("1")),
+    ("an isize key beyond an f64", "reaches.1e400", Some("1")),
+    ("an isize key with an exponent", "reaches.1e3", Some("1")),
+    ("an isize key of minus zero", "reaches.-0", Some("1")),
+    ("an isize key that is no number", "reaches.x", Some("1")),
+    ("an isize key of zero", "reaches.0", Some("1")),
+    ("a negative isize key", "reaches.-1", Some("1")),
+    ("an isize key of three", "reaches.3", Some("1")),
 ];
 
 /// The cases where the Rust dispatcher names a place other than the one the case changes: serde
@@ -333,7 +404,7 @@ pub const CASES: [(&str, &str, Option<&str>); 122] = [
 /// a key of an integer type it reads as a float; and it names the variant under a member for a
 /// string naming a variant that carries data and for a value under a plain enum's key. Every
 /// emitted read names the place the Rust dispatcher names.
-pub const NAMED_AT_THE_HOLDER: [(&str, &str); 26] = [
+pub const NAMED_AT_THE_HOLDER: [(&str, &str); 28] = [
     ("a text for a number in a flattened member", "frame"),
     ("a brand key with an exponent", "pitches"),
     ("a brand key of minus zero", "pitches"),
@@ -390,11 +461,13 @@ pub const NAMED_AT_THE_HOLDER: [(&str, &str); 26] = [
         "chord.Still",
     ),
     ("an unknown text for a plain enum", "chord"),
+    ("an isize key with an exponent", "reaches"),
+    ("an isize key of minus zero", "reaches"),
 ];
 
 /// The cases the Rust dispatcher reads: serde reads an `f32` beyond its range as an infinity of the
 /// sign written, an integer written plainly, and a key of an integer type within its range.
-pub const READ_BY_RUST: [&str; 14] = [
+pub const READ_BY_RUST: [&str; 27] = [
     "an object of one key over null for a plain enum",
     "an f32 beyond its range",
     "an f32 just beyond its range",
@@ -409,11 +482,24 @@ pub const READ_BY_RUST: [&str; 14] = [
     "a negative i64 key",
     "the largest i64 key",
     "the least i64 key",
+    "a float brand key with an exponent",
+    "a float brand key with a capital exponent",
+    "a float brand key with a signed exponent",
+    "a float brand key of minus zero",
+    "a float brand key of zero",
+    "a float brand key beyond an f32",
+    "an f32 brand key with an exponent",
+    "an f32 brand key of minus zero",
+    "an f32 brand key beyond its range",
+    "an f32 brand key beyond its range below zero",
+    "an isize key of zero",
+    "a negative isize key",
+    "an isize key of three",
 ];
 
 /// The cases the Rust dispatcher answers `undeserializable-payload` for, naming no field: `serde_json`
 /// refuses each as text that is not the document, not as a value of the wrong kind.
-pub const NOT_A_DOCUMENT: [&str; 27] = [
+pub const NOT_A_DOCUMENT: [&str; 42] = [
     "a number for a plain enum",
     "a list for a plain enum",
     "a boolean for a plain enum",
@@ -441,6 +527,21 @@ pub const NOT_A_DOCUMENT: [&str; 27] = [
     "an i64 key of a minus alone",
     "an i64 key with a leading zero",
     "an i64 key beyond an f64",
+    "a float brand key beyond an f64",
+    "a float brand key with a leading zero",
+    "a float brand key with a letter after it",
+    "a float brand key with a space after it",
+    "a float brand key of a minus alone",
+    "a float brand key that is no number",
+    "an f32 brand key beyond an f64",
+    "an f32 brand key with a leading zero",
+    "an f32 brand key that is no number",
+    "an isize key with a letter after it",
+    "an isize key with a space after it",
+    "an isize key of a minus alone",
+    "an isize key with a leading zero",
+    "an isize key beyond an f64",
+    "an isize key that is no number",
 ];
 
 /// The cases whose frame the Rust dispatcher reads as no frame, and answers nothing: a number
@@ -500,6 +601,44 @@ pub struct CarillonBeam {
 #[serde(transparent)]
 pub struct CarillonPitch(pub u32);
 
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct CarillonGauge(pub f64);
+
+impl Eq for CarillonGauge {}
+
+impl Ord for CarillonGauge {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+impl PartialOrd for CarillonGauge {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct CarillonSlim(pub f32);
+
+impl Eq for CarillonSlim {}
+
+impl Ord for CarillonSlim {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+impl PartialOrd for CarillonSlim {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[model_schema(enable = ["jsonschema"], check = ["audible"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
@@ -533,13 +672,16 @@ pub struct CarillonChime {
     pub chord: Option<CarillonChord>,
     pub depth: i64,
     pub frame: CarillonFrame,
+    pub gauges: BTreeMap<CarillonGauge, u32>,
     #[model_schema_prop(minLength = 1)]
     pub label: String,
     pub outer: BTreeMap<CarillonOuterTone, u32>,
     pub peal: CarillonPeal,
     pub pitches: BTreeMap<CarillonPitch, u32>,
+    pub reaches: BTreeMap<isize, u32>,
     pub ring: f32,
     pub rounds: Vec<u32>,
+    pub slims: BTreeMap<CarillonSlim, u32>,
     pub strokes: u32,
     pub sway: f64,
     pub swing: CarillonSwing,

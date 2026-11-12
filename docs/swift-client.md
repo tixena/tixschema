@@ -129,8 +129,13 @@ to keep.
   `SwiftSchemaFit<UInt32>(from: decoder).value`), `keyed_read`, the value of a brand and of a
   struct of one slot, and a map's wrapper write their reads through it, and `read::both` and the
   wrapper declare `FITTED` where a read names `SwiftSchemaFit<`. A value read through
-  `SwiftSchemaPayload` (a `preprocess`, a flattened read) is held as an `Int64` and written back by
-  `JSONSerialization`, which writes `1.0` as `1`, so such a read takes the number.
+  `SwiftSchemaPayload` (a `preprocess`, a flattened read) holds a number written with a fraction,
+  an exponent or as `-0` as a `Double`, told by `SwiftSchemaFit<Int64>.fractional`, the check
+  `SwiftSchemaFit` makes. `JSONSerialization` writes the payload back and writes `1.0` as `1`, so
+  `SwiftSchemaPayload.decoder(for:)` hands the `JSONDecoder` that reads the type the set of paths
+  where the payload holds a `Double` that no `Int64` also holds (a number `JSONSerialization` read is an `NSNumber`, which is both when whole), each path an array of its steps so that a key holding a dot
+  is no other path, under `userInfo` key `swiftSchemaFloated`. `SwiftSchemaFit` refuses an integer
+  at a path in the set, in serde's words, and `read::both` declares `FITTED` beside the payload.
 - **A type parameter is read through the fitting read too.** What fills it may be such an integer,
   which the type's text cannot know, so `fit_held` takes the type parameters in scope and reads each
   it finds, in the places it finds an integer, as `SwiftSchemaFit<Held>`. Each caller hands them:
@@ -170,14 +175,15 @@ to keep.
 - **What serde classifies as text that is not the document is refused in its words**: an
   externally tagged enum and a `Result` written as neither a string nor an object of one key with
   `dataCorrupted` ``expected value`` (`one_key_container`), a string as Foundation refuses it.
-  A number key, or a brand's over one, is read as serde reads the text between its quotes
+  A number key, an `isize` among them, or a brand's over one, is read as serde reads the text
+  between its quotes
   (`number_bound_key`, and `swiftSchemaKeyNumber`, which `key_number_read` writes into the map's
   wrapper): a text that opens with neither a digit nor `-` is refused with ``invalid value:
   expected key to be a number in quotes``, one that breaks the number past its first character,
   `01` or `-`, with ``invalid number``, a float beyond a `Double` with ``number out of range`` and
   one that goes on after the number, `1x`, with ``expected `"` ``. A float for an integer key,
   `1e3` or `-0`, is refused at the map's coding path, and an integer beyond the type under the
-  number. The `ws_rpc` client answers such a
+  number; an `f32` key beyond its range reads as an infinity of its sign. The `ws_rpc` client answers such a
   refusal, one of `NOT_A_DOCUMENT`, with `undeserializable-payload` naming no field
   (`{service}WsRefused`), and drops a frame `JSONSerialization` refuses, which refuses a number
   beyond a `Double`, as the Rust transports drop it.

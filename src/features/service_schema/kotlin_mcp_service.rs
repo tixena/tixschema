@@ -12,7 +12,7 @@ use super::result::result_name;
 use crate::features::kotlin::{
     TupleNaming, kotlin_declarations, kotlin_name, kotlin_quoted, kotlin_tuple_naming,
 };
-use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_VALUE, NUMBER_OUT_OF_RANGE};
+use crate::field_type::{EXPECTED_VALUE, NOT_A_DOCUMENT_KEY, NUMBER_OUT_OF_RANGE};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
     answers_key, is_content_list, is_content_pair, is_prompt_messages, read_apart, wrapped_ident,
@@ -837,7 +837,7 @@ private fun <T> @P@McpReceive(
     }
     if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail), emptyList())
     val said = detail.substringBefore(" at path: ")
-    if (said == "@EXPECTED_NUMERIC_KEY@") refuse("undeserializable-payload", said, null, emptyList())
+    if (said in setOf(@NOT_A_DOCUMENT_KEY@)) refuse("undeserializable-payload", said, null, emptyList())
     val found = mutableListOf<Pair<String, String>>()
     @P@McpMismatches(schema, source, null, passed, emptyList(), found)
     // Read from its text, the refusal states the path of a `Result`, of a number the schema admits and serde refuses (`1.0` or `-0` for an integer), which no schema walk finds, and of the holder of a flattened member, which the schema names by the member's own path.
@@ -2145,7 +2145,10 @@ fn fill(template: &str, prefix: &str, named: &str, fields: &str) -> String {
         .replace("@P@", prefix)
         .replace("@N@", named)
         .replace("@F@", fields)
-        .replace("@EXPECTED_NUMERIC_KEY@", EXPECTED_NUMERIC_KEY)
+        .replace(
+            "@NOT_A_DOCUMENT_KEY@",
+            &NOT_A_DOCUMENT_KEY.map(kotlin_quoted).join(", "),
+        )
         .replace("@EXPECTED_VALUE@", EXPECTED_VALUE)
         .replace("@NUMBER_OUT_OF_RANGE@", NUMBER_OUT_OF_RANGE)
 }

@@ -19,9 +19,9 @@ use super::CarillonServiceSchema;
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_chord_dart,
-    carillon_error_dart, carillon_frame_dart, carillon_outer_tone_dart, carillon_peal_dart,
-    carillon_pitch_dart, carillon_swing_dart, carillon_tone_dart, carillon_turn_dart,
-    carillon_yoke_dart,
+    carillon_error_dart, carillon_frame_dart, carillon_gauge_dart, carillon_outer_tone_dart,
+    carillon_peal_dart, carillon_pitch_dart, carillon_slim_dart, carillon_swing_dart,
+    carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -482,6 +482,38 @@ async function main() {
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
+/// The cases whose reply the Rust dispatcher cannot write: serde reads an `f32` key beyond its
+/// range as an infinity and writes no such key, so the reply holds no value. An attachment writes
+/// the key as the text of the infinity.
+#[cfg(feature = "dart")]
+const INFINITE_KEYS: [(&str, Option<&str>); 2] = [
+    ("an f32 brand key beyond its range", None),
+    ("an f32 brand key beyond its range below zero", None),
+];
+
+/// [`INFINITE_KEYS`] and the key Kotlin writes in its own form: `1.0E39` where serde writes
+/// `1e+39`.
+#[cfg(feature = "kotlin")]
+const KOTLIN_WRITTEN_KEYS: [(&str, Option<&str>); 3] = [
+    ("an f32 brand key beyond its range", None),
+    ("an f32 brand key beyond its range below zero", None),
+    ("a float brand key beyond an f32", None),
+];
+
+/// [`INFINITE_KEYS`] and the keys a TypeScript object writes as the number it holds: `1000` where
+/// serde writes `1000.0`, and `0` for both zeros.
+const NUMBER_WRITTEN_KEYS: [(&str, Option<&str>); 9] = [
+    ("an f32 brand key beyond its range", None),
+    ("an f32 brand key beyond its range below zero", None),
+    ("a float brand key with an exponent", None),
+    ("a float brand key with a capital exponent", None),
+    ("a float brand key with a signed exponent", None),
+    ("a float brand key of minus zero", None),
+    ("a float brand key of zero", None),
+    ("an f32 brand key with an exponent", None),
+    ("an f32 brand key of minus zero", None),
+];
+
 /// Each payload of [`CASES`].
 fn payloads() -> Vec<String> {
     CASES.into_iter().map(payload).collect()
@@ -555,7 +587,19 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
             json!({ "case": case.0, "answer": answer, "struck": struck, "value": value })
         })
         .collect();
-    assert_eq!(told, expected, "{attached}");
+    assert_same(&told, &expected);
+}
+
+/// Holds `told` to `expected`, naming each case where they part.
+fn assert_same(told: &[Value], expected: &[Value]) {
+    assert_eq!(told.len(), expected.len());
+    let parted: Vec<String> = told
+        .iter()
+        .zip(expected)
+        .filter(|(held, wanted)| held != wanted)
+        .map(|(held, wanted)| format!("held {held}\nwanted {wanted}"))
+        .collect();
+    assert!(parted.is_empty(), "{}", parted.join("\n"));
 }
 
 /// Holds what a client answered to each payload to [`read_as_rust`].
@@ -567,10 +611,9 @@ fn assert_read_as_rust(read: &Value, apart: &[(&str, Option<&str>)]) {
             .map(|(case, answer)| json!({ "case": case.0, "answer": answer }))
             .collect()
     };
-    assert_eq!(
-        named(read.as_array().unwrap()),
-        named(&read_as_rust(apart)),
-        "{read}"
+    assert_same(
+        &named(read.as_array().unwrap()),
+        &named(&read_as_rust(apart)),
     );
 }
 
@@ -596,7 +639,9 @@ fn dart_source() -> String {
         carillon_bell_dart::dart_definition(),
         carillon_chord_dart::dart_definition(),
         carillon_peal_dart::dart_definition(),
+        carillon_gauge_dart::dart_definition(),
         carillon_pitch_dart::dart_definition(),
+        carillon_slim_dart::dart_definition(),
         carillon_swing_dart::dart_definition(),
         carillon_turn_dart::dart_definition(),
         carillon_beam_dart::dart_definition(),
@@ -630,8 +675,8 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"], &[]);
-    assert_read_as_rust(&told["read"], &[]);
+    assert_attached_as_rust(&told["attached"], &INFINITE_KEYS);
+    assert_read_as_rust(&told["read"], &INFINITE_KEYS);
     assert_eq!(
         told["refused"],
         json!({
@@ -657,9 +702,10 @@ fn kotlin_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin,
-        carillon_chord_kotlin, carillon_error_kotlin, carillon_frame_kotlin,
+        carillon_chord_kotlin, carillon_error_kotlin, carillon_frame_kotlin, carillon_gauge_kotlin,
         carillon_outer_tone_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
-        carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin, carillon_yoke_kotlin,
+        carillon_slim_kotlin, carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin,
+        carillon_yoke_kotlin,
     };
 
     let frames: Vec<String> = payloads()
@@ -680,7 +726,9 @@ fn kotlin_source() -> String {
         carillon_bell_kotlin::kotlin_definition(),
         carillon_chord_kotlin::kotlin_definition(),
         carillon_peal_kotlin::kotlin_definition(),
+        carillon_gauge_kotlin::kotlin_definition(),
         carillon_pitch_kotlin::kotlin_definition(),
+        carillon_slim_kotlin::kotlin_definition(),
         carillon_swing_kotlin::kotlin_definition(),
         carillon_turn_kotlin::kotlin_definition(),
         carillon_beam_kotlin::kotlin_definition(),
@@ -710,8 +758,8 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"], &[]);
-    assert_read_as_rust(&told["read"], &[]);
+    assert_attached_as_rust(&told["attached"], &KOTLIN_WRITTEN_KEYS);
+    assert_read_as_rust(&told["read"], &KOTLIN_WRITTEN_KEYS);
     let refused = &told["refused"];
     assert_eq!(
         (&refused["kind"], &refused["sent"]),
@@ -749,9 +797,9 @@ fn swift_source() -> String {
     };
     use super::carillon_service::{
         CarillonServiceSchema, carillon_beam_swift, carillon_bell_swift, carillon_chime_swift,
-        carillon_chord_swift, carillon_error_swift, carillon_frame_swift,
-        carillon_outer_tone_swift, carillon_peal_swift, carillon_pitch_swift, carillon_swing_swift,
-        carillon_tone_swift, carillon_turn_swift, carillon_yoke_swift,
+        carillon_chord_swift, carillon_error_swift, carillon_frame_swift, carillon_gauge_swift,
+        carillon_outer_tone_swift, carillon_peal_swift, carillon_pitch_swift, carillon_slim_swift,
+        carillon_swing_swift, carillon_tone_swift, carillon_turn_swift, carillon_yoke_swift,
     };
 
     let raw = |text: &str| format!("#\"{text}\"#");
@@ -760,7 +808,9 @@ fn swift_source() -> String {
         carillon_bell_swift::swift_definition(),
         carillon_chord_swift::swift_definition(),
         carillon_peal_swift::swift_definition(),
+        carillon_gauge_swift::swift_definition(),
         carillon_pitch_swift::swift_definition(),
+        carillon_slim_swift::swift_definition(),
         carillon_swing_swift::swift_definition(),
         carillon_turn_swift::swift_definition(),
         carillon_beam_swift::swift_definition(),
@@ -815,8 +865,8 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
 fn node_bundle() -> String {
     use super::carillon_service::{
         CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonError, CarillonFrame,
-        CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonServiceSchema, CarillonSwing,
-        CarillonTone, CarillonTurn, CarillonYoke,
+        CarillonGauge, CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonServiceSchema,
+        CarillonSlim, CarillonSwing, CarillonTone, CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -826,8 +876,12 @@ fn node_bundle() -> String {
         CarillonChord::zod_schema(),
         CarillonPeal::ts_definition(),
         CarillonPeal::zod_schema(),
+        CarillonGauge::ts_definition(),
+        CarillonGauge::zod_schema(),
         CarillonPitch::ts_definition(),
         CarillonPitch::zod_schema(),
+        CarillonSlim::ts_definition(),
+        CarillonSlim::zod_schema(),
         CarillonSwing::ts_definition(),
         CarillonSwing::zod_schema(),
         CarillonTurn::ts_definition(),
@@ -929,8 +983,8 @@ fn the_typescript_attachment_and_client_name_the_field_the_rust_dispatcher_names
             answered["reply"] = serde_json::from_str(text).unwrap();
         }
     }
-    assert_attached_as_rust(&told["attached"], &[]);
-    assert_read_as_rust(&told["read"], &[]);
+    assert_attached_as_rust(&told["attached"], &NUMBER_WRITTEN_KEYS);
+    assert_read_as_rust(&told["read"], &NUMBER_WRITTEN_KEYS);
     assert_eq!(
         told["refused"],
         json!({

@@ -22,9 +22,11 @@ use tixschema::{model_schema, service_schema};
 
 /// The cases of [`CASES`] each `mcp` server is called with and each `mcp` client is answered: the
 /// message read whole, a value of the wrong kind, the three refusals `serde_json` classifies as
-/// text that is not the document when it reads text, and an integer written as a float in the
-/// arguments and in the result.
-pub const MCP_CASES: [&str; 19] = [
+/// text that is not the document when it reads text, an integer written as a float in the
+/// arguments and in the result, and a key of a map keyed by a brand of a `u32` that serde refuses
+/// as text that is not the document past its first character, beside the keys it reads and the
+/// keys it refuses as a value of the wrong kind.
+pub const MCP_CASES: [&str; 28] = [
     "read whole",
     "a text for a number",
     "a Result of two arms",
@@ -44,6 +46,15 @@ pub const MCP_CASES: [&str; 19] = [
     "a fraction of zero below zero for an i64",
     "a zero below zero for an i64",
     "a one for a u32",
+    "a brand key with a leading zero",
+    "a brand key of a minus alone",
+    "a brand key with a letter after it",
+    "a brand key with a space after it",
+    "a brand key beyond an f64",
+    "a brand key with an exponent",
+    "a brand key of minus zero",
+    "a brand key beyond a u32",
+    "a brand key of zero",
 ];
 
 /// The answers each `mcp` client is handed as the answer of `toll`: a success and a declared
@@ -470,6 +481,13 @@ fn measured() -> Vec<Value> {
     answers.extend(repeat_n(refused("strokes"), 6));
     answers.extend(repeat_n(refused("depth"), 6));
     answers.push(json!("read"));
+    answers.extend(repeat_n(
+        json!({ "kind": "undeserializable-payload", "field": null }),
+        5,
+    ));
+    answers.extend(repeat_n(refused("pitches"), 2));
+    answers.push(refused("pitches.4294967296"));
+    answers.push(json!("read"));
     answers
 }
 
@@ -480,7 +498,10 @@ fn the_rust_dispatcher_answers_what_is_no_document_as_serde_reads_it_from_a_valu
         let (_, struck) = over_mcp(&call(1, &mcp_payload(name)));
         assert_eq!(
             struck,
-            u32::from(matches!(name, "read whole" | "a one for a u32")),
+            u32::from(matches!(
+                name,
+                "read whole" | "a one for a u32" | "a brand key of zero"
+            )),
             "{name}"
         );
     }
@@ -499,6 +520,21 @@ fn the_rust_dispatcher_answers_what_is_no_document_as_serde_reads_it_from_a_valu
         detail("a key that is no number"),
         "invalid value: expected key to be a number in quotes"
     );
+    for (name, said) in [
+        ("a brand key with a leading zero", "invalid number"),
+        ("a brand key of a minus alone", "EOF while parsing a value"),
+        (
+            "a brand key with a letter after it",
+            "invalid value: expected key to be a number in quotes",
+        ),
+        (
+            "a brand key with a space after it",
+            "invalid value: expected key to be a number in quotes",
+        ),
+        ("a brand key beyond an f64", "number out of range"),
+    ] {
+        assert_eq!(detail(name), said, "{name}");
+    }
     let (written, _) = over_mcp(&call(1, &mcp_payload("an f64 beyond its range")));
     let refused: Value = serde_json::from_str(&written.unwrap()).unwrap();
     assert_eq!(refused.get("id"), None, "{refused}");
@@ -559,6 +595,12 @@ fn the_rust_client_answers_every_success_it_cannot_read_with_no_field() {
         ),
     );
     expected[18] = json!("read");
+    expected.extend(
+        [None; 8].map(
+            |field: Option<&str>| json!({ "kind": "undeserializable-payload", "field": field }),
+        ),
+    );
+    expected.push(json!("read"));
     assert_eq!(rust_client_answers(), expected);
     let (_, sent) = rust_client_answer(reply(STRUCK));
     assert_eq!(sent.len(), 1, "{sent:?}");

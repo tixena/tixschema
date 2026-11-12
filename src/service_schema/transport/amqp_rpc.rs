@@ -2227,11 +2227,12 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
             );
             let said = reported.strip_suffix(&offset).unwrap_or(reported.as_str());
             if matches!(refusal.error.classify(), ::serde_json::error::Category::Data) {
-                if let ::core::option::Option::Some(field) = $crate::#module::named_field(said) {
+                if $crate::#module::named_field(said).is_some() {
+                    let (field, detail) = $crate::#module::refused_at(&refusal.path, said);
                     return $crate::#module::ServiceFault::failed_validation(
                         operation,
-                        ::core::option::Option::Some(field),
-                        said,
+                        ::core::option::Option::Some(field.as_str()),
+                        &detail,
                     );
                 }
                 let mut path = refusal.path.clone();
