@@ -19,9 +19,9 @@ use tixschema::{model_schema, service_schema};
 
 use super::run_dart_validate::{
     CHECKS, Case, Crate, Deck, Gauge, Pair, Parcel, SHAPE_FUNCTIONS, Stamp, Terminal, Yard,
-    brand_cases, compared, dart, from_until, manifest_dart, module, named_shape_cases,
-    named_variant_cases, outside, parcel, parcel_dart, pinned, shape_definitions, sound,
-    table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
+    brand_cases, code_point_cases, compared, dart, from_until, manifest_dart, module,
+    named_shape_cases, named_variant_cases, outside, parcel, parcel_dart, pinned,
+    shape_definitions, sound, table_cases, tagged_and_untagged_variant_cases, texts, unlabelled,
 };
 use super::runtime::ran;
 use super::tests::{ShelfError, shelf_error_dart};
@@ -479,6 +479,7 @@ fn measured_cases() -> Vec<Case> {
 fn each_shape_is_refused_with_what_its_validate_answers() {
     let over: Vec<Case> = [
         table_cases(),
+        code_point_cases(),
         brand_cases(),
         named_shape_cases(),
         named_variant_cases(),

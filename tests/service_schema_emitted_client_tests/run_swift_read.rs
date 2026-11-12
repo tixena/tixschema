@@ -27,7 +27,8 @@ use super::swift_read_models::{
 };
 use super::swift_validate_models::{
     Base, Berth, Cargo, ClosedDock, Code, Consignment, Crate, Docket, Freight, Grade, Haul,
-    Inspection, LaterCode, Ledger, Lift, Parcel, SealedCode, Title, Waybill, Yard, parcel_swift,
+    Inspection, LaterCode, Ledger, Lift, Nameplate, Parcel, SealedCode, Title, Waybill, Yard,
+    parcel_swift,
 };
 use super::tests::poll_once;
 
@@ -592,6 +593,28 @@ fn struct_rows() -> Vec<Row> {
     ]
 }
 
+/// The four values that tell a byte, a UTF-16 unit and a code point apart, read under a length of
+/// none.
+fn code_point_rows() -> Vec<Row> {
+    [
+        ("Nameplate, a precomposed letter", "\u{e9}"),
+        ("Nameplate, a letter and its combining mark", "e\u{301}"),
+        ("Nameplate, a character outside the plane", "\u{1f600}"),
+        (
+            "Nameplate, two characters outside the plane",
+            "\u{1f600}\u{1f600}",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, engraved)| {
+        let held = Nameplate {
+            engraved: engraved.to_owned(),
+        };
+        row(name, "Nameplate", &held, held.validate(), true)
+    })
+    .collect()
+}
+
 /// A brand, a brand over a brand, a brand and a struct with a parameter, a unit struct and a
 /// tuple struct.
 fn wrapper_rows() -> Vec<Row> {
@@ -764,6 +787,7 @@ fn plain_enum_rows() -> Vec<Row> {
 #[test]
 fn every_shape_refuses_what_its_validate_refuses_and_builds_it_unjudged() {
     let mut rows = struct_rows();
+    rows.extend(code_point_rows());
     rows.extend(wrapper_rows());
     rows.extend(enum_rows());
     rows.extend(plain_enum_rows());
@@ -771,7 +795,7 @@ fn every_shape_refuses_what_its_validate_refuses_and_builds_it_unjudged() {
     let refused = rows.iter().filter(|read| read.answered.is_err()).count();
     assert_eq!(
         (rows.len(), refused),
-        (34, 28),
+        (38, 32),
         "each shape with a broken rule, and six values that keep every one"
     );
     let Some(swift) = printed(declared(), &[JUDGING, UNJUDGED], &driver_of(&rows)) else {

@@ -22,7 +22,7 @@ A type with no rule, which holds no type that has one, declares `public func val
 | `check = ["withinParcel"]` | `withinParcel(value)`, the Swift function of that name |
 | a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `Parcel.swiftSchemaRepeats(value)`, ahead of the set's count: two items are one where `JSONEncoder` with sorted keys writes one text for both, and the message is [`repeats an item: a set holds each item once`](models.md#a-set-holds-each-item-once) |
 
-- **The unit of a length is the Unicode code point**: `"é"` counts 1, `"e\u{301}"` 2, and a character outside the Basic Multilingual Plane 1. The Rust `validate()` measures a string with `len()`, its bytes in UTF-8, so the two agree on ASCII text and differ beyond it.
+- **The unit of a length is the Unicode code point**: `"é"` counts 1, `"e\u{301}"` 2, and a character outside the Basic Multilingual Plane 1. Rust, Zod and the other clients count the same unit ([Field Validation](validation.md#string-constraints-minlength-maxlength-pattern)).
 - **A whole float is quoted back without `.0`**, as Rust writes it: `2.0` reads `got 2`.
 - **An `Option` is measured where it holds a value.**
 - **A range no value of the type can break is not written**: `minimum = 0` on a `u32` adds no comparison, which Swift would warn of.

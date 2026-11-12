@@ -273,11 +273,11 @@ fn test_pattern_with_min_max_length_zod() {
 
     let schema = PatternMinMaxLen::zod_schema();
     assert!(
-        schema.contains(".min(3, { error: (issue) => `too short: minimum length is 3, got ${String(issue.input).length}` })"),
+        schema.contains(".min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })"),
         "Expected the minLength check in Zod schema: {schema}"
     );
     assert!(
-        schema.contains(".max(20, { error: (issue) => `too long: maximum length is 20, got ${String(issue.input).length}` })"),
+        schema.contains(".max(20, { error: (issue) => `too long: maximum length is 20, got ${[...String(issue.input)].length}` })"),
         "Expected the maxLength check in Zod schema: {schema}"
     );
     assert!(
@@ -404,7 +404,7 @@ fn test_pattern_enum_variant_with_min_length() {
 
     let schema = PatternEnumMinLen::zod_schema();
     assert!(
-        schema.contains(".min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` })"),
+        schema.contains(".min(2, { error: (issue) => `too short: minimum length is 2, got ${[...String(issue.input)].length}` })"),
         "Expected the minLength check in Zod enum schema: {schema}"
     );
     assert!(

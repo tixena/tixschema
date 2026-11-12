@@ -8178,11 +8178,11 @@ fn checks_broken_by(
 ) -> Vec<String> {
     let too_short = args
         .min_length
-        .filter(|min_len| name.len() < *min_len)
+        .filter(|min_len| name.chars().count() < *min_len)
         .map(|min_len| format!("`minLength = {min_len}`"));
     let too_long = args
         .max_length
-        .filter(|max_len| name.len() > *max_len)
+        .filter(|max_len| name.chars().count() > *max_len)
         .map(|max_len| format!("`maxLength = {max_len}`"));
     let unmatched = pattern
         .filter(|built| !built.is_match(name))
@@ -9921,13 +9921,13 @@ fn build_branded_validation(
         let to_string_span = inner_ty.span().resolved_at(proc_macro2::Span::call_site());
         // A brand is the value rather than a member of anything, so its report names no field:
         // whatever holds it writes the name, on both languages' side of the wire.
-        let measured = quote! { value.len() };
+        let measured = quote! { value.chars().count() };
         let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 
         if let Some(min_len) = args.min_length {
             let reported = rust_violation(Bound::MinLength(min_len), None, &measured);
             checks.push(quote! {
-                if value.len() < #min_len {
+                if value.chars().count() < #min_len {
                     errors.push(#reported);
                 }
             });
@@ -9935,7 +9935,7 @@ fn build_branded_validation(
         if let Some(max_len) = args.max_length {
             let reported = rust_violation(Bound::MaxLength(max_len), None, &measured);
             checks.push(quote! {
-                if value.len() > #max_len {
+                if value.chars().count() > #max_len {
                     errors.push(#reported);
                 }
             });
@@ -11718,12 +11718,12 @@ fn branded_bound_text_method(
     let (text_read, length_read, counted) = match &shape.leaf {
         ConstraintLeaf::Path => (
             Some(quote! { self.#held.to_string_lossy() }),
-            Some(quote! { self.model_schema_bound_text().len() }),
+            Some(quote! { self.model_schema_bound_text().chars().count() }),
             Some(Counted::Characters),
         ),
         ConstraintLeaf::Str => (
             Some(quote! { ::std::borrow::Cow::Borrowed(&*self.#held) }),
-            Some(quote! { self.model_schema_bound_text().len() }),
+            Some(quote! { self.model_schema_bound_text().chars().count() }),
             Some(Counted::Characters),
         ),
         ConstraintLeaf::List => (
@@ -18399,22 +18399,22 @@ fn named_leaf_length_rendering(named: &syn::Type, message: &str) -> proc_macro2:
         }
         impl BoundedLength for str {
             fn bounded_length(&self) -> usize {
-                self.len()
+                self.chars().count()
             }
         }
         impl BoundedLength for ::std::string::String {
             fn bounded_length(&self) -> usize {
-                self.len()
+                self.chars().count()
             }
         }
         impl BoundedLength for ::std::path::Path {
             fn bounded_length(&self) -> usize {
-                self.to_string_lossy().len()
+                self.to_string_lossy().chars().count()
             }
         }
         impl BoundedLength for ::std::path::PathBuf {
             fn bounded_length(&self) -> usize {
-                self.to_string_lossy().len()
+                self.to_string_lossy().chars().count()
             }
         }
         impl<Item> BoundedLength for [Item] {
@@ -18527,7 +18527,7 @@ fn generate_string_validation_code(
     let measured = if counts_a_named_length(&shape.leaf, meta) {
         quote! { length }
     } else {
-        quote! { value.len() }
+        quote! { value.chars().count() }
     };
     let mut checks: Vec<proc_macro2::TokenStream> = Vec::new();
 

@@ -1235,7 +1235,7 @@ fn untagged_member_carries_its_constraint_to_the_surfaces() {
     assert!(
         zod_parts[0].contains(
             "z.string()\
-             .min(2, { error: (issue) => `too short: minimum length is 2, got ${String(issue.input).length}` })\
+             .min(2, { error: (issue) => `too short: minimum length is 2, got ${[...String(issue.input)].length}` })\
              .check(z.regex(/^[a-z]+$/, { error: \"does not match pattern '^[a-z]+$'\" }))"
         ),
         "got: {}",
@@ -20061,7 +20061,7 @@ fn a_path_is_checked_through_its_lossy_rendering() {
         "got: {module}"
     );
     assert!(
-        module.contains("if value . len () < 3usize"),
+        module.contains("if value . chars () . count () < 3usize"),
         "the checks are the ones a string field is held to: {module}"
     );
 }

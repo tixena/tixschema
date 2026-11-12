@@ -814,8 +814,8 @@ fn main() {
 //! - **A `pattern` must read the same in every engine it reaches**: the Rust `regex` crate, the
 //!   JavaScript regex Zod and JSON Schema use, and Dart, Swift and Kotlin. A construct they read
 //!   differently, such as `.`, `\p{L}`, a negated class or an inline flag, is refused at expansion.
-//! - **Lengths agree on ASCII text only.** Rust counts the UTF-8 bytes of a string, Zod its UTF-16
-//!   code units, and Dart, Swift and Kotlin its code points.
+//! - **A length counts Unicode code points** on every surface: Rust, Zod, the JSON Schema, Dart,
+//!   Swift and Kotlin, in the check and in the count a message reports.
 //! - **The macro writes `Deserialize`** for a type that publishes `validate()` or names a
 //!   `preprocess`. serde's `remote`, `from`, `try_from` and `into` are refused on such a type, and
 //!   a method of your own named `validate` is a duplicate definition (`E0592`).
@@ -1763,8 +1763,8 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 /// A bound or a literal is held by Rust's `validate()` and the serde read that runs it, in every
 /// build, by Zod and JSON Schema, and by the `validate()` and the read of the Dart, Swift and
 /// Kotlin types, which write Rust's sentences.
-/// Lengths agree on ASCII text only: Rust counts UTF-8 bytes, Zod UTF-16 code units, and Dart,
-/// Swift and Kotlin code points.
+/// A length counts Unicode code points on every surface, in the check and in the count a message
+/// reports.
 ///
 /// Each Rust message opens with where the value sits in the payload, in single quotes: the keys
 /// serde writes on the way to it, joined by dots, with the index of a list item and the key of a
