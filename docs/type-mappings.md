@@ -103,7 +103,15 @@ them out of a value, answers a marked key serde classifies as text that is not t
 `undeserializable-payload` and any other marked key as `failed-validation`. Every client reads
 a key by the same grammar (`number_key_read` in Dart, `kotlinSchemaKeyNumber` in Kotlin,
 `swiftSchemaKeyNumber` in Swift), and `run_carillon.rs` holds each answer to the Rust
-dispatcher's.
+dispatcher's. A float key reads by the JSON number grammar, exponents included: `1e3` reads `1000`,
+`-0` reads `-0.0`, and `1e39` reads `1e39` for an `f64` and an infinity of its sign for an `f32`,
+which Dart, Kotlin and Swift read it as (Swift holds every integer key, an `isize` among them, to
+the same wrapper, and no key to a native `[Int: Value]`). Zod's own key grammar has no exponent,
+so `zod_number_keys_read` hands the record a float key written with one as the plain decimal text
+of its number (`ZOD_FLOAT_KEY_COLLECT`), and the record holds the key as the number it reads;
+every other key stays as written. A JavaScript object keeps no difference between `1000` and
+`1000.0`, nor between `0` and `-0`, so the key a TypeScript attachment writes back is the number's
+own text.
 
 The JSON Schema describes a map whose key serde writes as text of its own (`MapKeyPath::Unnarrowed`)
 at every position, flattened (section 4) or under a key, as it describes a map keyed by a `String`,

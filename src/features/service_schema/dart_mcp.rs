@@ -16,7 +16,7 @@ use super::result::result_name;
 use crate::features::dart::{
     dart_json_decode, dart_json_decode_unjudged, dart_json_encode, quoted,
 };
-use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_VALUE};
+use crate::field_type::{EXPECTED_VALUE, NOT_A_DOCUMENT_KEY};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
     answers_key, has_tasks, is_content_list, is_content_pair, is_prompt_messages, read_apart,
@@ -1908,9 +1908,9 @@ fn scopes_table(table: &ScopeTable) -> String {
 }
 
 /// The Dart that answers the fault of a message its read refused, as the Rust dispatcher answers
-/// it from the arguments read out of a value: a key that is no number names no field, a `Result`
-/// of other than one key names the path the read refused at, and every other refusal names the
-/// path of each value the message does not read at, from the JSON schema the catalog holds for it:
+/// it from the arguments read out of a value: a key of a map keyed by a number that serde refuses as
+/// text that is not the document names no field, a `Result` of other than one key names the path
+/// the read refused at, and every other refusal names the path of each value the message does not read at, from the JSON schema the catalog holds for it:
 /// the first one, or with `every` all of them, a key of `passed` read past at the top. A refusal
 /// the schema finds no such value for, `1.0` or `-0` for an integer, names the path the read
 /// refused at.
@@ -1921,7 +1921,7 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
         "{fields} _{prefix}McpUnreadFault(String operation, Object refused, Object? schema, Object? source, \
          {{List<String> passed = const <String>[], bool every = false}}) {{\n  \
          final detail = refused is FormatException ? refused.message : '$refused';\n  \
-         if (detail == '{EXPECTED_NUMERIC_KEY}') return _{prefix}McpFault({named}FaultKind.undeserializablePayload, operation, detail);\n  \
+         if ({keys}.contains(detail)) return _{prefix}McpFault({named}FaultKind.undeserializablePayload, operation, detail);\n  \
          final found = <(String, String)>[];\n  \
          _{prefix}McpMismatches(schema, source, null, passed, const <String>[], found);\n  \
          final at = detail == '{EXPECTED_VALUE}' || found.isEmpty ? _{prefix}WsRefusedAt(refused) : null;\n  \
@@ -2013,7 +2013,17 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          if (value is! bool) refuse(at, 'invalid type, expected a boolean');\n  \
          }}\n\
          }}",
+        keys = not_a_document_keys(),
     )
+}
+
+/// The Dart set literal of serde's words for a number map key that is text that is not the
+/// document.
+fn not_a_document_keys() -> String {
+    let said = NOT_A_DOCUMENT_KEY
+        .map(|said| format!("'{said}'"))
+        .join(", ");
+    format!("const <String>{{{said}}}")
 }
 
 /// The Dart that finds the JSON schema of a tool or a prompt in the catalog.

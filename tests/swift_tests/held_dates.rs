@@ -364,9 +364,8 @@ fn a_map_swift_keys_natively_turns_each_date_it_holds() {
              self.byName = try wireByName.mapValues { \
              try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) }; "
                 .to_owned(),
-            "let wireByTurn = try container.decode([Int: String].self, forKey: .byTurn); \
-             self.byTurn = try wireByTurn.mapValues { \
-             try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) }; "
+            "let wireByTurn = try container.decode(PlainChartByTurnKeyedMap.self, \
+             forKey: .byTurn); self.byTurn = wireByTurn.storage; "
                 .to_owned(),
             "let wireMarksByName = try container.decode([String: [String]].self, \
              forKey: .marksByName); self.marksByName = try wireMarksByName.mapValues { \
@@ -406,22 +405,33 @@ fn a_map_under_a_key_swift_wraps_reads_and_writes_each_date_it_holds() {
                 codingPath: decoder.codingPath) }; ";
     let written =
         "try container.encode(Self.swiftSchemaFormatIso8601Date(value), forKey: codingKey) } } };";
-    for (swift, wrapper) in [
+    for (swift, wrapper, keyed_by) in [
         (
             plain_chart_swift::swift_definition(),
             "PlainChartByNumberKeyedMap",
+            "UInt32",
         ),
         (
             stowed_chart_swift::swift_definition(),
             "StowedChartByNumberKeyedMap",
+            "UInt32",
         ),
-        (chart_swift::swift_definition(), "ChartByNumberKeyedMap"),
+        (
+            chart_swift::swift_definition(),
+            "ChartByNumberKeyedMap",
+            "UInt32",
+        ),
+        (
+            plain_chart_swift::swift_definition(),
+            "PlainChartByTurnKeyedMap",
+            "Int",
+        ),
     ] {
         holds(
             declared(&swift, wrapper),
             &[
                 format!(
-                    "public struct {wrapper}: Codable, Sendable {{ public var storage: [UInt32: Date]; "
+                    "public struct {wrapper}: Codable, Sendable {{ public var storage: [{keyed_by}: Date]; "
                 ),
                 read.to_owned(),
                 written.to_owned(),

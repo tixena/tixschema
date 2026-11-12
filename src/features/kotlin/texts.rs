@@ -67,7 +67,8 @@ pub enum Primitive {
     /// A `bool` that is a map's key: the text `true` or `false`, in that case alone.
     BoolKey,
     F32,
-    /// An `f32` that is a map's key: read only from the text serde reads, and only when finite.
+    /// An `f32` that is a map's key: read only from the text serde reads, an infinity where the
+    /// number is beyond its range.
     F32Key,
     F64,
     /// An `f64` that is a map's key, read as [`Self::F32Key`] is.
@@ -222,9 +223,7 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
              JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: throw \
              SerializationException(\"invalid type: \" + element + \", expected {expected}\"); val \
              (number, _) = kotlinSchemaKeyNumber(text); val read = number.to{kotlin}(); if \
-             (text.length > number.length) throw SerializationException({}); if \
-             (!read.isFinite()) throw SerializationException(\"invalid type: \" + element + \", \
-             expected {expected}\"); read }} }} }}",
+             (text.length > number.length) throw SerializationException({}); read }} }} }}",
             key_number_read(),
             kotlin_quoted(EXPECTED_QUOTE),
         );

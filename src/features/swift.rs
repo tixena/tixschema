@@ -315,8 +315,6 @@ struct Shaped {
 enum MapKeys {
     /// As the `String` a `[String: Value]` is keyed by.
     Text,
-    /// As the `Int` a `[Int: Value]` is keyed by.
-    Whole,
     /// Through a wrapper written for the field.
     Wrapped,
 }
@@ -1102,9 +1100,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
         FieldDefType::F32 | FieldDefType::F64 => {
             let swift_type = swift_map_key_scalar(key);
             (
-                Some(format!(
-                    "{swift_type}(number).flatMap {{ $0.isFinite ? $0 : nil }}"
-                )),
+                Some(format!("{swift_type}(number)")),
                 format!("\"\\({held})\""),
             )
         }
@@ -2052,8 +2048,8 @@ fn held_argument(real_type: &str, argument: &Shaped, aux: &mut Vec<String>) -> S
     held_at(&name, &generic_params)
 }
 
-/// How Swift reads a map under `key`: a string-shaped key and an `isize` are the key of a native
-/// dictionary, and any other is read through a wrapper.
+/// How Swift reads a map under `key`: a string-shaped key is the key of a native dictionary, and
+/// any other is read through a wrapper.
 fn map_keys(written: &FieldDef) -> MapKeys {
     let key = &keys::peeled(written);
     if !matches!(
@@ -2067,7 +2063,6 @@ fn map_keys(written: &FieldDef) -> MapKeys {
         // Read and written through the functions of its form, which a native dictionary calls none
         // of.
         FieldDefType::Char => MapKeys::Wrapped,
-        FieldDefType::Isize => MapKeys::Whole,
         FieldDefType::SiblingType(_, _)
         | FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
@@ -2088,6 +2083,7 @@ fn map_keys(written: &FieldDef) -> MapKeys {
         | FieldDefType::I64
         | FieldDefType::F32
         | FieldDefType::F64
+        | FieldDefType::Isize
         | FieldDefType::Usize => MapKeys::Wrapped,
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => MapKeys::Wrapped,
@@ -2108,9 +2104,9 @@ fn keyed_map_wrapper(name_hint: &str, key: &FieldDef, value: &FieldDef) -> (Stri
     )
 }
 
-/// A `Map` leaf: a string-shaped key stays a plain `[String: Value]` (or `[Int: Value]`, both
-/// natively `Codable`), read as the map of what its values are written as where they convert; any
-/// other key earns a wrapper struct.
+/// A `Map` leaf: a string-shaped key stays a plain `[String: Value]`, natively `Codable`, read as
+/// the map of what its values are written as where they convert; any other key earns a wrapper
+/// struct.
 fn map_shape(
     key: &FieldDef,
     value: &FieldDef,
@@ -2127,7 +2123,6 @@ fn map_shape(
     };
     let native = match map_keys(key) {
         MapKeys::Text => Some("String"),
-        MapKeys::Whole => Some("Int"),
         MapKeys::Wrapped => None,
     };
     if let Some(keyed_by) = native {
@@ -2757,7 +2752,7 @@ fn flattened_map(
         };
         let stem = format!("{}Entry", swift_bare(&field.swift_name));
         read::read_entries(
-            (key, value),
+            value,
             &swift_full_real_type(&def, &field.hint, &mut Vec::new()),
             source,
             true,

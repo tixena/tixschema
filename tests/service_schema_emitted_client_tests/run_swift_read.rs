@@ -956,7 +956,8 @@ Manifest, no parcelsByDock: no key parcelsByDock at []
 Manifest, no spareParcel: read {{\"firstParcel\":{GOOD},\"parcelList\":[],\"parcelsByDock\":{{}}}}
 Manifest, spareParcel a null: read {{\"firstParcel\":{GOOD},\"parcelList\":[],\"parcelsByDock\":{{}}}}
 Towed, no content: no key held at []
-Decking, a key that is no number: mismatch at [byDeck, x]: Expected Int key but found String key instead.
+Decking, a key that is no number: refused at [byDeck]
+    invalid value: expected key to be a number in quotes
 Depot, a key that is no number: refused at [byNumber]
     invalid value: expected key to be a number in quotes
 "

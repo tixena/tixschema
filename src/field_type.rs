@@ -135,6 +135,16 @@ const ZOD_REBOXED: &str = "function reboxed(pair) { if (!Array.isArray(pair)) re
      Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), \
      item])); return copied; }";
 
+/// What a float key's check does with an entry it has read: hands the record the key as the plain
+/// decimal text of the number serde reads, which the record's own number grammar reads where it
+/// refuses an exponent.
+#[cfg(feature = "zod")]
+const ZOD_FLOAT_KEY_COLLECT: &str = "read[exponent === undefined ? text : Number(number) === 0 ? \
+     sign + \"0\" : (() => { const digits = whole + (fraction ?? \"\").slice(1); const point = whole.length \
+     + Number(exponent.slice(1)); return sign + (point <= 0 ? \"0.\" + \"0\".repeat(-point) + \
+     digits : point >= digits.length ? digits + \"0\".repeat(point - digits.length) : \
+     digits.slice(0, point) + \".\" + digits.slice(point)); })()] = member; ";
+
 /// What `serde_json` says of an externally tagged enum, a `Result` among them, written as neither a
 /// string nor an object of one key: a refusal it classifies as text that is not the document.
 #[cfg(any(
@@ -195,6 +205,20 @@ pub const NUMBER_OUT_OF_RANGE: &str = "number out of range";
 ))]
 pub const NOT_A_DOCUMENT: [&str; 5] = [
     EXPECTED_VALUE,
+    EXPECTED_NUMERIC_KEY,
+    NUMBER_OUT_OF_RANGE,
+    INVALID_NUMBER,
+    EXPECTED_QUOTE,
+];
+
+/// The refusals of the text of a number map key that `serde_json` classifies as text that is not
+/// the document, whichever reader it reads the key with: the words an `mcp` server answers
+/// `undeserializable-payload` for, naming no field.
+#[cfg(all(
+    feature = "serde",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+pub const NOT_A_DOCUMENT_KEY: [&str; 4] = [
     EXPECTED_NUMERIC_KEY,
     NUMBER_OUT_OF_RANGE,
     INVALID_NUMBER,
@@ -2977,6 +3001,7 @@ fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
         )
     };
     let expected = number.expected;
+    let float_key = number.range.is_none();
     let integer = number.range.map_or_else(String::new, |(least, most)| {
         format!(
             "if (float) {{ ctx.issues.push({{ code: \"custom\", message: \"invalid type: floating \
@@ -2989,7 +3014,7 @@ fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
     });
     format!(
         "z.unknown().check((ctx) => {{ if (typeof ctx.value !== \"object\" || ctx.value === null \
-         || Array.isArray(ctx.value)) return; for (const text of Object.keys(ctx.value)) {{ const \
+         || Array.isArray(ctx.value)) return; {held}for (const [text, member] of Object.entries(ctx.value)) {{ const \
          [number = \"\", sign = \"\", whole, fraction, exponent] = \
          /^(-?)(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?/.exec(text) ?? []; const after = \
          text.slice(sign.length + (whole ?? \"\").length); const float = fraction !== undefined || \
@@ -2999,7 +3024,14 @@ fn zod_number_keys_read(number: NumberKey, record: &str) -> String {
          || (after.startsWith(\".\") && fraction === undefined) || (/^[eE]/.test(after.slice((fraction \
          ?? \"\").length)) && exponent === undefined)) {{ {invalid} }} if (float && \
          !Number.isFinite(Number(number))) {{ {beyond} }} {integer}if (number.length < \
-         text.length) {{ {trailing} }} }} }}).pipe({record})",
+         text.length) {{ {trailing} }} {collect}}} {finish}}}).pipe({record})",
+        held = if float_key {
+            "const read: Record<string, unknown> = {}; "
+        } else {
+            ""
+        },
+        collect = if float_key { ZOD_FLOAT_KEY_COLLECT } else { "" },
+        finish = if float_key { "ctx.value = read; " } else { "" },
         numeric = marked(&ts_quoted(EXPECTED_NUMERIC_KEY)),
         invalid = marked(&ts_quoted(INVALID_NUMBER)),
         beyond = marked(&ts_quoted(NUMBER_OUT_OF_RANGE)),
