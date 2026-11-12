@@ -422,6 +422,13 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
              swiftSchemaWithout: taken + [\"kind\"])); "
         )
     };
+    let braced = |held: &str, case: &str, wire: &str| {
+        format!(
+            "case \"{wire}\": do {{ self = .{case}(try {held}(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken + [\"kind\"])) }} catch let refused as DecodingError {{ \
+             throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }}; "
+        )
+    };
     let grafting = grafting_swift::swift_definition();
     assert_written(
         &grafting,
@@ -434,10 +441,10 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
         ("PointingHeldPayload", "held", "Held"),
         ("PointingMarkedPayload", "marked", "Marked"),
         ("PointingNotedPayload", "noted", "Noted"),
-        ("Notch", "notched", "Notched"),
     ] {
-        assert_written(&pointing, &payload(held, case, wire));
+        assert_written(&pointing, &braced(held, case, wire));
     }
+    assert_written(&pointing, &payload("Notch", "notched", "Notched"));
     assert_written(
         &pointing,
         &closed(

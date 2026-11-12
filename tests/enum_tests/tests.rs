@@ -329,6 +329,18 @@ fn test_discriminated_union_ts_definition() {
 }
 
 #[test]
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn a_braced_variant_of_an_internally_tagged_enum_is_read_at_its_enum() {
+    let zod_schema = PaymentMethod::zod_schema();
+    let read_through = zod_schema.matches("{ when: () => true }").count();
+    assert_eq!(
+        read_through, 1,
+        "the union ends on the check and stays a discriminatedUnion: {zod_schema}"
+    );
+    assert!(zod_schema.contains("z.discriminatedUnion(\"type\", [z.strictObject({"));
+}
+
+#[test]
 #[cfg(all(feature = "typescript", feature = "serde"))]
 fn test_tag_written_after_an_ignored_key_reaches_the_ts_definition() {
     let ts = ActionTaggedAfterIgnoredKey::ts_definition();

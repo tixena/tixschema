@@ -1196,6 +1196,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
     };
     let parcel = labelled_parcel();
     assert!(parcel.ends_with(&judged("Parcel")), "got: {parcel}");
+    let flattened = read::flattened_function();
     let merged = |variant: &str| {
         format!(
             "is Lift{variant} -> buildJsonObject {{ put(\"kind\", \"{variant}\"); \
@@ -1205,8 +1206,8 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
     };
     let rest = |variant: &str| {
         format!(
-            "\"{variant}\" -> kotlinSchemaInner(input.json, \"\", serializer<Lift{variant}>(), \
-             JsonObject(obj - \"kind\"))"
+            "\"{variant}\" -> kotlinSchemaFlattened {{ kotlinSchemaInner(input.json, \"\", \
+             serializer<Lift{variant}>(), JsonObject(obj - \"kind\")) }}"
         )
     };
     assert_eq!(
@@ -1227,7 +1228,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              SerialDescriptor = buildClassSerialDescriptor(\"Lift\"); override fun \
              serialize(encoder: Encoder, value: Lift) {{ val output = encoder as JsonEncoder; \
              output.encodeJsonElement(when (value) {{ {}; is LiftHeld -> buildJsonObject {{ \
-             put(\"kind\", \"Held\") }}; {} }}) }}; {DECODED}{PATHED}{INNER}override fun \
+             put(\"kind\", \"Held\") }}; {} }}) }}; {DECODED}{PATHED}{INNER}{flattened}override fun \
              deserialize(decoder: Decoder): Lift {{ val input = decoder as JsonDecoder; val \
              element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ val obj = \
              element.let {{ it as? JsonObject ?: throw SerializationException(\"expected an \

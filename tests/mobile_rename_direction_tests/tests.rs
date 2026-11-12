@@ -103,8 +103,8 @@ fn the_dart_definition_names_each_agreed_key() {
     assert_names(
         &carriage_dart::dart_definition(),
         &[
-            "case 'byAir': return CarriageAir.fromJsonUnjudged(json);",
-            "case 'over-land': return CarriageOverLand.fromJsonUnjudged(json);",
+            "case 'byAir': return _readFlattened(() => CarriageAir.fromJsonUnjudged(json));",
+            "case 'over-land': return _readFlattened(() => CarriageOverLand.fromJsonUnjudged(json));",
             "'mode': 'byAir','flightCode': flight_code",
             "'mode': 'over-land','roadName': road_name",
         ],
@@ -124,8 +124,8 @@ fn the_swift_definition_names_each_agreed_key() {
     assert_names(
         &carriage_swift::swift_definition(),
         &[
-            "case \"byAir\": self = .air(",
-            "case \"over-land\": self = .overLand(",
+            "case \"byAir\": do { self = .air(",
+            "case \"over-land\": do { self = .overLand(",
             "try container.encode(\"byAir\", forKey: .swiftSchemaTag)",
             "try container.encode(\"over-land\", forKey: .swiftSchemaTag)",
             "case flightCode;",

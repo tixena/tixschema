@@ -702,7 +702,7 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
         &lifted_swift::swift_definition(),
         &[
             r#"case "Boxed": self = .boxed(try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])); "#,
-            r#"case "Loose": self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])); "#,
+            r#"case "Loose": do { self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; "#,
             r#"case "Unladen": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != "kind" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: "unknown field `\(unknown.stringValue)`")) } }; self = .unladen; "#,
             JUDGED,
         ],

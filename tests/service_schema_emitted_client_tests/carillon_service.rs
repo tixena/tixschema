@@ -19,11 +19,11 @@ use tixschema::{model_schema, service_schema};
 use super::carillon_ws_rpc_transport;
 
 /// The message read whole.
-pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3,"echo":{"Err":"x"},"pull":{"Swung":{"arc":6}}},"strokes":2,"label":"a","frame":{"span":1,"oak":2,"echo":{"Ok":5},"pull":"Still"},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1},"reaches":{"3":1},"gauges":{"1.5":1},"slims":{"1.5":1},"chord":"Still"}"#;
+pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"north":{"weight":5}},"peal":{"Swung":{"arc":1}},"swing":{"kind":"Wide","data":{"arc":2}},"turn":{"kind":"Half","arc":3,"echo":{"Err":"x"},"pull":{"Swung":{"arc":6}}},"strokes":2,"label":"a","frame":{"span":1,"oak":2,"reach":5,"deep":{"inner":4},"echo":{"Ok":5},"pull":"Still"},"yoke":{"kind":"CarillonYoke","pin":3},"rounds":[1,2],"depth":-9223372036854775808,"pitches":{"3":1},"tally":{"Ok":4},"ring":1.5,"sway":2.5,"outer":{"ring":1},"tolls":{"3":1},"reaches":{"3":1},"gauges":{"1.5":1},"slims":{"1.5":1},"chord":"Still"}"#;
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 152] = [
+pub const CASES: [(&str, &str, Option<&str>); 158] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -163,6 +163,32 @@ pub const CASES: [(&str, &str, Option<&str>); 152] = [
     ("a zero for a u32", "strokes", Some("0")),
     ("a one for an i64", "depth", Some("1")),
     ("a zero for an i64", "depth", Some("0")),
+    (
+        "a number beyond a u32 in a flattened member",
+        "frame.reach",
+        Some("4294967296"),
+    ),
+    (
+        "a negative number in a flattened member",
+        "frame.reach",
+        Some("-1"),
+    ),
+    (
+        "a flattened member without its nested member",
+        "frame.deep.inner",
+        None,
+    ),
+    (
+        "a text for a number in an internal variant",
+        "turn.arc",
+        Some(r#""x""#),
+    ),
+    ("an internal variant without its member", "turn.arc", None),
+    (
+        "a weight above its bound in an internal variant",
+        "turn.arc",
+        Some("101"),
+    ),
     ("an external enum of no variant", "peal", Some("{}")),
     (
         "an external enum of two variants",
@@ -400,12 +426,20 @@ pub const CASES: [(&str, &str, Option<&str>); 152] = [
 
 /// The cases where the Rust dispatcher names a place other than the one the case changes: serde
 /// reads a flattened member, and the members of an internally tagged variant, from the content
-/// their holder buffers, and names the holder for a value inside it refuses; it names the map for
-/// a key of an integer type it reads as a float; and it names the variant under a member for a
+/// their holder buffers, and names the holder for a value inside it that it refuses, a number
+/// beyond its width among them, and the key alone for a nested key missing; it names the map for a
+/// key of an integer type it reads as a float; and it names the variant under a member for a
 /// string naming a variant that carries data and for a value under a plain enum's key. Every
 /// emitted read names the place the Rust dispatcher names.
-pub const NAMED_AT_THE_HOLDER: [(&str, &str); 28] = [
+pub const NAMED_BY_SERDE: [(&str, &str); 32] = [
     ("a text for a number in a flattened member", "frame"),
+    ("a number beyond a u32 in a flattened member", "frame"),
+    ("a negative number in a flattened member", "frame"),
+    (
+        "a flattened member without its nested member",
+        "frame.inner",
+    ),
+    ("a text for a number in an internal variant", "turn"),
     ("a brand key with an exponent", "pitches"),
     ("a brand key of minus zero", "pitches"),
     ("an i64 key with an exponent", "tolls"),
@@ -581,6 +615,7 @@ pub enum CarillonSwing {
 #[serde(tag = "kind")]
 pub enum CarillonTurn {
     Half {
+        #[model_schema_prop(maximum = 100)]
         arc: u32,
         echo: Result<u32, String>,
         pull: CarillonPeal,
@@ -590,10 +625,18 @@ pub enum CarillonTurn {
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CarillonBeam {
+    pub deep: CarillonDeep,
     pub echo: Result<u32, String>,
     #[model_schema_prop(maximum = 100)]
     pub oak: u32,
     pub pull: CarillonPeal,
+    pub reach: u32,
+}
+
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CarillonDeep {
+    pub inner: u32,
 }
 
 #[model_schema(enable = ["jsonschema"], check = ["withinScale"])]
@@ -855,7 +898,7 @@ fn the_rust_dispatcher_names_the_place_of_each_case() {
         } else if NOT_A_DOCUMENT.contains(&case.0) {
             json!({ "kind": "undeserializable-payload", "field": null })
         } else {
-            let place = NAMED_AT_THE_HOLDER
+            let place = NAMED_BY_SERDE
                 .into_iter()
                 .find_map(|(named, above)| (named == case.0).then_some(above))
                 .unwrap_or(case.1);

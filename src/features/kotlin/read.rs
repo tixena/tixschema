@@ -695,7 +695,7 @@ pub fn helpers_for(declarations: &str) -> String {
 /// its path, which the holder's `kotlinSchemaAt` rebases, drops the place it states, and keeps the
 /// key it names as unknown or missing. A value serde refuses as text that is not the document is
 /// refused there in serde's words for a value of the wrong kind.
-fn flattened_function() -> String {
+pub fn flattened_function() -> String {
     format!(
         "private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: () -> \
          KotlinSchemaRead): KotlinSchemaRead = try {{ read() }} catch (refused: \

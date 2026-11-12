@@ -13909,8 +13909,17 @@ fn render_internal_variant(
             } else {
                 String::new()
             };
+            let at_the_holder = if matches!(variant.kind, VariantKind::Named) {
+                zod_at_the_holder()
+            } else {
+                String::new()
+            };
             variant_flatten_zod(
-                &format!("{}({}){buffered}", zod_own_object(), parts.schema_code),
+                &format!(
+                    "{}({}){buffered}{at_the_holder}",
+                    zod_own_object(),
+                    parts.schema_code
+                ),
                 &own_keys,
                 &variant.flattened_fields,
             )
@@ -14056,13 +14065,42 @@ fn join_internal_union(
         if members.iter().any(|&(_, _, _, flattened)| flattened) {
             format!("z.union([{joined}])")
         } else {
-            format!("z.discriminatedUnion({}, [{joined}])", ts_quoted(tag_name))
+            internal_discriminated_union(tag_name, members)
         }
     };
     #[cfg(not(feature = "zod"))]
     let schema_code = String::new();
 
     (main_schema_code, type_code, schema_code)
+}
+
+/// The `z.discriminatedUnion` of an internally tagged enum whose members are plain objects. The
+/// check that places a refusal inside a braced variant at the enum ends the union rather than each
+/// member: a method call on a member that names its own enum would be typed while that enum's
+/// type is still being inferred.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn internal_discriminated_union(
+    tag_name: &str,
+    members: &[(String, String, proc_macro2::TokenStream, bool)],
+) -> String {
+    let holder = zod_at_the_holder();
+    let mut braced = false;
+    let joined = members
+        .iter()
+        .map(|(_, zod, _, _)| {
+            zod.strip_suffix(holder.as_str())
+                .map_or(zod.as_str(), |bare| {
+                    braced = true;
+                    bare
+                })
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let at_the_holder = if braced { holder.as_str() } else { "" };
+    format!(
+        "z.discriminatedUnion({}, [{joined}]){at_the_holder}",
+        ts_quoted(tag_name)
+    )
 }
 
 /// Processes an internally tagged enum (`#[serde(tag = "...")]` with no `content`) and generates
@@ -22166,10 +22204,13 @@ fn zod_published_members(
     })
 }
 
-/// The check a flattened member joins its holder through. serde reads such a member from the keys
-/// its holder buffers and names the holder for a value inside it of the wrong type, so a type
-/// refusal moves to the holder's place, and a refusal [`zod_buffered_issue`] reads is a Data
-/// refusal there; a missing key, an unknown key and a broken bound stay where Zod puts them.
+/// The check a flattened member, and a braced variant of an internally tagged enum, is read
+/// through. serde reads such a value from the keys its holder buffers: it names the holder for a
+/// value inside it of the wrong type and for a number beyond its width, and the holder with the
+/// key alone for a key missing below the value's own keys, and a refusal [`zod_buffered_issue`]
+/// reads is a Data refusal there. A missing key of its own, an unknown key and a broken bound or
+/// declared literal stay where Zod puts them. A width is a bound that carries no message of its
+/// own.
 #[cfg(feature = "zod")]
 fn zod_at_the_holder() -> String {
     format!(
@@ -22179,9 +22220,13 @@ fn zod_at_the_holder() -> String {
          let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \
          \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : \
          undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== \
-         null && Object.prototype.hasOwnProperty.call(above, last)); return !absent && \
-         [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) ? {{ ...issue, \
-         path: [] }} : issue; }})); }}, {{ when: () => true }})",
+         null && Object.prototype.hasOwnProperty.call(above, last)); const refused = \
+         [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && \
+         !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const \
+         width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error \
+         === undefined; if (absent && steps.length > 1 && refused) return {{ ...issue, path: [last] \
+         }}; return width || (!absent && refused) ? {{ ...issue, path: [] }} : issue; }})); }}, {{ \
+         when: () => true }})",
         zod_buffered_issue()
     )
 }
@@ -22337,7 +22382,7 @@ fn zod_factory_declaration(item_name: &str, parameters: &[String], bounds: &str)
 /// there, and otherwise build once, store, and return the very schema that was stored — making two
 /// calls with the same arguments the same schema rather than two that merely agree.
 #[cfg(feature = "zod")]
-fn zod_factory_body(item_name: &str, parameters: &[String]) -> String {
+fn zod_factory_body(item_name: &str, parameters: &[String], at_the_holder: &str) -> String {
     let arguments: Vec<String> = parameters.iter().map(|p| zod_factory_argument(p)).collect();
     let built = zod_factory_memoized_binding(item_name, parameters);
     let mut body = String::new();
@@ -22355,7 +22400,7 @@ fn zod_factory_body(item_name: &str, parameters: &[String]) -> String {
     let last = arguments.last().map_or_else(String::new, Clone::clone);
     let _ = write!(
         body,
-        "  const hit = {holder}.get({last});\n  if (hit) return hit;\n\n  {built};\n  \
+        "  const hit = {holder}.get({last});\n  if (hit) return hit;\n\n  {built}{at_the_holder};\n  \
          {holder}.set({last}, schema);\n  return schema;"
     );
     body
@@ -22561,12 +22606,18 @@ fn zod_factory_block_around(
     parameters: &[String],
     defaults: &ZodDefaultInputs<'_>,
     preamble: &str,
-    expression: &str,
+    published: &str,
     reexport: &str,
 ) -> String {
     let builder = zod_factory_builder_name(item_name);
     let arguments = zod_factory_arguments(parameters);
-    let body = zod_factory_body(item_name, parameters);
+    // The check that places a refusal at its enum is a method call on the builder's result, which
+    // would be typed while the builder's own type is being inferred; the factory applies it.
+    let holder = zod_at_the_holder();
+    let (expression, at_the_holder) = published
+        .strip_suffix(holder.as_str())
+        .map_or((published, ""), |bare| (bare, holder.as_str()));
+    let body = zod_factory_body(item_name, parameters, at_the_holder);
 
     #[cfg(feature = "typescript")]
     let bounds = zod_factory_bounds(parameters);
@@ -22826,11 +22877,10 @@ fn zod_examples_injection(item_name: &str, parameters: &[String]) -> proc_macro2
         }};
     }
     let binding = zod_factory_memoized_binding(item_name, parameters);
-    let anchor = format!("{binding};");
     quote! {
         defined.replace(
-            #anchor,
-            &format!("{}.meta({{\n    examples: {}\n  }});", #binding, examples_json),
+            #binding,
+            &format!("{}.meta({{\n    examples: {}\n  }})", #binding, examples_json),
         )
     }
 }

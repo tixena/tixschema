@@ -20,9 +20,9 @@ use super::carillon_mcp_service::{carillon_refrain_dart, carillon_verse_dart};
 #[cfg(feature = "dart")]
 use super::carillon_service::{
     carillon_beam_dart, carillon_bell_dart, carillon_chime_dart, carillon_chord_dart,
-    carillon_error_dart, carillon_frame_dart, carillon_gauge_dart, carillon_outer_tone_dart,
-    carillon_peal_dart, carillon_pitch_dart, carillon_slim_dart, carillon_swing_dart,
-    carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
+    carillon_deep_dart, carillon_error_dart, carillon_frame_dart, carillon_gauge_dart,
+    carillon_outer_tone_dart, carillon_peal_dart, carillon_pitch_dart, carillon_slim_dart,
+    carillon_swing_dart, carillon_tone_dart, carillon_turn_dart, carillon_yoke_dart,
 };
 #[cfg(feature = "dart")]
 use super::run_dart_validate::analyzed;
@@ -418,9 +418,9 @@ fn node_bundle() -> String {
     use super::CarillonMcpServiceSchema;
     use super::carillon_mcp_service::{CarillonRefrain, CarillonVerse};
     use super::carillon_service::{
-        CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonError, CarillonFrame,
-        CarillonGauge, CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonSlim, CarillonSwing,
-        CarillonTone, CarillonTurn, CarillonYoke,
+        CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonDeep, CarillonError,
+        CarillonFrame, CarillonGauge, CarillonOuterTone, CarillonPeal, CarillonPitch, CarillonSlim,
+        CarillonSwing, CarillonTone, CarillonTurn, CarillonYoke,
     };
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -440,6 +440,8 @@ fn node_bundle() -> String {
         CarillonSwing::zod_schema(),
         CarillonTurn::ts_definition(),
         CarillonTurn::zod_schema(),
+        CarillonDeep::ts_definition(),
+        CarillonDeep::zod_schema(),
         CarillonBeam::ts_definition(),
         CarillonBeam::zod_schema(),
         CarillonFrame::ts_definition(),
@@ -603,6 +605,7 @@ pub fn dart_source(requests: &[String], replies: &[String]) -> String {
         carillon_slim_dart::dart_definition(),
         carillon_swing_dart::dart_definition(),
         carillon_turn_dart::dart_definition(),
+        carillon_deep_dart::dart_definition(),
         carillon_beam_dart::dart_definition(),
         carillon_frame_dart::dart_definition(),
         carillon_yoke_dart::dart_definition(),
@@ -664,7 +667,7 @@ pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
     use super::carillon_mcp_service::{carillon_refrain_kotlin, carillon_verse_kotlin};
     use super::carillon_service::{
         carillon_beam_kotlin, carillon_bell_kotlin, carillon_chime_kotlin, carillon_chord_kotlin,
-        carillon_error_kotlin, carillon_frame_kotlin, carillon_gauge_kotlin,
+        carillon_deep_kotlin, carillon_error_kotlin, carillon_frame_kotlin, carillon_gauge_kotlin,
         carillon_outer_tone_kotlin, carillon_peal_kotlin, carillon_pitch_kotlin,
         carillon_slim_kotlin, carillon_swing_kotlin, carillon_tone_kotlin, carillon_turn_kotlin,
         carillon_yoke_kotlin,
@@ -688,6 +691,7 @@ pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
         carillon_slim_kotlin::kotlin_definition(),
         carillon_swing_kotlin::kotlin_definition(),
         carillon_turn_kotlin::kotlin_definition(),
+        carillon_deep_kotlin::kotlin_definition(),
         carillon_beam_kotlin::kotlin_definition(),
         carillon_frame_kotlin::kotlin_definition(),
         carillon_yoke_kotlin::kotlin_definition(),
@@ -734,7 +738,7 @@ pub fn swift_source(replies: &[String]) -> String {
     use super::carillon_mcp_service::{carillon_refrain_swift, carillon_verse_swift};
     use super::carillon_service::{
         carillon_beam_swift, carillon_bell_swift, carillon_chime_swift, carillon_chord_swift,
-        carillon_error_swift, carillon_frame_swift, carillon_gauge_swift,
+        carillon_deep_swift, carillon_error_swift, carillon_frame_swift, carillon_gauge_swift,
         carillon_outer_tone_swift, carillon_peal_swift, carillon_pitch_swift, carillon_slim_swift,
         carillon_swing_swift, carillon_tone_swift, carillon_turn_swift, carillon_yoke_swift,
     };
@@ -750,6 +754,7 @@ pub fn swift_source(replies: &[String]) -> String {
         carillon_slim_swift::swift_definition(),
         carillon_swing_swift::swift_definition(),
         carillon_turn_swift::swift_definition(),
+        carillon_deep_swift::swift_definition(),
         carillon_beam_swift::swift_definition(),
         carillon_frame_swift::swift_definition(),
         carillon_yoke_swift::swift_definition(),
