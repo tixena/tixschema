@@ -764,7 +764,8 @@ pub fn scalar_kind(ty: &Type) -> ScalarKind {
         WireScalarKind::Float
         | WireScalarKind::Integer
         | WireScalarKind::Signed64
-        | WireScalarKind::Unsigned64 => ScalarKind::Number,
+        | WireScalarKind::Unsigned64
+        | WireScalarKind::UnsignedSize => ScalarKind::Number,
         WireScalarKind::Text => ScalarKind::Text,
     }
 }
@@ -778,7 +779,9 @@ pub fn path_text_form(ty: &Type) -> String {
     }
     match wire_scalar_kind(base) {
         WireScalarKind::Bool => BOOLEAN_FORM,
-        WireScalarKind::Float | WireScalarKind::Integer => NUMBER_FORM,
+        WireScalarKind::Float | WireScalarKind::Integer | WireScalarKind::UnsignedSize => {
+            NUMBER_FORM
+        }
         WireScalarKind::Signed64 | WireScalarKind::Unsigned64 => BIGINT_FORM,
         WireScalarKind::Text => TEXT_FORM,
     }
@@ -802,7 +805,8 @@ pub fn wide_integer_range(ty: &Type) -> Option<(&'static str, &'static str)> {
         WireScalarKind::Bool
         | WireScalarKind::Float
         | WireScalarKind::Integer
-        | WireScalarKind::Text => None,
+        | WireScalarKind::Text
+        | WireScalarKind::UnsignedSize => None,
     }
 }
 
@@ -812,7 +816,10 @@ pub fn wide_integer_range(ty: &Type) -> Option<(&'static str, &'static str)> {
 pub fn is_integer_scalar(ty: &Type) -> bool {
     matches!(
         wire_scalar_kind(ty),
-        WireScalarKind::Integer | WireScalarKind::Signed64 | WireScalarKind::Unsigned64
+        WireScalarKind::Integer
+            | WireScalarKind::Signed64
+            | WireScalarKind::Unsigned64
+            | WireScalarKind::UnsignedSize
     )
 }
 

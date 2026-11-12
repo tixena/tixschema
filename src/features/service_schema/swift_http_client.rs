@@ -1778,7 +1778,7 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
                     decoded(&format!("{raw} == \"true\""))
                 ),
                 WireScalarKind::Float => numbered("Double"),
-                WireScalarKind::Unsigned64 => numbered("UInt64"),
+                WireScalarKind::Unsigned64 | WireScalarKind::UnsignedSize => numbered("UInt64"),
                 WireScalarKind::Integer | WireScalarKind::Signed64 => numbered("Int64"),
             }
         }
