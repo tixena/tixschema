@@ -4,8 +4,8 @@
 use syn::Item;
 
 use super::{
-    JUDGED, Locals, Presence, Source, both, fitted, held, substituted, takes_keys, top_level,
-    unjudged,
+    FITTED, JUDGED, Locals, Presence, Source, both, fitted, held, substituted, takes_keys,
+    top_level, unjudged,
 };
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::swift::preprocess::{PAYLOAD, Written};
@@ -212,7 +212,7 @@ fn a_type_that_names_functions_reads_its_statements_from_what_they_answer() {
     };
     let around = |corrected: &str| {
         format!(
-            "{PAYLOAD}; private struct SwiftSchemaRead: Decodable {{ let value: Held; \
+            "{PAYLOAD}; {FITTED}; private struct SwiftSchemaRead: Decodable {{ let value: Held; \
              init(from decoder: Decoder) throws {{ value = try Held(swiftSchemaCorrected: decoder) }} }}; \
              private init(swiftSchemaCorrected decoder: Decoder) throws {{ {corrected} }}; \
              {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
@@ -263,7 +263,9 @@ fn the_types_a_read_names_are_written_ahead_of_it() {
         },
     );
     assert!(
-        beside_readers.starts_with(&format!("{PAYLOAD}; public init(swiftSchemaUnjudged")),
+        beside_readers.starts_with(&format!(
+            "{PAYLOAD}; {FITTED}; public init(swiftSchemaUnjudged"
+        )),
         "got: {beside_readers}"
     );
 }

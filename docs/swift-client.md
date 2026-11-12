@@ -129,8 +129,13 @@ to keep.
   `SwiftSchemaFit<UInt32>(from: decoder).value`), `keyed_read`, the value of a brand and of a
   struct of one slot, and a map's wrapper write their reads through it, and `read::both` and the
   wrapper declare `FITTED` where a read names `SwiftSchemaFit<`. A value read through
-  `SwiftSchemaPayload` (a `preprocess`, a flattened read) is held as an `Int64` and written back by
-  `JSONSerialization`, which writes `1.0` as `1`, so such a read takes the number.
+  `SwiftSchemaPayload` (a `preprocess`, a flattened read) holds a number written with a fraction,
+  an exponent or as `-0` as a `Double`, told by `SwiftSchemaFit<Int64>.fractional`, the check
+  `SwiftSchemaFit` makes. `JSONSerialization` writes the payload back and writes `1.0` as `1`, so
+  `SwiftSchemaPayload.decoder(for:)` hands the `JSONDecoder` that reads the type the set of paths
+  where the payload holds a `Double` that no `Int64` also holds (a number `JSONSerialization` read is an `NSNumber`, which is both when whole), each path an array of its steps so that a key holding a dot
+  is no other path, under `userInfo` key `swiftSchemaFloated`. `SwiftSchemaFit` refuses an integer
+  at a path in the set, in serde's words, and `read::both` declares `FITTED` beside the payload.
 - **A type parameter is read through the fitting read too.** What fills it may be such an integer,
   which the type's text cannot know, so `fit_held` takes the type parameters in scope and reads each
   it finds, in the places it finds an integer, as `SwiftSchemaFit<Held>`. Each caller hands them:
