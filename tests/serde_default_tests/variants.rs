@@ -508,7 +508,7 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
         " * An enum none of whose members is read as a default.",
         " * ",
         " */",
-        "export type Tide = {",
+        "export type TideDraft = {",
         "  /**",
         "   * Ebbing",
         "   * ",
@@ -526,6 +526,8 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
         "   */",
         "  kind: \"Slack\";",
         "};",
+        "",
+        "export type Tide = Readonly<TideDraft> & $brand<\"Tide\">;",
         "",
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */",
         "export function Tide$Variant(value: unknown): string {",
@@ -545,14 +547,16 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
 fn an_enum_with_no_default_writes_the_zod_text_it_wrote() {
     assert_eq!(
         Tide::zod_schema(),
-        "const Tide$RawSchema = z.discriminatedUnion(\"kind\", [z.strictObject({
+        "const TideDraft$RawSchema = z.discriminatedUnion(\"kind\", [z.strictObject({
   kind: z.literal(\"Ebbing\"),
   height: z.number().int().min(0).max(4294967295),
 }), z.strictObject({
   kind: z.literal(\"Slack\"),
 })]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
 
-export const Tide$Schema: ZodType<Tide> = Tide$RawSchema.meta({
+export const TideDraft$Schema: ZodType<TideDraft> = TideDraft$RawSchema;
+
+export const Tide$Schema = TideDraft$Schema.readonly().brand<\"Tide\">().meta(TideDraft$Schema.meta() ?? {}).meta({
   examples: []
 });"
     );

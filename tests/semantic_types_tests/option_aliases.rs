@@ -59,7 +59,7 @@ fn typescript_writes_an_alias_of_an_option_outside_a_field_with_null() {
     for (definition, written) in [
         (
             Reckoned::ts_definition(),
-            "export type Reckoned = [number | null, number];",
+            "export type ReckonedDraft = [number | null, number];",
         ),
         (Chanced::ts_definition(), "listed: Array<string | null>;"),
         (Chanced::ts_definition(), "kept?: HaplyType<string>;"),
@@ -71,7 +71,7 @@ fn typescript_writes_an_alias_of_an_option_outside_a_field_with_null() {
         (Handlead::ts_definition(), "listed: Array<number | null>;"),
         (
             Deepsea::ts_definition(),
-            "export type Deepsea = number | null;",
+            "export type DeepseaDraft = number | null;",
         ),
         (Sinker::ts_definition(), "\"Depth\": number | null;"),
         (
@@ -147,11 +147,11 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
         (Handlead::zod_schema(), format!("listed: z.array({held}),")),
         (
             Reckoned::zod_schema(),
-            format!("const Reckoned$RawSchema = z.tuple([{held}, {COUNT}]);"),
+            format!("const ReckonedDraft$RawSchema = z.tuple([{held}, {COUNT}]);"),
         ),
         (
             Deepsea::zod_schema(),
-            format!("const Deepsea$RawSchema = {held};"),
+            format!("const DeepseaDraft$RawSchema = {held};"),
         ),
         (Sinker::zod_schema(), format!("\"Depth\": {held},")),
         (
@@ -264,7 +264,7 @@ fn the_readme_states_what_a_holder_writes_for_an_alias_of_an_option() {
             "pub struct Handlead {",
             include_str!("option_alias_models.rs").to_owned(),
         ),
-        ("export type Handlead = {", handlead.clone()),
+        ("export type HandleadDraft = {", handlead.clone()),
         ("  kept?: PlummetType;", handlead.clone()),
         ("  listed: Array<number | null>;", handlead),
         ("export type PlummetType = number | undefined;", alias),

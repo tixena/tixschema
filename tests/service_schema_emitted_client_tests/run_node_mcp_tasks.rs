@@ -147,6 +147,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 const USAGE: &str = r#"import {
+  ExportRequest$Schema,
   createJobServiceMcpClient,
   createJobServiceMcpDispatcher,
   type JobServiceImpl,
@@ -164,7 +165,7 @@ export const state: McpTaskState<{ files: number }> = { ...handle, status: "comp
 
 export async function usage() {
   const client = createJobServiceMcpClient(transport);
-  const started = await client.startExport({ folder: "reports" });
+  const started = await client.startExport(ExportRequest$Schema.parse({ folder: "reports" }));
   if (!started.ok) return 0;
   const status = await client.exportStatus(started.value.taskId);
   if (status.ok && status.value.status === "completed") {

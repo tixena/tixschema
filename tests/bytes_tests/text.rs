@@ -43,7 +43,7 @@ fn a_vec_of_u8_is_a_uint8array_in_every_place_a_member_holds_one() {
     );
     assert!(
         BytesEither::ts_definition()
-            .contains("export type BytesEither = Uint8Array<ArrayBuffer> | string;"),
+            .contains("export type BytesEitherDraft = Uint8Array<ArrayBuffer> | string;"),
         "{}",
         BytesEither::ts_definition()
     );

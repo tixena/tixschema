@@ -116,7 +116,7 @@ fn test_basic_struct_json_schema() {
 fn test_basic_struct_ts_definition() {
     let ts_definition = BasicUser::ts_definition();
 
-    assert!(ts_definition.contains("export type BasicUser = {"));
+    assert!(ts_definition.contains("export type BasicUserDraft = {"));
     assert!(ts_definition.contains("id: string;"));
     assert!(ts_definition.contains("name: string;"));
     assert!(ts_definition.contains("age: number;"));
@@ -239,7 +239,7 @@ fn test_empty_struct_json_schema() {
 fn test_empty_struct_ts_definition() {
     let ts_definition = EmptyStruct::ts_definition();
 
-    assert!(ts_definition.contains("export type EmptyStruct = Record<string, never>;"));
+    assert!(ts_definition.contains("export type EmptyStructDraft = Record<string, never>;"));
 }
 
 #[test]

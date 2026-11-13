@@ -205,6 +205,8 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "#;
 
 const USAGE: &str = r#"import {
+  AskingConfirmation$Schema,
+  AskingReportRequest$Schema,
   createAskingServiceMcpClient,
   createAskingServiceMcpDispatcher,
   createPreviewServiceMcpClient,
@@ -232,7 +234,7 @@ export async function usage() {
   const first = await client.deleteDocument({ documentId: "doc-1", confirmation: undefined });
   if (!first.ok && !("isServiceFault" in first.error) && first.error.errorCode === "needs-confirmation") {
     const message: string = first.error.message;
-    await client.deleteDocument({ documentId: "doc-1", confirmation: { confirm: message.length > 0 } });
+    await client.deleteDocument({ documentId: "doc-1", confirmation: AskingConfirmation$Schema.parse({ confirm: message.length > 0 }) });
   }
   const preview = await createPreviewServiceMcpClient(previewTransport).documentPreview("doc-1");
   if (preview.ok) {
@@ -240,7 +242,7 @@ export async function usage() {
     const contentType: string = preview.value[1];
     return [bytes.length, contentType.length];
   }
-  const report = await client.buildReport({ title: "Q3" });
+  const report = await client.buildReport(AskingReportRequest$Schema.parse({ title: "Q3" }));
   if (report.ok) {
     const block: McpContent | undefined = report.value[0];
     return block === undefined ? 0 : 1;

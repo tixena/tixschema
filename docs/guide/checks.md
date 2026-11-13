@@ -118,7 +118,7 @@ A Rust function is in scope where the type is declared, a type declared inside a
 | | Rust | TypeScript |
 |---|---|---|
 | A field's check | `fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>` | `function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void` |
-| A type's check | `fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>` | `function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void` |
+| A type's check | `fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>` | `function withinParcel(value: ParcelDraft, ctx: ParsePayload<ParcelDraft>): void` |
 
 `ParsePayload` is zod's own type, `z.core.ParsePayload`, which `zod/v4/core` exports. The two functions of the example in TypeScript:
 
@@ -136,7 +136,7 @@ export function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<
   }
 }
 
-export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
+export function withinParcel(value: ParcelDraft, ctx: ParsePayload<ParcelDraft>): void {
   value.fragileItemCodes.forEach((code, index) => {
     if (!value.itemCodeList.includes(code)) {
       ctx.issues.push({
@@ -152,7 +152,7 @@ export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
 
 - **A field's check takes the field's own value**, read as a [bound reads it](validation.md#constraints-under-option-and-wrappers): under an `Option` it is called only where a value is held, under `Box`, `Rc`, `Arc`, `Cow` and a reference it takes what they hold, and a list or a map is taken whole. The call passes a reference, so `&[String]` and `&Vec<String>` both take a `Vec<String>`, and `&str` takes a `String`.
 - **A type's check takes the whole value**, `&Parcel`, and an enum's takes the enum, whichever variant it holds.
-- **A type with a parameter writes its function once, over every filling**: `fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>`, and `function withACode<CodeType>(value: Crate<CodeType>, ctx: ParsePayload<Crate<CodeType>>): void`.
+- **A type with a parameter writes its function once, over every filling**: `fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>`, and `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>): void`.
 - **The check of a [branded newtype](generics-and-brands.md#branded-newtypes)** takes the brand in Rust, `&Code`, and the value the brand is written over in TypeScript, a `string` for a brand over a `String`: the Zod schema writes the check ahead of `.brand()`.
 
 #### The messages

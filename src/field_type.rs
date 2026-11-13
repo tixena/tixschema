@@ -32,6 +32,8 @@ use crate::utils::reads_one_key_named;
 use crate::utils::{
     MapKeyWire, is_declared_ident, lookup_alias_info, option_alias, ts_quoted, written_type,
 };
+#[cfg(feature = "typescript")]
+use crate::utils::{assume_drafted_type, is_drafted_type};
 
 #[cfg(feature = "zod")]
 use crate::bound_message::{Bound, zod_error_arg, zod_named_error_arg, zod_repeat_check};
@@ -1253,6 +1255,27 @@ impl FieldDef {
         }
     }
 
+    /// The draft of the model this field names, which is what an object holds of it where it
+    /// writes the model's keys among its own: the type the Zod schema of the keys parses to. A
+    /// model not met above is taken to be one that has a draft.
+    #[cfg(feature = "typescript")]
+    pub fn merged_draft_typename(&self) -> Option<String> {
+        let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
+            return None;
+        };
+        if self.array_depth > 0 || (!is_drafted_type(name) && lookup_alias_info(name).is_some()) {
+            return None;
+        }
+        if lookup_alias_info(name).is_none() {
+            assume_drafted_type(name);
+        }
+        let shown = lookup_alias_info(name).map_or_else(|| name.clone(), |info| info.export_name);
+        Some(typescript_with_arguments(
+            format!("{shown}Draft"),
+            arguments,
+        ))
+    }
+
     /// The type declared elsewhere a bound written on this field lands on, and whether it is
     /// written with arguments. A list is not asked: a bound written on one measures the list.
     pub fn named_shape(&self) -> Option<(&str, bool)> {
@@ -1987,7 +2010,8 @@ impl FieldDef {
     /// TypeScript surface: the value itself, with no answer for the outermost `Option`.
     #[cfg(feature = "typescript")]
     pub fn typescript_merged_typename(&self) -> String {
-        self.typescript_base()
+        self.merged_draft_typename()
+            .unwrap_or_else(|| self.typescript_base())
     }
 
     /// The TypeScript type for a value in a slot that cannot be dropped — a tuple element, a map

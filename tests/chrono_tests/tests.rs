@@ -1148,12 +1148,12 @@ fn the_json_schema_of_an_untagged_member_under_as_number_admits_what_serde_reads
 fn an_untagged_member_under_as_number_is_described_as_a_number() {
     let flag = MillisOrFlag::ts_definition();
     assert!(
-        flag.contains("export type MillisOrFlag = boolean | number;"),
+        flag.contains("export type MillisOrFlagDraft = boolean | number;"),
         "Got: {flag}"
     );
     let named = MillisNamed::ts_definition();
     assert!(
-        named.contains("export type MillisNamed = boolean | { at: number };"),
+        named.contains("export type MillisNamedDraft = boolean | { at: number };"),
         "Got: {named}"
     );
     let zod = MillisOrFlag::zod_schema();

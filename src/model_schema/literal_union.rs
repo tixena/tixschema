@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use super::{ts_member_key, ts_member_name};
 use crate::field_type::{FieldDef, FieldDefType, format_number_literal};
-use crate::utils::ts_quoted;
+use crate::utils::{is_drafted_type, ts_quoted};
 
 /// The literal a member is held to.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,6 +51,8 @@ pub enum Shape {
 pub struct Candidate {
     option: String,
     plain: String,
+    /// What closes the option once it is extended: the freeze and brand of a valid type.
+    sealed: String,
     shape: Shape,
 }
 
@@ -134,6 +136,7 @@ pub fn named_candidate(zod: &str, fields: &[FieldDef], flattened: &[FieldDef]) -
         } else {
             Shape::Unreadable
         },
+        sealed: String::new(),
     }
 }
 
@@ -156,10 +159,36 @@ pub fn newtype_candidate(zod: &str, slot: &FieldDef, enum_name: &str) -> Candida
     let (Some(members), Some(stem)) = (model_members(name), zod.strip_suffix("$Schema")) else {
         return unreadable;
     };
+    let (option, sealed) = if is_drafted_type(name) {
+        valid_object(stem)
+    } else {
+        (format!("{stem}$RawSchema"), String::new())
+    };
     Candidate {
-        option: format!("{stem}$RawSchema"),
+        option,
         plain: zod.to_owned(),
         shape: Shape::Object(members),
+        sealed,
+    }
+}
+
+/// The strict object of the draft `stem` names, and what freezes and brands it as the valid type
+/// once the union has extended it: built from the draft's own binding, which keeps the shape the
+/// union reads its key from where the valid type's `$Schema` is annotated.
+fn valid_object(stem: &str) -> (String, String) {
+    #[cfg(feature = "typescript")]
+    {
+        (
+            format!("{stem}Draft$RawSchema"),
+            format!(".readonly().brand<\"{stem}\">()"),
+        )
+    }
+    #[cfg(not(feature = "typescript"))]
+    {
+        (
+            format!("{stem}Draft$Schema"),
+            ".readonly().brand()".to_owned(),
+        )
     }
 }
 
@@ -169,6 +198,7 @@ pub fn unreadable_candidate(zod: &str) -> Candidate {
         option: zod.to_owned(),
         plain: zod.to_owned(),
         shape: Shape::Unreadable,
+        sealed: String::new(),
     }
 }
 
@@ -296,11 +326,12 @@ fn options(candidates: &[Candidate], joined_by: &Plan) -> String {
         .iter()
         .enumerate()
         .map(|(at, candidate)| {
-            if joined_by.omitting == Some(at) {
+            let open = if joined_by.omitting == Some(at) {
                 with_absent_key(&candidate.option, &joined_by.key)
             } else {
                 candidate.option.clone()
-            }
+            };
+            format!("{open}{}", candidate.sealed)
         })
         .collect::<Vec<_>>()
         .join(", ")

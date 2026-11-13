@@ -54,12 +54,14 @@ pub struct Tagged {
 ```
 
 ```typescript
-export type Tagged = {
+export type TaggedDraft = {
   kind: "Tagged";
   name: string;
 };
 
-const Tagged$RawSchema = z.object({
+export type Tagged = Readonly<TaggedDraft> & $brand<"Tagged">;
+
+const TaggedDraft$RawSchema = z.object({
   kind: z.literal("Tagged"),
   name: z.string(),
 });

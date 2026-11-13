@@ -19,7 +19,7 @@ pub struct UserData { ... }                         // → TypeScript: UserData
 pub struct UserData { ... }                         // → TypeScript: User
 ```
 
-A renamed item also publishes its Rust ident as an alias of the moved name — `export type UserData = User;`, `export const UserData$Schema = User$Schema;` — which is what lets a type declared *above* it, with only the ident to name it by, still resolve. `ident_schema_module_name` names the generated Rust module from the ident for the same reason: an override never moves it.
+A renamed item also publishes its Rust ident as an alias of the moved name — `export type UserData = User;`, `export const UserData$Schema = User$Schema;`, and the same for its draft, `export type UserDataDraft = UserDraft;` and `export const UserDataDraft$Schema = UserDraft$Schema;` — which is what lets a type declared *above* it, with only the ident to name it by, still resolve. `ident_schema_module_name` names the generated Rust module from the ident for the same reason: an override never moves it.
 
 `compute_item_export_name` is the one seam a declared item's published name is read from, and `compute_alias_export_name` the alias counterpart — an alias has no surface name of its own and takes the `Type` suffix without an override.
 
@@ -691,7 +691,7 @@ pub struct Document {
 ### Generated TypeScript
 
 ```typescript
-export type Document = {
+export type DocumentDraft = {
   id: ObjectId;
   author_id: ObjectId;
   tags: Array<ObjectId>;
@@ -699,6 +699,8 @@ export type Document = {
   parent_id: ObjectId | undefined;
   related: Partial<Record<string, Array<ObjectId>>>;
 };
+
+export type Document = Readonly<DocumentDraft> & $brand<"Document">;
 ```
 
 ### Generated Zod Schema

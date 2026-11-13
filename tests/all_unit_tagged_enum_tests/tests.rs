@@ -121,7 +121,8 @@ fn the_typescript_union_carries_the_tag_serde_writes() {
     assert_eq!(
         ts_shape(&BalanceError::ts_definition()),
         format!(
-            "export type BalanceError = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
+            "export type BalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
+             export type BalanceError = Readonly<BalanceErrorDraft> & $brand<\"BalanceError\">;\n\
              export function BalanceError$Variant(value: unknown): string {{\n  \
              if (typeof value !== \"object\" || value === null) return \"\";\n  \
              switch ((value as {{ {tag}?: unknown }}).{tag}) {{\n    \
@@ -141,7 +142,8 @@ fn the_typescript_union_carries_an_adjacent_tag_too() {
     assert_eq!(
         ts_shape(&AdjacentBalanceError::ts_definition()),
         format!(
-            "export type AdjacentBalanceError = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
+            "export type AdjacentBalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
+             export type AdjacentBalanceError = Readonly<AdjacentBalanceErrorDraft> & $brand<\"AdjacentBalanceError\">;\n\
              export function AdjacentBalanceError$Variant(value: unknown): string {{\n  \
              if (typeof value !== \"object\" || value === null) return \"\";\n  \
              switch ((value as {{ {tag}?: unknown }}).{tag}) {{\n    \
@@ -157,7 +159,8 @@ fn the_typescript_union_carries_an_adjacent_tag_too() {
 fn an_all_unit_enum_naming_no_tag_still_publishes_the_string_union() {
     assert_eq!(
         ts_shape(&ExternalBalanceError::ts_definition()),
-        "export type ExternalBalanceError =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
+        "export type ExternalBalanceErrorDraft =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
+         export type ExternalBalanceError = Readonly<ExternalBalanceErrorDraft> & $brand<\"ExternalBalanceError\">;\n\
          export function ExternalBalanceError$Variant(value: unknown): string {\n  \
          switch (value) {\n    \
          case \"db-error\": return \"DbError\";\n    \

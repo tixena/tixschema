@@ -303,11 +303,11 @@ pub fn checked_fn(function: &str, writer: &str, infinite: &str) -> String {
          the schema\n \
          * refuses, or one the wire cannot hold, otherwise.\n \
          */\n\
-         function {function}<Parsed>(\n  \
-         schema: ZodType<Parsed>,\n  \
+         function {function}<Schema extends ZodType>(\n  \
+         schema: Schema,\n  \
          value: unknown,\n\
          ):\n  \
-         | {{ success: true; data: Parsed; sent: unknown }}\n  \
+         | {{ success: true; data: z.output<Schema>; sent: unknown }}\n  \
          | {{ success: false; error: {{ issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; \
          message: string }}> }} }} {{\n  \
          const parsed = schema.safeParse(value);\n  \

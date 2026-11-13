@@ -63,7 +63,9 @@ pub enum NamedUnion {
 
 ```typescript
 // TypeScript
-export type NamedUnion = { x: string } | { y: number };
+export type NamedUnionDraft = { x: string } | { y: number };
+
+export type NamedUnion = Readonly<NamedUnionDraft> & $brand<"NamedUnion">;
 // Zod
 z.union([z.strictObject({ x: z.string(), }), z.strictObject({ y: z.number().int().min(0).max(4294967295), })])
 // JSON Schema: { "anyOf": [ <object>, <object> ] }  — each branch has additionalProperties: false

@@ -118,7 +118,7 @@ fn a_message_is_checked_and_sent_with_each_bigint_as_a_json_number() {
          if (typeof raw === \"function\") return raw(value.toString());\n    \
          if (Number.isSafeInteger(Number(value))) return Number(value);\n    \
          throw new RangeError(",
-        "function billingServiceChecked<Parsed>(\n  schema: ZodType<Parsed>,\n  value: unknown,\n):",
+        "function billingServiceChecked<Schema extends ZodType>(\n  schema: Schema,\n  value: unknown,\n):",
         "    return { success: true, data: parsed.data, sent: billingServiceSent(parsed.data) };",
     ] {
         assert!(

@@ -136,6 +136,7 @@ main().catch((error) => { console.error(error); process.exit(1); });
 "##;
 
 const USAGE: &str = r#"import {
+  ShelfWireRequest$Schema,
   createShelfWireServiceClient,
   createShelfWireServiceHttpClient,
   type McpContent,
@@ -150,7 +151,7 @@ declare const transport: Parameters<typeof createShelfWireServiceClient>[0];
 export const block: McpContent = McpContent$Schema.parse({ type: "text", text: "a" });
 export async function usage() {
   const client = createShelfWireServiceClient(transport);
-  const described = await client.describeShelf({ shelf: "history" });
+  const described = await client.describeShelf(ShelfWireRequest$Schema.parse({ shelf: "history" }));
   if (described.ok) {
     const first: McpContent | undefined = described.value[0];
     return first === undefined ? 0 : 1;

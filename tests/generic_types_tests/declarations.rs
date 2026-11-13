@@ -166,16 +166,16 @@ use std::sync::Once;
 use tixschema::model_schema;
 
 /// A literal array where bytes are held, which the type refuses.
-const BYTES_ARRAY_LITERAL: &str = r#"import type { BytesImage } from "./index.js";
+const BYTES_ARRAY_LITERAL: &str = r#"import type { BytesImageDraft } from "./index.js";
 
-export const literal: BytesImage = { contentType: "image/png", data: [137, 80, 78, 71] };
+export const literal: BytesImageDraft = { contentType: "image/png", data: [137, 80, 78, 71] };
 "#;
 
 /// What a consumer writes with the bytes of a `BytesImage`: hands them to `TextDecoder`, `Blob`,
 /// `fetch` and `crypto.subtle`, reads them as a `Uint8Array<ArrayBuffer>`, builds them with
 /// `Uint8Array.from`, and holds the schema's output to the published type.
 const BYTES_CONSUMER: &str = r#"import type { z } from "zod";
-import { BytesImage$Schema, type BytesImage, type BytesHolder } from "./index.js";
+import { BytesImage$Schema, type BytesImage, type BytesImageDraft, type BytesHolder } from "./index.js";
 
 type Same<Left, Right> = (<Held>() => Held extends Left ? 1 : 2) extends <Held>() => Held extends Right ? 1 : 2 ? true : false;
 const sameAsPublished: Same<z.infer<typeof BytesImage$Schema>, BytesImage> = true;
@@ -197,7 +197,7 @@ export async function digests(image: BytesImage, read: z.infer<typeof BytesImage
   return [await crypto.subtle.digest("SHA-256", image.data), await crypto.subtle.digest("SHA-256", read.data)];
 }
 
-export function built(): BytesImage {
+export function built(): BytesImageDraft {
   return { contentType: "image/png", data: Uint8Array.from([137, 80, 78, 71]) };
 }
 
@@ -210,9 +210,9 @@ export { sameAsPublished };
 "#;
 
 /// A bytes value typed over any buffer, which the published type refuses.
-const BYTES_WIDE_BUFFER: &str = r#"import type { BytesImage } from "./index.js";
+const BYTES_WIDE_BUFFER: &str = r#"import type { BytesImageDraft } from "./index.js";
 
-export function wide(data: Uint8Array<ArrayBufferLike>): BytesImage {
+export function wide(data: Uint8Array<ArrayBufferLike>): BytesImageDraft {
   return { contentType: "image/png", data };
 }
 "#;
@@ -527,7 +527,7 @@ export function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<
   }
 }
 
-export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
+export function withinParcel(value: ParcelDraft, ctx: ParsePayload<ParcelDraft>): void {
   value.fragileItemCodes.forEach((code, index) => {
     if (!value.itemCodeList.includes(code)) {
       ctx.issues.push({
@@ -540,29 +540,29 @@ export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
   });
 }
 
-export function withARoute(value: Route, ctx: ParsePayload<Route>): void {
+export function withARoute(value: RouteDraft, ctx: ParsePayload<RouteDraft>): void {
   if (value.stops.length === 0) {
     ctx.issues.push({ code: "custom", message: "a route makes at least one stop", path: ["stops"], input: value });
   }
 }
 
-export function withinItsLimit(value: Stack, ctx: ParsePayload<Stack>): void {
+export function withinItsLimit(value: StackDraft, ctx: ParsePayload<StackDraft>): void {
   if (value[0].length > value[1]) {
     ctx.issues.push({ code: "custom", message: `a stack holds at most ${value[1]} codes`, path: [0], input: value });
   }
 }
 
-export function takingParcels(value: ClosedDock, ctx: ParsePayload<ClosedDock>): void {
+export function takingParcels(value: ClosedDockDraft, ctx: ParsePayload<ClosedDockDraft>): void {
   ctx.issues.push({ code: "custom", message: "a closed dock takes no parcel", path: [], input: value });
 }
 
-export function withFewStops(value: Shipment, ctx: ParsePayload<Shipment>): void {
+export function withFewStops(value: ShipmentDraft, ctx: ParsePayload<ShipmentDraft>): void {
   if (value.kind === "air" && value.stops.length > 2) {
     ctx.issues.push({ code: "custom", message: "an air shipment makes at most 2 stops", path: ["stops"], input: value });
   }
 }
 
-export function withAStop(value: Transfer, ctx: ParsePayload<Transfer>): void {
+export function withAStop(value: TransferDraft, ctx: ParsePayload<TransferDraft>): void {
   if (typeof value === "string") return;
   if (value.Road !== undefined && value.Road.stops.length === 0) {
     ctx.issues.push({ code: "custom", message: "a road transfer makes a stop", path: ["Road", "stops"], input: value });
@@ -572,13 +572,13 @@ export function withAStop(value: Transfer, ctx: ParsePayload<Transfer>): void {
   }
 }
 
-export function signedBySomeone(value: Handover, ctx: ParsePayload<Handover>): void {
+export function signedBySomeone(value: HandoverDraft, ctx: ParsePayload<HandoverDraft>): void {
   if (value.kind === "Signed" && value.detail.by === "") {
     ctx.issues.push({ code: "custom", message: "a handover is signed by someone", path: ["detail", "by"], input: value });
   }
 }
 
-export function aReference(value: Reference, ctx: ParsePayload<Reference>): void {
+export function aReference(value: ReferenceDraft, ctx: ParsePayload<ReferenceDraft>): void {
   if (typeof value === "number") {
     if (value === 0) {
       ctx.issues.push({ code: "custom", message: "a reference is not zero", path: [], input: value });
@@ -590,7 +590,7 @@ export function aReference(value: Reference, ctx: ParsePayload<Reference>): void
   }
 }
 
-export function rated(value: Grade, ctx: ParsePayload<Grade>): void {
+export function rated(value: GradeDraft, ctx: ParsePayload<GradeDraft>): void {
   if (value === "Unrated") {
     ctx.issues.push({ code: "custom", message: "a parcel is rated", path: [], input: value });
   }
@@ -602,7 +602,7 @@ export function upperCase(value: string, ctx: ParsePayload<string>): void {
   }
 }
 
-export function withACode<CodeType>(value: Crate<CodeType>, ctx: ParsePayload<Crate<CodeType>>): void {
+export function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>): void {
   if (value.codes.length === 0) {
     ctx.issues.push({ code: "custom", message: "a crate holds at least one code", path: ["codes"], input: value });
   }
@@ -614,7 +614,7 @@ export function holdingACode<CodeType>(value: Array<CodeType>, ctx: ParsePayload
   }
 }
 
-export function withEntries<IdType>(value: Ledger<IdType>, ctx: ParsePayload<Ledger<IdType>>): void {
+export function withEntries<IdType>(value: LedgerDraft<IdType>, ctx: ParsePayload<LedgerDraft<IdType>>): void {
   if (value.entries.length === 0) {
     ctx.issues.push({ code: "custom", message: "a ledger holds at least one entry", path: ["entries"], input: value });
   }
@@ -635,7 +635,7 @@ export function stackedLow(value: Array<Package>, ctx: ParsePayload<Array<Packag
 /// The function `Vault`'s check names.
 const DEFERRED_CHECK: &str = r#"import type { ParsePayload } from "zod/v4/core";
 
-export function withRecords<IdType>(value: Vault<IdType>, ctx: ParsePayload<Vault<IdType>>): void {
+export function withRecords<IdType>(value: VaultDraft<IdType>, ctx: ParsePayload<VaultDraft<IdType>>): void {
   if (value.records.length === 0) {
     ctx.issues.push({ code: "custom", message: "a vault holds a record", path: ["records"], input: value });
   }
@@ -707,7 +707,7 @@ export function asGiven(payload: unknown): unknown {
   return payload;
 }
 
-export function aSpan(value: Span, ctx: ParsePayload<Span>): void {
+export function aSpan(value: SpanDraft, ctx: ParsePayload<SpanDraft>): void {
   if ("hours" in value && value.hours === 0) {
     ctx.issues.push({ code: "custom", message: "a span is not empty", path: ["hours"], input: value });
   }
@@ -836,7 +836,7 @@ export function orUnnamed(payload: unknown): unknown {
   return payload === null ? "unnamed" : payload;
 }
 
-export function withinLimit(value: Weighed, ctx: ParsePayload<Weighed>): void {
+export function withinLimit(value: WeighedDraft, ctx: ParsePayload<WeighedDraft>): void {
   if (value.grams > 1000) {
     ctx.issues.push({
       code: "custom",
@@ -1215,13 +1215,13 @@ function wireForm(value) {
 /// variant's bare name.
 const NOT_CALM: &str = r#"import type { ParsePayload } from "zod/v4/core";
 
-export function notCalm(value: DeclaredTack, ctx: ParsePayload<DeclaredTack>): void {
+export function notCalm(value: DeclaredTackDraft, ctx: ParsePayload<DeclaredTackDraft>): void {
   if (value === "Calm") {
     ctx.issues.push({ code: "custom", message: "a calm tack is refused", path: [], input: value });
   }
 }
 
-export function notCalmLull(value: DeclaredLull, ctx: ParsePayload<DeclaredLull>): void {
+export function notCalmLull(value: DeclaredLullDraft, ctx: ParsePayload<DeclaredLullDraft>): void {
   if (value === "Calm") {
     ctx.issues.push({ code: "custom", message: "a calm lull is refused", path: [], input: value });
   }
@@ -1518,6 +1518,11 @@ console.log(JSON.stringify({ absent, handed: lib.handed, held, flattened }));
 "#;
 
 /// The second package: it names the first only through `./lib`, where the declarations are.
+/// The shape of a type with its brands and read-only members taken off, at every depth: what a
+/// payload written out as a literal is held to where the type names the valid type of a member.
+/// A scalar is held to its kind, a brand over a string being a string on the wire.
+const UNSEALED: &str = "import type { $brand } from \"zod\"; type Unsealed<Held> = Held extends string ? string : Held extends number ? number : Held extends boolean ? boolean : Held extends readonly [...infer Items] ? { -readonly [Index in keyof Items]: Unsealed<Items[Index]> } : Held extends object ? { -readonly [Key in keyof Held as Exclude<Key, typeof $brand>]: Unsealed<Held[Key]> } : Held;";
+
 const CONSUMER: &str = r#"import {
   type DeclaredAhead,
   DeclaredAhead$SchemaFactory,
@@ -1633,7 +1638,7 @@ const PREAMBLE: &str = "import * as zod from \"zod\";\nimport type { ZodType, $b
 /// the function of a type with a parameter.
 const WITH_ITS_CODE: &str = r#"import type { ParsePayload } from "zod/v4/core";
 
-export function withItsCode<CodeType>(value: CodedCrate<CodeType>, ctx: ParsePayload<CodedCrate<CodeType>>): void {
+export function withItsCode<CodeType>(value: CodedCrateDraft<CodeType>, ctx: ParsePayload<CodedCrateDraft<CodeType>>): void {
   if (value.codes.length === 0) {
     ctx.issues.push({ code: "custom", message: "a crate holds at least one code", path: ["codes"], input: value });
   }
@@ -2549,6 +2554,15 @@ pub struct DeclaredGangway {
     pub note: String,
     #[serde(flatten)]
     pub pick: DeclaredPickOf<bool>,
+}
+
+/// The draft a model's name stands for, a generic one keeping its arguments: the type a payload
+/// written out as a literal is held to.
+fn drafted(named: &str) -> String {
+    named.split_once('<').map_or_else(
+        || format!("{named}Draft"),
+        |(name, arguments)| format!("{name}Draft<{arguments}"),
+    )
 }
 
 /// The models of [`DeclaredSlugged`]: a bundle of their own, compiled with `tsc --strict` and
@@ -4657,26 +4671,28 @@ fn a_union_around_a_factorys_call_is_built_over_a_type_parameter() {
          z.undefined()]).prefault(undefined))(DeclaredChain$SchemaFactory(idType)); },",
         "  get named() { return (<Reached$ extends SomeType>(reached$: Reached$) => \
          z.union([z.record(z.string(), reached$), \
-         z.null()]))(DeclaredChain$SchemaSelf(idType)); },",
+         z.null()]))(DeclaredChain$SchemaFactory(idType)); },",
     ] {
         assert!(zod.contains(member), "missing `{member}` in: {zod}");
     }
 }
 
 #[test]
-fn a_map_of_the_type_itself_is_read_through_the_self_view() {
+fn a_map_of_the_type_itself_is_read_through_the_factory_of_its_valid_type() {
     let zod = DeclaredMaps::<String>::zod_schema();
     for written in [
-        "function DeclaredMaps$SchemaSelf<IdType extends ZodType>(\n  idType: IdType,\n): \
-         ZodType<DeclaredMaps<IdType[\"_zod\"][\"output\"]>>;",
-        "  get held() { return z.record(z.string(), DeclaredMaps$SchemaSelf(idType)); },",
+        "  get held() { return z.record(z.string(), DeclaredMaps$SchemaFactory(idType)); },",
         "  get maybe() { return (<Reached$ extends SomeType>(reached$: Reached$) => \
          z.union([z.null().transform(() => undefined), z.record(z.string(), reached$), \
-         z.undefined()]).prefault(undefined))(DeclaredMaps$SchemaSelf(idType)); },",
-        "  get rows() { return z.array(z.record(z.string(), DeclaredMaps$SchemaSelf(idType))); },",
+         z.undefined()]).prefault(undefined))(DeclaredMaps$SchemaFactory(idType)); },",
+        "  get rows() { return z.array(z.record(z.string(), DeclaredMaps$SchemaFactory(idType))); },",
     ] {
         assert!(zod.contains(written), "missing `{written}` in: {zod}");
     }
+    assert!(
+        !zod.contains("$SchemaSelf"),
+        "the valid factory states its own type. Got: {zod}"
+    );
     let node = DeclaredNode::<String>::zod_schema();
     assert!(
         node.contains("  get children() { return z.array(DeclaredNode$SchemaFactory(idType)); },")
@@ -5580,13 +5596,14 @@ fn type_check_an_optional_flattened_type_is_refused_where_a_key_of_it_does_not_r
         return;
     };
     let mut payloads = String::from(
-        "import type { Bridling, Fiddling, Slipping, Snagging } from \"./lib/index.js\";\n",
+        "import type { BridlingDraft, FiddlingDraft, SlippingDraft, SnaggingDraft } from \"./lib/index.js\";\n",
     );
     for (position, row) in unrecorded::UNRECORDED.iter().enumerate() {
         let _ = writeln!(
             payloads,
             "export const row{position}: {} = {};",
-            row.holder, row.json
+            drafted(row.holder),
+            row.json
         );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
@@ -5639,14 +5656,15 @@ fn type_check_an_optional_flattened_type_that_names_a_function_is_read_from_its_
         return;
     };
     let mut payloads = String::from(
-        "import type { Marled, Moused, Parcelled, Reeved, Seized, Served, Snaked, Wormed } from \
-         \"./lib/index.js\";\n",
+        "import type { MarledDraft, MousedDraft, ParcelledDraft, ReevedDraft, SeizedDraft, ServedDraft, \
+         SnakedDraft, WormedDraft } from \"./lib/index.js\";\n",
     );
     for (position, row) in rows.iter().enumerate() {
         let _ = writeln!(
             payloads,
             "export const row{position}: {} = {};",
-            row.holder, row.json
+            drafted(row.holder),
+            row.json
         );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
@@ -5697,10 +5715,15 @@ fn type_check_an_externally_tagged_enum_refuses_an_object_of_two_variants_entrie
     let Some(at) = built_from("hatches-payloads", &hatches_bundle()) else {
         return;
     };
-    let mut payloads =
-        String::from("import type { DeclaredHatch, DeclaredLading } from \"./lib/index.js\";\n");
+    let mut payloads = String::from(
+        "import type { DeclaredHatchDraft, DeclaredLadingDraft } from \"./lib/index.js\";\n",
+    );
     for (position, &(_, typed, json, _)) in HATCHES.iter().enumerate() {
-        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: {} = {json};",
+            drafted(typed)
+        );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
     fs::write(at.join("consumer.ts"), &payloads).unwrap();
@@ -5830,11 +5853,12 @@ fn type_check_a_slot_beside_the_tag_takes_a_unit_variants_entry_over_null() {
     let Some(at) = built_from("moorings-payloads", &hatches_bundle()) else {
         return;
     };
-    let mut payloads = String::from("import type { DeclaredMooring } from \"./lib/index.js\";\n");
+    let mut payloads =
+        String::from("import type { DeclaredMooringDraft } from \"./lib/index.js\";\n");
     for (position, &(json, _)) in MOORINGS.iter().enumerate() {
         let _ = writeln!(
             payloads,
-            "export const row{position}: DeclaredMooring = {json};"
+            "export const row{position}: DeclaredMooringDraft = {json};"
         );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
@@ -5885,11 +5909,12 @@ fn type_check_an_object_id_beside_the_tag_is_taken_as_serde_writes_it() {
     let Some(at) = built_from("stamps-payloads", &stamps_bundle()) else {
         return;
     };
-    let mut payloads = String::from("import type { DeclaredStamp } from \"./lib/index.js\";\n");
+    let mut payloads =
+        String::from("import type { DeclaredStampDraft } from \"./lib/index.js\";\n");
     for (position, &(json, _)) in STAMPS.iter().enumerate() {
         let _ = writeln!(
             payloads,
-            "export const row{position}: DeclaredStamp = {json};"
+            "export const row{position}: DeclaredStampDraft = {json};"
         );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
@@ -5991,11 +6016,16 @@ fn type_check_an_enum_written_with_an_argument_takes_each_entry_at_the_argument(
         return;
     };
     let mut payloads = String::from(
-        "import type { DeclaredBerth, DeclaredCoaming, DeclaredCompanion, DeclaredMarina, \
-         DeclaredPier, DeclaredQuay, DeclaredScuttle, DeclaredWharf } from \"./lib/index.js\";\n",
+        "import type { DeclaredBerthDraft, DeclaredCoamingDraft, DeclaredCompanionDraft, \
+         DeclaredMarinaDraft, DeclaredPierDraft, DeclaredQuayDraft, DeclaredScuttleDraft, \
+         DeclaredWharfDraft } from \"./lib/index.js\";\n",
     );
     for (position, &(_, typed, json, _)) in LADINGS.iter().enumerate() {
-        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: {} = {json};",
+            drafted(typed)
+        );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
     fs::write(at.join("consumer.ts"), &payloads).unwrap();
@@ -6042,10 +6072,16 @@ fn type_check_an_untagged_enum_written_with_an_argument_takes_each_member_at_the
     let Some(at) = built_from("landings-payloads", &hatches_bundle()) else {
         return;
     };
-    let mut payloads =
-        String::from("import type { DeclaredLanding, DeclaredSlipway } from \"./lib/index.js\";\n");
+    let mut payloads = format!(
+        "{UNSEALED}import type {{ DeclaredLandingDraft, DeclaredSlipwayDraft }} from \
+         \"./lib/index.js\";\n"
+    );
     for (position, &(_, typed, json, _)) in LANDINGS.iter().enumerate() {
-        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: Unsealed<{}> = {json};",
+            drafted(typed)
+        );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
     fs::write(at.join("consumer.ts"), &payloads).unwrap();
@@ -6105,10 +6141,15 @@ fn type_check_an_untagged_enum_flattened_through_an_alias_takes_each_member_serd
     let Some(at) = built_from("aliased-picks-payloads", &hatches_bundle()) else {
         return;
     };
-    let mut payloads =
-        String::from("import type { DeclaredDinghy, DeclaredGangway } from \"./lib/index.js\";\n");
+    let mut payloads = String::from(
+        "import type { DeclaredDinghyDraft, DeclaredGangwayDraft } from \"./lib/index.js\";\n",
+    );
     for (position, &(_, typed, json, _)) in ALIASED_PICKS.iter().enumerate() {
-        let _ = writeln!(payloads, "export const row{position}: {typed} = {json};");
+        let _ = writeln!(
+            payloads,
+            "export const row{position}: {} = {json};",
+            drafted(typed)
+        );
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
     fs::write(at.join("consumer.ts"), &payloads).unwrap();
@@ -6288,12 +6329,27 @@ fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
     let Some(at) = built_from("option-aliases-payloads", &source) else {
         return;
     };
+    // A member that is a model takes a valid value, which a literal is not: `Leadsman` holds
+    // `Swung`, so its rows are read through the schema.
     let mut payloads = String::from(
-        "import type { Bottomed, Chanced, Deepsea, Groundage, Grounding, Handlead, Heaved, \
-         Leadsman, Lineman, Plumbline, Reckoned, Shoaled, Sinker } from \"./lib/index.js\";\n",
+        "import { Leadsman$Schema } from \"./lib/index.js\";\nimport type { BottomedDraft, \
+         ChancedDraft, DeepseaDraft, GroundageDraft, GroundingDraft, HandleadDraft, HeavedDraft, \
+         Leadsman, LinemanDraft, PlumblineDraft, ReckonedDraft, ShoaledDraft, SinkerDraft } from \
+         \"./lib/index.js\";\n",
     );
     for (position, &(read_as, json)) in option_aliases::LEADS.iter().enumerate() {
-        let _ = writeln!(payloads, "export const row{position}: {read_as} = {json};");
+        if read_as == "Leadsman" {
+            let _ = writeln!(
+                payloads,
+                "export const row{position}: Leadsman = Leadsman$Schema.parse({json});"
+            );
+        } else {
+            let _ = writeln!(
+                payloads,
+                "export const row{position}: {} = {json};",
+                drafted(read_as)
+            );
+        }
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
     fs::write(at.join("consumer.ts"), &payloads).unwrap();
@@ -6303,6 +6359,58 @@ fn type_check_an_alias_of_an_option_held_outside_a_field_is_read_with_null() {
         typed,
         "TypeScript refuses a payload serde writes:\n{said}\n{payloads}"
     );
+}
+
+/// The valid type of a newtype over an alias of an `Option` admits what its schema parses to,
+/// `null` included, and is still the type only a parse returns for the value that is not `null`.
+#[test]
+fn type_check_the_valid_type_of_a_newtype_over_an_option_admits_null() {
+    let source = [
+        PREAMBLE.to_owned(),
+        option_aliases::plummet_schema::Schema::ts_definition(),
+        option_aliases::plummet_schema::Schema::zod_schema(),
+        option_aliases::Deepsea::ts_definition(),
+        option_aliases::Deepsea::zod_schema(),
+        option_aliases::Handlead::ts_definition(),
+        option_aliases::Handlead::zod_schema(),
+    ]
+    .join("\n\n");
+    let Some(at) = built_from("valid-option-newtype", &source) else {
+        return;
+    };
+    let accepted = "import { Deepsea$Schema, Handlead$Schema } from \"./lib/index.js\";\nimport type { \
+         Deepsea, DeepseaDraft, Handlead, HandleadDraft } from \"./lib/index.js\";\n\
+         export const parsedNull: Deepsea = Deepsea$Schema.parse(null);\n\
+         export const parsedNumber: Deepsea = Deepsea$Schema.parse(4);\n\
+         export const asDraftNull: DeepseaDraft = parsedNull;\n\
+         export const asDraftNumber: DeepseaDraft = parsedNumber;\n\
+         export const parsedStruct: Handlead = Handlead$Schema.parse({ listed: [] });\n\
+         export const asDraftStruct: HandleadDraft = parsedStruct;\n";
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), accepted).unwrap();
+    let (typed, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    assert!(
+        typed,
+        "TypeScript refuses a value the schema parses to:\n{said}"
+    );
+    for (refused, why) in [
+        ("export const built: Deepsea = 4;", "a number built by hand"),
+        (
+            "export const built: Handlead = { listed: [] };",
+            "a struct built by hand",
+        ),
+    ] {
+        let attempt =
+            format!("import type {{ Deepsea, Handlead }} from \"./lib/index.js\";\n{refused}\n");
+        fs::write(at.join("consumer.ts"), &attempt).unwrap();
+        let (taken, answer) = compiled(&at, "tsconfig.consumer.json").unwrap();
+        assert!(!taken, "TypeScript takes {why} as a valid value:\n{answer}");
+        assert!(
+            answer.contains("TS2322"),
+            "{why} is refused otherwise:\n{answer}"
+        );
+    }
+    fs::remove_dir_all(&at).unwrap();
 }
 
 /// Each payload serde reads as an untagged enum with a newtype variant over an `Option` is a value
@@ -6359,10 +6467,25 @@ fn type_check_an_untagged_variant_over_an_option_holds_null() {
     let Some(at) = built_from("untagged-nulls-payloads", &source) else {
         return;
     };
-    let mut payloads =
-        String::from("import type { Drogued, Fathom, Kedged, Plumb } from \"./lib/index.js\";\n");
+    // A member that is a model takes a valid value, which a literal is not: `Drogued` holds
+    // `Drogue`, so its rows are read through the schema.
+    let mut payloads = String::from(
+        "import { Drogued$Schema } from \"./lib/index.js\";\nimport type { Drogued, FathomDraft, \
+         KedgedDraft, PlumbDraft } from \"./lib/index.js\";\n",
+    );
     for (position, &(read_as, json)) in read.iter().enumerate() {
-        let _ = writeln!(payloads, "export const row{position}: {read_as} = {json};");
+        if read_as == "Drogued" {
+            let _ = writeln!(
+                payloads,
+                "export const row{position}: Drogued = Drogued$Schema.parse({json});"
+            );
+        } else {
+            let _ = writeln!(
+                payloads,
+                "export const row{position}: {} = {json};",
+                drafted(read_as)
+            );
+        }
     }
     fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
     fs::write(at.join("consumer.ts"), &payloads).unwrap();

@@ -46,13 +46,13 @@ fn the_readme_declares_the_model_this_binary_compiles() {
 fn the_readme_shows_what_typescript_and_zod_write() {
     let typescript = without_docs(&Spanned::ts_definition());
     let declared = typescript
-        .split_once("export type Spanned = {")
-        .map(|(_, rest)| format!("export type Spanned = {{{rest}"))
+        .split_once("export type SpannedDraft = {")
+        .map(|(_, rest)| format!("export type SpannedDraft = {{{rest}"))
         .unwrap();
     assert!(README.contains(declared.trim_end()), "{declared}");
     let zod = Spanned::zod_schema();
     let raw = zod.split("\n\n").next().unwrap();
-    assert!(raw.starts_with("const Spanned$RawSchema"), "{zod}");
+    assert!(raw.starts_with("const SpannedDraft$RawSchema"), "{zod}");
     assert!(README.contains(raw), "{raw}");
 }
 

@@ -17,10 +17,12 @@ pub enum Action {
 Generated:
 
 ```typescript
-export type Action = {
+export type ActionDraft = {
   type: "Generate";
   value: "document";
 };
+
+export type Action = Readonly<ActionDraft> & $brand<"Action">;
 
 export const Action$Schema = z.discriminatedUnion("type", [
   z.strictObject({
@@ -51,11 +53,13 @@ pub struct AdminUser {
 Generated:
 
 ```typescript
-export type AdminUser = {
+export type AdminUserDraft = {
   id: string;
   isSystemAdmin: true;
   email: string;
 };
+
+export type AdminUser = Readonly<AdminUserDraft> & $brand<"AdminUser">;
 
 export const AdminUser$Schema = z.strictObject({
   id: z.string(),

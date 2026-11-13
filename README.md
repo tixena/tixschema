@@ -68,7 +68,7 @@ This generates:
 Generated TypeScript:
 
 ```typescript
-export type User = {
+export type UserDraft = {
   id: string;
   name: string;
   email: string;
@@ -76,13 +76,19 @@ export type User = {
   is_active: boolean;
 };
 
-export const User$Schema: ZodType<User> = z.strictObject({
+export type User = Readonly<UserDraft> & $brand<"User">;
+
+const UserDraft$RawSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   email: z.string(),
   age: z.number().int().min(0).max(4294967295),
   is_active: z.boolean(),
-}).meta({
+});
+
+export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
+
+export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta(UserDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
 ```

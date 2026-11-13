@@ -24,11 +24,13 @@ pub struct Wrapper<IdType> {
 ```
 
 ```typescript
-export type Wrapper<IdType> = {
+export type WrapperDraft<IdType> = {
   children: Array<IdType>;
   id: IdType;
   name: string;
 };
+
+export type Wrapper<IdType> = Readonly<WrapperDraft<IdType>> & $brand<"Wrapper">;
 
 const buildWrapper$Schema = <IdType extends ZodType>(
   idType: IdType,
@@ -102,12 +104,14 @@ pub struct Node<IdType> {
 ```
 
 ```typescript
-export type Node<IdType> = {
+export type NodeDraft<IdType> = {
   children: Array<Node<IdType>>;
   id: IdType;
 };
 
-const buildNode$Schema = <IdType extends ZodType>(
+export type Node<IdType> = Readonly<NodeDraft<IdType>> & $brand<"Node">;
+
+const buildNodeDraft$Schema = <IdType extends ZodType>(
   idType: IdType,
 ) =>
   z.strictObject({
@@ -115,12 +119,12 @@ const buildNode$Schema = <IdType extends ZodType>(
   id: idType,
 });
 
-interface Node$SchemaOf<IdType extends ZodType> extends ReturnType<
-  typeof buildNode$Schema<IdType>
+interface NodeDraft$SchemaOf<IdType extends ZodType> extends ReturnType<
+  typeof buildNodeDraft$Schema<IdType>
 > {}
 ```
 
-The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the member is declared `z.ZodArray<Node$SchemaOf<IdType>>`, so a second package reading the declarations parses `children` as `Node<…>` all the way down.
+The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the draft's members are typed by the valid factory, which states what it parses, so a second package reading the declarations parses `children` as `Node<…>` all the way down.
 
 A generic tuple struct that holds itself has no getter to defer behind, and the types of a tuple's slots are read as the tuple is built, so its builder cannot read its own factory's type there. It reaches itself through a function of its own, `X$SchemaSelf`, declared to return what the factory's schema parses -- `ZodType<X<IdType["_zod"]["output"]>>` -- and called behind `z.lazy`. The factory keeps its own precise return type. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
 

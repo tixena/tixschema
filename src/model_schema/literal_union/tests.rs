@@ -141,6 +141,7 @@ fn candidate_on(key: &str, value: &str, whole: bool) -> Candidate {
     Candidate {
         option: option.clone(),
         plain: option,
+        sealed: String::new(),
         shape: Shape::Object(vec![Member {
             key: key.to_owned(),
             literal: Some(Literal {

@@ -75,7 +75,7 @@ pub enum FixedValue {
 Generated TypeScript:
 
 ```typescript
-export type FixedValue = {
+export type FixedValueDraft = {
   type: "Empty";
 } | {
   type: "Text";
@@ -88,6 +88,8 @@ export type FixedValue = {
   field_a: string;
   field_b: boolean;
 };
+
+export type FixedValue = Readonly<FixedValueDraft> & $brand<"FixedValue">;
 ```
 
 Generated Zod:
@@ -244,7 +246,7 @@ Serialized by Serde:
 Generated TypeScript:
 
 ```typescript
-export type Internal = {
+export type InternalDraft = {
   type: "Bare";
 } | {
   type: "Fields";
@@ -253,6 +255,8 @@ export type Internal = {
 } | {
   type: "Wrapped";
 } & TagPayload;
+
+export type Internal = Readonly<InternalDraft> & $brand<"Internal">;
 ```
 
 Generated Zod -- a flattened member is an intersection, which has no shape of its own to read the discriminator out of, so a union holding one is a plain `z.union` rather than a `z.discriminatedUnion`:
@@ -371,10 +375,12 @@ pub enum Skipped {
 ```
 
 ```typescript
-export type Skipped = {
+export type SkippedDraft = {
   kind: "Open";
   note: string;
 };
+
+export type Skipped = Readonly<SkippedDraft> & $brand<"Skipped">;
 
 const Skipped$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
   kind: z.literal("Open"),

@@ -47,6 +47,43 @@ The valid type writes what its draft writes, and `serde_json::from_str::<UserPro
 
 A declaration whose `{Name}Draft` is the name of another type in the module stops the build with the compiler's duplicate-name error (`E0428`). The type the valid wrapper is made of is generic and hidden: the compiler prints a valid value's type as `UserProfile<UserProfileDraft>`, and a type declared in a function body is wrapped as one declared beside it.
 
+#### The Draft and the Valid Type in TypeScript and Zod
+
+TypeScript publishes the same pair. `ShipmentDraft` is the plain object type that was published as `Shipment`, and `Shipment` is the valid type: read-only, and branded with the `$brand` marker a [brand](generics-and-brands.md#a-brand-is-sealed) already carries, so the bundle imports `$brand` from `zod` as it does for a brand. Nothing but a `parse` returns one. A member that holds a model names the valid type, as in Rust (`label: LabelText`), so a draft is made of values that already passed:
+
+```typescript
+export type ShipmentDraft = {
+  label: LabelText;
+  parcelCount: number;
+};
+
+export type Shipment = Readonly<ShipmentDraft> & $brand<"Shipment">;
+```
+
+`Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, or over an alias of one) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
+
+Zod publishes a schema for each. `ShipmentDraft$Schema` parses to a `ShipmentDraft`, and `Shipment$Schema` is the draft's schema frozen and branded, so `Shipment$Schema.parse(json)` has the type `Shipment`. The refusals of the two are the same ones, word for word, and so is the JSON Schema, which is not split: the wire is the same for both types.
+
+```typescript
+import { Shipment$Schema, ShipmentDraft$Schema, type Shipment, type ShipmentDraft } from "./models";
+
+const draft: ShipmentDraft = ShipmentDraft$Schema.parse(json);
+const shipment: Shipment = Shipment$Schema.parse(json);
+
+function weigh(value: ShipmentDraft): number {
+  return value.parcelCount;
+}
+weigh(shipment); // a Shipment is a ShipmentDraft: no cast.
+```
+
+A value written by hand is not a `Shipment`, and a member of one cannot be assigned. `tsc --strict` answers `const shipment: Shipment = { label, parcelCount: 3 }` with ``error TS2322: Type '{ label: ParcelLabel; parcelCount: number; }' is not assignable to type 'Parcel'.`` and ``Property '[$brand]' is missing in type '{ label: ParcelLabel; parcelCount: number; }' but required in type '$brand<"Parcel">'``, and `shipment.parcelCount = 1` with ``error TS2540: Cannot assign to 'parcelCount' because it is a read-only property.`` The schema freezes the value it returns as well, so the same assignment in a script throws ``TypeError: Cannot assign to read only property 'parcelCount' of object '#<Object>'`` under `"use strict"`. The freeze is shallow: each member that is a model was frozen by its own schema. A value that is its own bytes is the one it cannot freeze, because `Object.freeze` refuses a typed array with elements: a tuple struct of `Vec<u8>` and an untagged enum with a variant of one `Vec<u8>` parse to an unfrozen value of the same type.
+
+TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out of anything, and no schema has seen it. That is the one way round the check, and it is a way a reader of the code can see. The same goes for a `Shipment` written in a `declare const`.
+
+Every client and dispatcher types each message and result as the valid type, so `client.ship(...)` takes a `Shipment` and a handler is handed one. Make the argument with `Shipment$Schema.parse(draft)`. A function a `check` names takes the draft, the type the rules run on: `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>)`, where a `Crate<CodeType>` stops the build of the consumer with ``error TS2345: Argument of type 'CrateDraft<unknown>' is not assignable to parameter of type 'Crate<unknown>'.`` A struct that flattens a model holds its keys among its own, so it holds the model's draft: `{ label: string } & MoorageDraft`.
+
+A type that declares a parameter publishes `WrapDraft<T>` and `Wrap<T>` of the same form, and two factories: `WrapDraft$SchemaFactory` answers the draft's schema as it always answered the type's, and `Wrap$SchemaFactory` answers a `ZodType<Wrap<...>>`, which names what the schema parses to, so `.shape` is not on it. `Wrap$SchemaDefault` and `WrapDraft$SchemaDefault` are each the factory at the declared defaults. A build with `typescript` and no `zod` writes the marker a brand writes there, `{ readonly [__brand_Shipment]: true }` after a `declare const __brand_Shipment: unique symbol;`.
+
 #### Unit Structs
 
 A unit struct -- `pub struct Ping;`, no braces, no fields -- crosses the wire as `{}`. Serde's own derive would write and read it as `null`, disagreeing with every other surface, which already describes an empty struct as an object; the macro replaces the author's own `Serialize`/`Deserialize` derive with impls that write `{}` and read it back (refusing a key, unless the type is [`nonstrict`](#unknown-keys-strict-reads-and-nonstrict), and refusing `null`), keeping every other derive and attribute exactly as written:
@@ -102,18 +139,24 @@ pub struct Holder {
 Generated TypeScript (`JSDoc` blocks elided):
 
 ```typescript
-export type ContextValue = {
+export type ContextValueDraft = {
   label: string;
 };
 
+export type ContextValue = Readonly<ContextValueDraft> & $brand<"ContextValue">;
+
+export type ContextValueDataDraft = ContextValueDraft;
+
 export type ContextValueData = ContextValue;
 
-export type Holder = {
+export type HolderDraft = {
   value: ContextValue;
 };
+
+export type Holder = Readonly<HolderDraft> & $brand<"Holder">;
 ```
 
-The `export type ContextValueData = ContextValue;` line is the one place the Rust ident is written on purpose. A type declared *above* the renamed one has only that ident to name it by -- an override is not recoverable from it -- so both spellings answer, and the alias carries the one type. The Zod surface publishes the same pair, `export const ContextValueData$Schema = ContextValue$Schema;`, and the Rust module the schema lives in is named from the ident for the same reason: an override never moves it.
+The `export type ContextValueData = ContextValue;` line, and `export type ContextValueDataDraft = ContextValueDraft;` for the draft, are the one place the Rust ident is written on purpose. A type declared *above* the renamed one has only that ident to name it by -- an override is not recoverable from it -- so both spellings answer, and the alias carries the one type. The Zod surface publishes the same pairs, `export const ContextValueData$Schema = ContextValue$Schema;` and `export const ContextValueDataDraft$Schema = ContextValueDraft$Schema;`, and the Rust module the schema lives in is named from the ident for the same reason: an override never moves it.
 
 A type alias is the one shape with no surface name of its own, and publishes under a `Type` suffix -- `pub type Slug = String;` as `SlugType` -- unless `name` says otherwise. See [Type Aliases](nested-recursive-and-aliased-types.md#type-aliases).
 
@@ -208,13 +251,15 @@ pub struct UserWithOptionals {
 Generated TypeScript:
 
 ```typescript
-export type UserWithOptionals = {
+export type UserWithOptionalsDraft = {
   id: string;
   name: string;
   email: string | undefined;
   phone: string | undefined;
   avatar_url: string | undefined;
 };
+
+export type UserWithOptionals = Readonly<UserWithOptionalsDraft> & $brand<"UserWithOptionals">;
 ```
 
 ### A Key Read as Its Default (`#[serde(default)]`)
@@ -490,10 +535,12 @@ assert_eq!(
 ```
 
 ```typescript
-export type Document = {
+export type DocumentDraft = {
   data: Partial<Record<string, string>>;
   labels: Array<string>;
 };
+
+export type Document = Readonly<DocumentDraft> & $brand<"Document">;
 ```
 
 Every surface writes for each of the two what it writes for its std twin: for `IndexMap<K, V>` what a `HashMap<K, V>` gives, and for `IndexSet<T>` what a `HashSet<T>` gives. That holds for TypeScript, Zod, the JSON Schema, Dart, Swift and Kotlin, and under whatever holds the field: an `Option`, a `Vec`, another map. A key is held to the rules above, so `IndexMap<Slot, V>` over a plain enum is `Partial<Record<Slot, V>>` and `z.partialRecord(Slot$Schema, V)`. A hasher written as a further argument, `IndexMap<K, V, S>` or `IndexSet<T, S>`, says nothing about the wire. A `minLength` or a `maxLength` written on an `IndexSet` field counts its items, as on any list ([List Length](validation.md#list-length-minlength-maxlength)).
@@ -663,7 +710,7 @@ pub struct Histogram {
  * Histogram
  * 
  */
-export type Histogram = {
+export type HistogramDraft = {
   /**
    * counts
    * 
@@ -676,6 +723,8 @@ export type Histogram = {
    */
   labels: Partial<Record<number, string>>;
 };
+
+export type Histogram = Readonly<HistogramDraft> & $brand<"Histogram">;
 ```
 
 - **Where the note is written.** On a member whose type writes such a map at any depth, or names an alias, a brand or a tuple struct declared above it that carries the note. On the key a variant's slots are written under, its name or its content key. On a tuple struct, an alias and a brand whose value writes such a map, and on the name each republishes itself under. In the service code, on each method of a client and of an implementation whose message, header or part writes one, and on the `value` or the `error` of a result and of an outcome whose arm writes one. A type declared below the member that names it, or in another crate, is not looked into.
@@ -758,16 +807,18 @@ pub struct Spanned {
 ```
 
 ```typescript
-export type Spanned = {
+export type SpannedDraft = {
   closed: { start: number; end: number };
   from: { start: number };
   span: { start: number; end: number };
   to: { end: number };
 };
+
+export type Spanned = Readonly<SpannedDraft> & $brand<"Spanned">;
 ```
 
 ```typescript
-const Spanned$RawSchema = z.strictObject({
+const SpannedDraft$RawSchema = z.strictObject({
   closed: z.strictObject({ start: z.number().int().min(0).max(4294967295), end: z.number().int().min(0).max(4294967295) }),
   from: z.strictObject({ start: z.number().int().min(0).max(4294967295) }),
   span: z.strictObject({ start: z.number().int().min(0).max(4294967295), end: z.number().int().min(0).max(4294967295) }),
@@ -797,14 +848,16 @@ pub struct Reply {
 ```
 
 ```typescript
-export type Reply = {
+export type ReplyDraft = {
   outcome: { Ok: number } | { Err: string };
   stored: { Ok: null } | { Err: string };
 };
+
+export type Reply = Readonly<ReplyDraft> & $brand<"Reply">;
 ```
 
 ```typescript
-const Reply$RawSchema = z.strictObject({
+const ReplyDraft$RawSchema = z.strictObject({
   outcome: z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== "string" && (typeof ctx.value !== "object" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.number().int().min(0).max(4294967295) }), z.strictObject({ Err: z.string() })]).superRefine((_read, ctx) => { const held = ctx.value; const carrying = [["Ok", "newtype variant"], ["Err", "newtype variant"]]; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const named = typeof held === "string" ? carrying.find(([name]) => name === held) : undefined; const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named[1], input: undefined, path: [named[0]], params: { variant: true } }); else if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })),
   stored: z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== "string" && (typeof ctx.value !== "object" || ctx.value === null || Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ code: "custom", message: "expected value", input: ctx.value, params: { undeserializable: true } }); }).pipe(z.union([z.strictObject({ Ok: z.null() }), z.strictObject({ Err: z.string() })]).superRefine((_read, ctx) => { const held = ctx.value; const carrying = [["Err", "newtype variant"]]; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const named = typeof held === "string" ? carrying.find(([name]) => name === held) : undefined; const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named[1], input: undefined, path: [named[0]], params: { variant: true } }); else if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined }))); }, { when: () => true })),
 });
@@ -839,10 +892,12 @@ pub struct UnitHolder {
 ```typescript
 export type UnitBrand = null & $brand<"UnitBrand">;
 
-export type UnitHolder = {
+export type UnitHolderDraft = {
   branded: UnitBrand;
   unit: null;
 };
+
+export type UnitHolder = Readonly<UnitHolderDraft> & $brand<"UnitHolder">;
 ```
 
 The Dart, Swift and Kotlin clients read `()` from `null` alone and write it as `null`, wherever it is held, and refuse any other value as serde refuses it. See [The Dart read refuses what `validate()` refuses](dart.md#the-dart-read-refuses-what-validate-refuses), [A Swift read refuses what `validate()` refuses](swift.md#a-swift-read-refuses-what-validate-refuses) and [The read in the Kotlin client](kotlin.md#the-read-in-the-kotlin-client).

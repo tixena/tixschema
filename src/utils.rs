@@ -725,6 +725,19 @@ thread_local! {
     static UNIT_STRUCTS: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
 }
 
+#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+thread_local! {
+    /// The names of the types declared so far that publish a draft beside the valid type.
+    static DRAFTED_TYPES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+#[cfg(feature = "typescript")]
+thread_local! {
+    /// The names an object that flattens them was written beside before they were declared, taken
+    /// to have a draft: a type with none writes the name of its draft as an alias of its own.
+    static ASSUMED_DRAFTED: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
 thread_local! {
     /// What each alias of an `Option` declared so far names.
     static OPTION_ALIASES: RefCell<HashMap<String, OptionTarget>> = RefCell::new(HashMap::new());
@@ -1980,6 +1993,38 @@ pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
         return false;
     };
     UNIT_STRUCTS.with(|names| names.borrow().contains_key(&leaf.ident.to_string()))
+}
+
+/// Records whether `rust_ident` publishes a draft beside the valid type it is named by.
+#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+pub fn record_drafted_type(rust_ident: &str, drafted: bool) {
+    DRAFTED_TYPES.with(|names| {
+        if drafted {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Records that a name not declared above was taken to have a draft.
+#[cfg(feature = "typescript")]
+pub fn assume_drafted_type(rust_ident: &str) {
+    ASSUMED_DRAFTED.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned());
+    });
+}
+
+/// Whether a name was taken to have a draft before its type was declared.
+#[cfg(feature = "typescript")]
+pub fn was_assumed_drafted(rust_ident: &str) -> bool {
+    ASSUMED_DRAFTED.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Whether `rust_ident` names a type declared above that publishes a draft beside it.
+#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+pub fn is_drafted_type(rust_ident: &str) -> bool {
+    DRAFTED_TYPES.with(|names| names.borrow().contains(rust_ident))
 }
 
 pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {

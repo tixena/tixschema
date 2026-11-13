@@ -35,7 +35,7 @@ pub struct NestsUnderAParameter<IdType>(pub IdType, pub Vec<Self>);
 /// The README shows this declaration and this line of its schema.
 #[test]
 fn a_slot_reaching_the_struct_is_read_behind_a_lazy() {
-    let written = "const NestsInASlot$RawSchema = z.tuple([z.string(), z.lazy(() => \
+    let written = "const NestsInASlotDraft$RawSchema = z.tuple([z.string(), z.lazy(() => \
                    z.array(NestsInASlot$Schema))]);";
     let zod = NestsInASlot::zod_schema();
     assert!(zod.contains(written), "got: {zod}");
@@ -54,7 +54,7 @@ fn a_slot_reaching_the_struct_is_read_behind_a_lazy() {
 fn a_lone_slot_reaching_the_struct_is_read_behind_a_lazy() {
     let zod = NestsAlone::zod_schema();
     assert!(
-        zod.contains("const NestsAlone$RawSchema = z.lazy(() => z.array(NestsAlone$Schema));"),
+        zod.contains("const NestsAloneDraft$RawSchema = z.lazy(() => z.array(NestsAlone$Schema));"),
         "got: {zod}"
     );
 }
@@ -64,7 +64,7 @@ fn a_slot_reaching_a_type_declared_below_is_read_behind_a_lazy() {
     let zod = AheadOfItsSlot::zod_schema();
     assert!(
         zod.contains(
-            "const AheadOfItsSlot$RawSchema = z.tuple([z.lazy(() => DeclaredBelow$Schema), \
+            "const AheadOfItsSlotDraft$RawSchema = z.tuple([z.lazy(() => DeclaredBelow$Schema), \
              z.number().int().min(0).max(4294967295)]);"
         ),
         "got: {zod}"
@@ -81,7 +81,7 @@ fn a_generic_one_reaches_itself_through_a_function_stating_what_it_parses() {
          NestsUnderAParameter$SchemaFactory(idType);\n}\n\n",
         ") =>\n  z.tuple([idType, z.array(z.lazy(() => \
          NestsUnderAParameter$SchemaSelf(idType)))]);",
-        "interface NestsUnderAParameter$SchemaOf<IdType extends ZodType> extends ReturnType<",
+        "interface NestsUnderAParameterDraft$SchemaOf<IdType extends ZodType> extends ReturnType<",
     ] {
         assert!(zod.contains(written), "want: {written}\ngot: {zod}");
     }

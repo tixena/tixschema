@@ -384,12 +384,12 @@ fn request_header_fn(named: &str, prefix: &str) -> String {
          * the header's own schema. An absent header reads as `undefined`, which only an optional\n \
          * binding accepts.\n \
          */\n\
-         function {prefix}RequestHeader<Parsed>(\n  \
+         function {prefix}RequestHeader<Schema extends ZodType>(\n  \
          operation: string,\n  \
          headers: ReadonlyArray<readonly [string, string]>,\n  \
          name: string,\n  \
-         schema: ZodType<Parsed>,\n\
-         ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
+         schema: Schema,\n\
+         ): {{ ok: true; value: z.output<Schema> }} | {{ ok: false; fault: {named}Fault }} {{\n  \
          const carried = headers.find(([candidate]) => candidate.toLowerCase() === \
          name.toLowerCase())?.[1];\n  \
          let issues: ReadonlyArray<{{ path: ReadonlyArray<PropertyKey>; message: string }}>;\n  \

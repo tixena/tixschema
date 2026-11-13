@@ -240,12 +240,14 @@ What is per-operation is *which* type is named, and two operations on one servic
 A variant may carry data of its own, which the tag sits beside:
 
 ```typescript
-export type BalanceError = {
+export type BalanceErrorDraft = {
   errorCode: "db-error";
 } | {
   errorCode: "insufficient-balance";
   shortfall: number;
 };
+
+export type BalanceError = Readonly<BalanceErrorDraft> & $brand<"BalanceError">;
 ```
 
 #### One-Way Operations

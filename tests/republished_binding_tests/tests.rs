@@ -330,17 +330,17 @@ fn an_alias_of_an_alias_of_a_brand_forwards_the_annotation() {
 fn a_one_slot_tuple_struct_reads_its_annotation_off_the_binding_it_republishes() {
     let zod = SlotWrapper::zod_schema();
     assert!(
-        zod.contains("const SlotWrapper$RawSchema = CorrelationId$Schema;"),
+        zod.contains("const SlotWrapperDraft$RawSchema = CorrelationId$Schema;"),
         "got: {zod}"
     );
     assert!(
         zod.contains(
-            "export const SlotWrapper$Schema: typeof SlotWrapper$RawSchema = \
-             SlotWrapper$RawSchema;"
+            "export const SlotWrapperDraft$Schema: typeof SlotWrapperDraft$RawSchema = \
+             SlotWrapperDraft$RawSchema;"
         ),
         "got: {zod}"
     );
-    assert!(!zod.contains("ZodType<"), "got: {zod}");
+    assert!(!zod.contains(": ZodType<"), "got: {zod}");
 }
 
 #[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
@@ -348,17 +348,19 @@ fn a_one_slot_tuple_struct_reads_its_annotation_off_the_binding_it_republishes()
 fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     let zod = BoundBrandSlot::zod_schema();
     assert!(
-        zod.contains("const BoundBrandSlot$RawSchema = GenericBrand$SchemaFactory(z.string());"),
+        zod.contains(
+            "const BoundBrandSlotDraft$RawSchema = GenericBrand$SchemaFactory(z.string());"
+        ),
         "got: {zod}"
     );
     assert!(
         zod.contains(
-            "export const BoundBrandSlot$Schema: typeof BoundBrandSlot$RawSchema = \
-             BoundBrandSlot$RawSchema;"
+            "export const BoundBrandSlotDraft$Schema: typeof BoundBrandSlotDraft$RawSchema = \
+             BoundBrandSlotDraft$RawSchema;"
         ),
         "got: {zod}"
     );
-    assert!(!zod.contains("ZodType<"), "got: {zod}");
+    assert!(!zod.contains(": ZodType<"), "got: {zod}");
 }
 
 #[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
@@ -367,12 +369,11 @@ fn an_example_on_a_republished_binding_lands_on_the_value_the_annotation_reads()
     let zod = ExampledSlot::zod_schema();
     assert!(
         zod.contains(
-            "export const ExampledSlot$Schema: typeof ExampledSlot$RawSchema = \
-             ExampledSlot$RawSchema.meta({\n  examples: [\"corr-1\"]\n});"
+            "export const ExampledSlot$Schema = ExampledSlotDraft$Schema.readonly().brand<\"ExampledSlot\">().meta(ExampledSlotDraft$Schema.meta() ?? {}).meta({\n  examples: [\"corr-1\"]\n});"
         ),
         "got: {zod}"
     );
-    assert!(!zod.contains("ZodType<"), "got: {zod}");
+    assert!(!zod.contains(": ZodType<"), "got: {zod}");
 }
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -415,7 +416,7 @@ fn a_generic_item_republishing_a_factory_binds_its_default_before_annotating_it(
     ] {
         assert!(zod.contains(raw), "want: {raw}\ngot: {zod}");
         assert!(zod.contains(exported), "want: {exported}\ngot: {zod}");
-        assert!(!zod.contains("ZodType<"), "got: {zod}");
+        assert!(!zod.contains("$SchemaDefault: ZodType<"), "got: {zod}");
     }
 }
 
@@ -425,19 +426,19 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     for (zod, line) in [
         (
             HoldsBrands::zod_schema(),
-            "export const HoldsBrands$Schema: ZodType<HoldsBrands> = HoldsBrands$RawSchema.meta({\n  examples: []\n});",
+            "export const HoldsBrands$Schema = HoldsBrandsDraft$Schema.readonly().brand<\"HoldsBrands\">().meta(HoldsBrandsDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
         ),
         (
             BrandOrNumber::zod_schema(),
-            "export const BrandOrNumber$Schema: ZodType<BrandOrNumber> = BrandOrNumber$RawSchema.meta({\n  examples: []\n});",
+            "export const BrandOrNumber$Schema = BrandOrNumberDraft$Schema.readonly().brand<\"BrandOrNumber\">().meta(BrandOrNumberDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
         ),
         (
             SoleBrand::zod_schema(),
-            "export const SoleBrand$Schema: ZodType<SoleBrand> = SoleBrand$RawSchema.meta({\n  examples: []\n});",
+            "export const SoleBrand$Schema = SoleBrandDraft$Schema.readonly().brand<\"SoleBrand\">().meta(SoleBrandDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
         ),
         (
             FlattenOnly::zod_schema(),
-            "export const FlattenOnly$Schema: ZodType<FlattenOnly> = FlattenOnly$RawSchema.meta({\n  examples: []\n});",
+            "export const FlattenOnly$Schema = FlattenOnlyDraft$Schema.readonly().brand<\"FlattenOnly\">().meta(FlattenOnlyDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
         ),
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");
@@ -488,12 +489,15 @@ fn a_generic_slot_over_a_bare_parameter_keeps_the_annotation_naming_its_own_type
     let zod = SlotHolder::<CorrelationId>::zod_schema();
     assert!(
         zod.contains(
-            "export const SlotHolder$SchemaDefault: ZodType<SlotHolder<CorrelationId>> = \
-             SlotHolder$SchemaFactory(z.lazy(() => CorrelationId$Schema));"
+            "export const SlotHolderDraft$SchemaDefault: ZodType<SlotHolderDraft<CorrelationId>> = \
+             SlotHolderDraft$SchemaFactory(z.lazy(() => CorrelationId$Schema));"
         ),
         "got: {zod}"
     );
-    assert!(!zod.contains("$RawSchemaDefault"), "got: {zod}");
+    assert!(
+        !zod.contains("SlotHolderDraft$RawSchemaDefault"),
+        "got: {zod}"
+    );
 }
 
 #[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
@@ -548,7 +552,7 @@ fn the_typescript_surface_of_a_republished_binding_is_unchanged() {
         correlation_ref_schema::Schema::ts_definition()
     );
     assert!(
-        SlotWrapper::ts_definition().contains("export type SlotWrapper = CorrelationId;"),
+        SlotWrapper::ts_definition().contains("export type SlotWrapperDraft = CorrelationId;"),
         "got: {}",
         SlotWrapper::ts_definition()
     );

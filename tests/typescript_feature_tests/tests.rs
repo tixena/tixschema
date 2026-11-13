@@ -54,7 +54,7 @@ fn test_typescript_feature_types_constructible() {
 fn test_typescript_enabled_struct_ts_definition() {
     let ts_definition = TypeScriptTestUser::ts_definition();
 
-    assert!(ts_definition.contains("export type TypeScriptTestUser = {"));
+    assert!(ts_definition.contains("export type TypeScriptTestUserDraft = {"));
     assert!(ts_definition.contains("id: string;"));
     assert!(ts_definition.contains("name: string;"));
     assert!(ts_definition.contains("age: number;"));
@@ -69,7 +69,7 @@ fn test_typescript_enabled_struct_ts_definition() {
 fn test_typescript_enabled_struct_zod_schema() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
-    assert!(zod_schema.contains("const TypeScriptTestUser$RawSchema = z.strictObject({"));
+    assert!(zod_schema.contains("const TypeScriptTestUserDraft$RawSchema = z.strictObject({"));
     assert!(zod_schema.contains("id: z.string()"));
     assert!(zod_schema.contains("name: z.string()"));
     assert!(zod_schema.contains("age: z.number().int()"));
@@ -97,9 +97,9 @@ fn test_typescript_enabled_plain_enum_zod_schema() {
     let zod_schema = TypeScriptTestStatus::zod_schema();
 
     assert!(zod_schema.contains(
-        "const TypeScriptTestStatus$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
+        "const TypeScriptTestStatusDraft$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
     ));
-    assert!(zod_schema.contains("export const TypeScriptTestStatus$Schema: ZodType<TypeScriptTestStatus> = TypeScriptTestStatus$RawSchema;"));
+    assert!(zod_schema.contains("export const TypeScriptTestStatusDraft$Schema: ZodType<TypeScriptTestStatusDraft> = TypeScriptTestStatusDraft$RawSchema;"));
     assert!(zod_schema.contains(".meta({"));
 
     assert!(!zod_schema.contains("export type TypeScriptTestStatus"));
@@ -122,9 +122,9 @@ fn test_typescript_enabled_discriminated_enum_ts_definition() {
 fn test_typescript_enabled_discriminated_enum_zod_schema() {
     let zod_schema = TypeScriptTestPayment::zod_schema();
 
-    assert!(zod_schema.contains("const TypeScriptTestPayment$RawSchema = "));
+    assert!(zod_schema.contains("const TypeScriptTestPaymentDraft$RawSchema = "));
     assert!(zod_schema.contains("z.discriminatedUnion"));
-    assert!(zod_schema.contains("export const TypeScriptTestPayment$Schema: ZodType<TypeScriptTestPayment> = TypeScriptTestPayment$RawSchema.meta({\n  examples: []\n});"));
+    assert!(zod_schema.contains("export const TypeScriptTestPayment$Schema = TypeScriptTestPaymentDraft$Schema.readonly().brand<\"TypeScriptTestPayment\">().meta(TypeScriptTestPaymentDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"));
 
     assert!(!zod_schema.contains("export type TypeScriptTestPayment"));
 }
@@ -175,9 +175,9 @@ fn test_typescript_disabled_plain_enum_zod_schema_typescript_serde_style() {
     // When serde feature is disabled, the rename_all attribute is not processed
     // so the enum values will be the original Rust names (Title case)
     assert!(zod_schema.contains(
-        "const TypeScriptTestStatus$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
+        "const TypeScriptTestStatusDraft$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
     ));
-    assert!(zod_schema.contains("export const TypeScriptTestStatus$Schema: ZodType<TypeScriptTestStatus> = TypeScriptTestStatus$RawSchema;"));
+    assert!(zod_schema.contains("export const TypeScriptTestStatusDraft$Schema: ZodType<TypeScriptTestStatusDraft> = TypeScriptTestStatusDraft$RawSchema;"));
     assert!(zod_schema.contains(".meta({"));
 
     assert!(!zod_schema.contains("export type TypeScriptTestStatus"));
@@ -233,11 +233,13 @@ fn test_typescript_and_zod_both_enabled() {
     let ts_definition = TypeScriptTestUser::ts_definition();
     let zod_schema = TypeScriptTestUser::zod_schema();
 
-    assert!(ts_definition.contains("export type TypeScriptTestUser = {"));
+    assert!(ts_definition.contains("export type TypeScriptTestUserDraft = {"));
     assert!(!ts_definition.contains("z.strictObject"));
 
     assert!(
-        zod_schema.contains("export const TypeScriptTestUser$Schema: ZodType<TypeScriptTestUser>")
+        zod_schema.contains(
+            "export const TypeScriptTestUserDraft$Schema: ZodType<TypeScriptTestUserDraft>"
+        )
     );
     assert!(!zod_schema.contains("export type TypeScriptTestUser"));
 }

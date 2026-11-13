@@ -228,7 +228,7 @@ mod the_bundle_one_registration_line_produces {
     fn the_envelope_adds_no_field_to_the_message_it_carries() {
         let (_, written) = written_bundle("tixschema_service_bundle_untouched_messages.ts");
         let found = written
-            .split("export type BalanceResponse =")
+            .split("export type BalanceResponseDraft =")
             .nth(1)
             .and_then(|rest| rest.split_once("};"))
             .map(|(body, _)| body.to_owned());

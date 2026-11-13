@@ -92,7 +92,7 @@ pub enum Shape {
 Generated Zod:
 
 ```typescript
-const Shape$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
+const ShapeDraft$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
   kind: z.literal("Circle"),
   radius: z.number().int().min(0).max(4294967295),
 }), z.strictObject({
@@ -100,7 +100,9 @@ const Shape$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
   side: z.number().int().min(0).max(4294967295),
 })]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === "custom" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === "custom" && issue.params?.undeserializable === true && issue.message === "expected value" ? { ...issue, message: ((held) => held === undefined ? "invalid type: expected string or map" : typeof held === "object" && held !== null && !Array.isArray(held) ? "invalid value: map, expected map with a single key" : "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(held) + ", expected string or map")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
 
-export const Shape$Schema: ZodType<Shape> = Shape$RawSchema.meta({
+export const ShapeDraft$Schema: ZodType<ShapeDraft> = ShapeDraft$RawSchema;
+
+export const Shape$Schema = ShapeDraft$Schema.readonly().brand<"Shape">().meta(ShapeDraft$Schema.meta() ?? {}).meta({
   examples: [{"kind":"Circle","radius":2},{"kind":"Square","side":3}]
 });
 ```
@@ -116,11 +118,13 @@ pub struct Plain {
 ```
 
 ```typescript
-const Plain$RawSchema = z.strictObject({
+const PlainDraft$RawSchema = z.strictObject({
   value: z.number().int().min(0).max(4294967295),
 });
 
-export const Plain$Schema: ZodType<Plain> = Plain$RawSchema.meta({
+export const PlainDraft$Schema: ZodType<PlainDraft> = PlainDraft$RawSchema;
+
+export const Plain$Schema = PlainDraft$Schema.readonly().brand<"Plain">().meta(PlainDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
 ```

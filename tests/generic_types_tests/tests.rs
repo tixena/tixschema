@@ -16,7 +16,7 @@ mod typescript {
     fn a_parameter_keyed_map_states_the_string_keys_serde_writes_on_the_type_surface() {
         let ts = KeyedByParameter::<String, u32>::ts_definition();
         assert!(
-            ts.contains("export type KeyedByParameter<KeyType, ValueType> = {"),
+            ts.contains("export type KeyedByParameterDraft<KeyType, ValueType> = {"),
             "Got: {ts}"
         );
         assert!(
@@ -75,7 +75,10 @@ mod typescript {
     #[test]
     fn a_struct_declaration_binds_its_parameters() {
         let ts = Wrapper::<String>::ts_definition();
-        assert!(ts.contains("export type Wrapper<IdType> = {"), "Got: {ts}");
+        assert!(
+            ts.contains("export type WrapperDraft<IdType> = {"),
+            "Got: {ts}"
+        );
         assert!(ts.contains("  id: IdType;"), "Got: {ts}");
         assert!(ts.contains("  children: Array<IdType>;"), "Got: {ts}");
         assert!(ts.contains("  name: string;"), "Got: {ts}");
@@ -87,7 +90,7 @@ mod typescript {
     fn a_parameter_is_reached_through_the_shape_it_was_written_under() {
         let ts = Pair::<String, u32>::ts_definition();
         assert!(
-            ts.contains("export type Pair<KeyType, ValueType> = {"),
+            ts.contains("export type PairDraft<KeyType, ValueType> = {"),
             "Got: {ts}"
         );
         assert!(ts.contains("  key: KeyType;"), "Got: {ts}");
@@ -104,7 +107,7 @@ mod typescript {
     fn a_tuple_struct_declaration_binds_its_parameters() {
         let ts = Positional::<String>::ts_definition();
         assert!(
-            ts.contains("export type Positional<IdType> = [IdType, string];"),
+            ts.contains("export type PositionalDraft<IdType> = [IdType, string];"),
             "Got: {ts}"
         );
     }
@@ -173,7 +176,9 @@ mod typescript {
 
         let untagged = Untagged::<String>::ts_definition();
         assert!(
-            untagged.contains("export type Untagged<IdType> = { id: IdType } | { count: number };"),
+            untagged.contains(
+                "export type UntaggedDraft<IdType> = { id: IdType } | { count: number };"
+            ),
             "Got: {untagged}"
         );
     }
@@ -182,7 +187,7 @@ mod typescript {
     #[test]
     fn a_const_parameter_reaches_no_declaration() {
         let ts = PlainConst::<4>::ts_definition();
-        assert!(ts.contains("export type PlainConst =\n"), "Got: {ts}");
+        assert!(ts.contains("export type PlainConstDraft =\n"), "Got: {ts}");
         assert!(!ts.contains("PlainConst<"), "Got: {ts}");
     }
 
@@ -191,7 +196,10 @@ mod typescript {
     #[test]
     fn a_lifetime_reaches_no_declaration() {
         let ts = LifetimeStruct::ts_definition();
-        assert!(ts.contains("export type LifetimeStruct = {"), "Got: {ts}");
+        assert!(
+            ts.contains("export type LifetimeStructDraft = {"),
+            "Got: {ts}"
+        );
         assert!(ts.contains("  label: string;"), "Got: {ts}");
     }
 
@@ -224,8 +232,8 @@ mod typescript {
     #[test]
     fn the_reexport_lands_after_the_parameterised_declaration() {
         let ts = Holder::<String>::ts_definition();
-        let declaration = ts.find("export type RenamedHolder<IdType> = {");
-        let reexport = ts.find("export type Holder<IdType> = RenamedHolder<IdType>;");
+        let declaration = ts.find("export type RenamedHolderDraft<IdType> = {");
+        let reexport = ts.find("export type HolderDraft<IdType> = RenamedHolderDraft<IdType>;");
         assert!(
             matches!((declaration, reexport), (Some(at), Some(after)) if at < after),
             "Got: {ts}"
@@ -509,8 +517,8 @@ mod zod {
         let zod = Wrapper::<String>::zod_schema();
         assert!(
             zod.contains(
-                "export const Wrapper$SchemaDefault: ZodType<Wrapper<string>> = \
-                 Wrapper$SchemaFactory(z.string());"
+                "export const WrapperDraft$SchemaDefault: ZodType<WrapperDraft<string>> = \
+                 WrapperDraft$SchemaFactory(z.string());"
             ),
             "Got: {zod}"
         );
@@ -670,21 +678,21 @@ mod zod {
         let zod = Wrapper::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const buildWrapper$Schema = <IdType extends ZodType>(\n  idType: IdType,\n) =>"
+                "const buildWrapperDraft$Schema = <IdType extends ZodType>(\n  idType: IdType,\n) =>"
             ),
             "Got: {zod}"
         );
         assert!(
             zod.contains(
-                "type Wrapper$SchemaOf<IdType extends ZodType> = ReturnType<\n  typeof \
-                 buildWrapper$Schema<IdType>\n>;"
+                "type WrapperDraft$SchemaOf<IdType extends ZodType> = ReturnType<\n  typeof \
+                 buildWrapperDraft$Schema<IdType>\n>;"
             ),
             "Got: {zod}"
         );
         assert!(
             zod.contains(
-                "export function Wrapper$SchemaFactory<IdType extends ZodType>(\n  idType: \
-                 IdType,\n): Wrapper$SchemaOf<IdType>;"
+                "export function WrapperDraft$SchemaFactory<IdType extends ZodType>(\n  idType: \
+                 IdType,\n): WrapperDraft$SchemaOf<IdType>;"
             ),
             "Got: {zod}"
         );
@@ -703,10 +711,10 @@ mod zod {
             zod.contains("\n  keyType: KeyType,\n  valueType: ValueType,\n)"),
             "Got: {zod}"
         );
-        // The widened spelling appears exactly once each, in the implementation signature the
-        // overload above covers — never in what a caller is offered.
-        assert_eq!(zod.matches("keyType: ZodType,").count(), 1, "Got: {zod}");
-        assert_eq!(zod.matches("valueType: ZodType,").count(), 1, "Got: {zod}");
+        // The widened spelling appears once in the implementation signature of each of the two
+        // factories, the draft's and the valid type's — never in what a caller is offered.
+        assert_eq!(zod.matches("keyType: ZodType,").count(), 2, "Got: {zod}");
+        assert_eq!(zod.matches("valueType: ZodType,").count(), 2, "Got: {zod}");
     }
 
     #[cfg(all(feature = "serde", feature = "typescript"))]
@@ -715,16 +723,16 @@ mod zod {
         let zod = Wrapper::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const Wrapper$SchemaFactoryCache = new WeakMap<ZodType, \
-                 Wrapper$SchemaOf<ZodType>>();"
+                "const WrapperDraft$SchemaFactoryCache = new WeakMap<ZodType, \
+                 WrapperDraft$SchemaOf<ZodType>>();"
             ),
             "Got: {zod}"
         );
         assert!(
             zod.contains(
-                "export function Wrapper$SchemaFactory<IdType extends ZodType>(\n  idType: \
-                 IdType,\n): Wrapper$SchemaOf<IdType>;\nexport function \
-                 Wrapper$SchemaFactory(\n  idType: ZodType,\n): Wrapper$SchemaOf<ZodType> {"
+                "export function WrapperDraft$SchemaFactory<IdType extends ZodType>(\n  idType: \
+                 IdType,\n): WrapperDraft$SchemaOf<IdType>;\nexport function \
+                 WrapperDraft$SchemaFactory(\n  idType: ZodType,\n): WrapperDraft$SchemaOf<ZodType> {"
             ),
             "Got: {zod}"
         );
@@ -737,8 +745,8 @@ mod zod {
         let zod = Quintet::<u32, u32, u32, u32, u32>::zod_schema();
         assert!(
             zod.contains(
-                "const Quintet$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, \
-                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, Quintet$SchemaOf<ZodType, \
+                "const QuintetDraft$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, \
+                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, QuintetDraft$SchemaOf<ZodType, \
                  ZodType, ZodType, ZodType, ZodType>>>>>>();"
             ),
             "Got: {zod}"

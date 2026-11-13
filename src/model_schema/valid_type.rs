@@ -19,7 +19,13 @@ use syn::{Attribute, Generics, Path, Token, Visibility};
 use super::judged_read::unclaimed_parameter;
 use super::refusal_from_violations;
 use super::unbounded;
+#[cfg(all(feature = "zod", feature = "serde"))]
+use crate::features::serde::parse_serde_type_attributes;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
+#[cfg(feature = "zod")]
+use crate::field_type::get_field_def;
+#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+use crate::utils::record_drafted_type;
 use crate::utils::written_names;
 
 thread_local! {
@@ -34,6 +40,9 @@ pub struct Declared {
     pub debugs: Gate,
     pub derives: Vec<Path>,
     pub deserializes: Gate,
+    /// Whether a value of the type can be an array buffer view whole, which no freeze takes.
+    #[cfg(feature = "zod")]
+    pub holds_bytes_whole: bool,
     pub name: Option<Ident>,
     pub origin: Origin,
     pub serializes: Gate,
@@ -512,11 +521,51 @@ pub fn record(item: &syn::Item, undrafted: bool) {
         debugs: gate_of(attrs, "Debug"),
         derives: wrapper_derives(attrs),
         deserializes: gate_of(attrs, "Deserialize"),
+        #[cfg(feature = "zod")]
+        holds_bytes_whole: holds_bytes_whole(item),
         name,
         origin,
         serializes: gate_of(attrs, "Serialize"),
     };
+    #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+    if let Some(declared_name) = &declared.name {
+        record_drafted_type(
+            &declared_name.to_string(),
+            declared.origin == Origin::Declared,
+        );
+    }
     DECLARED.with(|held| *held.borrow_mut() = declared);
+}
+
+/// Whether a value of `item` is its bytes, which `Object.freeze` refuses: a struct of one slot of
+/// bytes, and an untagged enum with a variant of one slot of bytes.
+#[cfg(feature = "zod")]
+fn holds_bytes_whole(item: &syn::Item) -> bool {
+    let bytes = |fields: &syn::Fields| match fields {
+        syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots
+            .unnamed
+            .first()
+            .is_some_and(|slot| get_field_def("_slot", &slot.ty, "").writes_bytes()),
+        syn::Fields::Named(_) | syn::Fields::Unnamed(_) | syn::Fields::Unit => false,
+    };
+    match item {
+        syn::Item::Struct(item_struct) => bytes(&item_struct.fields),
+        #[cfg(feature = "serde")]
+        syn::Item::Enum(item_enum) => {
+            parse_serde_type_attributes(&item_enum.attrs).untagged
+                && item_enum
+                    .variants
+                    .iter()
+                    .any(|variant| bytes(&variant.fields))
+        }
+        _ => false,
+    }
+}
+
+/// Whether the valid type's schema freezes the value it parses.
+#[cfg(feature = "zod")]
+pub fn freezes() -> bool {
+    DECLARED.with(|held| !held.borrow().holds_bytes_whole)
 }
 
 /// What the item being expanded declares.

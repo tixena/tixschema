@@ -165,15 +165,15 @@ fn write_models(path: &std::path::Path) -> std::io::Result<()> {
 
 fn main() {
     let typescript = Customer::ts_definition();
-    assert!(typescript.contains("export type Customer = {"));
+    assert!(typescript.contains("export type CustomerDraft = {"));
     assert!(typescript.contains("customerId: string;"));
     assert!(typescript.contains("email: string | undefined;"));
     assert!(typescript.contains("orderCount: number;"));
 
     let zod = Customer::zod_schema();
-    assert!(zod.contains("const Customer$RawSchema = z.strictObject({"));
+    assert!(zod.contains("const CustomerDraft$RawSchema = z.strictObject({"));
     assert!(zod.contains("orderCount: z.number().int().min(0).max(4294967295)"));
-    assert!(zod.contains("export const Customer$Schema: ZodType<Customer>"));
+    assert!(zod.contains("export const CustomerDraft$Schema: ZodType<CustomerDraft>"));
 
     let order = Order::zod_schema();
     assert!(order.contains("customer: Customer$Schema,"));
@@ -1033,12 +1033,12 @@ use service_schema::exec_service_schema;
 ///
 /// `User::ts_definition()`:
 ///
-#[doc = "```typescript
+#[doc = r#"```typescript
 /**
  * User
  * 
  */
-export type User = {
+export type UserDraft = {
   /**
    * age
    * 
@@ -1065,12 +1065,14 @@ export type User = {
    */
   roles: Array<string>;
 };
-```"]
+
+export type User = Readonly<UserDraft> & $brand<"User">;
+```"#]
 ///
 /// `User::zod_schema()`:
 ///
-#[doc = "```typescript
-const User$RawSchema = z.strictObject({
+#[doc = r#"```typescript
+const UserDraft$RawSchema = z.strictObject({
   age: z.union([z.null().transform(() => undefined), z.number().int().min(0).max(4294967295), z.undefined()]).prefault(undefined),
   firstName: z.string(),
   id: z.string(),
@@ -1078,10 +1080,12 @@ const User$RawSchema = z.strictObject({
   roles: z.array(z.string()),
 });
 
-export const User$Schema: ZodType<User> = User$RawSchema.meta({
+export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
+
+export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta(UserDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
-```"]
+```"#]
 ///
 /// ## A plain enum
 ///
@@ -1110,10 +1114,12 @@ export const User$Schema: ZodType<User> = User$RawSchema.meta({
  * Status
  * 
  */
-export type Status =
+export type StatusDraft =
   | "active"
   | "inactive"
   | "pending";
+
+export type Status = Readonly<StatusDraft> & $brand<"Status">;
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Status$Variant(value: unknown): string {
@@ -1129,12 +1135,14 @@ export function Status$Variant(value: unknown): string {
 /// `Status::zod_schema()`:
 ///
 #[doc = r#"```typescript
-const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
+const StatusDraft$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
   description: "Status",
   examples: [],
 });
 
-export const Status$Schema: ZodType<Status> = Status$RawSchema;
+export const StatusDraft$Schema: ZodType<StatusDraft> = StatusDraft$RawSchema;
+
+export const Status$Schema = StatusDraft$Schema.readonly().brand<"Status">().meta(StatusDraft$Schema.meta() ?? {});
 ```"#]
 ///
 /// ## A tagged enum
@@ -1172,7 +1180,7 @@ export const Status$Schema: ZodType<Status> = Status$RawSchema;
  * Event
  * 
  */
-export type Event = {
+export type EventDraft = {
   /**
    * userCreated
    * 
@@ -1206,6 +1214,8 @@ export type Event = {
   user_id: string;
 };
 
+export type Event = Readonly<EventDraft> & $brand<"Event">;
+
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Event$Variant(value: unknown): string {
   if (typeof value !== "object" || value === null) return "";
@@ -1220,7 +1230,7 @@ export function Event$Variant(value: unknown): string {
 /// `Event::zod_schema()`:
 ///
 #[doc = r#"```typescript
-const Event$RawSchema = z.discriminatedUnion("type", [z.strictObject({
+const EventDraft$RawSchema = z.discriminatedUnion("type", [z.strictObject({
   type: z.literal("userCreated"),
   timestamp: z.string(),
   user_id: z.string(),
@@ -1230,7 +1240,9 @@ const Event$RawSchema = z.discriminatedUnion("type", [z.strictObject({
   user_id: z.string(),
 })]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === "custom" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === "custom" && issue.params?.undeserializable === true && issue.message === "expected value" ? { ...issue, message: ((held) => held === undefined ? "invalid type: expected string or map" : typeof held === "object" && held !== null && !Array.isArray(held) ? "invalid value: map, expected map with a single key" : "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(held) + ", expected string or map")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
 
-export const Event$Schema: ZodType<Event> = Event$RawSchema.meta({
+export const EventDraft$Schema: ZodType<EventDraft> = EventDraft$RawSchema;
+
+export const Event$Schema = EventDraft$Schema.readonly().brand<"Event">().meta(EventDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
 ```"#]
@@ -1326,11 +1338,12 @@ fn main() -> Result<(), serde_json::Error> {
 
     // `name` publishes `Invoice`, and keeps the Rust name as an alias of it.
     let typescript = InvoiceRecord::ts_definition();
-    assert!(typescript.contains("export type Invoice = {"));
+    assert!(typescript.contains("export type InvoiceDraft = {"));
+    assert!(typescript.contains("export type InvoiceRecordDraft = InvoiceDraft;"));
     assert!(typescript.contains("export type InvoiceRecord = Invoice;"));
 
     // `default_types` fills `T` where one filling is needed; any other is built on request.
-    assert!(Page::<String>::ts_definition().contains("export type Page<T> = {"));
+    assert!(Page::<String>::ts_definition().contains("export type PageDraft<T> = {"));
     let zod = Page::<String>::zod_schema();
     assert!(zod.contains("export function Page$SchemaFactory<T extends ZodType>("));
     assert!(zod.contains("export const Page$SchemaDefault"));
@@ -1387,7 +1400,7 @@ fn main() {}
  * Document
  * 
  */
-export type Document = {
+export type DocumentDraft = {
   /**
    * author_id
    * 
@@ -1419,12 +1432,14 @@ export type Document = {
    */
   title: string;
 };
+
+export type Document = Readonly<DocumentDraft> & $brand<"Document">;
 ```
 
 `Document::zod_schema()`:
 
 ```typescript
-const Document$RawSchema = z.strictObject({
+const DocumentDraft$RawSchema = z.strictObject({
   author_id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
   id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),
   metadata: z.record(z.string(), z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) })),
@@ -1433,7 +1448,9 @@ const Document$RawSchema = z.strictObject({
   title: z.string(),
 });
 
-export const Document$Schema: ZodType<Document> = Document$RawSchema.meta({
+export const DocumentDraft$Schema: ZodType<DocumentDraft> = DocumentDraft$RawSchema;
+
+export const Document$Schema = DocumentDraft$Schema.readonly().brand<"Document">().meta(DocumentDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
 ```
@@ -1887,7 +1904,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>
 /// // TypeScript
 /// function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void
-/// function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void
+/// function withinParcel(value: ParcelDraft, ctx: ParsePayload<ParcelDraft>): void
 /// // Dart
 /// List<String> withoutDuplicates(List<String> value)
 /// List<String> withinParcel(Parcel value)

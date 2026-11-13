@@ -59,7 +59,7 @@ pub struct Event {
 Generated TypeScript:
 
 ```typescript
-export type Event = {
+export type EventDraft = {
   name: string;
   date: string;
   time: string;
@@ -68,6 +68,8 @@ export type Event = {
   epoch_ms: number;
   updated_at: Date | undefined;
 };
+
+export type Event = Readonly<EventDraft> & $brand<"Event">;
 ```
 
 Generated Zod:

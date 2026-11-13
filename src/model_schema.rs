@@ -91,6 +91,8 @@ use crate::utils::escape_js_double_quoted;
 use crate::utils::record_reads_one_key;
 #[cfg(feature = "typescript")]
 use crate::utils::ts_generic_params;
+#[cfg(feature = "typescript")]
+use crate::utils::was_assumed_drafted;
 use crate::utils::{
     INEXACT_KEY_NOTE, OptionTarget, PLACEHOLDER_CLOSES, PLACEHOLDER_OPENS, constraining_pattern,
     emittable_pattern, extract_examples_tokens, parameter_placeholder, portable_pattern,
@@ -1455,6 +1457,11 @@ struct UntaggedFlattenRecord {
     /// The keys each member names, where it names them.
     #[cfg(feature = "typescript")]
     member_keys: Vec<Option<Vec<String>>>,
+    /// What each member contributes where the enum is flattened: its own spelling, but for a
+    /// model it holds whole, which contributes its keys, and so is spelled as its draft.
+    #[cfg(feature = "typescript")]
+    merged_ts: Vec<String>,
+    /// The spelling each member has in the enum's own type.
     #[cfg(feature = "typescript")]
     ts: Vec<String>,
     #[cfg(feature = "zod")]
@@ -1492,12 +1499,17 @@ impl UntaggedFlattenRecord {
             &member.walked.flattened_fields,
         ));
         #[cfg(feature = "typescript")]
-        self.ts.push(
-            placed
+        {
+            let own = placed
                 .as_ref()
-                .map_or(spelled.0, |(_, ts, _)| ts.as_str())
-                .to_owned(),
-        );
+                .map_or_else(|| spelled.0.to_owned(), |(_, ts, _)| ts.clone());
+            self.merged_ts.push(if placed.is_some() {
+                own.clone()
+            } else {
+                untagged_member_ts(member, spelled.0)
+            });
+            self.ts.push(own);
+        }
     }
 }
 
@@ -1589,12 +1601,26 @@ struct ZodDefaultInputs<'defaults> {
     default_types: &'defaults [(syn::Ident, syn::Type)],
 }
 
+/// What a draft admits that its valid type keeps unbranded.
+#[cfg(feature = "zod")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DraftAdmits {
+    Nothing,
+    Null,
+}
+
 /// What [`zod_published_binding`] needs beside the item's own name, parameters and expression.
 #[cfg(feature = "zod")]
 struct PublishedBinding<'binding> {
+    /// What the draft admits besides its branded rest, which the valid type keeps.
+    admits: DraftAdmits,
     /// The checks written on the type, which its own expression carries.
     checks: &'binding [FunctionName],
     default_types: &'binding [(syn::Ident, syn::Type)],
+    /// Whether the item is published as a draft and a valid type.
+    drafted: bool,
+    /// Whether the valid type's schema freezes what it parses.
+    frozen: bool,
     /// The functions `preprocess` names on the type, each written around its own expression.
     preprocess: &'binding [FunctionName],
     /// Whether the published expression *is* a sibling's own binding — see
@@ -2873,7 +2899,13 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
         &alias_field_def.zod_unchecked_union_members(),
     );
     #[cfg(all(feature = "serde", feature = "typescript"))]
-    record_ts_union_members(&rust_ident_str, &placed.ts_union_members());
+    let mut ts_members = placed.ts_union_members();
+    #[cfg(all(feature = "serde", feature = "typescript"))]
+    if ts_members.is_empty() {
+        ts_members.extend(placed.merged_draft_typename());
+    }
+    #[cfg(all(feature = "serde", feature = "typescript"))]
+    record_ts_union_members(&rust_ident_str, &ts_members);
     #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
     record_flatten_variants(&rust_ident_str, &placed.flatten_variants());
 
@@ -9958,6 +9990,13 @@ fn tuple_struct_writes_an_inexact_key(shape: &TupleStructShape) -> bool {
     }
 }
 
+/// Whether the tuple struct is a newtype over an `Option`, or over an alias of one, so that its
+/// draft admits `null`.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+fn tuple_struct_admits_null(shape: &TupleStructShape) -> bool {
+    matches!(shape, TupleStructShape::BareValue(slot) if slot.stands_for_an_option())
+}
+
 /// Builds the `ts_definition()` method for a tuple struct's schema module, under the note of a map
 /// keyed by a 64-bit integer where a slot writes one.
 #[cfg(feature = "typescript")]
@@ -9969,9 +10008,18 @@ fn build_tuple_struct_ts_definition_method(
     shape: &TupleStructShape,
 ) -> proc_macro2::TokenStream {
     let noted = tuple_struct_writes_an_inexact_key(shape);
-    let reexport = noted_ident_reexport_ts(rust_ident, item_name, ts_generics, noted);
+    let valid = ts_valid_type(
+        item_name,
+        rust_ident,
+        ts_generics,
+        noted,
+        tuple_struct_admits_null(shape),
+    );
+    let draft_name = ts_draft_name(item_name);
+    let reexport =
+        noted_ident_reexport_ts(&ts_draft_name(rust_ident), &draft_name, ts_generics, noted);
     let type_str = format!(
-        "{}\nexport type {item_name}{ts_generics} = {};{reexport}",
+        "{}\nexport type {draft_name}{ts_generics} = {};{reexport}{valid}",
         jsdoc_block(&inexact_key_noted(docs, noted), ""),
         tuple_struct_ts_body(shape)
     );
@@ -10058,6 +10106,13 @@ fn tuple_struct_schema_impl_items(
             default_types: &args.default_types,
             preprocess: &args.preprocess,
             republished: tuple_struct_republishes_slot(&slots.shape),
+            drafted: valid_type::has_draft(),
+            frozen: valid_type::freezes(),
+            admits: if tuple_struct_admits_null(&slots.shape) {
+                DraftAdmits::Null
+            } else {
+                DraftAdmits::Nothing
+            },
         },
         &tuple_struct_zod_body(
             &slots.shape,
@@ -11226,10 +11281,11 @@ fn build_branded_ts_definition_method(
     } else {
         String::new()
     };
+    let assumed = ts_assumed_draft(item_name, rust_ident, &ts_generics);
     #[cfg(feature = "zod")]
     {
         let type_str = format!(
-            "{note}export type {item_name}{ts_generics} = {ts_inner_type} & $brand<\"{item_name}\">;{reexport}"
+            "{note}export type {item_name}{ts_generics} = {ts_inner_type} & $brand<\"{item_name}\">;{reexport}{assumed}"
         );
         quote! {
             pub fn ts_definition() -> ::std::string::String {
@@ -11241,7 +11297,7 @@ fn build_branded_ts_definition_method(
     {
         let unique_symbol = format!("declare const __brand_{item_name}: unique symbol;");
         let type_str = format!(
-            "{note}export type {item_name}{ts_generics} = {ts_inner_type} & {{ readonly [__brand_{item_name}]: true }};{reexport}"
+            "{note}export type {item_name}{ts_generics} = {ts_inner_type} & {{ readonly [__brand_{item_name}]: true }};{reexport}{assumed}"
         );
         quote! {
             pub fn ts_definition() -> ::std::string::String {
@@ -15471,7 +15527,7 @@ fn collect_untagged_members(
     }
 
     #[cfg(feature = "typescript")]
-    let ts_merge_parts = ts_flatten_operands(&recorded.ts, &recorded.member_keys);
+    let ts_merge_parts = ts_flatten_operands(&recorded);
     #[cfg(not(feature = "typescript"))]
     let ts_merge_parts: Vec<String> = Vec::new();
     #[cfg(feature = "zod")]
@@ -15512,16 +15568,29 @@ fn union_candidate(
     }
 }
 
+/// What a flattened untagged enum contributes for `member`, spelled `spelled`: a variant that
+/// holds a model whole contributes its keys, so it is the model's draft, which is what the Zod
+/// members of the enum read.
+#[cfg(all(feature = "serde", feature = "typescript"))]
+fn untagged_member_ts(member: &UntaggedMember<'_>, spelled: &str) -> String {
+    match (member.kind, member.walked.field_defs.as_slice()) {
+        (VariantKind::TupleSingle, [slot]) if republishes_sibling_binding(slot) => {
+            slot.typescript_merged_typename()
+        }
+        _ => spelled.to_owned(),
+    }
+}
+
 /// What an object flattening an untagged enum spells in the enum's name's place, one operand per
 /// member — and nothing where the name already spells the same payload set.
 #[cfg(all(feature = "serde", feature = "typescript"))]
-fn ts_flatten_operands(members: &[String], member_keys: &[Option<Vec<String>>]) -> Vec<String> {
-    let operands: Vec<String> = sibling_key_exclusions(member_keys)
+fn ts_flatten_operands(recorded: &UntaggedFlattenRecord) -> Vec<String> {
+    let operands: Vec<String> = sibling_key_exclusions(&recorded.member_keys)
         .iter()
-        .zip(members)
+        .zip(&recorded.merged_ts)
         .map(|(excluded, member)| close_untagged_flatten_member(member, excluded))
         .collect();
-    if operands == members {
+    if operands == recorded.ts {
         Vec::new()
     } else {
         operands
@@ -22578,6 +22647,63 @@ fn ts_merged_operand(operand: &MergedOperand, beside: &str) -> String {
     }
 }
 
+/// The name the declared type is published under where it has a draft: the plain object code
+/// builds. Every other name is returned as it is.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+fn ts_draft_name(name: &str) -> String {
+    if valid_type::has_draft() {
+        format!("{name}Draft")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The draft an object that flattened this type before it was declared was written to name: a type
+/// with no draft of its own is its draft.
+#[cfg(feature = "typescript")]
+pub fn ts_assumed_draft(item_name: &str, rust_ident: &str, ts_generics: &str) -> String {
+    if !was_assumed_drafted(rust_ident) {
+        return String::new();
+    }
+    format!("\n\nexport type {item_name}Draft{ts_generics} = {item_name}{ts_generics};")
+}
+
+/// The valid type written beside its draft: the draft read-only, under the marker only a schema's
+/// `parse` supplies. A draft that admits `null` keeps the `null` beside the branded rest, as parse
+/// returns it. Nothing where the declaration has no draft.
+#[cfg(feature = "typescript")]
+fn ts_valid_type(
+    item_name: &str,
+    rust_ident: &str,
+    ts_generics: &str,
+    noted: bool,
+    nullable: bool,
+) -> String {
+    if !valid_type::has_draft() {
+        return ts_assumed_draft(item_name, rust_ident, ts_generics);
+    }
+    let reexport = noted_ident_reexport_ts(rust_ident, item_name, ts_generics, noted);
+    let note = if noted {
+        format!("/** {INEXACT_KEY_NOTE} */\n")
+    } else {
+        String::new()
+    };
+    #[cfg(feature = "zod")]
+    let marker = format!("$brand<\"{item_name}\">");
+    #[cfg(not(feature = "zod"))]
+    let marker = format!("{{ readonly [__brand_{item_name}]: true }}");
+    #[cfg(feature = "zod")]
+    let declared = String::new();
+    #[cfg(not(feature = "zod"))]
+    let declared = format!("\n\ndeclare const __brand_{item_name}: unique symbol;");
+    let body = if nullable {
+        format!("(Readonly<NonNullable<{item_name}Draft{ts_generics}>> & {marker}) | null")
+    } else {
+        format!("Readonly<{item_name}Draft{ts_generics}> & {marker}")
+    };
+    format!("{declared}\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}")
+}
+
 #[cfg(feature = "typescript")]
 /// Generates the TypeScript definition method (TypeScript types only, no Zod schema).
 fn generate_ts_definition_method(
@@ -22589,7 +22715,9 @@ fn generate_ts_definition_method(
     own_keys: &[String],
     flatten_types: &[MergedOperand],
 ) -> proc_macro2::TokenStream {
-    let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
+    let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+    let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
+    let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
     let fields_empty = own_keys.is_empty();
     let has_flatten = !flatten_types.is_empty();
     let intersection_only = ts_merged_operands(own_keys, flatten_types).join(" & ");
@@ -22598,20 +22726,20 @@ fn generate_ts_definition_method(
     let typescript_type_gen = if fields_empty {
         if has_flatten {
             quote::quote! {
-                format!("{}export type {}{} = {};{}", docs, #item_name, #ts_generics, #intersection_only, #reexport)
+                format!("{}export type {}{} = {};{}{}", docs, #draft_name, #ts_generics, #intersection_only, #reexport, #valid)
             }
         } else {
             quote::quote! {
-                format!("{}export type {}{} = Record<string, never>;{}", docs, #item_name, #ts_generics, #reexport)
+                format!("{}export type {}{} = Record<string, never>;{}{}", docs, #draft_name, #ts_generics, #reexport, #valid)
             }
         }
     } else if has_flatten {
         quote::quote! {
-            format!("{}export type {}{} = {{\n{}}}{};{}", docs, #item_name, #ts_generics, #type_code, #intersection_suffix, #reexport)
+            format!("{}export type {}{} = {{\n{}}}{};{}{}", docs, #draft_name, #ts_generics, #type_code, #intersection_suffix, #reexport, #valid)
         }
     } else {
         quote::quote! {
-            format!("{}export type {}{} = {{\n{}}};{}", docs, #item_name, #ts_generics, #type_code, #reexport)
+            format!("{}export type {}{} = {{\n{}}};{}{}", docs, #draft_name, #ts_generics, #type_code, #reexport, #valid)
         }
     };
 
@@ -23221,6 +23349,141 @@ fn zod_published_binding(
     expression: &str,
     reexport: &str,
 ) -> String {
+    if !published.drafted {
+        return zod_published_unit(
+            item_name, rust_ident, parameters, published, preamble, expression, reexport,
+        );
+    }
+    let draft_name = ts_draft_name(item_name);
+    let draft_ident = ts_draft_name(rust_ident);
+    let draft = zod_published_unit(
+        &draft_name,
+        &draft_ident,
+        parameters,
+        published,
+        preamble,
+        expression,
+        &zod_binding_reexport(&draft_ident, &draft_name, parameters),
+    );
+    let valid = zod_valid_binding(item_name, rust_ident, parameters, published, reexport);
+    #[cfg(feature = "typescript")]
+    let view = zod_self_view(item_name, parameters, &draft);
+    #[cfg(not(feature = "typescript"))]
+    let view = String::new();
+    format!("{view}{draft}\n\n{valid}")
+}
+
+/// What a drafted item publishes beside its draft's binding: the schema the draft's schema becomes
+/// once it is frozen and branded, and which only a parse returns. A generic item publishes a
+/// factory of them, built from the draft's factory at the same arguments.
+#[cfg(feature = "zod")]
+fn zod_valid_binding(
+    item_name: &str,
+    rust_ident: &str,
+    parameters: &[String],
+    published: &PublishedBinding<'_>,
+    reexport: &str,
+) -> String {
+    let draft_name = ts_draft_name(item_name);
+    if parameters.is_empty() {
+        return format!(
+            "export const {item_name}$Schema = {draft_name}$Schema{}{}{}.meta({draft_name}$Schema.meta() ?? {{}});{reexport}",
+            if published.frozen { ".readonly()" } else { "" },
+            zod_brand_call(item_name),
+            if published.admits == DraftAdmits::Null {
+                ".nullable()"
+            } else {
+                ""
+            }
+        );
+    }
+    zod_valid_factory(item_name, rust_ident, parameters, published, reexport)
+}
+
+/// The factory of a generic item's valid type, over its draft's factory at the same arguments. The
+/// schema it answers is stated by what it parses to rather than read off the draft's: a type that
+/// holds itself, or another that holds it, has no end to read the freeze and brand of back.
+#[cfg(feature = "zod")]
+fn zod_valid_factory(
+    item_name: &str,
+    rust_ident: &str,
+    parameters: &[String],
+    published: &PublishedBinding<'_>,
+    reexport: &str,
+) -> String {
+    let draft_name = ts_draft_name(item_name);
+    let builder = zod_factory_builder_name(item_name);
+    let names = parameters
+        .iter()
+        .map(|parameter| zod_factory_argument(parameter))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let body = zod_factory_body(item_name, parameters, "");
+    let cache = zod_cache_name(item_name);
+    let defaults = ZodDefaultInputs {
+        #[cfg(feature = "typescript")]
+        annotated_by_value: true,
+        constrained: None,
+        default_types: published.default_types,
+    };
+    let default_block = zod_default_block(item_name, rust_ident, parameters, &defaults);
+    let draft_call = format!("{draft_name}$SchemaFactory({names})");
+    let sealed = format!(
+        "{}{}",
+        if published.frozen {
+            format!("z.readonly({draft_call})")
+        } else {
+            draft_call
+        },
+        zod_brand_call(item_name)
+    );
+    #[cfg(feature = "typescript")]
+    {
+        let bounds = zod_factory_bounds(parameters);
+        let outputs = parameters
+            .iter()
+            .map(|parameter| format!("{parameter}[\"_zod\"][\"output\"]"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let keyed = parameters
+            .iter()
+            .skip(1)
+            .fold("ZodType".to_owned(), |below, _| {
+                format!("WeakMap<ZodType, {below}>")
+            });
+        format!(
+            "const {builder} = {bounds}({}\n): ZodType =>\n  {sealed};\n\nconst {cache} = new \
+             WeakMap<ZodType, {keyed}>();\n\nexport function {item_name}$SchemaFactory{bounds}({}\n): \
+             ZodType<{item_name}<{outputs}>>;\nexport function {item_name}$SchemaFactory({}\n): \
+             ZodType {{\n{body}\n}}{default_block}{reexport}",
+            zod_factory_arguments(parameters),
+            zod_factory_arguments(parameters),
+            zod_factory_widened_arguments(parameters)
+        )
+    }
+    #[cfg(not(feature = "typescript"))]
+    {
+        format!(
+            "const {builder} = ({}\n) =>\n  {sealed};\n\nconst {cache} = new WeakMap();\n\nexport \
+             function {item_name}$SchemaFactory({}\n) {{\n{body}\n}}{default_block}{reexport}",
+            zod_factory_arguments(parameters),
+            zod_factory_arguments(parameters)
+        )
+    }
+}
+
+/// The binding one name publishes: a factory when it declares parameters, and the annotated
+/// `const` when it declares none.
+#[cfg(feature = "zod")]
+fn zod_published_unit(
+    item_name: &str,
+    rust_ident: &str,
+    parameters: &[String],
+    published: &PublishedBinding<'_>,
+    preamble: &str,
+    expression: &str,
+    reexport: &str,
+) -> String {
     // On the type's own expression, so every binding of it carries them: the one schema of a
     // type with no parameter, and each schema its builder builds for a type with one. A
     // `preprocess` is written around the checked expression: it corrects what the checks judge.
@@ -23506,6 +23769,9 @@ fn generate_zod_schema_method(
                 default_types: &args.default_types,
                 preprocess: &args.preprocess,
                 republished: false,
+                drafted: valid_type::has_draft(),
+                frozen: valid_type::freezes(),
+                admits: DraftAdmits::Nothing,
             },
             &preamble,
             &expression,
@@ -23589,10 +23855,12 @@ fn generate_plain_enum_ts_definition_method(
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
+        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+        let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
+        let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 
         let typescript_type_gen = quote::quote! {
-            format!("{}export type {}{} =\n{};{}\n\n{}", docs, #item_name, #ts_generics, #type_code, #reexport, #variant_reader)
+            format!("{}export type {}{} =\n{};{}{}\n\n{}", docs, #draft_name, #ts_generics, #type_code, #reexport, #valid, #variant_reader)
         };
 
         quote::quote! {
@@ -23624,7 +23892,7 @@ fn generate_plain_enum_zod_schema_method(
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
     {
-        let reexport = ident_reexport_zod(rust_ident, item_name, "$Schema");
+        let valid_reexport = ident_reexport_zod(rust_ident, item_name, "$Schema");
         let read = zod_plain_enum(schema_code);
         // The checks the enum names, on the enumeration itself and ahead of its description.
         let checked = zod_check_wrap(String::new(), &args.check);
@@ -23633,12 +23901,39 @@ fn generate_plain_enum_zod_schema_method(
         let around = zod_preprocess_wrap(String::new(), &args.preprocess);
         let opened = around.trim_end_matches(')');
         let closed = &around[opened.len()..];
+        let drafted = valid_type::has_draft();
+        let (declared, declared_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
+        let reexport = if drafted {
+            ident_reexport_zod(&declared_ident, &declared, "$Schema")
+        } else {
+            valid_reexport.clone()
+        };
+        let valid = if drafted {
+            let valid = zod_valid_binding(
+                item_name,
+                rust_ident,
+                &[],
+                &PublishedBinding {
+                    checks: &[],
+                    default_types: &[],
+                    preprocess: &[],
+                    drafted,
+                    frozen: true,
+                    admits: DraftAdmits::Nothing,
+                    republished: false,
+                },
+                &valid_reexport,
+            );
+            format!("\n\n{valid}")
+        } else {
+            String::new()
+        };
         // When typescript feature is enabled, generate TypeScript-style Zod schema
         #[cfg(feature = "typescript")]
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}", #item_name, #opened, #read, #checked, #closed, #description, #item_name, #item_name, #item_name, #reexport)
+                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}{}", #declared, #opened, #read, #checked, #closed, #description, #declared, #declared, #declared, #reexport, #valid)
                 }
             }
         }
@@ -23648,7 +23943,7 @@ fn generate_plain_enum_zod_schema_method(
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("export const {}$Schema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});{}", #item_name, #opened, #read, #checked, #closed, #description, #reexport)
+                    format!("export const {}$Schema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});{}{}", #declared, #opened, #read, #checked, #closed, #description, #reexport, #valid)
                 }
             }
         }
@@ -23696,15 +23991,17 @@ fn generate_discriminated_enum_ts_definition_method(
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let reexport = ident_reexport_ts(rust_ident, item_name, ts_generics);
+        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+        let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
+        let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 
         quote::quote! {
             pub fn ts_definition() -> ::std::string::String {
                 #item_docs_gen
                 let bundled_docs = docs;
-                format!(r#"{bundled_docs}export type {}{} = {};{}
+                format!(r#"{bundled_docs}export type {}{} = {};{}{}
 
-{}"#, #item_name, #ts_generics, #type_code, #reexport, #variant_reader)
+{}"#, #draft_name, #ts_generics, #type_code, #reexport, #valid, #variant_reader)
             }
         }
     }
@@ -23769,6 +24066,9 @@ fn generate_enum_zod_schema_method_after(
                 default_types: &args.default_types,
                 preprocess: &args.preprocess,
                 republished: false,
+                drafted: valid_type::has_draft(),
+                frozen: valid_type::freezes(),
+                admits: DraftAdmits::Nothing,
             },
             inside,
             schema_code,
@@ -23842,15 +24142,17 @@ fn generate_ts_alias_method(
     let reexport = noted_ident_reexport_ts(rust_ident, export_name, ts_generics, noted);
 
     let docs_block = jsdoc_block(&inexact_key_noted(docs, noted), "");
+    let assumed = ts_assumed_draft(export_name, rust_ident, ts_generics);
 
     quote! {
         pub fn ts_definition() -> ::std::string::String {
             format!(
-                "{}\nexport type {} = {};{}",
+                "{}\nexport type {} = {};{}{}",
                 #docs_block,
                 #alias_name_ts,
                 #target_ts,
-                #reexport
+                #reexport,
+                #assumed
             )
         }
     }
@@ -23924,6 +24226,9 @@ fn generate_alias_zod_method(
             default_types,
             preprocess: &[],
             republished,
+            drafted: false,
+            frozen: false,
+            admits: DraftAdmits::Nothing,
         },
         "",
         &schema_code,

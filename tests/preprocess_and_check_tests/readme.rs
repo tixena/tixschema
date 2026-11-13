@@ -139,7 +139,7 @@ fn each_rust_and_typescript_function_of_the_table_is_one_a_test_compiles() {
     for signature in [
         "function trimmed(payload: unknown): unknown",
         "function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void",
-        "function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void",
+        "function withinParcel(value: ParcelDraft, ctx: ParsePayload<ParcelDraft>): void",
     ] {
         compiles(signature, TYPESCRIPT, " {");
     }
