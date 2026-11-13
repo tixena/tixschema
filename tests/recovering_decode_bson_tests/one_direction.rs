@@ -128,11 +128,13 @@ struct Dispatch {
 }
 
 fn read_cased() -> ReadCased {
-    ReadCased {
+    ReadCasedDraft {
         first_name: "Ada".to_owned(),
         kept_note: String::new(),
         last_name: "Lovelace".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -142,11 +144,13 @@ fn a_row_under_the_keys_serde_reads_lists_no_issue() {
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(ReadRenamed, read_renamed_schema, stored_row, calls),
-        Ok(ReadRenamed {
+        Ok(ReadRenamedDraft {
             both_ways: 2_u32,
             one_way: 1_u32,
             plain: 3_u32,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -178,11 +182,13 @@ fn a_wrong_value_under_a_read_key_is_listed_at_that_key_and_fixed_there() {
     assert_eq!(seen, [invalid("read_too", "U32", string("two"))]);
     assert_eq!(
         read,
-        Ok(ReadRenamed {
+        Ok(ReadRenamedDraft {
             both_ways: 2_u32,
             one_way: 1_u32,
             plain: 3_u32,
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -202,7 +208,7 @@ fn a_field_renamed_for_reading_is_missing_under_any_other_key() {
             unknown("one_way", Bson::Int32(1_i32)),
         ]
     );
-    let written_row = written(&ReadRenamed {
+    let written_row = written(&ReadRenamedDraft {
         both_ways: 2_u32,
         one_way: 1_u32,
         plain: 3_u32,
@@ -241,9 +247,10 @@ fn a_rule_written_for_reading_cases_the_keys_serde_reads() {
         ),
         [invalid("firstName", "String", Bson::Int32(7_i32))]
     );
-    let written_row = written(&ReadCased {
+    let written_row = written(&ReadCasedDraft {
+        first_name: "Ada".to_owned(),
         kept_note: "n".to_owned(),
-        ..read_cased()
+        last_name: "Lovelace".to_owned(),
     });
     assert_eq!(
         written_row,
@@ -266,21 +273,27 @@ fn a_tag_names_a_variant_by_the_name_serde_reads() {
     for (stored_row, haulage) in [
         (
             doc! { "mode": "air", "flightCode": "IB6500" },
-            Haulage::Air {
+            HaulageDraft::Air {
                 flight_code: "IB6500".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
             doc! { "mode": "over-land", "roadName": "DR-1" },
-            Haulage::OverLand {
+            HaulageDraft::OverLand {
                 road_name: "DR-1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
             doc! { "mode": "sea", "SHIP_NAME": "Caribe" },
-            Haulage::Sea {
+            HaulageDraft::Sea {
                 ship_name: "Caribe".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
     ] {
         assert!(serde_reads::<Haulage>(&stored_row), "for {stored_row}");
@@ -310,7 +323,7 @@ fn a_tag_names_a_variant_by_the_name_serde_reads() {
             unknown("flight_code", string("IB6500")),
         ]
     );
-    let written_row = written(&Haulage::Air {
+    let written_row = written(&HaulageDraft::Air {
         flight_code: "IB6500".to_owned(),
     });
     assert_eq!(
@@ -333,20 +346,25 @@ fn a_variant_is_under_the_key_serde_reads_it_as() {
     for (stored_row, relay) in [
         (
             doc! { "relay": { "byHand": { "badge_number": 7_i32 } } },
-            Relay::Courier {
+            RelayDraft::Courier {
                 badge_number: 7_u32,
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
             doc! { "relay": { "drop-box": 12_i32 } },
-            Relay::DropBox(12_u32),
+            RelayDraft::DropBox(12_u32).validate().unwrap(),
         ),
-        (doc! { "relay": "not-sent" }, Relay::NotSent),
+        (
+            doc! { "relay": "not-sent" },
+            RelayDraft::NotSent.validate().unwrap(),
+        ),
     ] {
         assert!(serde_reads::<Dispatch>(&stored_row), "for {stored_row}");
         assert_eq!(
             read_counting!(Dispatch, dispatch_schema, stored_row, calls),
-            Ok(Dispatch { relay })
+            Ok(DispatchDraft { relay }.validate().unwrap())
         );
     }
     assert_eq!(calls, 0);

@@ -168,6 +168,13 @@ pub enum Handover {
 #[serde(transparent)]
 pub struct Label(String);
 
+#[cfg(not(feature = "serde"))]
+impl LabelDraft {
+    pub fn of(text: &str) -> Self {
+        Self(text.to_owned())
+    }
+}
+
 /// The type that holds the parcel of the documents under a key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

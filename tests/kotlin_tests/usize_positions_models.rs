@@ -60,7 +60,7 @@ fn serde_writes_and_reads_each_usize_of_placed() {
         maybe: Some(usize::MAX),
         paired: (usize::MAX, "y".to_owned()),
         pinned: usize::MAX,
-        slot: SlotIndex::new(usize::MAX).unwrap(),
+        slot: slot_index(usize::MAX),
         span: 0..usize::MAX,
     };
     let written = serde_json::to_string(&placed).unwrap();
@@ -77,4 +77,14 @@ fn serde_writes_and_reads_each_usize_of_placed() {
         serde_json::from_str::<Placed>(absent).unwrap().defaulted,
         usize::MAX
     );
+}
+
+#[cfg(feature = "serde")]
+fn slot_index(value: usize) -> SlotIndex {
+    SlotIndex::new(value).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn slot_index(value: usize) -> SlotIndex {
+    SlotIndexDraft(value).validate().unwrap()
 }

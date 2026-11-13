@@ -351,8 +351,18 @@ fn rated(value: &GradeDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
+#[cfg(feature = "serde")]
 fn upper_case(value: &Code) -> Result<(), Vec<String>> {
-    if value.as_inner().chars().any(char::is_lowercase) {
+    upper_case_text(value.as_inner())
+}
+
+#[cfg(not(feature = "serde"))]
+fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
+    upper_case_text(&value.0)
+}
+
+fn upper_case_text(text: &str) -> Result<(), Vec<String>> {
+    if text.chars().any(char::is_lowercase) {
         return Err(vec!["a code is upper case".to_owned()]);
     }
     Ok(())
@@ -365,8 +375,18 @@ fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>
     Ok(())
 }
 
+#[cfg(feature = "serde")]
 fn holding_a_code<CodeType>(value: &Batch<CodeType>) -> Result<(), Vec<String>> {
-    if value.as_inner().is_empty() {
+    holding_codes(value.as_inner())
+}
+
+#[cfg(not(feature = "serde"))]
+fn holding_a_code<CodeType>(value: &BatchDraft<CodeType>) -> Result<(), Vec<String>> {
+    holding_codes(&value.0)
+}
+
+fn holding_codes<CodeType>(codes: &[CodeType]) -> Result<(), Vec<String>> {
+    if codes.is_empty() {
         return Err(vec!["a batch holds at least one code".to_owned()]);
     }
     Ok(())
@@ -594,7 +614,32 @@ fn enum_cases() -> Vec<Case> {
     ]
 }
 
+#[cfg(not(feature = "serde"))]
+fn batch_cases() -> Vec<Case> {
+    let empty_strings = BatchDraft::<String>(Vec::new());
+    let empty_numbers = BatchDraft::<u32>(Vec::new());
+    let sevens = BatchDraft(vec![7_u32]);
+    vec![
+        case(
+            "Batch<String>, empty",
+            &empty_strings,
+            crate::judged_issues(empty_strings.validation_issues()),
+        ),
+        case(
+            "Batch<u32>, empty",
+            &empty_numbers,
+            crate::judged_issues(empty_numbers.validation_issues()),
+        ),
+        case(
+            "Batch<u32>",
+            &sevens,
+            crate::judged_issues(sevens.validation_issues()),
+        ),
+    ]
+}
+
 /// A brand over a list, over a string and over a number.
+#[cfg(feature = "serde")]
 fn batch_cases() -> Vec<Case> {
     vec![
         case(
@@ -631,18 +676,8 @@ fn brand_and_crate_cases() -> Vec<Case> {
         codes,
         label: "c".to_owned(),
     };
-    vec![
-        case(
-            "Code, in lower case",
-            &Code::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
-                .unwrap(),
-            Code::new("ab".to_owned()).map(|_| ()),
-        ),
-        case(
-            "Code",
-            &Code::new("AB".to_owned()).unwrap(),
-            Code::new("AB".to_owned()).map(|_| ()),
-        ),
+    let mut cases = code_cases();
+    cases.extend([
         case(
             "Crate<String>, empty",
             &filled(Vec::new()),
@@ -662,6 +697,42 @@ fn brand_and_crate_cases() -> Vec<Case> {
             "Crate<u32>",
             &counted(vec![7]),
             crate::judged_issues(counted(vec![7]).validation_issues()),
+        ),
+    ]);
+    cases
+}
+
+#[cfg(feature = "serde")]
+fn code_cases() -> Vec<Case> {
+    vec![
+        case(
+            "Code, in lower case",
+            &Code::model_schema_read_unjudged(serde_json::to_value("ab".to_owned()).unwrap())
+                .unwrap(),
+            Code::new("ab".to_owned()).map(|_| ()),
+        ),
+        case(
+            "Code",
+            &Code::new("AB".to_owned()).unwrap(),
+            Code::new("AB".to_owned()).map(|_| ()),
+        ),
+    ]
+}
+
+#[cfg(not(feature = "serde"))]
+fn code_cases() -> Vec<Case> {
+    let lower = CodeDraft("ab".to_owned());
+    let upper = CodeDraft("AB".to_owned());
+    vec![
+        case(
+            "Code, in lower case",
+            &lower,
+            crate::judged_issues(lower.validation_issues()),
+        ),
+        case(
+            "Code",
+            &upper,
+            crate::judged_issues(upper.validation_issues()),
         ),
     ]
 }

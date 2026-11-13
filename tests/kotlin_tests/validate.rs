@@ -8,13 +8,17 @@ use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
 use super::kotlin_flattened::FLATTENED;
+#[cfg(feature = "serde")]
 use super::kotlin_inner::INNER;
+#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
+#[cfg(feature = "serde")]
 use super::kotlin_plain_enum::plain_enum_unjudged;
-use super::read::{DECODED, judged, kept_inline};
+#[cfg(feature = "serde")]
 use super::read::{
-    brand_companion, brand_serializers, judged_over, kept, mapped, mapped_over_a_brand, serializers,
+    DECODED, brand_companion, brand_serializers, judged, kept_inline, mapped, mapped_over_a_brand,
 };
+use super::read::{judged_over, kept, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -660,6 +664,7 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
 }
 
 /// `written`, a serializer the emitter writes, behind the private functions its read calls.
+#[cfg(feature = "serde")]
 fn with_helpers(written: &str) -> String {
     let pathed = written.contains("kotlinSchemaAt(")
         || written.contains("kotlinSchemaInner(")

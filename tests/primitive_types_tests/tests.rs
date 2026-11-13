@@ -34,6 +34,29 @@ const I64_ZOD: &str = "z.codec(z.union([z.bigint(), z.number().int()]), \
                        z.bigint().min(-9223372036854775808n).max(9223372036854775807n), { \
                        decode: (value) => BigInt(value), encode: (value) => value })";
 
+/// The Zod schema of an `f64`: a number, or the `Number` object a reviver hands over for one
+/// written as an integer, read as its number.
+#[cfg(all(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    not(any(feature = "swift", feature = "kotlin"))
+))]
+const F64_ZOD: &str =
+    "z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number())";
+
+/// The Zod schema of an `f32`: the schema of an `f64`, then a value beyond the range of an `f32`
+/// read as an infinity.
+#[cfg(all(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    not(any(feature = "swift", feature = "kotlin"))
+))]
+const F32_ZOD: &str = "z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), \
+                       z.number().transform((read) => Math.abs(read) < 3.4028235677973366e38 ? \
+                       read : read < 0 ? -Infinity : Infinity))";
+
 /// `u64` is the whole point of this sweep, so the item is gated out entirely when the Swift or
 /// Kotlin target refuses that width, rather than swapped to a signed width.
 #[cfg(all(
@@ -669,7 +692,16 @@ fn test_primitive_types_typescript_generation_details() {
         &["map_to_u64_array"],
         "Partial<Record<string, Array<bigint>>>",
     );
+}
 
+#[cfg(all(
+    feature = "serde",
+    feature = "typescript",
+    feature = "zod",
+    not(any(feature = "swift", feature = "kotlin"))
+))]
+#[test]
+fn test_primitive_types_zod_generation_details() {
     let zod_schema = PrimitiveTypesShowcase::zod_schema();
 
     let i8_zod = "z.number().int().min(-128).max(127)";
@@ -682,7 +714,8 @@ fn test_primitive_types_typescript_generation_details() {
     assert_zod_fields_contain(&zod_schema, &["large_signed"], I64_ZOD);
     assert_zod_fields_contain(&zod_schema, &["large_unsigned"], U64_ZOD);
 
-    assert_zod_fields_contain(&zod_schema, &["float_single", "float_double"], "z.number()");
+    assert_zod_fields_contain(&zod_schema, &["float_single"], F32_ZOD);
+    assert_zod_fields_contain(&zod_schema, &["float_double"], F64_ZOD);
 
     assert_zod_fields_contain(
         &zod_schema,
@@ -694,13 +727,15 @@ fn test_primitive_types_typescript_generation_details() {
         &["opt_u64"],
         &format!("z.union([z.null().transform(() => undefined), {U64_ZOD}, z.undefined()])"),
     );
-    assert!(zod_schema.contains(
-        "opt_f64: z.union([z.null().transform(() => undefined), z.number(), z.undefined()])"
-    ));
+    assert_zod_fields_contain(
+        &zod_schema,
+        &["opt_f64"],
+        &format!("z.union([z.null().transform(() => undefined), {F64_ZOD}, z.undefined()])"),
+    );
 
     assert_zod_fields_contain(&zod_schema, &["array_i8"], &format!("z.array({i8_zod})"));
     assert_zod_fields_contain(&zod_schema, &["array_u64"], &format!("z.array({U64_ZOD})"));
-    assert!(zod_schema.contains("array_f64: z.array(z.number())"));
+    assert_zod_fields_contain(&zod_schema, &["array_f64"], &format!("z.array({F64_ZOD})"));
 
     assert_zod_fields_contain(
         &zod_schema,
@@ -712,7 +747,11 @@ fn test_primitive_types_typescript_generation_details() {
         &["map_to_u64"],
         &format!("z.record(z.string(), {U64_ZOD})"),
     );
-    assert!(zod_schema.contains("map_to_f64: z.record(z.string(), z.number())"));
+    assert_zod_fields_contain(
+        &zod_schema,
+        &["map_to_f64"],
+        &format!("z.record(z.string(), {F64_ZOD})"),
+    );
 
     assert_zod_fields_contain(
         &zod_schema,
@@ -724,5 +763,9 @@ fn test_primitive_types_typescript_generation_details() {
         &["map_to_u64_array"],
         &format!("z.record(z.string(), z.array({U64_ZOD}))"),
     );
-    assert!(zod_schema.contains("map_to_f64_array: z.record(z.string(), z.array(z.number()))"));
+    assert_zod_fields_contain(
+        &zod_schema,
+        &["map_to_f64_array"],
+        &format!("z.record(z.string(), z.array({F64_ZOD}))"),
+    );
 }

@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
+#[cfg(feature = "serde")]
 use super::read::{DECODED, judged};
 use super::read::{judged_over, kept};
 

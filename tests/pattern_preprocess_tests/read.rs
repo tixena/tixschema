@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
+#[cfg(not(feature = "serde"))]
+use super::models::LabelDraft;
 use super::models::{
     CarrierDraft, ClosedDockDraft, Consigned, ConsignedDraft, CrateDraft, Crated, CratedDraft,
     Delivery, DeliveryDraft, Either, EitherDraft, GradeDraft, HandoverDraft, Label, Manifest,
@@ -205,11 +207,21 @@ fn a_type_that_reaches_itself_is_corrected_at_every_depth() {
     );
 }
 
+#[cfg(feature = "serde")]
+fn label(text: &str) -> Label {
+    Label::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn label(text: &str) -> Label {
+    LabelDraft::of(text).validate().unwrap()
+}
+
 #[test]
 fn every_shape_takes_the_key_on_the_type() {
     read_out_of_its_envelope(&StackDraft(texts(&["a", "b"]), 2));
     read_out_of_its_envelope(&ClosedDockDraft);
-    read_out_of_its_envelope(&Label::new("A".to_owned()).unwrap());
+    read_out_of_its_envelope(&label("A"));
     for grade in [GradeDraft::Express, GradeDraft::Standard] {
         read_out_of_its_envelope(&grade);
     }
@@ -263,7 +275,7 @@ fn a_type_with_a_parameter_takes_the_key_at_each_filling() {
 fn the_functions_of_a_type_run_in_the_order_written() {
     assert_eq!(
         serde_json::from_value::<Label>(json!({ "payload": "  A  " })).unwrap(),
-        Label::new("A".to_owned()).unwrap()
+        label("A")
     );
     assert_eq!(
         serde_json::from_value::<Wrapped>(json!({ "payload": { "label": "A" } })).unwrap(),

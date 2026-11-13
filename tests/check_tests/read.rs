@@ -6,9 +6,11 @@ use core::fmt::Debug;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+#[cfg(feature = "serde")]
+use super::models::{Batch, Code};
 use super::models::{
-    Batch, ClosedDockDraft, Code, CrateDraft, GradeDraft, HandoverDraft, PalletDraft,
-    ReferenceDraft, RouteDraft, ShipmentDraft, StackDraft, TransferDraft, parcels,
+    ClosedDockDraft, CrateDraft, GradeDraft, HandoverDraft, PalletDraft, ReferenceDraft,
+    RouteDraft, ShipmentDraft, StackDraft, TransferDraft, parcels,
 };
 
 fn texts(written: &[&str]) -> Vec<String> {
@@ -137,6 +139,8 @@ fn a_type_with_a_parameter_is_read_as_validate_answers_at_each_filling() {
     }
 }
 
+/// A brand exists only where serde is read.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_is_read_as_validate_answers() {
     for text in ["abc", "ABC"] {

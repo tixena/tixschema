@@ -87,10 +87,30 @@ pub struct NamesRenamedItemsDeclaredEarlier {
     pub grades: Vec<LaterRenamedGrade>,
 }
 
+#[cfg(feature = "serde")]
+fn brand(text: &str) -> BrandUnderRustName {
+    BrandUnderRustName::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn brand(text: &str) -> BrandUnderRustName {
+    BrandUnderRustNameDraft(text.to_owned()).validate().unwrap()
+}
+
+#[cfg(feature = "serde")]
+fn brand_text(held: &BrandUnderRustName) -> &str {
+    held.as_inner()
+}
+
+#[cfg(not(feature = "serde"))]
+fn brand_text(held: &BrandUnderRustName) -> &str {
+    &held.0
+}
+
 #[test]
 fn every_renamed_shape_expands_in_this_feature_combination() {
     let value = ReferencesRenamedItemsDraft {
-        brand: BrandUnderRustName::new("three".to_owned()).unwrap(),
+        brand: brand("three"),
         item: ItemUnderRustNameDraft {
             count: 1,
             label: "one".to_owned(),
@@ -113,7 +133,7 @@ fn every_renamed_shape_expands_in_this_feature_combination() {
     };
     assert_eq!(value.item.count, 1);
     assert_eq!(value.pair.1, 2);
-    assert_eq!(value.brand.as_inner(), "three");
+    assert_eq!(brand_text(&value.brand), "three");
     assert_eq!(
         value.slot,
         SlotUnderRustNameDraft::Primary.validate().unwrap()

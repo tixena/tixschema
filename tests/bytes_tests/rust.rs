@@ -3,10 +3,12 @@
 
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "zod")]
+use super::models::BytesExample;
 use super::models::{
-    BytesBoxDraft, BytesCountedDraft, BytesEitherDraft, BytesExample, BytesExampleDraft,
-    BytesHolder, BytesHolderDraft, BytesImage, BytesImageDraft, BytesLookalikes,
-    BytesLookalikesDraft, BytesOptionalDraft,
+    BytesBoxDraft, BytesCountedDraft, BytesEitherDraft, BytesExampleDraft, BytesHolder,
+    BytesHolderDraft, BytesImage, BytesImageDraft, BytesLookalikes, BytesLookalikesDraft,
+    BytesOptionalDraft,
 };
 
 #[test]
@@ -108,7 +110,7 @@ fn the_example_of_a_type_holding_bytes_is_the_array() {
 #[cfg(not(feature = "zod"))]
 #[test]
 fn the_example_type_is_declared() {
-    serde_json::to_string(&BytesExample { data: vec![1] }).unwrap();
+    serde_json::to_string(&BytesExampleDraft { data: vec![1] }).unwrap();
 }
 
 #[cfg(feature = "zod")]

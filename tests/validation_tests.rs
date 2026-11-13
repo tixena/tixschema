@@ -59,11 +59,13 @@ mod tuple_struct_slots;
 mod integer_limits;
 
 /// What a draft's `validate()` answers of it, without making the valid value.
+#[cfg(feature = "serde")]
 pub(crate) fn judged(found: Vec<String>) -> Result<(), Vec<String>> {
     if found.is_empty() { Ok(()) } else { Err(found) }
 }
 
 /// What a draft's issues answer as a `validate()` that makes no value.
+#[cfg(feature = "serde")]
 pub(crate) fn judged_issues(found: Vec<String>) -> Result<(), Vec<String>> {
     if found.is_empty() { Ok(()) } else { Err(found) }
 }

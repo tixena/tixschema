@@ -162,6 +162,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+#[cfg(feature = "serde")]
 use super::models::Ledger;
 
 /// A member under each wrapper a check is read through, and one that is a list.
@@ -255,6 +256,7 @@ pub struct Waybill {
 }
 
 /// A key with no `Display`, which serde writes as the variant's name.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Bay {
@@ -262,6 +264,7 @@ pub enum Bay {
 }
 
 /// Two maps of a model with a check: one keyed by text, one by a key with no `Display`.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Depot {
@@ -484,12 +487,10 @@ fn the_lone_slot_of_an_untagged_variant_is_reported_under_no_name() {
 #[test]
 fn a_variants_slot_is_reported_under_the_variants_name_without_serde() {
     assert_eq!(
-        DispatchUntagged::Carried("unknown".to_owned())
-            .validate()
-            .unwrap_err(),
+        DispatchUntaggedDraft::Carried("unknown".to_owned()).validation_issues(),
         ["'Carried': a carrier is known"]
     );
-    let by_road = DispatchUntagged::ByRoad {
+    let by_road = DispatchUntaggedDraft::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
     };
     assert_eq!(

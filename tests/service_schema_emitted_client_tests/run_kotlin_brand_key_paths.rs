@@ -206,7 +206,7 @@ where
 /// over the brand over a text, refused by either brand's check, and under the `chrono` feature
 /// the same under a date key.
 fn rows() -> Vec<Row> {
-    let mut rows = vec![
+    let rows = vec![
         row::<Keyring>("Keyring", r#"{"pitches":{"3":1},"tones":{"low":2}}"#),
         row::<Keyring>("Keyring", r#"{"pitches":{"3":-1},"tones":{"low":2}}"#),
         row::<Keyring>("Keyring", r#"{"pitches":{"3":1},"tones":{"low":-1}}"#),
@@ -235,8 +235,12 @@ fn rows() -> Vec<Row> {
             "'mute': mute is silent at path: $.outer",
         ),
     ];
-    #[cfg(feature = "chrono")]
-    rows.extend([
+    rows.into_iter().chain(dated_rows()).collect()
+}
+
+#[cfg(feature = "chrono")]
+fn dated_rows() -> Vec<Row> {
+    vec![
         row::<Calendar>("Calendar", r#"{"days":{"2024-01-02":1}}"#),
         row::<Calendar>("Calendar", r#"{"days":{"2024-01-02":-1}}"#),
         refused_key::<Calendar>(
@@ -244,14 +248,32 @@ fn rows() -> Vec<Row> {
             r#"{"days":{"2024-01-06":1}}"#,
             "'2024-01-06': 2024-01-06 is a day of rest at path: $.days",
         ),
-    ]);
-    rows
+    ]
+}
+
+#[cfg(not(feature = "chrono"))]
+const fn dated_rows() -> Vec<Row> {
+    Vec::new()
+}
+
+#[cfg(feature = "chrono")]
+fn dated_serde_said() -> Vec<&'static str> {
+    vec![
+        r#"read {"days":{"2024-01-02":1}}"#,
+        "refused at days.2024-01-02",
+        "refused at days.2024-01-06",
+    ]
+}
+
+#[cfg(not(feature = "chrono"))]
+const fn dated_serde_said() -> Vec<&'static str> {
+    Vec::new()
 }
 
 #[test]
 fn a_value_and_a_key_under_a_brand_key_are_refused_at_the_field_serde_names() {
     let rows = rows();
-    let mut serde_said: Vec<&str> = vec![
+    let undated_said: Vec<&str> = vec![
         r#"read {"pitches":{"3":1},"tones":{"low":2}}"#,
         "refused at pitches.3",
         "refused at tones.low",
@@ -264,12 +286,7 @@ fn a_value_and_a_key_under_a_brand_key_are_refused_at_the_field_serde_names() {
         "refused at outer.soft",
         "refused at outer.mute",
     ];
-    #[cfg(feature = "chrono")]
-    serde_said.extend([
-        r#"read {"days":{"2024-01-02":1}}"#,
-        "refused at days.2024-01-02",
-        "refused at days.2024-01-06",
-    ]);
+    let serde_said: Vec<&str> = undated_said.into_iter().chain(dated_serde_said()).collect();
     assert_eq!(
         rows.iter()
             .map(|row| row.serde.as_str())

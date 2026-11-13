@@ -155,7 +155,7 @@ struct Counted {
 /// describes.
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Etched {
     #[serde(default, skip_serializing)]
@@ -187,7 +187,7 @@ struct Stamped(Version, #[serde(skip)] u8);
 /// describes.
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[model_schema(enable = ["decode_with"])]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 struct Marked<T>(
     PhantomData<T>,
@@ -471,7 +471,9 @@ fn a_tuple_is_walked_by_position_in_a_map() {
         kept,
         Ok(KeyedDraft {
             by_name: HashMap::from([("first".to_owned(), ("a".to_owned(), 1))]),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -928,25 +930,14 @@ fn a_decider_repairs_a_transparent_struct_at_the_path_it_is_handed() {
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_transparent_struct_is_walked_as_the_field_serde_reads_past_a_default_and_a_marker() {
-    let etched = Etched {
-        hits: 3,
-        marker: PhantomData,
-        text: "e".to_owned(),
-    };
+    let etched = Etched::new("e".to_owned()).unwrap();
     assert_eq!(serde_json::to_value(&etched).unwrap(), json!("e"));
     let mut calls = 0_u32;
     let read = Etched::from_value_with(json!("e"), |_raw, _found| {
         calls += 1;
         etched_schema::Verdict::Reject
     });
-    assert_eq!(
-        read,
-        Ok(Etched {
-            hits: 0,
-            marker: PhantomData,
-            text: "e".to_owned(),
-        })
-    );
+    assert_eq!(read, Ok(Etched::new("e".to_owned()).unwrap()));
     assert_eq!(calls, 0);
 
     let refused =
@@ -1093,10 +1084,10 @@ fn a_transparent_tuple_struct_over_a_model_type_walks_as_that_type() {
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_transparent_tuple_struct_is_walked_as_the_slot_serde_reads_past_a_default_and_a_marker() {
-    let written = serde_json::to_value(Marked::<u8>::new("m".to_owned(), 3).unwrap()).unwrap();
+    let written = serde_json::to_value(Marked::<u8>::new("m".to_owned()).unwrap()).unwrap();
     assert_eq!(written, json!("m"));
     let plain: Marked<u8> = serde_json::from_value(written.clone()).unwrap();
-    assert_eq!(plain, Marked(PhantomData, "m".to_owned(), 0));
+    assert_eq!(plain, Marked::<u8>::new("m".to_owned()).unwrap());
     let mut calls = 0_u32;
     let read = Marked::<u8>::from_value_with(written, |_raw, _found| {
         calls += 1;

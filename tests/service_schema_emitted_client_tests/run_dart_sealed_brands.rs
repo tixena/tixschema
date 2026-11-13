@@ -113,14 +113,18 @@ fn dart_files(
 
 #[test]
 fn every_declared_type_is_constructible() {
-    let pennant = Pennant {
+    let pennant = PennantDraft {
         text: PennantText::new("a".to_owned()).unwrap(),
-        fly: PennantFly {
+        fly: PennantFlyDraft {
             late: PennantLate::new("ab".to_owned()).unwrap(),
-        },
-    };
+        }
+        .validate()
+        .unwrap(),
+    }
+    .validate()
+    .unwrap();
     assert_eq!(pennant.text.as_inner(), "a");
-    assert_eq!(PennantCount(3).0, 3);
+    assert_eq!(PennantCountDraft(3).validate().unwrap().0, 3);
     let note: PennantNote = "n".to_owned();
     assert_eq!(note, "n");
 }

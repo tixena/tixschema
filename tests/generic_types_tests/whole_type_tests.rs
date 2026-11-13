@@ -701,7 +701,7 @@ pub struct TwoLoopedFillings {
 #[test]
 fn every_fixture_expands_in_this_build() {
     let stamp = ArchiveStampDraft {
-        archive_id: ArchiveId::<String>::new("doc-1".to_owned()).unwrap(),
+        archive_id: archive_id("doc-1".to_owned()),
     };
     let entry = ArchiveEntryDraft::<String, f64, String, u32, String> {
         byte_size: None,
@@ -741,4 +741,14 @@ fn every_fixture_expands_in_this_build() {
         label: "root".to_owned(),
     };
     assert_eq!(branch.label, "root");
+}
+
+#[cfg(feature = "serde")]
+fn archive_id(value: String) -> ArchiveId<String> {
+    ArchiveId::new(value).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn archive_id(value: String) -> ArchiveId<String> {
+    ArchiveIdDraft(value).validate().unwrap()
 }

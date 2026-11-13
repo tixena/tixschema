@@ -16,13 +16,10 @@ use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Generics, Path, Token, Visibility};
 
-#[cfg(feature = "serde")]
 use super::judged_read::unclaimed_parameter;
-#[cfg(feature = "serde")]
 use super::refusal_from_violations;
 use super::unbounded;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
-#[cfg(feature = "serde")]
 use crate::utils::written_names;
 
 thread_local! {
@@ -36,11 +33,9 @@ pub struct Declared {
     pub conditional: Vec<(TokenStream, Vec<Path>)>,
     pub debugs: Gate,
     pub derives: Vec<Path>,
-    #[cfg(feature = "serde")]
     pub deserializes: Gate,
     pub name: Option<Ident>,
     pub origin: Origin,
-    #[cfg(feature = "serde")]
     pub serializes: Gate,
 }
 
@@ -64,7 +59,6 @@ impl Gate {
     }
 
     /// This gate, or `Never` where `refused`.
-    #[cfg(feature = "serde")]
     pub fn unless(self, refused: bool) -> Self {
         if refused { Self::Never } else { self }
     }
@@ -87,7 +81,6 @@ pub struct ValidType<'parts> {
     pub conditional: Vec<(TokenStream, Vec<Path>)>,
     pub debugs: Gate,
     pub derives: Vec<Path>,
-    #[cfg(feature = "serde")]
     pub deserializes: Gate,
     pub draft: Ident,
     pub generics: &'parts Generics,
@@ -95,7 +88,6 @@ pub struct ValidType<'parts> {
     pub module_ident: &'parts Ident,
     pub name: &'parts Ident,
     pub reads: &'parts TokenStream,
-    #[cfg(feature = "serde")]
     pub serializes: Gate,
     pub vis: &'parts Visibility,
 }
@@ -110,13 +102,10 @@ impl ValidType<'_> {
         let module_ident = self.module_ident;
         let sealed = sealed_ident(module_ident);
         let alias_generics = unbounded(self.generics);
-        #[cfg(feature = "serde")]
         let (writes, read) = (
             self.serializes.guard(self.write()),
             self.deserializes.guard(self.read()),
         );
-        #[cfg(not(feature = "serde"))]
-        let (writes, read) = (TokenStream::new(), TokenStream::new());
         let valid_generics = self.valid_generics();
         let (valid_impl_generics, _, valid_where) = valid_generics.split_for_impl();
         quote! {
@@ -223,7 +212,6 @@ impl ValidType<'_> {
 
     /// The read of the valid type: the draft's own read, judged, and without the judgement for a
     /// holder, which judges the whole value once.
-    #[cfg(feature = "serde")]
     fn read(&self) -> TokenStream {
         let (name, draft) = (self.name, &self.draft);
         let valid_generics = self.valid_generics();
@@ -282,7 +270,6 @@ impl ValidType<'_> {
     }
 
     /// The function that words a serde message with the declared name where it names the draft.
-    #[cfg(feature = "serde")]
     fn relabelled(&self) -> TokenStream {
         let (draft_text, declared_text) = (self.draft.to_string(), self.name.to_string());
         quote! {
@@ -320,7 +307,6 @@ impl ValidType<'_> {
     }
 
     /// The write of the valid type: the draft's.
-    #[cfg(feature = "serde")]
     fn write(&self) -> TokenStream {
         let (name, draft) = (self.name, &self.draft);
         let (_, type_generics, _) = self.generics.split_for_impl();
@@ -525,11 +511,9 @@ pub fn record(item: &syn::Item, undrafted: bool) {
         conditional: conditional_derives(attrs),
         debugs: gate_of(attrs, "Debug"),
         derives: wrapper_derives(attrs),
-        #[cfg(feature = "serde")]
         deserializes: gate_of(attrs, "Deserialize"),
         name,
         origin,
-        #[cfg(feature = "serde")]
         serializes: gate_of(attrs, "Serialize"),
     };
     DECLARED.with(|held| *held.borrow_mut() = declared);

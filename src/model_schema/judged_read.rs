@@ -92,7 +92,6 @@ pub struct Drafted {
     /// What sits beside the draft: its own unjudged read, which holders and the valid type call.
     pub draft: TokenStream,
     /// Whether `draft` is the refusal of a conversion the macro cannot put a read behind.
-    #[cfg(feature = "serde")]
     pub refused: bool,
     /// What sits beside the valid type, where it can build one.
     pub valid: TokenStream,
@@ -2168,20 +2167,17 @@ pub fn drafted_struct(item: &mut ItemStruct, publishes_validate: bool, valid: &I
             leave_the_read_to_the_macro(&mut item.attrs, item.fields.iter_mut());
             Drafted {
                 draft,
-                #[cfg(feature = "serde")]
                 refused: false,
                 valid: wrapper,
             }
         }
         Some(Judged::Refused(refusal)) => Drafted {
             draft: refusal,
-            #[cfg(feature = "serde")]
             refused: true,
             valid: TokenStream::new(),
         },
         None => Drafted {
             draft: TokenStream::new(),
-            #[cfg(feature = "serde")]
             refused: false,
             valid: TokenStream::new(),
         },
@@ -2207,20 +2203,17 @@ pub fn drafted_enum(item: &mut ItemEnum, publishes_validate: bool, valid: &Ident
             );
             Drafted {
                 draft,
-                #[cfg(feature = "serde")]
                 refused: false,
                 valid: wrapper,
             }
         }
         Some(Judged::Refused(refusal)) => Drafted {
             draft: refusal,
-            #[cfg(feature = "serde")]
             refused: true,
             valid: TokenStream::new(),
         },
         None => Drafted {
             draft: TokenStream::new(),
-            #[cfg(feature = "serde")]
             refused: false,
             valid: TokenStream::new(),
         },

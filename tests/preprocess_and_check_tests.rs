@@ -10,6 +10,7 @@ mod models;
 mod readme;
 
 /// What a draft's issues answer as a `validate()` that makes no value.
+#[cfg(feature = "serde")]
 pub(crate) fn judged_issues(found: Vec<String>) -> Result<(), Vec<String>> {
     if found.is_empty() { Ok(()) } else { Err(found) }
 }

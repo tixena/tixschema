@@ -22,7 +22,7 @@ mod tests;
 
 /// What the emitter writes into a type whose reads read a fixed-width integer.
 #[cfg(test)]
-#[cfg(feature = "swift")]
+#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
 #[path = "support/swift_fitted.rs"]
 mod swift_fitted;
 

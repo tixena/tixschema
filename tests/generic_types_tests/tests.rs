@@ -1839,7 +1839,7 @@ fn a_generic_item_expands_to_rust_that_compiles() {
 
     let boxed: Boxed<u32> = vec![1_u32];
     assert_eq!(boxed.len(), 1);
-    assert_eq!(Tagged::new("t".to_owned()).unwrap().as_inner(), "t");
+    assert_eq!(tagged_inner(&tagged("t".to_owned())), "t");
 
     let quintet = QuintetDraft {
         alpha: 1_u32,
@@ -1895,10 +1895,10 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
 
     let referrer = ReferrerDraft {
         boxed: vec![1_u32],
-        tagged: Tagged::new("t".to_owned()).unwrap(),
+        tagged: tagged("t".to_owned()),
     };
     assert_eq!(referrer.boxed.len(), 1);
-    assert_eq!(referrer.tagged.as_inner(), "t");
+    assert_eq!(tagged_inner(&referrer.tagged), "t");
 
     let counted = CountedFolderDraft {
         boxed: vec![true],
@@ -1908,12 +1908,12 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
         }
         .validate()
         .unwrap(),
-        tagged: Tagged::new(2_u32).unwrap(),
+        tagged: tagged(2_u32),
     };
     assert_eq!(counted.boxed.len(), 1);
     assert!(!counted.doc.created_at);
     assert_eq!(counted.doc.document_id, 1);
-    assert_eq!(*counted.tagged.as_inner(), 2);
+    assert_eq!(*tagged_inner(&counted.tagged), 2);
 }
 
 /// The two argument kinds no build reaches without their own feature, named the same way.
@@ -2085,4 +2085,24 @@ fn a_lifetime_beside_a_type_parameter_has_validate_at_every_filling() {
         other_instantiation.validation_issues(),
         vec!["'tag': too short: minimum length is 1, got 0"]
     );
+}
+
+#[cfg(feature = "serde")]
+fn tagged<ValueType>(value: ValueType) -> Tagged<ValueType> {
+    Tagged::new(value).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn tagged<ValueType>(value: ValueType) -> Tagged<ValueType> {
+    TaggedDraft(value).validate().unwrap()
+}
+
+#[cfg(feature = "serde")]
+const fn tagged_inner<ValueType>(held: &Tagged<ValueType>) -> &ValueType {
+    held.as_inner()
+}
+
+#[cfg(not(feature = "serde"))]
+fn tagged_inner<ValueType>(held: &Tagged<ValueType>) -> &ValueType {
+    &held.0
 }

@@ -72,7 +72,7 @@ struct Dispatch {
 #[test]
 fn a_field_is_under_the_serialize_side_of_its_rename() {
     let paths = Carton::MONGO_FIELDS;
-    let row = stored(&Carton {
+    let row = stored(&CartonDraft {
         both_ways: 1_u32,
         cased_by_rule: 2_u32,
         read_way: 3_u32,
@@ -101,7 +101,7 @@ fn a_field_is_under_the_serialize_side_of_its_rename() {
 #[test]
 fn a_tag_asks_for_the_name_a_variant_is_written_under() {
     let haulage = Haulage::MONGO_FIELDS;
-    let air = stored(&Haulage::Air {
+    let air = stored(&HaulageDraft::Air {
         flight_code: "IB6500".to_owned(),
     });
     assert_eq!(shown(haulage.is_air()), r#"{ "mode": { "$eq": "byAir" } }"#);
@@ -112,7 +112,7 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
         ],
         pairs([("mode", r#""byAir""#), ("flightCode", r#""IB6500""#)])
     );
-    let land = stored(&Haulage::OverLand {
+    let land = stored(&HaulageDraft::OverLand {
         road_name: "DR-1".to_owned(),
     });
     assert_eq!(
@@ -129,7 +129,7 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
         ],
         pairs([("mode", r#""over-land""#), ("roadName", r#""DR-1""#)])
     );
-    let sea = stored(&Haulage::Sea {
+    let sea = stored(&HaulageDraft::Sea {
         ship_name: "Caribe".to_owned(),
     });
     assert_eq!(
@@ -144,10 +144,12 @@ fn a_tag_asks_for_the_name_a_variant_is_written_under() {
 #[test]
 fn a_variant_is_under_the_key_it_is_written_as() {
     let (dispatch, relay) = (Dispatch::MONGO_FIELDS, Relay::MONGO_FIELDS);
-    let courier = stored(&Dispatch {
-        relay: Relay::Courier {
+    let courier = stored(&DispatchDraft {
+        relay: RelayDraft::Courier {
             badge_number: 7_u32,
-        },
+        }
+        .validate()
+        .unwrap(),
     });
     assert_eq!(
         [
@@ -164,8 +166,8 @@ fn a_variant_is_under_the_key_it_is_written_as() {
             ("relay.byHand.badge_number", "Int64(7)"),
         ])
     );
-    let drop_box = stored(&Dispatch {
-        relay: Relay::DropBox(12_u32),
+    let drop_box = stored(&DispatchDraft {
+        relay: RelayDraft::DropBox(12_u32).validate().unwrap(),
     });
     assert_eq!(
         [
@@ -180,8 +182,8 @@ fn a_variant_is_under_the_key_it_is_written_as() {
             ("relay.drop-box", "Int64(12)"),
         ])
     );
-    let not_sent = stored(&Dispatch {
-        relay: Relay::NotSent,
+    let not_sent = stored(&DispatchDraft {
+        relay: RelayDraft::NotSent.validate().unwrap(),
     });
     assert_eq!(
         shown(dispatch.relay().nest(relay.is_not_sent())),

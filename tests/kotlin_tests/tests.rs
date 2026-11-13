@@ -41,6 +41,7 @@ use super::flattened_models::{
     stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
     yawing_kotlin,
 };
+#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{kept, serializers};
@@ -375,8 +376,8 @@ fn test_every_declared_type_is_constructible_under_a_key_a_choice_and_an_audit()
     };
     assert_eq!(map_keys.by_number.len(), 1);
 
-    let correlation_id = CorrelationId::new("abc-123".to_owned()).unwrap();
-    assert_eq!(correlation_id.as_inner(), "abc-123");
+    let correlation_id = correlation_id("abc-123");
+    assert_eq!(correlation_id_text(&correlation_id), "abc-123");
 
     let widget = WidgetDraft {
         label: "a widget".to_owned(),
@@ -2405,4 +2406,24 @@ fn dock() -> Tacking {
 
 fn north() -> Vec<String> {
     vec!["north".to_owned()]
+}
+
+#[cfg(feature = "serde")]
+fn correlation_id(text: &str) -> CorrelationId {
+    CorrelationId::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn correlation_id(text: &str) -> CorrelationId {
+    CorrelationIdDraft(text.to_owned()).validate().unwrap()
+}
+
+#[cfg(feature = "serde")]
+const fn correlation_id_text(held: &CorrelationId) -> &str {
+    held.as_inner().as_str()
+}
+
+#[cfg(not(feature = "serde"))]
+fn correlation_id_text(held: &CorrelationId) -> &str {
+    held.0.as_str()
 }

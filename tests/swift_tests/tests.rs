@@ -548,7 +548,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     serde_json::to_string(&AdjacentTaggedDraft::Flag(true)).unwrap();
     serde_json::to_string(&UntaggedDraft::Count { count: 1 }).unwrap();
 
-    let correlation_id = CorrelationId::new("id-1".to_owned()).unwrap();
+    let correlation_id = correlation_id("id-1");
     let correlation_round_trip: CorrelationId =
         serde_json::from_str(&serde_json::to_string(&correlation_id).unwrap()).unwrap();
     assert_eq!(correlation_round_trip, correlation_id);
@@ -651,4 +651,14 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])
     );
+}
+
+#[cfg(feature = "serde")]
+fn correlation_id(text: &str) -> CorrelationId {
+    CorrelationId::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn correlation_id(text: &str) -> CorrelationId {
+    CorrelationIdDraft(text.to_owned()).validate().unwrap()
 }

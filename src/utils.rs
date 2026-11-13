@@ -136,12 +136,7 @@ pub enum WireScalarKind {
 /// The number serde reads a map key of from the text between its quotes: an integer of the type
 /// serde names `expected` in a refusal, held to `range` as decimal digits, or a float where `range`
 /// is `None`.
-#[cfg(any(
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
+#[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NumberKey {
     pub expected: &'static str,

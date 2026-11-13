@@ -3,11 +3,11 @@
 //! of the Zod schemas under node in `generic_types_tests`.
 
 #[cfg(feature = "serde")]
-use super::models::{Basin, Config, Fleet, Gangway, GangwayDraft, Logbook, report};
+use super::models::{Basin, Config, Fleet, Gangway, GangwayDraft, Logbook, PontoonDraft, report};
 use super::models::{
     Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, JettyDraft, Marina, PREPROCESSED,
-    PREPROCESSED_REPORT, Pontoon, PontoonDraft, REPORT, REQUIRED, REQUIRED_REPORT, Wharf,
-    filled_expected, filled_report, preprocessed_values, read_values, unwritten_defaults,
+    PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
+    filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
 #[cfg(feature = "indexmap")]
 use super::models::{IndexedFleet, IndexedLogbook};

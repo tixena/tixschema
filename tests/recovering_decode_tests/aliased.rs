@@ -270,7 +270,9 @@ fn a_type_of_another_crate_is_read_whole() {
         read_counting!(Timed, timed_schema, whole, calls),
         Ok(TimedDraft {
             timeout: Duration::from_secs(5),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
     assert_eq!(

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
+#[cfg(feature = "serde")]
 use super::unknown_keys::plain_enum_read;
 
 #[model_schema()]
@@ -169,6 +170,7 @@ pub struct ProductLookup {
 }
 
 /// Members named after words the client languages reserve, and one none of them does.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReservedMembers {
@@ -186,6 +188,7 @@ pub struct ReservedBesideItsMove {
 }
 
 /// A plain enum whose members lower-case to words Dart and Swift reserve.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReservedMember {
@@ -273,8 +276,8 @@ fn test_every_declared_type_is_constructible() {
     ];
     assert_eq!(received_ats.len(), 2);
 
-    let sku = Sku::new(String::new()).unwrap();
-    assert_eq!(sku.as_inner(), "");
+    let sku = sku();
+    assert_eq!(sku_text(&sku), "");
 
     let page = PageDraft {
         items: vec!["a".to_owned()],
@@ -900,6 +903,7 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(
@@ -979,4 +983,24 @@ fn a_moved_member_steps_past_a_field_already_written_under_its_name() {
         .unwrap(),
         serde_json::json!({ "class": "a", "class_": "b" })
     );
+}
+
+#[cfg(feature = "serde")]
+fn sku() -> Sku {
+    Sku::new(String::new()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn sku() -> Sku {
+    SkuDraft(String::new()).validate().unwrap()
+}
+
+#[cfg(feature = "serde")]
+const fn sku_text(held: &Sku) -> &str {
+    held.as_inner().as_str()
+}
+
+#[cfg(not(feature = "serde"))]
+fn sku_text(held: &Sku) -> &str {
+    held.0.as_str()
 }

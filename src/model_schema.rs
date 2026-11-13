@@ -52,11 +52,10 @@ use crate::field_type::ZOD_SCHEMA_BOUND;
 #[cfg(all(feature = "serde", feature = "zod"))]
 use crate::field_type::zod_check_wrap_handing;
 use crate::field_type::{RESULT_ARMS, RangeKind};
+#[cfg(all(feature = "serde", feature = "zod"))]
+use crate::field_type::{zod_buffered, zod_one_key_union};
 #[cfg(feature = "zod")]
-use crate::field_type::{
-    zod_buffered, zod_buffered_issue, zod_check_wrap, zod_one_key_union, zod_plain_enum,
-    zod_preprocess_wrap,
-};
+use crate::field_type::{zod_buffered_issue, zod_check_wrap, zod_plain_enum, zod_preprocess_wrap};
 use crate::{
     field_type::{
         BoundKind, FieldDef, FieldDefType, MissingKey, Scope, VariantKind, classify_variant,
@@ -3373,7 +3372,6 @@ where
         conditional: declared.conditional,
         debugs: declared.debugs,
         derives: declared.derives,
-        #[cfg(feature = "serde")]
         deserializes: declared.deserializes.unless(drafted.refused),
         draft: valid_type::draft_ident(name),
         generics: parts.generics,
@@ -3381,7 +3379,6 @@ where
         module_ident,
         name,
         reads: &drafted.valid,
-        #[cfg(feature = "serde")]
         serializes: declared.serializes,
         vis: parts.vis,
     };
@@ -12884,7 +12881,6 @@ fn plain_enum_output(
         conditional: declared.conditional,
         debugs: declared.debugs,
         derives: declared.derives,
-        #[cfg(feature = "serde")]
         deserializes: declared.deserializes.unless(judged.refused),
         draft: valid_type::draft_ident(name),
         generics: &item_enum.generics,
@@ -12892,7 +12888,6 @@ fn plain_enum_output(
         module_ident,
         name,
         reads: &judged.valid,
-        #[cfg(feature = "serde")]
         serializes: declared.serializes,
         vis: &item_enum.vis,
     };

@@ -450,7 +450,7 @@ fn the_json_schema_writes_a_skipped_variant() {
 
 #[test]
 fn validate_names_a_member_by_its_rust_name() {
-    let unknown = Signup {
+    let unknown = SignupDraft {
         login_count: 0,
         team_roles: Vec::new(),
         user_name: "nobody".to_owned(),
@@ -470,13 +470,13 @@ fn serde_still_reads_its_own_attributes() {
     assert_eq!(note.draft, "plan");
     assert_eq!(serde_json::to_string(&note).unwrap(), r#"{"title":"Trip"}"#);
     assert_eq!(
-        serde_json::to_string(&Visibility::Hidden)
+        serde_json::to_string(&VisibilityDraft::Hidden)
             .unwrap_err()
             .to_string(),
         "the enum variant Visibility::Hidden cannot be serialized"
     );
     assert_eq!(
-        serde_json::to_string(&Loose::Unnamed)
+        serde_json::to_string(&LooseDraft::Unnamed)
             .unwrap_err()
             .to_string(),
         "the enum variant Loose::Unnamed cannot be serialized"

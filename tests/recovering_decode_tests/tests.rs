@@ -894,7 +894,7 @@ fn a_key_of_a_field_the_type_neither_writes_nor_reads_is_unknown() {
 #[cfg(not(any(feature = "typescript", feature = "zod")))]
 #[test]
 fn a_slot_the_type_writes_under_a_predicate_and_does_not_read_is_refused_as_serde_refuses_it() {
-    let written = serde_json::to_value(Duo("a".to_owned(), "n".to_owned())).unwrap();
+    let written = serde_json::to_value(DuoDraft("a".to_owned(), "n".to_owned())).unwrap();
     assert_eq!(written, json!(["a", "n"]));
     let refusal = Duo::deserialize(&written).unwrap_err().to_string();
     let read = Duo::from_value_with(written, |_raw, _found| duo_schema::Verdict::Reject);
@@ -910,7 +910,10 @@ fn a_slot_the_type_writes_under_a_predicate_and_does_not_read_is_refused_as_serd
         calls += 1;
         duo_schema::Verdict::Reject
     });
-    assert_eq!(short, Ok(Duo("a".to_owned(), String::new())));
+    assert_eq!(
+        short,
+        Ok(DuoDraft("a".to_owned(), String::new()).validate().unwrap())
+    );
     assert_eq!(calls, 0);
 }
 
