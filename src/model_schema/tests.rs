@@ -10375,6 +10375,7 @@ fn discriminated_enum_ts_definition_carries_no_cfg_attribute() {
         "",
         "  'a'",
         "export function Shape$Variant(value: unknown): string { return \"\"; }",
+        false,
     );
     assert_no_cfg_attribute(&tokens, "generate_discriminated_enum_ts_definition_method");
 }

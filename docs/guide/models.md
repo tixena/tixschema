@@ -60,7 +60,7 @@ export type ShipmentDraft = {
 export type Shipment = Readonly<ShipmentDraft> & $brand<"Shipment">;
 ```
 
-`Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, or over an alias of one) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
+`Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, over an alias of one, over `()` or over a model whose valid type admits `null`, and an untagged enum with a variant over any of these) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
 
 Zod publishes a schema for each. `ShipmentDraft$Schema` parses to a `ShipmentDraft`, and `Shipment$Schema` is the draft's schema frozen and branded, so `Shipment$Schema.parse(json)` has the type `Shipment`. The refusals of the two are the same ones, word for word, and so is the JSON Schema, which is not split: the wire is the same for both types.
 
