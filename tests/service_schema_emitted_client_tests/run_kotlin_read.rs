@@ -50,8 +50,8 @@ fun withinParcel(value: ParcelDraft): List<String> =
 fun unreserved(value: Tag): List<String> =
     if (value.value == "NONE") listOf("a tag is not NONE") else emptyList()
 
-fun rated(value: Rating): List<String> =
-    if (value == Rating.Unrated) listOf("a slip is rated") else emptyList()
+fun rated(value: RatingDraft): List<String> =
+    if (value == RatingDraft.Unrated) listOf("a slip is rated") else emptyList()
 "#;
 
 /// What the driver prints a row with: the class of the value a read handed back, or each message

@@ -18,8 +18,8 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.builtins.*";
 
 const FUNCTIONS: &str = r#"
-fun rated(value: Rating): List<String> =
-    if (value == Rating.Rated) listOf("a rating is unrated") else emptyList()
+fun rated(value: RatingDraft): List<String> =
+    if (value == RatingDraft.Rated) listOf("a rating is unrated") else emptyList()
 
 fun unrated(payload: JsonElement): JsonElement =
     if (payload is JsonPrimitive && payload.isString) JsonPrimitive(payload.content.trim()) else payload

@@ -7,8 +7,8 @@
 Every Kotlin model type `src/features/kotlin.rs` writes is a pair, `{Name}Draft` and `{Name}`
 (`src/features/kotlin/valid.rs`), and carries its rules as `fun validationIssues(): List<String>`,
 written by `src/features/kotlin/validate.rs`: a data class, a unit struct's `object`, a tuple
-struct and a sealed interface with each variant. It answers what Rust's `validation_issues()`
-answers for the same value. A brand and a plain enum are one type with `fun validate():
+struct, an `enum class` of an enum no variant of which holds a value and a sealed interface with each variant. It answers what Rust's `validation_issues()`
+answers for the same value. A brand is one type with `fun validate():
 List<String>` and a `validationIssues()` that answers the same (`Rules::written_as`), and a model a service writes for itself (`__tixschema_undrafted`, read through
 `valid::drafted`) keeps its one class. `docs/guide/kotlin.md`'s "`validate()` in the Kotlin client"
 section is the consumer's view; this is what a change has to keep.
@@ -38,7 +38,7 @@ section is the consumer's view; this is what a change has to keep.
   the draft (`enum_base`); the valid enum is `{Enum}<T>` and its draft `{Enum}Draft<out T>`.
 - **A holder asks every held value the same thing.** `Rules::held_statements` writes
   `held.validationIssues(...)` whatever the held type is and wherever it is declared: a valid class
-  forwards it, a brand, a plain enum and a model a service writes answer it beside their `validate()`,
+  forwards it, a brand and a model a service writes answer it beside their `validate()`,
   and a type the emitter has not written answers the `Any?.validationIssues()` fallback. A check a
   member names is called with the member's `draft` where the member is such a model
   (`validate::drafted`, noted by `note_model`), as Rust's coerces `&Valid` to `&Draft`. A member
@@ -186,11 +186,10 @@ the consumer's view; this is what a change has to keep.
   `Double` that is not finite, each such value then written as `null`, as serde writes it; the
   client writes a message through the plain `Json`, which refuses one before it is sent.
 
-- **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
+- **A type has two serializers.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
   `@Serializable(with = ...)`: it reads through the first and throws
-  `SerializationException(validationIssues().joinToString("; "))`, `validate()` on a brand and a
-  plain enum. It is also a `() -> KSerializer<{Type}>`, and called it answers the first, which a
+  `SerializationException(validationIssues().joinToString("; "))`, `validate()` on a brand. It is also a `() -> KSerializer<{Type}>`, and called it answers the first, which a
   holder that cannot name it reads by (`read_or_judged`, below). A type with parameters writes
   both as classes over one serializer per parameter. A model's draft has a third,
   `{Type}DraftUnjudged`, the one the draft is annotated with.
@@ -667,10 +666,10 @@ the consumer's view; this is what a change has to keep.
   writes for a class the plugin reads, the `KSerializer` `read::transforming` writes over the plugin's, after the
   type's own functions and ahead of `preprocess::keyed`; in the object `flatten_merging_serializer`
   reads every member from; and in the object a tagged or an untagged enum hands a variant's class
-  (`members_renamed`). A plain enum that names no function or check is read by
-  `aliases::plain_enum_serializer`, a `{Type}Unjudged` written by hand that reads each variant under
-  its name and each alias, and takes `{Type}.generatedSerializer().descriptor` as its descriptor,
-  so the enum carries `read::kept_plain` and the kind stays `ENUM`; no emitted Kotlin names
+  (`members_renamed`). The draft of a plain enum is read by
+  `aliases::plain_enum_serializer`, a `{Type}DraftUnjudged` written by hand that reads each variant under
+  its name and each alias, and takes `{Type}Draft.generatedSerializer().descriptor` as its descriptor,
+  so the draft carries `read::kept_plain` and the kind stays `ENUM`; no emitted Kotlin names
   `InternalSerializationApi` or `buildSerialDescriptor`. One that names a function keeps
   `read::kept_plain`, and `aliases::text_named` reads the alias after the functions. The write keeps
   the written name. A struct records in `KOTLIN_TAKEN_KEYS` the keys `keys_taken_when_flattened`
@@ -730,14 +729,14 @@ say so.
   value class with a parameter unboxed to the `serialize` a `JsonTransformingSerializer` inherits,
   and the type's own serializer then throws `ClassCastException` on a write. So that one keeps
   the delegation and overrides `deserialize`.
-- **A plain enum that names a check has the pair every type has.** `read::kept`, for one that
-  reads a variant under an alias too; `{Type}Unjudged`
-  is `kept_unjudged` over the plugin's serializer or `aliases::plain_enum_serializer`, and
-  `read::judged` is `{Type}Serializer`. `note_plain_enum` is told so, and a holder whose
-  `validate()` asks the enum reads it by `{Type}Unjudged`.
-- **A plain enum that names no check but a function carries `{Type}Unjudged` as its one
-  serializer** (`read::kept_plain`). `note_plain_enum` says no holder names it: a holder reads the
-  enum by its own serializer, which is that one.
+- **A plain enum is a pair, with a rule or without** (`plain_enum_kotlin_source`). The draft is the
+  `enum class {Type}Draft`, annotated by `read::kept_plain`, with `validationIssues()` and
+  `validate()` from `valid::body`; `{Type}DraftUnjudged` is `aliases::plain_enum_serializer`;
+  `valid::pair` writes the valid class and its private `{Type}Unjudged`, and `read::judged_valid` the
+  `{Type}Serializer`. The valid class's descriptor is the draft's, so its kind stays `ENUM` and a map
+  keyed by it keeps its wire keys. `note_model` records it as drafted, so a holder asks it
+  `validationIssues()` and hands a check a member names its `draft`. An enum a service writes for
+  itself has no draft and keeps its one `enum class` (`note_plain_enum`).
 - **A member the plugin reads is read through a serializer of its own.** `Plugin::declared`
   queues `object {Owner}{Member}Preprocess : KSerializer<T>`
   (`read::corrected_member`) and answers the annotation that names it. It reads through

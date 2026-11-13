@@ -13,7 +13,7 @@ use super::kotlin_inner::INNER;
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
-use super::kotlin_plain_enum::plain_enum_unjudged;
+use super::read::paired_plain_enum;
 #[cfg(feature = "serde")]
 use super::read::{
     DECODED, brand_companion, brand_serializers, kept_inline, mapped, mapped_over_a_brand,
@@ -557,20 +557,16 @@ fn every_shape_carries_validate() {
 fn a_plain_enum_carries_validate() {
     assert_eq!(
         super::tests::renumbered(&status_kotlin::kotlin_definition()),
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             StatusUnjudged::class) @KeepGeneratedSerializer enum class Status {{ \
-             @SerialName(\"active\") Active, @SerialName(\"inactive\") Inactive, \
-             @SerialName(\"pending\") Pending; {NO_RULE} }} {}",
-            plain_enum_unjudged(
-                "Status",
-                &[
-                    ("Active", "active", &[]),
-                    ("Inactive", "inactive", &[]),
-                    ("Pending", "pending", &[])
-                ],
-                "element"
-            )
+        paired_plain_enum(
+            "Status",
+            "@SerialName(\"active\") Active, @SerialName(\"inactive\") Inactive, \
+             @SerialName(\"pending\") Pending",
+            &[
+                ("Active", "active", &[]),
+                ("Inactive", "inactive", &[]),
+                ("Pending", "pending", &[])
+            ],
+            "element"
         )
     );
 }

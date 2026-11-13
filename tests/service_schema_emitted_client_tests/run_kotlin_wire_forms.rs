@@ -42,7 +42,7 @@ pub fn kotlin_value(held_by: &str, json: &str) -> String {
         Held::Flag => json.to_owned(),
         Held::Text | Held::Instant => json.replace('$', "\\$"),
         Held::Millis => format!("\"{json}\".toLong()"),
-        Held::Slot => format!("ConveyedSlot.{text}"),
+        Held::Slot => format!("ConveyedSlotDraft.{text}.validate()"),
         Held::Number("f64") if json == "NaN" => "Double.NaN".to_owned(),
         Held::Number(number) => {
             let parsed = match number {

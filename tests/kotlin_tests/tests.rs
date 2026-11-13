@@ -43,7 +43,7 @@ use super::flattened_models::{
 };
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
-use super::kotlin_plain_enum::plain_enum_unjudged;
+use super::read::paired_plain_enum;
 use super::read::{NO_ISSUES, drafted_serializers, kept_draft, to_valid};
 use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
@@ -608,7 +608,7 @@ fn test_plain_enum() {
     let kotlin = renumbered(&status_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = StatusUnjudged::class) @KeepGeneratedSerializer enum class Status"
+            "@Serializable(with = StatusDraftUnjudged::class) @KeepGeneratedSerializer enum class StatusDraft"
         ),
         "got: {kotlin}"
     );
@@ -2370,20 +2370,15 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     );
     assert_eq!(
         renumbered(&reserved_member_kotlin::kotlin_definition()),
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             ReservedMemberUnjudged::class) @KeepGeneratedSerializer enum class ReservedMember \
-             {{ Default, In, Other; fun validate(): List<String> = emptyList(); fun \
-             validationIssues(): List<String> = validate() }} {}",
-            plain_enum_unjudged(
-                "ReservedMember",
-                &[
-                    ("Default", "Default", &[]),
-                    ("In", "In", &[]),
-                    ("Other", "Other", &[])
-                ],
-                "element"
-            )
+        paired_plain_enum(
+            "ReservedMember",
+            "Default, In, Other",
+            &[
+                ("Default", "Default", &[]),
+                ("In", "In", &[]),
+                ("Other", "Other", &[])
+            ],
+            "element"
         )
     );
     assert_eq!(

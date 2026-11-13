@@ -267,7 +267,10 @@ fn a_plain_enum_is_read_by_its_unjudged_serializer() {
     let grade: ItemEnum = syn::parse_quote! {
         enum Grade { Express, Standard }
     };
-    let members = format!("enum class Grade {{ Express, Standard; {NO_RULE} }}");
+    let members = format!(
+        "enum class GradeDraft {{ Express, Standard; {NO_ISSUES} {} }}",
+        to_valid("Grade", "")
+    );
     for (functions, correction) in [
         (&["unwrapped"][..], "unwrapped(element)"),
         (&[][..], "element"),
@@ -275,9 +278,12 @@ fn a_plain_enum_is_read_by_its_unjudged_serializer() {
         assert_eq!(
             choice_corrected_by(&grade, functions),
             format!(
-                "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-                 GradeUnjudged::class) @KeepGeneratedSerializer {members} {}",
-                plain_enum_unjudged("Grade", &["Express", "Standard"], correction)
+                "{} {members} {} {} {} {}",
+                kept_plain_draft("Grade"),
+                plain_enum_unjudged("GradeDraft", &["Express", "Standard"], correction),
+                valid_class("Grade", ""),
+                valid_unjudged("Grade"),
+                judged_valid("Grade")
             )
         );
     }

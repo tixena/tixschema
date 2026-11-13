@@ -21,11 +21,11 @@ const UPHELD: &str = r#"
 fun tidied(payload: JsonElement): JsonElement =
     if (payload is JsonPrimitive && payload.isString) JsonPrimitive(payload.content.trim()) else payload
 
-fun allowed(value: Ruling): List<String> =
-    if (value == Ruling.Denied) listOf("a ruling is allowed") else emptyList()
+fun allowed(value: RulingDraft): List<String> =
+    if (value == RulingDraft.Denied) listOf("a ruling is allowed") else emptyList()
 
-fun affirmed(value: Verdict): List<String> =
-    if (value == Verdict.Overturned) listOf("a verdict is upheld") else emptyList()
+fun affirmed(value: VerdictDraft): List<String> =
+    if (value == VerdictDraft.Overturned) listOf("a verdict is upheld") else emptyList()
 "#;
 
 const HARNESS: &str = r#"

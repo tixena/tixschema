@@ -22,8 +22,8 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.serialization.builtins.*";
 
 const CLIENTS: &str = r#"
-fun affirmed(value: Verdict): List<String> =
-    if (value == Verdict.Overturned) listOf("a verdict is upheld") else emptyList()
+fun affirmed(value: VerdictDraft): List<String> =
+    if (value == VerdictDraft.Overturned) listOf("a verdict is upheld") else emptyList()
 
 class Answering(private val body: String) : AppraisalClientServiceHttpTransport {
     override suspend fun send(request: AppraisalClientServiceHttpRequest): AppraisalClientServiceHttpResponse =
@@ -43,7 +43,7 @@ class Replying(private val reply: String) : AppraisalClientServiceWsSocket {
 }
 
 fun made(answered: AppraisalClientServiceAppraiseResult): JsonElement = when (answered) {
-    is AppraisalClientServiceAppraiseResult.Ok -> JsonPrimitive("read " + answered.value.name)
+    is AppraisalClientServiceAppraiseResult.Ok -> JsonPrimitive("read " + answered.value.draft.name)
     is AppraisalClientServiceAppraiseResult.Declared -> JsonPrimitive("declared")
     is AppraisalClientServiceAppraiseResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<AppraisalClientServiceFaultKind>(), answered.fault.kind))

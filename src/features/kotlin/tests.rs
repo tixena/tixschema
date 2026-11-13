@@ -77,6 +77,14 @@ fn plain_enum_unjudged(named: &str, members: &[&str], correction: &str) -> Strin
     aliases::plain_enum_serializer(named, &variants, correction)
 }
 
+/// The annotations of the draft of the plain enum `named`, which its one serializer reads.
+fn kept_plain_draft(named: &str) -> String {
+    format!(
+        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = {named}DraftUnjudged::class) \
+         @KeepGeneratedSerializer"
+    )
+}
+
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 fn judged(named: &str) -> String {
     format!(
@@ -668,17 +676,19 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     };
     let called = "fun validate(): List<String> { val violations = mutableListOf<String>(); \
                   violations.addAll(rated(this)); return violations }";
-    let alias = "fun validationIssues(): List<String> = validate()";
     let graded: ItemEnum = syn::parse_quote! {
         enum Grade { Express, Unrated }
     };
+    let issues_of_a_grade = called.replace("fun validate()", "fun validationIssues()");
     assert_eq!(
         definition(enum_kotlin_tokens(&graded, &args)),
         format!(
-            "{} enum class Grade {{ Express, Unrated; {called}; {alias} }} {} {}",
-            kept("Grade"),
-            plain_enum_unjudged("Grade", &["Express", "Unrated"], "element"),
-            judged("Grade")
+            "{} enum class GradeDraft {{ Express, Unrated; {issues_of_a_grade} {} }} {} {} {}",
+            kept_plain_draft("Grade"),
+            to_valid("Grade", ""),
+            plain_enum_unjudged("GradeDraft", &["Express", "Unrated"], "element"),
+            valid_class("Grade", ""),
+            format!("{} {}", valid_unjudged("Grade"), judged_valid("Grade"))
         )
     );
     let closed: ItemStruct = syn::parse_quote! {
@@ -1667,8 +1677,8 @@ fn a_plain_enum_with_an_alias_names_no_internal_serialization_api() {
         }
         for present in [
             "@OptIn(ExperimentalSerializationApi::class)",
-            "@KeepGeneratedSerializer enum class Swell",
-            "override val descriptor: SerialDescriptor = Swell.generatedSerializer().descriptor;",
+            "@KeepGeneratedSerializer enum class SwellDraft",
+            "override val descriptor: SerialDescriptor = SwellDraft.generatedSerializer().descriptor;",
         ] {
             assert!(written.contains(present), "no `{present}` in: {written}");
         }
