@@ -47,6 +47,8 @@ The valid type writes what its draft writes, and `serde_json::from_str::<UserPro
 
 A declaration whose `{Name}Draft` is the name of another type in the module stops the build with the compiler's duplicate-name error (`E0428`). The type the valid wrapper is made of is generic and hidden: the compiler prints a valid value's type as `UserProfile<UserProfileDraft>`, and a type declared in a function body is wrapped as one declared beside it.
 
+A plain enum, whose variants hold no data, is the pair in Rust, TypeScript, Swift and Dart, with a rule or without. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
+
 #### The Draft and the Valid Type in TypeScript and Zod
 
 TypeScript publishes the same pair. `ShipmentDraft` is the plain object type that was published as `Shipment`, and `Shipment` is the valid type: read-only, and branded with the `$brand` marker a [brand](generics-and-brands.md#a-brand-is-sealed) already carries, so the bundle imports `$brand` from `zod` as it does for a brand. Nothing but a `parse` returns one. A member that holds a model names the valid type, as in Rust (`label: LabelText`), so a draft is made of values that already passed:
@@ -60,7 +62,7 @@ export type ShipmentDraft = {
 export type Shipment = Readonly<ShipmentDraft> & $brand<"Shipment">;
 ```
 
-`Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, or over an alias of one) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
+`Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, over an alias of one, over `()` or over a model whose valid type admits `null`, and an untagged enum with a variant over any of these) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
 
 Zod publishes a schema for each. `ShipmentDraft$Schema` parses to a `ShipmentDraft`, and `Shipment$Schema` is the draft's schema frozen and branded, so `Shipment$Schema.parse(json)` has the type `Shipment`. The refusals of the two are the same ones, word for word, and so is the JSON Schema, which is not split: the wire is the same for both types.
 

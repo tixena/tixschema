@@ -31,6 +31,7 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      kotlinSchemaKinded(serializer, element, at).toString()) }; ";
 
 /// What a type with no rule answers.
+#[cfg(feature = "serde")]
 const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
      List<String> = validate()";
 
@@ -651,7 +652,6 @@ fn seal(text: &str) -> Seal {
 
 /// The plain enum `named`: its draft, declared with `members` and read by `{Type}DraftUnjudged`
 /// over `variants` and `correction`, then the valid class over it with its two serializers.
-#[cfg(feature = "serde")]
 pub fn paired_plain_enum(
     named: &str,
     members: &str,

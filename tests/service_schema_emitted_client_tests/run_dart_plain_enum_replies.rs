@@ -14,8 +14,8 @@ use super::runtime::ran;
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
 const CHECKS: &str = "
-List<String> affirmed(Verdict value) =>
-    value == Verdict.overturned ? const ['a verdict is upheld'] : const [];
+List<String> affirmed(VerdictDraft value) =>
+    value == VerdictDraft.overturned ? const ['a verdict is upheld'] : const [];
 
 Map<String, dynamic> described(AppraisalClientServiceAppraiseResult result) {
   return switch (result) {

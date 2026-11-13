@@ -12,8 +12,8 @@ use super::member_named_rows::{
 use super::run_dart_validate::{dart, module};
 
 const FUNCTIONS: &str = "
-List<String> rated(Rating value) =>
-    value == Rating.rated ? const ['a rating is unrated'] : const [];
+List<String> rated(RatingDraft value) =>
+    value == RatingDraft.rated ? const ['a rating is unrated'] : const [];
 
 dynamic unrated(dynamic payload) => payload is String ? payload.trim() : payload;
 

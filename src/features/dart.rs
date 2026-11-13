@@ -262,6 +262,8 @@ struct ClassNames<'names> {
 
 /// How the class of a drafted type is spelled, and what its valid type is read and written with.
 struct Pair<'names> {
+    /// Whether two valid values are equal, and hash alike, where their drafts are.
+    by_draft: bool,
     export_name: &'names str,
     generic_params: &'names str,
     /// The getters that forward to the draft's members.
@@ -4171,6 +4173,7 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
         getters,
         json_type,
         kind,
+        by_draft,
     } = *pair;
     let draft = draft_name(export_name);
     let forwarded = if getters.is_empty() {
@@ -4184,13 +4187,21 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
     );
     let built = format!("{export_name}{generic_params}._");
     let parameters = &codec.from_json_params;
+    let identity = if by_draft {
+        format!(
+            "@override bool operator ==(Object other) => other is {export_name}{generic_params} \
+             && other._draft == _draft; @override int get hashCode => _draft.hashCode; "
+        )
+    } else {
+        String::new()
+    };
     format!(
         "class {export_name}{generic_params} {{ const {export_name}._(this._draft); final \
          {draft}{generic_params} _draft; {forwarded}{draft}{generic_params} toDraft() => _draft; \
          factory {export_name}.fromJson({kind} json{parameters}) {} factory \
          {export_name}.fromJsonUnjudged({kind} json{parameters}) => {built}({read}); \
          {json_type} toJson({tp}) => _draft.toJson({args}); List<String> validationIssues() => \
-         _draft.validationIssues(); static Object $thrown{generic_params}(Object thrown) => \
+         _draft.validationIssues(); {identity}static Object $thrown{generic_params}(Object thrown) => \
          thrown is {draft}{generic_params} ? thrown.validate() : thrown; }}",
         judged_body_returning(&read, &format!("{built}(read)")),
         tp = codec.to_json_params,
@@ -4725,6 +4736,7 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
                 getters: &getters,
                 json_type: "Map<String, dynamic>",
                 kind: payload_kind(corrects, "Map<String, dynamic>"),
+                by_draft: false,
             },
             codec,
         ));
@@ -4965,6 +4977,7 @@ fn value_wrapper_tokens(
             getters: &getters,
             json_type: "dynamic",
             kind: "dynamic",
+            by_draft: false,
         };
         body.push(' ');
         body.push_str(&valid_class(&pair, &codec));
@@ -5603,6 +5616,7 @@ fn enum_classes(
                     getters: "",
                     json_type: "dynamic",
                     kind,
+                    by_draft: false,
                 },
                 codec,
             );
@@ -5903,11 +5917,90 @@ fn plain_enum_member(
     (member_name, read_as(wire, read_aliases(&variant.attrs)))
 }
 
-/// The Dart tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enhanced enum,
-/// whose `validationIssues()` runs the checks the enum names, and whose `fromJson` judges where it
-/// names one. `fromJsonUnjudged` is what a holder reads it by, and calls the functions the
-/// enum's `preprocess` names on the text it takes.
+/// The Dart tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enhanced enum
+/// draft, whose `validationIssues()` runs the checks the enum names and whose `fromJson` runs
+/// none, and the valid class over it. The draft's `fromJson` calls the functions the enum's
+/// `preprocess` names on the text it takes. An enum a service writes for itself stays one enum.
 fn plain_enum_dart_source(
+    item_enum: &ItemEnum,
+    rust_ident: &str,
+    export_name: &str,
+    args: &DartTypeArgs<'_>,
+) -> String {
+    if args.undrafted {
+        return undrafted_plain_enum_dart_source(item_enum, rust_ident, export_name, args);
+    }
+    let checks = args.check;
+    let corrects = Corrects::of(args.preprocess);
+    let json = &corrects.json;
+    let rule = container_rename_rule(&item_enum.attrs);
+    let written: Vec<String> = item_enum
+        .variants
+        .iter()
+        .map(|variant| dart_lower_camel(&variant.ident.to_string()))
+        .collect();
+    let members: Vec<(String, Vec<String>)> = item_enum
+        .variants
+        .iter()
+        .map(|variant| plain_enum_member(variant, rule, &written))
+        .collect();
+    let member_list = members
+        .iter()
+        .map(|(name, names)| format!("{name}({})", quoted(&names[0])))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let match_arms = members
+        .iter()
+        .fold(String::new(), |mut acc, (name, names)| {
+            write!(
+                acc,
+                "{} => {}.{name},",
+                any_of(names),
+                draft_name(export_name)
+            )
+            .unwrap();
+            acc
+        });
+    let validate = validate_members(&own_check_elements(checks), &Helpers::default(), false);
+    let (key, found) = (declared("key"), declared("found"));
+    let unjudged = unjudged_read(
+        &corrects,
+        "",
+        true,
+        &Answer::Statements(format!(
+            "final {key} = switch ({json}) {{ final String text => text, final Map<String, \
+             dynamic> object when object.length == 1 => object.keys.first, _ => throw const \
+             FormatException('{EXPECTED_VALUE}') }}; final {found} = switch ({key}) {{ \
+             {match_arms} _ => throw FormatException('Unknown {export_name}: ' + {key}) }}; if \
+             ({json} is Map && {json}.values.first != null) throw FormatException('invalid type: \
+             expected unit', <Object>[{key}]); return {found};"
+        )),
+    );
+    let (matched, taken_as) = (&unjudged.body, &unjudged.taken_as);
+    let payload_ty = payload_kind(&corrects, "dynamic");
+    let draft = draft_name(export_name);
+    let body = format!(
+        "enum {draft} {{ {member_list}; const {draft}(this.wireValue); final String wireValue; \
+         static {draft} fromJson({payload_ty} {taken_as}) {matched} String toJson() => wireValue; \
+         {validate} {} }}",
+        validate_method(export_name, "")
+    );
+    let valid = valid_class(
+        &Pair {
+            export_name,
+            generic_params: "",
+            getters: "",
+            json_type: "String",
+            kind: "dynamic",
+            by_draft: true,
+        },
+        &generic_codec(&[]),
+    );
+    let typedef = ident_typedef(rust_ident, export_name, "");
+    format!("{body} {valid}{typedef}")
+}
+
+fn undrafted_plain_enum_dart_source(
     item_enum: &ItemEnum,
     rust_ident: &str,
     export_name: &str,

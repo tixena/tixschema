@@ -625,26 +625,24 @@ fn a_plain_enum_calls_its_function_on_the_text_it_takes() {
     assert_written(
         &grade_dart::dart_definition(),
         &format!(
-            "static Grade fromJson(dynamic json) => fromJsonUnjudged(json); static Grade \
-             fromJsonUnjudged(dynamic payload) {{ final json = trimmed(payload); {} }} String \
-             toJson() => wireValue;",
+            "static GradeDraft fromJson(dynamic payload) {{ final json = trimmed(payload); {} }} \
+             String toJson() => wireValue;",
             plain_enum_read(
                 "Grade",
                 "json",
-                "'Express' => Grade.express,'Standard' => Grade.standard,"
+                "'Express' => GradeDraft.express,'Standard' => GradeDraft.standard,"
             )
         ),
     );
     assert_written(
         &rating_dart::dart_definition(),
         &format!(
-            "static Rating fromJson(dynamic json) {{ final read = Rating.fromJsonUnjudged(json); \
-             {JUDGED} static Rating fromJsonUnjudged(dynamic payload) {{ final json = \
-             trimmed(payload); {} }} String toJson() => wireValue;",
+            "static RatingDraft fromJson(dynamic payload) {{ final json = trimmed(payload); {} }} \
+             String toJson() => wireValue;",
             plain_enum_read(
                 "Rating",
                 "json",
-                "'Express' => Rating.express,'Unrated' => Rating.unrated,"
+                "'Express' => RatingDraft.express,'Unrated' => RatingDraft.unrated,"
             )
         ),
     );

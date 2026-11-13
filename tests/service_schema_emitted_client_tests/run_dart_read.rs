@@ -667,7 +667,7 @@ fn a_member_named_after_the_unjudged_read_builds_and_keeps_its_key() {
     let entry = "void main() {\n  final ledger = \
                  Ledger.fromJson(jsonDecode(r'{\"fromJsonUnjudged\":true}'));\n  \
                  print(ledger.fromJsonUnjudged);\n  print(jsonEncode(ledger.toJson()));\n  \
-                 print(Stage.fromJson('FromJsonUnjudged') == Stage.fromJsonUnjudged_);\n  \
+                 print(Stage.fromJson('FromJsonUnjudged') == StageDraft.fromJsonUnjudged_.validate());\n  \
                  print(jsonEncode(Stage.fromJsonUnjudged('FromJsonUnjudged').toJson()));\n}\n";
     assert_eq!(
         serde_json::to_string(&[StageDraft::FromJsonUnjudged, StageDraft::Judged]).unwrap(),
