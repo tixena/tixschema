@@ -286,7 +286,7 @@ pub struct Label {
 
 fn main() -> Result<(), Vec<String>> {
     assert!(LabelText::new("").is_err());
-    let label = Label { text: LabelText::new("Shipping")? };
+    let label = LabelDraft { text: LabelText::new("Shipping")? }.validate()?;
     assert_eq!(label.text.as_inner(), "Shipping");
     assert_eq!(serde_json::to_string(&label).unwrap(), r#"{"text":"Shipping"}"#);
     assert!(serde_json::from_str::<Label>(r#"{"text":""}"#).is_err());
@@ -480,7 +480,7 @@ A bound written here holds every value of the brand. One that should hold a sing
 #[serde(transparent)]
 pub struct NameConfig(Vec<Part>);
 
-NameConfig(Vec::new()).validate();
+NameConfig::new(Vec::new());
 // Err(["too short: minimum length is 1, got 0"])
 ```
 
@@ -625,15 +625,14 @@ let result: Result<SlugId, _> = serde_json::from_str("\"hello_world\"");
 assert!(result.is_ok());
 ```
 
-The `validate()` method checks constraints on instances constructed directly in code:
+`new` holds an instance constructed directly in code to the same constraints:
 
 ```rust
-let slug = SlugId("hello_world".to_string());
-assert!(slug.validate().is_ok());
+let slug = SlugId::new("hello_world".to_string());
+assert!(slug.is_ok());
 
-let bad = SlugId("ab".to_string());
-match bad.validate() {
-    Ok(()) => unreachable!(),
+match SlugId::new("ab".to_string()) {
+    Ok(_) => unreachable!(),
     Err(errors) => println!("{:?}", errors), // ["too short: minimum length is 3, got 2"]
 }
 ```

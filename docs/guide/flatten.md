@@ -5,15 +5,6 @@ A struct field marked `#[serde(flatten)]` is lifted into the parent type as a Ty
 ```rust
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DataElementSampleValueEntry {
-    pub data_element_id: String,
-    #[serde(flatten)]
-    pub variant: DataElementSampleValueVariant,
-}
-
-#[model_schema()]
-#[derive(Serialize, Deserialize)]
 #[serde(tag = "dataType")]
 pub enum DataElementSampleValueVariant {
     Alphanumeric {
@@ -24,6 +15,15 @@ pub enum DataElementSampleValueVariant {
         #[serde(rename = "sampleValues")]
         sample_values: Vec<i64>,
     },
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataElementSampleValueEntry {
+    pub data_element_id: String,
+    #[serde(flatten)]
+    pub variant: DataElementSampleValueVariant,
 }
 ```
 

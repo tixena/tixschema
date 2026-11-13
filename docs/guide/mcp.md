@@ -244,7 +244,8 @@ async fn suggest_document_types(&self, ctx: &Ctx, typed: String, chosen: HashMap
 
 ```rust,ignore
 let client = DocumentServiceClient::new(HttpMcpTransport::new(url, api_key));
-let version = client.get_version(GetVersionRequest { document_id: "doc-1".into() }).await;
+let request = GetVersionRequestDraft { document_id: "doc-1".into() }.validate()?;
+let version = client.get_version(request).await;
 ```
 
 **TypeScript server and client.** A service that asks for `mcp` also publishes `<Service>Schema::ts_mcp_service()` and `ts_mcp_client()`, beside `ts_http_service()` and `ts_http_client()`. The server takes the `{Service}Impl<Ctx>` that `create{Service}Dispatcher` takes and calls that dispatcher, so the generated Zod reads judge every message. It answers every method the Rust server answers, with the bytes the Rust server answers: keys in order, and each tool kept as the JSON text Rust wrote, so a schema keeps its digits. An `i64` or a `u64` a handler answers, a `bigint` the dispatcher holds through `JSON.rawJSON`, is the JSON number of its digits in `structuredContent` and in the text block, as Rust writes it: `"depth":-9223372036854775808`. In a runtime without `JSON.rawJSON`, one a `number` holds exactly is that number, and the answer of any other is `-32603` with the `handler-panic` fault, as every TypeScript dispatcher answers it.

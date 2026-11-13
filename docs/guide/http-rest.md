@@ -20,7 +20,8 @@ pub trait DocumentService<Ctx> {
     async fn get_version(
         &self,
         ctx: &Ctx,
-        req: GetVersionRequest,
+        document_id: String,
+        version_id: String,
         byte_range: Option<String>,
     ) -> Result<(VersionResponse, String), GetVersionError>;
 }
