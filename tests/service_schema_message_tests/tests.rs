@@ -92,7 +92,10 @@ mod the_generated_message_on_typescript {
     #[test]
     fn the_message_the_author_declared_is_untouched_by_the_service_macro() {
         let ts = BalanceRequest::ts_definition();
-        assert!(ts.contains("export type BalanceRequest = {"), "got: {ts}");
+        assert!(
+            ts.contains("export type BalanceRequestDraft = {"),
+            "got: {ts}"
+        );
         assert!(
             ts.contains("customer_id: string;"),
             "the author annotated their own type and the macro added nothing to it. Got: {ts}"

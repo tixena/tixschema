@@ -153,12 +153,12 @@ async function __p__Call(
 
 const REPLY_HEADER: &str =
     "/** Reads one declared header off the members of an answer; an absent one reads as `null`. */
-function __p__ReplyHeader<Parsed>(
+function __p__ReplyHeader<Schema extends ZodType>(
   operation: string,
   received: Record<string, unknown>,
   name: string,
-  schema: ZodType<Parsed>,
-): { ok: true; value: Parsed } | { ok: false; fault: __N__Fault } {
+  schema: Schema,
+): { ok: true; value: z.output<Schema> } | { ok: false; fault: __N__Fault } {
   const carried = received[name];
   const parsed = schema.safeParse(carried === undefined ? null : carried);
   if (parsed.success) return { ok: true, value: parsed.data };

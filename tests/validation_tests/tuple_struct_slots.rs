@@ -334,10 +334,13 @@ mod a_check_on_a_slot {
     fn the_typescript_type_is_the_tuple_it_was() {
         let pair = Pair::ts_definition();
         assert!(
-            pair.contains("export type Pair = [string, number];"),
+            pair.contains("export type PairDraft = [string, number];"),
             "Got:\n{pair}"
         );
         let lone = Lone::ts_definition();
-        assert!(lone.contains("export type Lone = string;"), "Got:\n{lone}");
+        assert!(
+            lone.contains("export type LoneDraft = string;"),
+            "Got:\n{lone}"
+        );
     }
 }

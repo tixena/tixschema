@@ -30,9 +30,11 @@ pub enum DataElementSampleValueVariant {
 Generated TypeScript:
 
 ```typescript
-export type DataElementSampleValueEntry = {
+export type DataElementSampleValueEntryDraft = {
   dataElementId: string;
 } & DataElementSampleValueVariant;
+
+export type DataElementSampleValueEntry = Readonly<DataElementSampleValueEntryDraft> & $brand<"DataElementSampleValueEntry">;
 ```
 
 Generated Zod:

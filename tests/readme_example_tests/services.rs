@@ -267,7 +267,7 @@ fn the_error_an_operation_declares_is_shown_as_the_union_it_publishes() {
     assert_shown_members(
         &BalanceError::ts_definition(),
         &[
-            "export type BalanceError = {",
+            "export type BalanceErrorDraft = {",
             "  errorCode: \"db-error\";",
             "} | {",
             "  errorCode: \"insufficient-balance\";",

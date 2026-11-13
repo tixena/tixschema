@@ -669,12 +669,12 @@ fn reply_header_helpers(named: &str, prefix: &str) -> Vec<String> {
              * against the header's own schema. An absent header reads as `null`, which only an\n \
              * optional header accepts — the value its slot in the declared tuple holds.\n \
              */\n\
-             function {prefix}ReplyHeader<Parsed>(\n  \
+             function {prefix}ReplyHeader<Schema extends ZodType>(\n  \
              operation: string,\n  \
              headers: ReadonlyArray<readonly [string, string]>,\n  \
              name: string,\n  \
-             schema: ZodType<Parsed>,\n\
-             ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
+             schema: Schema,\n\
+             ): {{ ok: true; value: z.output<Schema> }} | {{ ok: false; fault: {named}Fault }} {{\n  \
              const carried = headers.find(([candidate]) => candidate.toLowerCase() === \
              name.toLowerCase())?.[1];\n  \
              let detail: string;\n  \

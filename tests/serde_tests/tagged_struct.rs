@@ -35,7 +35,9 @@ mod on_a_schema_surface {
         definition
             .lines()
             .map(str::trim)
-            .filter(|line| line.contains(": ") && line.ends_with(';'))
+            .filter(|line| {
+                line.contains(": ") && line.ends_with(';') && !line.starts_with("export type")
+            })
             .collect()
     }
 

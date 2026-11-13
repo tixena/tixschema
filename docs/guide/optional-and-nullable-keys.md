@@ -19,11 +19,13 @@ pub struct Profile {
 Generated TypeScript:
 
 ```typescript
-export type Profile = {
+export type ProfileDraft = {
   name: string;
   nickname?: string;
   nickHandle: string | undefined;
 };
+
+export type Profile = Readonly<ProfileDraft> & $brand<"Profile">;
 ```
 
 `nick_handle` is the same field without the flag, so the flag is the whole of the difference between those two lines.
@@ -48,10 +50,12 @@ pub struct DocumentMetadata {
 Generated TypeScript:
 
 ```typescript
-export type DocumentMetadata = {
+export type DocumentMetadataDraft = {
   name: string;
   templateId: string | null;
 };
+
+export type DocumentMetadata = Readonly<DocumentMetadataDraft> & $brand<"DocumentMetadata">;
 ```
 
 Generated Zod: `templateId: z.union([z.string(), z.null()])` -- no `.prefault`, no coercing arm. Parsing `{ name: "invoice.pdf", templateId: null }` succeeds; parsing `{ name: "invoice.pdf" }` fails, because the flag declares the key required.

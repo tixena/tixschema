@@ -33,6 +33,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, id};
 use std::sync::Once;
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+use tixschema::model_schema;
 
 /// Names the compiler to run, for a machine that has one somewhere other than `PATH`.
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
@@ -68,11 +70,21 @@ type ZodParsed<Parsed> =
   | { success: true; data: Parsed }
   | { success: false; error: { issues: ReadonlyArray<ZodIssue> } };
 
-declare type ZodType<Parsed> = {
-  safeParse(value: unknown): ZodParsed<Parsed>;
-};
+declare interface ZodType<Parsed = unknown> {
+  readonly _out: Parsed;
+  meta(data?: object): ZodBuilder;
+  readonly(): ZodBuilder;
+  safeParse(value: unknown): ZodParsed<this[\"_out\"]>;
+}
+
+declare namespace z {
+  type output<Schema extends ZodType> = Schema[\"_out\"];
+}
+
+declare type $brand<Name extends string> = { readonly [brand: symbol]: Name };
 
 declare type ZodBuilder = ZodType<never> & {
+  brand<Name extends string>(): ZodBuilder;
   gt(bound: number): ZodBuilder;
   int(): ZodBuilder;
   lt(bound: number): ZodBuilder;
@@ -80,6 +92,7 @@ declare type ZodBuilder = ZodType<never> & {
   meta(data: { examples: ReadonlyArray<unknown> }): ZodBuilder;
   min(bound: number): ZodBuilder;
   prefault(value: unknown): ZodBuilder;
+  readonly(): ZodBuilder;
   transform(map: (value: never) => unknown): ZodBuilder;
 };
 
@@ -211,6 +224,8 @@ export async function read(): Promise<string> {
 /// member under the key its type declares it under.
 #[cfg(feature = "zod")]
 const RENAMED_PATH_CALLER: &str = r#"import {
+  OwnKeyPathProbe$Schema,
+  RenamedPathProbe$Schema,
   createRenamedPathProbeServiceHttpClient,
   createRenamedPathProbeServiceHttpDispatcher,
   type RenamedPathProbeServiceHttpTransport,
@@ -229,8 +244,8 @@ export const served = createRenamedPathProbeServiceHttpDispatcher<null>({
 
 export async function read(): Promise<boolean> {
   const client = createRenamedPathProbeServiceHttpClient(http);
-  const first = await client.renamed({ documentId: "d1", title: "t" });
-  const second = await client.ownKey({ "doc-id": "d1", title: "t" });
+  const first = await client.renamed(RenamedPathProbe$Schema.parse({ documentId: "d1", title: "t" }));
+  const second = await client.ownKey(OwnKeyPathProbe$Schema.parse({ "doc-id": "d1", title: "t" }));
   return first.ok && second.ok;
 }
 "#;
@@ -673,6 +688,22 @@ const UNIT_SUCCESS_MEMBER_OK_WITH_ARRAY: &str = "  async ping(ctx, req): \
 #[cfg(feature = "zod")]
 static ZOD_STOOD_DOWN: Once = Once::new();
 
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema(minLength = 1)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(transparent)]
+pub struct ParcelLabel(String);
+
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parcel {
+    pub label: ParcelLabel,
+    #[model_schema_prop(maximum = 100)]
+    pub parcel_count: u32,
+}
+
 /// The implementation fixture, with every named operation but the ones listed as left out.
 #[cfg(feature = "zod")]
 fn implementation(without: &[&str]) -> String {
@@ -852,7 +883,7 @@ fn quoted_probe_bundle() -> String {
 #[cfg(feature = "zod")]
 fn bytes_probe_bundle() -> String {
     [
-        "import { z, type ZodType } from \"zod\";".to_owned(),
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         HeaderProbeError::ts_definition(),
         HeaderProbeError::zod_schema(),
         BytesProbeServiceSchema::ts_definition(),
@@ -870,7 +901,7 @@ fn bytes_probe_bundle() -> String {
 #[cfg(feature = "zod")]
 fn keyed_probe_bundle() -> String {
     [
-        "import { z, type ZodType } from \"zod\";".to_owned(),
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         HeaderProbeError::ts_definition(),
         HeaderProbeError::zod_schema(),
         KeyedProbeServiceSchema::ts_definition(),
@@ -888,7 +919,7 @@ fn keyed_probe_bundle() -> String {
 #[cfg(feature = "zod")]
 fn http_alone_bundle() -> String {
     [
-        "import { z, type ZodType } from \"zod\";".to_owned(),
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         HeaderProbeError::ts_definition(),
         HeaderProbeError::zod_schema(),
         SpooledProbeServiceSchema::ts_definition(),
@@ -1457,7 +1488,7 @@ fn every_client_of_a_bytes_operation_type_checks_against_the_real_zod() {
 #[test]
 fn a_path_that_binds_a_renamed_member_type_checks_against_the_real_zod() {
     let bundle = [
-        "import { z, type ZodType } from \"zod\";".to_owned(),
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         UnitPingError::ts_definition(),
         UnitPingError::zod_schema(),
         RenamedPathProbe::ts_definition(),
@@ -1588,7 +1619,7 @@ fn unused_locals_bundle() -> String {
         BodilessServiceSchema, InboundServiceSchema, OutboundServiceSchema, PlainServiceSchema,
     };
     let mut written = vec![
-        "import { z, type ZodType } from \"zod\";".to_owned(),
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         HeaderProbeDocument::ts_definition(),
         HeaderProbeDocument::zod_schema(),
         HeaderProbeError::ts_definition(),
@@ -1630,7 +1661,7 @@ fn mcp_alone_bundles() -> [(&'static str, String); 5] {
     macro_rules! alone {
         ($service:ident $(, $content:ident)?) => {
             [
-                "import { z, type ZodType } from \"zod\";".to_owned(),
+                "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
                 NoteCount::ts_definition(),
                 NoteCount::zod_schema(),
                 NoteMissing::ts_definition(),
@@ -1711,5 +1742,87 @@ fn no_service_surface_declares_a_helper_nothing_calls() {
         refused.is_empty(),
         "a surface declares a helper nothing calls:\n{}",
         refused.join("\n")
+    );
+}
+
+/// The models of a draft and a valid type, beside the real `zod`.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+fn valid_type_bundle() -> String {
+    [
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
+        ParcelLabel::ts_definition(),
+        ParcelLabel::zod_schema(),
+        Parcel::ts_definition(),
+        Parcel::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// Compiles `caller` beside [`valid_type_bundle`] and answers what the compiler said, or `None`
+/// where there is no compiler or no `zod` to compile against.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+fn valid_type_caller(named: &str, caller: &str) -> Option<(bool, String)> {
+    let head = "import { Parcel$Schema, ParcelDraft$Schema, type Parcel, type ParcelDraft } from \
+                \"./bundle.js\";\n";
+    let files = [
+        ("bundle.ts", valid_type_bundle()),
+        ("caller.ts", format!("{head}{caller}")),
+    ];
+    compiled_beside_zod(named, &files)
+}
+
+/// A parse returns the valid type, the draft's parse returns the draft, and a valid value goes where
+/// a draft is taken with no cast.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[test]
+fn a_parse_returns_the_valid_type_and_a_valid_value_widens_to_its_draft() {
+    let caller = "declare const json: unknown;\n\
+                  export const valid: Parcel = Parcel$Schema.parse(json);\n\
+                  export const draft: ParcelDraft = ParcelDraft$Schema.parse(json);\n\
+                  export function counted(value: ParcelDraft): number { return value.parcelCount; }\n\
+                  export const widened: number = counted(valid);\n\
+                  export const read: number = valid.parcelCount;\n";
+    let Some((accepted, said)) = valid_type_caller("valid-type-parse", caller) else {
+        return;
+    };
+    assert!(accepted, "the valid type does not compile as used:\n{said}");
+}
+
+/// A value built by hand is not the valid type: only a parse returns one.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[test]
+fn a_value_built_by_hand_is_not_the_valid_type() {
+    let caller = "declare const label: ParcelDraft[\"label\"];\n\
+                  export const parcel: Parcel = { label, parcelCount: 3 };\n";
+    let Some((accepted, said)) = valid_type_caller("valid-type-built", caller) else {
+        return;
+    };
+    assert!(
+        !accepted,
+        "a hand-built value was accepted as the valid type"
+    );
+    assert!(
+        said.contains(
+            "caller.ts(3,14): error TS2322: Type '{ label: ParcelLabel; parcelCount: number; }' is \
+             not assignable to type 'Parcel'."
+        ),
+        "got:\n{said}"
+    );
+}
+
+/// A member of the valid type is read-only.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[test]
+fn a_member_of_the_valid_type_cannot_be_assigned() {
+    let caller = "declare const parcel: Parcel;\nparcel.parcelCount = 1;\n";
+    let Some((accepted, said)) = valid_type_caller("valid-type-assigned", caller) else {
+        return;
+    };
+    assert!(!accepted, "a member of the valid type was assigned");
+    assert!(
+        said.contains(
+            "error TS2540: Cannot assign to 'parcelCount' because it is a read-only property."
+        ),
+        "got:\n{said}"
     );
 }

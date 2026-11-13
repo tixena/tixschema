@@ -81,13 +81,13 @@ fn typescript_is_published_under_the_whole_ident() {
     for (ts, declared) in [
         (
             SomethingData::ts_definition(),
-            "export type SomethingData = {",
+            "export type SomethingDataDraft = {",
         ),
         (
             SomethingJson::ts_definition(),
-            "export type SomethingJson = {",
+            "export type SomethingJsonDraft = {",
         ),
-        (Data::ts_definition(), "export type Data = {"),
+        (Data::ts_definition(), "export type DataDraft = {"),
     ] {
         assert!(ts.contains(declared), "{declared} missing from: {ts}");
     }
@@ -191,7 +191,7 @@ fn a_json_reference_points_at_the_definition_the_referenced_item_hoists() {
 #[test]
 fn an_overridden_struct_and_enum_are_published_and_referenced_under_the_override() {
     assert!(
-        GaugeUnderRustName::ts_definition().contains("export type PublishedGauge = {"),
+        GaugeUnderRustName::ts_definition().contains("export type PublishedGaugeDraft = {"),
         "got: {}",
         GaugeUnderRustName::ts_definition()
     );

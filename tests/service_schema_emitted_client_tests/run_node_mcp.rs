@@ -302,6 +302,7 @@ export const shared = documentServiceMcpEndpoint(documentServiceMcpPart, archive
 
 /// The client and the server written against what they publish.
 const USAGE_CALLER: &str = r#"import {
+  GetVersionRequest$Schema,
   createDocumentServiceMcpClient,
   createDocumentServiceMcpDispatcher,
   createDocumentServiceMcpHttpDispatcher,
@@ -368,7 +369,7 @@ export const names: readonly ["tool:check-drafts", "tool:check-many", "tool:chec
 
 export async function usage() {
   const client = createDocumentServiceMcpClient(transport);
-  const version = await client.getVersion({ document_id: "doc-1" });
+  const version = await client.getVersion(GetVersionRequest$Schema.parse({ document_id: "doc-1" }));
   if (version.ok) {
     const found: number = version.value.version;
     return found;

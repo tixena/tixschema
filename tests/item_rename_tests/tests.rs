@@ -434,14 +434,14 @@ fn an_item_exported_under_its_ident_publishes_no_reexport() {
         ReferencesRenamedItems::ts_definition(),
         NamesRenamedItemsDeclaredLater::ts_definition(),
     ] {
-        assert_eq!(ts.matches("export type ").count(), 1, "got: {ts}");
+        assert_eq!(ts.matches("export type ").count(), 2, "got: {ts}");
     }
     #[cfg(feature = "zod")]
     for zod in [
         ReferencesRenamedItems::zod_schema(),
         NamesRenamedItemsDeclaredLater::zod_schema(),
     ] {
-        assert_eq!(zod.matches("export const ").count(), 1, "got: {zod}");
+        assert_eq!(zod.matches("export const ").count(), 2, "got: {zod}");
     }
 }
 

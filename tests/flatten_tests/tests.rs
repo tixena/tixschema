@@ -1393,9 +1393,9 @@ fn test_flatten_structs_constructible() {
 #[cfg(feature = "typescript")]
 fn test_flatten_typescript_intersection() {
     let ts = DataElementSampleValueEntry::ts_definition();
-    assert!(ts.contains("export type DataElementSampleValueEntry = {"));
+    assert!(ts.contains("export type DataElementSampleValueEntryDraft = {"));
     assert!(ts.contains("dataElementId: string;"));
-    assert!(ts.contains("} & DataElementSampleValueVariant;"));
+    assert!(ts.contains("} & DataElementSampleValueVariantDraft;"));
     assert!(!ts.contains("variant:"));
 }
 
@@ -1404,7 +1404,7 @@ fn test_flatten_typescript_intersection() {
 fn test_flatten_typescript_multiple() {
     let ts = MultiFlatten::ts_definition();
     assert!(ts.contains("id: string;"));
-    assert!(ts.contains("} & BasePart & ExtraPart;"));
+    assert!(ts.contains("} & BasePartDraft & ExtraPartDraft;"));
     assert!(!ts.contains("base:"));
     assert!(!ts.contains("extra:"));
 }
@@ -1413,7 +1413,7 @@ fn test_flatten_typescript_multiple() {
 #[cfg(feature = "typescript")]
 fn test_flatten_only_typescript_is_alias() {
     let ts = FlattenOnly::ts_definition();
-    assert!(ts.contains("export type FlattenOnly = DataElementSampleValueVariant;"));
+    assert!(ts.contains("export type FlattenOnlyDraft = DataElementSampleValueVariantDraft;"));
     assert!(!ts.contains("Record<string, never>"));
     assert!(!ts.contains("variant:"));
 }
@@ -1422,10 +1422,11 @@ fn test_flatten_only_typescript_is_alias() {
 #[cfg(feature = "typescript")]
 fn test_no_flatten_typescript_unchanged() {
     let ts = NoFlatten::ts_definition();
-    assert!(ts.contains("export type NoFlatten = {"));
+    assert!(ts.contains("export type NoFlattenDraft = {"));
     assert!(ts.contains("id: string;"));
     assert!(ts.contains("name: string;"));
-    assert!(!ts.contains(" & "));
+    let draft = ts.split("\n\nexport type NoFlatten =").next().unwrap();
+    assert!(!draft.contains(" & "));
 }
 
 #[test]
@@ -2323,7 +2324,9 @@ fn test_an_optional_flattened_union_offers_every_member_and_their_absence() {
 fn test_the_optional_flatten_type_offers_the_base_and_its_absence() {
     let ts = OptHolder::ts_definition();
     assert!(
-        ts.contains("} & (OptBase | { [K in Exclude<keyof OptBase, \"own\">]?: never });"),
+        ts.contains(
+            "} & (OptBaseDraft | { [K in Exclude<keyof OptBaseDraft, \"own\">]?: never });"
+        ),
         "expected the base beside its absence, got: {ts}"
     );
     assert!(
@@ -2337,7 +2340,9 @@ fn test_the_optional_flatten_type_offers_the_base_and_its_absence() {
 fn test_an_optional_flattened_union_type_offers_its_members_and_their_absence() {
     let ts = OptUnionHolder::ts_definition();
     assert!(
-        ts.contains("} & (NestTagged | { [K in Exclude<keyof NestTagged, \"own\">]?: never });"),
+        ts.contains(
+            "} & (NestTaggedDraft | { [K in Exclude<keyof NestTaggedDraft, \"own\">]?: never });"
+        ),
         "expected the union beside its absence, got: {ts}"
     );
     assert!(
@@ -2482,7 +2487,7 @@ fn test_the_named_nullable_flatten_type_offers_the_base_and_its_absence() {
     let ts = NamedMaybeHolder::ts_definition();
     assert!(
         ts.contains(
-            "} & (MaybeOptBase | { [K in Exclude<keyof NonNullable<MaybeOptBase>, \"own\">]?: \
+            "} & (MaybeOptBaseDraft | { [K in Exclude<keyof NonNullable<MaybeOptBaseDraft>, \"own\">]?: \
              never });"
         ),
         "expected the base beside its absence, got: {ts}"
@@ -2500,7 +2505,7 @@ fn test_a_named_non_nullable_flatten_type_is_byte_identical() {
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type NamedPlainHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & PlainOptBase;"
+        "export type NamedPlainHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & PlainOptBaseDraft;\n\nexport type NamedPlainHolder = Readonly<NamedPlainHolderDraft> & $brand<\"NamedPlainHolder\">;"
     );
 }
 
@@ -2508,7 +2513,7 @@ fn test_a_named_non_nullable_flatten_type_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_named_non_nullable_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const NamedPlainHolder$RawSchema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const NamedPlainHolder$Schema: ZodType<NamedPlainHolder> = NamedPlainHolder$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const NamedPlainHolderDraft$RawSchema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const NamedPlainHolderDraft$Schema: ZodType<NamedPlainHolderDraft> = NamedPlainHolderDraft$RawSchema;\n\nexport const NamedPlainHolder$Schema = NamedPlainHolderDraft$Schema.readonly().brand<\"NamedPlainHolder\">().meta(NamedPlainHolderDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: &str = "export const NamedPlainHolder$Schema = z.strictObject({\n  own: z.string(),\n}).and(z.lazy(() => PlainOptBase$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).meta({\n  examples: []\n});";
 
@@ -2530,7 +2535,7 @@ fn test_a_non_optional_flatten_type_is_byte_identical() {
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type MultiFlatten = {\n  /**\n   * id\n   * \n   */\n  id: string;\n} & BasePart & ExtraPart;"
+        "export type MultiFlattenDraft = {\n  /**\n   * id\n   * \n   */\n  id: string;\n} & BasePartDraft & ExtraPartDraft;\n\nexport type MultiFlatten = Readonly<MultiFlattenDraft> & $brand<\"MultiFlatten\">;"
     );
 }
 
@@ -2538,7 +2543,7 @@ fn test_a_non_optional_flatten_type_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_non_optional_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const MultiFlatten$RawSchema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => ExtraPart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const MultiFlatten$Schema: ZodType<MultiFlatten> = MultiFlatten$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const MultiFlattenDraft$RawSchema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => ExtraPart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const MultiFlattenDraft$Schema: ZodType<MultiFlattenDraft> = MultiFlattenDraft$RawSchema;\n\nexport const MultiFlatten$Schema = MultiFlattenDraft$Schema.readonly().brand<\"MultiFlatten\">().meta(MultiFlattenDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: &str = "export const MultiFlatten$Schema = z.strictObject({\n  id: z.string(),\n}).and(z.lazy(() => BasePart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).and(z.lazy(() => ExtraPart$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).meta({\n  examples: []\n});";
 
@@ -2549,7 +2554,7 @@ fn test_a_non_optional_flatten_schema_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_the_untagged_flatten_schema_multiplies_the_object_over_the_unions_members() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nconst FlatOverUntagged$RawSchema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n]);\n\nexport const FlatOverUntagged$Schema: ZodType<FlatOverUntagged> = FlatOverUntagged$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nconst FlatOverUntaggedDraft$RawSchema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n]);\n\nexport const FlatOverUntaggedDraft$Schema: ZodType<FlatOverUntaggedDraft> = FlatOverUntaggedDraft$RawSchema;\n\nexport const FlatOverUntagged$Schema = FlatOverUntaggedDraft$Schema.readonly().brand<\"FlatOverUntagged\">().meta(FlatOverUntaggedDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: &str = "const FlatOverUntagged$OwnSchema = z.strictObject({\n  own: z.string(),\n});\n\nexport const FlatOverUntagged$Schema = z.union([\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatFirst$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n  FlatOverUntagged$OwnSchema.and(z.lazy(() => FlatSecond$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })),\n]).meta({\n  examples: []\n});";
 
@@ -2683,7 +2688,7 @@ fn test_a_union_declared_below_the_object_is_named_as_one_operand() {
 #[cfg(feature = "zod")]
 fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const DataElementSampleValueEntry$RawSchema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> = DataElementSampleValueEntry$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const DataElementSampleValueEntryDraft$RawSchema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }));\n\nexport const DataElementSampleValueEntryDraft$Schema: ZodType<DataElementSampleValueEntryDraft> = DataElementSampleValueEntryDraft$RawSchema;\n\nexport const DataElementSampleValueEntry$Schema = DataElementSampleValueEntryDraft$Schema.readonly().brand<\"DataElementSampleValueEntry\">().meta(DataElementSampleValueEntryDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: &str = "export const DataElementSampleValueEntry$Schema = z.strictObject({\n  dataElementId: z.string(),\n}).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true })).meta({\n  examples: []\n});";
 
@@ -2694,7 +2699,7 @@ fn test_an_internally_tagged_flatten_schema_is_byte_identical() {
 #[cfg(feature = "zod")]
 fn test_a_standalone_union_with_a_scalar_member_is_byte_identical() {
     #[cfg(feature = "typescript")]
-    const EXPECTED: &str = "const FlatScalarEither$RawSchema = z.union([FlatFirst$Schema, z.string()]);\n\nexport const FlatScalarEither$Schema: ZodType<FlatScalarEither> = FlatScalarEither$RawSchema.meta({\n  examples: []\n});";
+    const EXPECTED: &str = "const FlatScalarEitherDraft$RawSchema = z.union([FlatFirst$Schema, z.string()]);\n\nexport const FlatScalarEitherDraft$Schema: ZodType<FlatScalarEitherDraft> = FlatScalarEitherDraft$RawSchema;\n\nexport const FlatScalarEither$Schema = FlatScalarEitherDraft$Schema.readonly().brand<\"FlatScalarEither\">().meta(FlatScalarEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});";
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: &str = "export const FlatScalarEither$Schema = z.union([FlatFirst$Schema, z.string()]).meta({\n  examples: []\n});";
 
@@ -2706,10 +2711,10 @@ fn test_a_standalone_union_with_a_scalar_member_is_byte_identical() {
 fn test_standalone_unions_the_merge_now_refuses_are_byte_identical() {
     #[cfg(feature = "typescript")]
     const EXPECTED: [&str; 4] = [
-        "const FlatNullableEither$RawSchema = z.union([FlatFirst$Schema, z.nullable(FlatSecond$Schema)]);\n\nexport const FlatNullableEither$Schema: ZodType<FlatNullableEither> = FlatNullableEither$RawSchema.meta({\n  examples: []\n});",
-        "const MemberSlugEither$RawSchema = z.union([FlatFirst$Schema, MemberSlug$Schema]);\n\nexport const MemberSlugEither$Schema: ZodType<MemberSlugEither> = MemberSlugEither$RawSchema.meta({\n  examples: []\n});",
-        "const MemberSwitchEither$RawSchema = z.union([FlatFirst$Schema, MemberSwitch$Schema]);\n\nexport const MemberSwitchEither$Schema: ZodType<MemberSwitchEither> = MemberSwitchEither$RawSchema.meta({\n  examples: []\n});",
-        "const MemberHueEither$RawSchema = z.union([FlatFirst$Schema, MemberHue$Schema]);\n\nexport const MemberHueEither$Schema: ZodType<MemberHueEither> = MemberHueEither$RawSchema.meta({\n  examples: []\n});",
+        "const FlatNullableEitherDraft$RawSchema = z.union([FlatFirst$Schema, z.nullable(FlatSecond$Schema)]);\n\nexport const FlatNullableEitherDraft$Schema: ZodType<FlatNullableEitherDraft> = FlatNullableEitherDraft$RawSchema;\n\nexport const FlatNullableEither$Schema = FlatNullableEitherDraft$Schema.readonly().brand<\"FlatNullableEither\">().meta(FlatNullableEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+        "const MemberSlugEitherDraft$RawSchema = z.union([FlatFirst$Schema, MemberSlug$Schema]);\n\nexport const MemberSlugEitherDraft$Schema: ZodType<MemberSlugEitherDraft> = MemberSlugEitherDraft$RawSchema;\n\nexport const MemberSlugEither$Schema = MemberSlugEitherDraft$Schema.readonly().brand<\"MemberSlugEither\">().meta(MemberSlugEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+        "const MemberSwitchEitherDraft$RawSchema = z.union([FlatFirst$Schema, MemberSwitch$Schema]);\n\nexport const MemberSwitchEitherDraft$Schema: ZodType<MemberSwitchEitherDraft> = MemberSwitchEitherDraft$RawSchema;\n\nexport const MemberSwitchEither$Schema = MemberSwitchEitherDraft$Schema.readonly().brand<\"MemberSwitchEither\">().meta(MemberSwitchEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+        "const MemberHueEitherDraft$RawSchema = z.union([FlatFirst$Schema, MemberHue$Schema]);\n\nexport const MemberHueEitherDraft$Schema: ZodType<MemberHueEitherDraft> = MemberHueEitherDraft$RawSchema;\n\nexport const MemberHueEither$Schema = MemberHueEitherDraft$Schema.readonly().brand<\"MemberHueEither\">().meta(MemberHueEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
     ];
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: [&str; 4] = [
@@ -2768,9 +2773,9 @@ fn test_a_named_map_member_keeps_its_merged_document() {
 fn test_the_named_wire_unions_are_byte_identical_standing_alone() {
     #[cfg(feature = "typescript")]
     const EXPECTED: [&str; 3] = [
-        "const MemberBagEither$RawSchema = z.union([FlatFirst$Schema, MemberBag$Schema]);\n\nexport const MemberBagEither$Schema: ZodType<MemberBagEither> = MemberBagEither$RawSchema.meta({\n  examples: []\n});",
-        "const MemberBucketEither$RawSchema = z.union([FlatFirst$Schema, MemberBucket$Schema]);\n\nexport const MemberBucketEither$Schema: ZodType<MemberBucketEither> = MemberBucketEither$RawSchema.meta({\n  examples: []\n});",
-        "const MemberMaybeEither$RawSchema = z.union([FlatFirst$Schema, MemberMaybeSecond$Schema]);\n\nexport const MemberMaybeEither$Schema: ZodType<MemberMaybeEither> = MemberMaybeEither$RawSchema.meta({\n  examples: []\n});",
+        "const MemberBagEitherDraft$RawSchema = z.union([FlatFirst$Schema, MemberBag$Schema]);\n\nexport const MemberBagEitherDraft$Schema: ZodType<MemberBagEitherDraft> = MemberBagEitherDraft$RawSchema;\n\nexport const MemberBagEither$Schema = MemberBagEitherDraft$Schema.readonly().brand<\"MemberBagEither\">().meta(MemberBagEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+        "const MemberBucketEitherDraft$RawSchema = z.union([FlatFirst$Schema, MemberBucket$Schema]);\n\nexport const MemberBucketEitherDraft$Schema: ZodType<MemberBucketEitherDraft> = MemberBucketEitherDraft$RawSchema;\n\nexport const MemberBucketEither$Schema = MemberBucketEitherDraft$Schema.readonly().brand<\"MemberBucketEither\">().meta(MemberBucketEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+        "const MemberMaybeEitherDraft$RawSchema = z.union([FlatFirst$Schema, MemberMaybeSecond$Schema]);\n\nexport const MemberMaybeEitherDraft$Schema: ZodType<MemberMaybeEitherDraft> = MemberMaybeEitherDraft$RawSchema;\n\nexport const MemberMaybeEither$Schema = MemberMaybeEitherDraft$Schema.readonly().brand<\"MemberMaybeEither\">().meta(MemberMaybeEitherDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
     ];
     #[cfg(not(feature = "typescript"))]
     const EXPECTED: [&str; 3] = [
@@ -2840,16 +2845,20 @@ fn test_the_tagged_enums_are_byte_identical_standing_alone() {
     #[cfg(feature = "typescript")]
     let expected = [
         format!(
-            "const MemberExtBare$RawSchema = {bare};\n\nexport const MemberExtBare$Schema: ZodType<MemberExtBare> = MemberExtBare$RawSchema.meta({{\n  examples: []\n}});"
+            "const MemberExtBareDraft$RawSchema = {bare};\n\nexport const MemberExtBareDraft$Schema: ZodType<MemberExtBareDraft> = MemberExtBareDraft$RawSchema;\n\nexport const MemberExtBare$Schema = MemberExtBareDraft$Schema.readonly().brand<\"MemberExtBare\">().meta(MemberExtBareDraft$Schema.meta() ?? {{}}).meta({{\n  examples: []\n}});"
         ),
         format!(
-            "const MemberExtObjects$RawSchema = {objects};\n\nexport const MemberExtObjects$Schema: ZodType<MemberExtObjects> = MemberExtObjects$RawSchema.meta({{\n  examples: []\n}});"
+            "const MemberExtObjectsDraft$RawSchema = {objects};\n\nexport const MemberExtObjectsDraft$Schema: ZodType<MemberExtObjectsDraft> = MemberExtObjectsDraft$RawSchema;\n\nexport const MemberExtObjects$Schema = MemberExtObjectsDraft$Schema.readonly().brand<\"MemberExtObjects\">().meta(MemberExtObjectsDraft$Schema.meta() ?? {{}}).meta({{\n  examples: []\n}});"
         ),
     ];
     #[cfg(not(feature = "typescript"))]
     let expected = [
-        format!("export const MemberExtBare$Schema = {bare}.meta({{\n  examples: []\n}});"),
-        format!("export const MemberExtObjects$Schema = {objects}.meta({{\n  examples: []\n}});"),
+        format!(
+            "export const MemberExtBareDraft$Schema = {bare};\n\nexport const MemberExtBare$Schema = MemberExtBareDraft$Schema.readonly().brand().meta(MemberExtBareDraft$Schema.meta() ?? {{}}).meta({{\n  examples: []\n}});"
+        ),
+        format!(
+            "export const MemberExtObjectsDraft$Schema = {objects};\n\nexport const MemberExtObjects$Schema = MemberExtObjectsDraft$Schema.readonly().brand().meta(MemberExtObjectsDraft$Schema.meta() ?? {{}}).meta({{\n  examples: []\n}});"
+        ),
     ];
 
     assert_eq!(
@@ -2993,7 +3002,7 @@ fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type ExtObjDirectHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n});"
+        "export type ExtObjDirectHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n});\n\nexport type ExtObjDirectHolder = Readonly<ExtObjDirectHolderDraft> & $brand<\"ExtObjDirectHolder\">;"
     );
 }
 
@@ -3490,7 +3499,7 @@ fn test_the_optional_all_object_tagged_flatten_type_names_the_keys_its_absence_l
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type OptExtObjHolder = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & (({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}) | { [K in Exclude<keyof ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}), \"own\">]?: never });"
+        "export type OptExtObjHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & (({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}) | { [K in Exclude<keyof ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}), \"own\">]?: never });\n\nexport type OptExtObjHolder = Readonly<OptExtObjHolderDraft> & $brand<\"OptExtObjHolder\">;"
     );
 }
 
@@ -3515,8 +3524,8 @@ fn test_the_tagged_enums_standing_alone_close_each_object_member_on_typescript()
                 .unwrap(),
         ],
         [
-            "export type MemberExtBare =   /**\n   * Bare\n   * \n   */\n  \"Bare\" | {\n  /**\n   * Wrapped\n   * \n   */\n  \"Wrapped\": FlatSecond;\n};",
-            "export type MemberExtObjects = {\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n};",
+            "export type MemberExtBareDraft =   /**\n   * Bare\n   * \n   */\n  \"Bare\" | {\n  /**\n   * Wrapped\n   * \n   */\n  \"Wrapped\": FlatSecond;\n};",
+            "export type MemberExtObjectsDraft = {\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n};",
         ]
     );
 }
@@ -3565,8 +3574,9 @@ fn test_an_inline_untagged_direct_flatten_type_closes_each_member_against_the_ot
         assert_eq!(
             declared,
             format!(
-                "export type {holder} = {{\n  /**\n   * own\n   * \n   */\n  own: string;\n}} & \
-                 ({{ left: string; right?: never }} | {{ right: boolean; left?: never }});"
+                "export type {holder}Draft = {{\n  /**\n   * own\n   * \n   */\n  own: string;\n}} & \
+                 ({{ left: string; right?: never }} | {{ right: boolean; left?: never }});\n\n\
+                 export type {holder} = Readonly<{holder}Draft> & $brand<\"{holder}\">;"
             ),
             "{holder} does not close each member against the other"
         );
@@ -3585,7 +3595,7 @@ fn test_the_inline_untagged_union_is_byte_identical_standing_alone() {
         .unwrap();
     assert_eq!(
         declared,
-        "export type InlineUntagEither = { left: string } | { right: boolean };"
+        "export type InlineUntagEitherDraft = { left: string } | { right: boolean };"
     );
 }
 
@@ -3701,16 +3711,25 @@ fn test_a_flattened_variant_field_reads_back_from_the_merged_shape() {
 #[cfg(feature = "typescript")]
 fn test_a_flattened_variant_field_is_a_typescript_intersection_inside_the_variant() {
     let external = ExternalFlatVariant::ts_definition();
-    assert!(external.contains("} & VariantExtra;"), "Got: {external}");
+    assert!(
+        external.contains("} & VariantExtraDraft;"),
+        "Got: {external}"
+    );
     assert!(!external.contains("extra:"), "Got: {external}");
     assert!(external.contains("y: string;"), "Got: {external}");
 
     let internal = InternalFlatVariant::ts_definition();
-    assert!(internal.contains("} & VariantExtra"), "Got: {internal}");
+    assert!(
+        internal.contains("} & VariantExtraDraft"),
+        "Got: {internal}"
+    );
     assert!(!internal.contains("extra:"), "Got: {internal}");
 
     let adjacent = AdjacentFlatVariant::ts_definition();
-    assert!(adjacent.contains("} & VariantExtra;"), "Got: {adjacent}");
+    assert!(
+        adjacent.contains("} & VariantExtraDraft;"),
+        "Got: {adjacent}"
+    );
     assert!(!adjacent.contains("extra:"), "Got: {adjacent}");
 }
 
@@ -3718,7 +3737,10 @@ fn test_a_flattened_variant_field_is_a_typescript_intersection_inside_the_varian
 #[cfg(feature = "typescript")]
 fn test_two_flattened_variant_fields_join_the_same_content_object() {
     let ts = TwiceFlatVariant::ts_definition();
-    assert!(ts.contains("} & VariantExtra & VariantRank;"), "Got: {ts}");
+    assert!(
+        ts.contains("} & VariantExtraDraft & VariantRankDraft;"),
+        "Got: {ts}"
+    );
     assert!(!ts.contains("rank:"), "Got: {ts}");
 }
 
@@ -3831,7 +3853,11 @@ fn test_the_flattened_variant_document_accepts_what_serde_writes() {
 fn test_a_variant_without_a_flattened_field_keeps_its_typescript_object() {
     let ts = ExternalFlatVariant::ts_definition();
     let declared = &ts[ts.find("export type").unwrap()..];
-    let plain = &declared[declared.find("\"Plain\"").unwrap()..];
+    let draft = declared
+        .split("\n\nexport type ExternalFlatVariant =")
+        .next()
+        .unwrap();
+    let plain = &draft[draft.find("\"Plain\"").unwrap()..];
     assert!(!plain.contains(" & "), "Got: {plain}");
 }
 
@@ -3903,7 +3929,7 @@ fn test_a_flattened_untagged_variant_field_is_a_typescript_intersection_inside_t
         .unwrap();
     assert_eq!(
         declared,
-        "export type UntaggedFlatVariant = { x: string } & VariantExtra | { y: string };"
+        "export type UntaggedFlatVariantDraft = { x: string } & VariantExtraDraft | { y: string };"
     );
 }
 
@@ -3912,7 +3938,7 @@ fn test_a_flattened_untagged_variant_field_is_a_typescript_intersection_inside_t
 fn test_two_flattened_untagged_variant_fields_join_the_same_member_object() {
     let ts = TwiceUntaggedFlatVariant::ts_definition();
     assert!(
-        ts.contains("{ x: string } & VariantExtra & VariantRank;"),
+        ts.contains("{ x: string } & VariantExtraDraft & VariantRankDraft;"),
         "Got: {ts}"
     );
     assert!(!ts.contains("rank:"), "Got: {ts}");
@@ -4065,7 +4091,7 @@ fn test_flattening_an_enum_whose_member_flattens_round_trips_every_member() {
 fn test_a_flattening_untagged_member_closes_no_sibling_against_unprovable_keys() {
     let ts = UntaggedFlatVariantHolder::ts_definition();
     assert!(!ts.contains("?: never"), "Got: {ts}");
-    assert!(ts.contains("} & UntaggedFlatVariant;"), "Got: {ts}");
+    assert!(ts.contains("} & UntaggedFlatVariantDraft;"), "Got: {ts}");
     assert!(
         UntaggedFlatVariant::ts_definition().contains("| { y: string };"),
         "Got: {}",
@@ -4817,28 +4843,33 @@ fn test_the_multiplied_variant_document_writes_one_branch_per_key_set() {
 #[cfg(feature = "typescript")]
 fn test_the_multiplied_variant_type_is_the_intersection_typescript_distributes() {
     assert!(
-        ExternalChoiceVariant::ts_definition().contains("} & VariantChoice;"),
+        ExternalChoiceVariant::ts_definition()
+            .contains("} & (ChoiceLeftDraft | ChoiceRightDraft);"),
         "Got: {}",
         ExternalChoiceVariant::ts_definition()
     );
     assert!(
-        InternalChoiceVariant::ts_definition().contains("} & VariantChoice |"),
+        InternalChoiceVariant::ts_definition()
+            .contains("} & (ChoiceLeftDraft | ChoiceRightDraft) |"),
         "Got: {}",
         InternalChoiceVariant::ts_definition()
     );
     assert!(
-        AdjacentChoiceVariant::ts_definition().contains("} & VariantChoice;"),
+        AdjacentChoiceVariant::ts_definition()
+            .contains("} & (ChoiceLeftDraft | ChoiceRightDraft);"),
         "Got: {}",
         AdjacentChoiceVariant::ts_definition()
     );
     assert!(
         UntaggedChoiceVariant::ts_definition()
-            .contains("= { x: string } & VariantChoice | { y: string };"),
+            .contains("= { x: string } & (ChoiceLeftDraft | ChoiceRightDraft) | { y: string };"),
         "Got: {}",
         UntaggedChoiceVariant::ts_definition()
     );
     assert!(
-        TwoChoiceVariant::ts_definition().contains("} & VariantChoice & PairChoice;"),
+        TwoChoiceVariant::ts_definition().contains(
+            "} & (ChoiceLeftDraft | ChoiceRightDraft) & (ChoiceDownDraft | ChoiceUpDraft);"
+        ),
         "Got: {}",
         TwoChoiceVariant::ts_definition()
     );

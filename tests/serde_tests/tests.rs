@@ -579,7 +579,7 @@ fn test_a_renamed_untagged_member_field_is_written_as_a_string() {
     let ts = Body::ts_definition();
 
     assert!(
-        ts.contains(r#"export type Body = { subject: string } | { "reply-to": string };"#),
+        ts.contains(r#"export type BodyDraft = { subject: string } | { "reply-to": string };"#),
         "expected the renamed member key quoted, the untouched one bare:\n{ts}"
     );
 }

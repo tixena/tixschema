@@ -43,21 +43,25 @@ pub struct TreeNode {
 Generated TypeScript:
 
 ```typescript
-export type TreeNode = {
+export type TreeNodeDraft = {
   val: string;
   children: Array<TreeNode>;
 };
+
+export type TreeNode = Readonly<TreeNodeDraft> & $brand<"TreeNode">;
 ```
 
 Generated Zod:
 
 ```typescript
-const TreeNode$RawSchema = z.strictObject({
+const TreeNodeDraft$RawSchema = z.strictObject({
   val: z.string(),
   get children() { return z.array(TreeNode$Schema); },
 });
 
-export const TreeNode$Schema: ZodType<TreeNode> = TreeNode$RawSchema.meta({
+export const TreeNodeDraft$Schema: ZodType<TreeNodeDraft> = TreeNodeDraft$RawSchema;
+
+export const TreeNode$Schema = TreeNodeDraft$Schema.readonly().brand<"TreeNode">().meta(TreeNodeDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
 ```
@@ -114,7 +118,7 @@ pub struct NestsInASlot(pub String, pub Vec<Self>);
 ```
 
 ```typescript
-const NestsInASlot$RawSchema = z.tuple([z.string(), z.lazy(() => z.array(NestsInASlot$Schema))]);
+const NestsInASlotDraft$RawSchema = z.tuple([z.string(), z.lazy(() => z.array(NestsInASlot$Schema))]);
 ```
 
 ### Type Aliases
@@ -158,10 +162,12 @@ pub struct DocumentRecord {
 Generated TypeScript:
 
 ```typescript
-export type DocumentRecord = {
+export type DocumentRecordDraft = {
   document_id: DocumentId;
   revision: Revision;
 };
+
+export type DocumentRecord = Readonly<DocumentRecordDraft> & $brand<"DocumentRecord">;
 ```
 
 Under the `swift` feature, an alias of a list, a map or an `Option` is declared above every type whose field names it, as [the Swift client](swift.md#validate-in-the-swift-client) states.
@@ -184,10 +190,12 @@ pub struct Handlead {
 ```typescript
 export type PlummetType = number | undefined;
 
-export type Handlead = {
+export type HandleadDraft = {
   kept?: PlummetType;
   listed: Array<number | null>;
 };
+
+export type Handlead = Readonly<HandleadDraft> & $brand<"Handlead">;
 ```
 
 Zod writes `listed: z.array(z.nullable(z.number().int().min(0).max(4294967295)))`, which reads the `[null]` serde writes as `[null]`, and the JSON Schema describes the same `null`. An alias of such an alias, and one that declares a type parameter, are written in place the same way.

@@ -34,17 +34,17 @@ pub struct User {
 
 **Generated Code:**
 - A `schema_examples()` method is generated that returns `Vec<serde_json::Value>`, one value per block, and a `schema_example()` beside it that returns the first
-- The Zod schema of **every** type holds `examples` in its `.meta()`, and none writes an `example` key: `examples: []` where the type writes no block, and the serialized `schema_examples()` where it writes one or more
+- The Zod schema of **every** type holds `examples` in its `.meta()`, on the valid type's `$Schema` and not on its draft's, and none writes an `example` key: `examples: []` where the type writes no block, and the serialized `schema_examples()` where it writes one or more
 - Each example is serialized using Serde, so it matches your API's JSON format
 
 ```typescript
 // no block
-export const Plain$Schema: ZodType<Plain> = Plain$RawSchema.meta({
+export const Plain$Schema = PlainDraft$Schema.readonly().brand<"Plain">().meta(PlainDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
 
 // two blocks
-export const SeveralExamples$Schema: ZodType<SeveralExamples> = SeveralExamples$RawSchema.meta({
+export const SeveralExamples$Schema = SeveralExamplesDraft$Schema.readonly().brand<"SeveralExamples">().meta(SeveralExamplesDraft$Schema.meta() ?? {}).meta({
   examples: [{"value":1},{"value":2}]
 });
 ```

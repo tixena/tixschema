@@ -184,7 +184,7 @@ fn test_nested_struct_ts_definition() {
     assert!(user_definition.contains("address: Address;"));
     assert!(user_definition.contains(backup_addresses));
 
-    assert!(address_definition.contains("export type Address = {"));
+    assert!(address_definition.contains("export type AddressDraft = {"));
     assert!(address_definition.contains("street: string;"));
     assert!(address_definition.contains("city: string;"));
     assert!(address_definition.contains(zip_code));

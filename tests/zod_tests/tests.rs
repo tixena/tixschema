@@ -155,12 +155,12 @@ fn test_zod_with_typescript_feature_includes_type_annotations() {
     let zod = BasicStruct::zod_schema();
 
     assert!(
-        zod.contains("const BasicStruct$RawSchema = z.strictObject({"),
+        zod.contains("const BasicStructDraft$RawSchema = z.strictObject({"),
         "Should declare RawSchema const when typescript feature enabled. Got: {zod}"
     );
     assert!(
         zod.contains(
-            "export const BasicStruct$Schema: ZodType<BasicStruct> = BasicStruct$RawSchema.meta({\n  examples: []\n});"
+            "export const BasicStruct$Schema = BasicStructDraft$Schema.readonly().brand<\"BasicStruct\">().meta(BasicStructDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"
         ),
         "Should export typed schema when typescript feature enabled. Got: {zod}"
     );
@@ -272,11 +272,13 @@ fn test_plain_enum_with_typescript_has_type_annotation() {
     let zod = Status::zod_schema();
 
     assert!(
-        zod.contains("const Status$RawSchema = z.enum(["),
+        zod.contains("const StatusDraft$RawSchema = z.enum(["),
         "Plain enum with typescript should have $RawSchema. Got: {zod}"
     );
     assert!(
-        zod.contains("export const Status$Schema: ZodType<Status> = Status$RawSchema;"),
+        zod.contains(
+            "export const StatusDraft$Schema: ZodType<StatusDraft> = StatusDraft$RawSchema;"
+        ),
         "Plain enum with typescript should have typed $Schema. Got: {zod}"
     );
 }

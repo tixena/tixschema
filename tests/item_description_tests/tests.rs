@@ -221,7 +221,15 @@ fn assert_jsdoc_opens_with(ts: &str, expected: &str) {
 #[cfg(any(feature = "typescript", feature = "zod"))]
 fn without_ident_reexport(surface: &str, ident: &str, exported: &str) -> String {
     surface
+        .replace(
+            &format!("\n\nexport type {ident}Draft = {exported}Draft;"),
+            "",
+        )
         .replace(&format!("\n\nexport type {ident} = {exported};"), "")
+        .replace(
+            &format!("\n\nexport const {ident}Draft$Schema = {exported}Draft$Schema;"),
+            "",
+        )
         .replace(
             &format!("\n\nexport const {ident}$Schema = {exported}$Schema;"),
             "",
@@ -369,23 +377,23 @@ fn ts_definition_writes_the_description_and_no_json_schema() {
     for (ts, opener) in [
         (
             Invoice::ts_definition(),
-            "/**\n * An invoice.\n * \n */\nexport type Invoice = {",
+            "/**\n * An invoice.\n * \n */\nexport type InvoiceDraft = {",
         ),
         (
             InvoicePage::<String>::ts_definition(),
-            "/**\n * A page of entries.\n * \n */\nexport type InvoicePage<Entry> = {",
+            "/**\n * A page of entries.\n * \n */\nexport type InvoicePageDraft<Entry> = {",
         ),
         (
             InvoiceStatus::ts_definition(),
-            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatus =",
+            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatusDraft =",
         ),
         (
             InvoiceEvent::ts_definition(),
-            "/**\n * What happened to an invoice.\n * \n */\nexport type InvoiceEvent =",
+            "/**\n * What happened to an invoice.\n * \n */\nexport type InvoiceEventDraft =",
         ),
         (
             InvoicePayment::ts_definition(),
-            "/**\n * What an invoice is paid with.\n * \n */\nexport type InvoicePayment =",
+            "/**\n * What an invoice is paid with.\n * \n */\nexport type InvoicePaymentDraft =",
         ),
         (
             line_count_schema::Schema::ts_definition(),
@@ -412,31 +420,31 @@ fn ts_definition_is_one_text_with_jsonschema_on_and_off() {
     for (ts, expected) in [
         (
             Invoice::ts_definition(),
-            "/**\n * An invoice.\n * \n */\nexport type Invoice = {\n  /**\n   * customer\n   * \n   */\n  customer: Customer;\n  /**\n   * items\n   * \n   */\n  items: Array<LineItem>;\n  /**\n   * number\n   * \n   */\n  number: string;\n};",
+            "/**\n * An invoice.\n * \n */\nexport type InvoiceDraft = {\n  /**\n   * customer\n   * \n   */\n  customer: Customer;\n  /**\n   * items\n   * \n   */\n  items: Array<LineItem>;\n  /**\n   * number\n   * \n   */\n  number: string;\n};\n\nexport type Invoice = Readonly<InvoiceDraft> & $brand<\"Invoice\">;",
         ),
         (
             Customer::ts_definition(),
-            "/**\n * Who an invoice is billed to.\n * \n */\nexport type Customer = {\n  /**\n   * name\n   * \n   * Minimum length: 1\n   */\n  name: string;\n  /**\n   * openInvoices\n   * \n   */\n  openInvoices: number;\n};",
+            "/**\n * Who an invoice is billed to.\n * \n */\nexport type CustomerDraft = {\n  /**\n   * name\n   * \n   * Minimum length: 1\n   */\n  name: string;\n  /**\n   * openInvoices\n   * \n   */\n  openInvoices: number;\n};\n\nexport type Customer = Readonly<CustomerDraft> & $brand<\"Customer\">;",
         ),
         (
             LineItem::ts_definition(),
-            "/**\n * One billed item.\n * \n */\nexport type LineItem = {\n  /**\n   * code\n   * \n   */\n  code: string;\n  /**\n   * quantity\n   * \n   */\n  quantity: number;\n};",
+            "/**\n * One billed item.\n * \n */\nexport type LineItemDraft = {\n  /**\n   * code\n   * \n   */\n  code: string;\n  /**\n   * quantity\n   * \n   */\n  quantity: number;\n};\n\nexport type LineItem = Readonly<LineItemDraft> & $brand<\"LineItem\">;",
         ),
         (
             InvoicePage::<String>::ts_definition(),
-            "/**\n * A page of entries.\n * \n */\nexport type InvoicePage<Entry> = {\n  /**\n   * entries\n   * \n   */\n  entries: Array<Entry>;\n  /**\n   * totalCount\n   * \n   */\n  totalCount: number;\n};",
+            "/**\n * A page of entries.\n * \n */\nexport type InvoicePageDraft<Entry> = {\n  /**\n   * entries\n   * \n   */\n  entries: Array<Entry>;\n  /**\n   * totalCount\n   * \n   */\n  totalCount: number;\n};\n\nexport type InvoicePage<Entry> = Readonly<InvoicePageDraft<Entry>> & $brand<\"InvoicePage\">;",
         ),
         (
             InvoiceStatus::ts_definition(),
-            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatus =\n  | \"draft\"\n  | \"paid\";\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceStatus$Variant(value: unknown): string {\n  switch (value) {\n    case \"draft\": return \"Draft\";\n    case \"paid\": return \"Paid\";\n    default: return \"\";\n  }\n}",
+            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatusDraft =\n  | \"draft\"\n  | \"paid\";\n\nexport type InvoiceStatus = Readonly<InvoiceStatusDraft> & $brand<\"InvoiceStatus\">;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceStatus$Variant(value: unknown): string {\n  switch (value) {\n    case \"draft\": return \"Draft\";\n    case \"paid\": return \"Paid\";\n    default: return \"\";\n  }\n}",
         ),
         (
             InvoiceEvent::ts_definition(),
-            "/**\n * What happened to an invoice.\n * \n */\nexport type InvoiceEvent = {\n  /**\n   * issued\n   * \n   */\n  kind: \"issued\";\n  /**\n   * number\n   * \n   */\n  number: string;\n} | {\n  /**\n   * voided\n   * \n   */\n  kind: \"voided\";\n  /**\n   * reason\n   * \n   */\n  reason: string;\n};\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceEvent$Variant(value: unknown): string {\n  if (typeof value !== \"object\" || value === null) return \"\";\n  switch ((value as { kind?: unknown }).kind) {\n    case \"issued\": return \"Issued\";\n    case \"voided\": return \"Voided\";\n    default: return \"\";\n  }\n}",
+            "/**\n * What happened to an invoice.\n * \n */\nexport type InvoiceEventDraft = {\n  /**\n   * issued\n   * \n   */\n  kind: \"issued\";\n  /**\n   * number\n   * \n   */\n  number: string;\n} | {\n  /**\n   * voided\n   * \n   */\n  kind: \"voided\";\n  /**\n   * reason\n   * \n   */\n  reason: string;\n};\n\nexport type InvoiceEvent = Readonly<InvoiceEventDraft> & $brand<\"InvoiceEvent\">;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceEvent$Variant(value: unknown): string {\n  if (typeof value !== \"object\" || value === null) return \"\";\n  switch ((value as { kind?: unknown }).kind) {\n    case \"issued\": return \"Issued\";\n    case \"voided\": return \"Voided\";\n    default: return \"\";\n  }\n}",
         ),
         (
             InvoicePayment::ts_definition(),
-            "/**\n * What an invoice is paid with.\n * \n */\nexport type InvoicePayment = number | string;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoicePayment$Variant(_value: unknown): string {\n  return \"\";\n}",
+            "/**\n * What an invoice is paid with.\n * \n */\nexport type InvoicePaymentDraft = number | string;\n\nexport type InvoicePayment = Readonly<InvoicePaymentDraft> & $brand<\"InvoicePayment\">;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoicePayment$Variant(_value: unknown): string {\n  return \"\";\n}",
         ),
         (
             InvoiceNumber::ts_definition(),
@@ -455,10 +463,10 @@ fn ts_definition_is_one_text_with_jsonschema_on_and_off() {
 #[test]
 fn the_members_keep_the_jsdoc_they_had() {
     let ts = Invoice::ts_definition();
-    let (_, members) = ts.split_once("export type Invoice = {\n").unwrap();
+    let (_, members) = ts.split_once("export type InvoiceDraft = {\n").unwrap();
     assert_eq!(
         members,
-        "  /**\n   * customer\n   * \n   */\n  customer: Customer;\n  /**\n   * items\n   * \n   */\n  items: Array<LineItem>;\n  /**\n   * number\n   * \n   */\n  number: string;\n};"
+        "  /**\n   * customer\n   * \n   */\n  customer: Customer;\n  /**\n   * items\n   * \n   */\n  items: Array<LineItem>;\n  /**\n   * number\n   * \n   */\n  number: string;\n};\n\nexport type Invoice = Readonly<InvoiceDraft> & $brand<\"Invoice\">;"
     );
 }
 
@@ -481,7 +489,7 @@ fn the_json_schema_is_the_text_it_was() {
 fn the_zod_schema_is_the_text_it_was() {
     assert_eq!(
         Invoice::zod_schema(),
-        "const Invoice$RawSchema = z.strictObject({\n  customer: Customer$Schema,\n  items: z.array(LineItem$Schema),\n  number: z.string(),\n});\n\nexport const Invoice$Schema: ZodType<Invoice> = Invoice$RawSchema.meta({\n  examples: []\n});"
+        "const InvoiceDraft$RawSchema = z.strictObject({\n  customer: Customer$Schema,\n  items: z.array(LineItem$Schema),\n  number: z.string(),\n});\n\nexport const InvoiceDraft$Schema: ZodType<InvoiceDraft> = InvoiceDraft$RawSchema;\n\nexport const Invoice$Schema = InvoiceDraft$Schema.readonly().brand<\"Invoice\">().meta(InvoiceDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"
     );
 }
 

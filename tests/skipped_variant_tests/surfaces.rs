@@ -18,7 +18,7 @@ const BERTHAGE_TS: &str = r#"/**
  * read.
  * 
  */
-export type Berthage = {
+export type BerthageDraft = {
   /**
    * Open
    * 
@@ -31,6 +31,8 @@ export type Berthage = {
   note: string;
 };
 
+export type Berthage = Readonly<BerthageDraft> & $brand<"Berthage">;
+
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Berthage$Variant(value: unknown): string {
   if (typeof value !== "object" || value === null) return "";
@@ -41,12 +43,14 @@ export function Berthage$Variant(value: unknown): string {
 }"#;
 
 /// The Zod schema [`Berthage`] publishes: its variant serde writes alone.
-const BERTHAGE_ZOD: &str = r#"const Berthage$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
+const BERTHAGE_ZOD: &str = r#"const BerthageDraft$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
   kind: z.literal("Open"),
   note: z.string(),
 })]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === "custom" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === "custom" && issue.params?.undeserializable === true && issue.message === "expected value" ? { ...issue, message: ((held) => held === undefined ? "invalid type: expected string or map" : typeof held === "object" && held !== null && !Array.isArray(held) ? "invalid value: map, expected map with a single key" : "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(held) + ", expected string or map")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true });
 
-export const Berthage$Schema: ZodType<Berthage> = Berthage$RawSchema.meta({
+export const BerthageDraft$Schema: ZodType<BerthageDraft> = BerthageDraft$RawSchema;
+
+export const Berthage$Schema = BerthageDraft$Schema.readonly().brand<"Berthage">().meta(BerthageDraft$Schema.meta() ?? {}).meta({
   examples: []
 });"#;
 

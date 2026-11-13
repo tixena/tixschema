@@ -39,11 +39,11 @@ fn test_simple_enum_example() {
     #[cfg(feature = "typescript")]
     {
         assert!(
-            zod.contains("DataType$RawSchema"),
+            zod.contains("DataTypeDraft$RawSchema"),
             "Plain enum with example should have $RawSchema. Got:\n{zod}"
         );
         assert!(
-            zod.contains("export const DataType$Schema: ZodType<DataType> = DataType$RawSchema;"),
+            zod.contains("export const DataTypeDraft$Schema: ZodType<DataTypeDraft> = DataTypeDraft$RawSchema;"),
             "Plain enum with example should have $Schema referencing $RawSchema. Got:\n{zod}"
         );
     }
@@ -663,7 +663,7 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     #[cfg(feature = "typescript")]
     assert!(
         zod.contains(
-            "export const Kept$Schema: ZodType<Kept> = Kept$RawSchema.meta({\n  examples: \
+            "export const Kept$Schema = KeptDraft$Schema.readonly().brand<\"Kept\">().meta(KeptDraft$Schema.meta() ?? {}).meta({\n  examples: \
              [{\"value\":\"x\"}]\n});"
         ),
         "Got: {zod}"
@@ -1051,14 +1051,14 @@ fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
         level.contains(".meta({\n  description: \"A level\",\n  examples: [\"Low\",\"High\"],\n})"),
         "Got: {level}"
     );
-    assert_eq!(level.matches(".meta(").count(), 1, "Got: {level}");
+    assert_eq!(level.matches(".meta({").count(), 1, "Got: {level}");
 
     let grade = Grade::zod_schema();
     assert!(
         grade.contains(".meta({\n  description: \"A level with no example\",\n  examples: [],\n})"),
         "Got: {grade}"
     );
-    assert_eq!(grade.matches(".meta(").count(), 1, "Got: {grade}");
+    assert_eq!(grade.matches(".meta({").count(), 1, "Got: {grade}");
     assert!(!grade.contains("example:"), "Got: {grade}");
 }
 

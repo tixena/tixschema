@@ -143,26 +143,30 @@ fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
 fn the_zod_schema_parses_the_default_of_each_member() {
     assert_eq!(
         Wharf::zod_schema(),
-        "const Wharf$RawSchema = z.strictObject({
+        "const WharfDraft$RawSchema = z.strictObject({
   dock: z.string().prefault(\"\"),
   gangway: Gangway$Schema.prefault({\"label\":\"main\",\"width\":2}),
   gate: z.string().prefault(\"north\"),
   label: z.string(),
 });
 
-export const Wharf$Schema: ZodType<Wharf> = Wharf$RawSchema.meta({
+export const WharfDraft$Schema: ZodType<WharfDraft> = WharfDraft$RawSchema;
+
+export const Wharf$Schema = WharfDraft$Schema.readonly().brand<\"Wharf\">().meta(WharfDraft$Schema.meta() ?? {}).meta({
   examples: []
 });"
     );
     assert_eq!(
         Jetty::zod_schema(),
-        "const Jetty$RawSchema = z.strictObject({
+        "const JettyDraft$RawSchema = z.strictObject({
   berths: z.number().int().min(0).max(4294967295).prefault(4),
   dock: z.string().prefault(\"east\"),
   moorings: z.array(z.string()).prefault([\"a\",\"b\"]),
 });
 
-export const Jetty$Schema: ZodType<Jetty> = Jetty$RawSchema.meta({
+export const JettyDraft$Schema: ZodType<JettyDraft> = JettyDraft$RawSchema;
+
+export const Jetty$Schema = JettyDraft$Schema.readonly().brand<\"Jetty\">().meta(JettyDraft$Schema.meta() ?? {}).meta({
   examples: []
 });"
     );
@@ -447,12 +451,14 @@ fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
 fn a_type_with_no_default_writes_the_zod_text_it_wrote() {
     assert_eq!(
         Gangway::zod_schema(),
-        "const Gangway$RawSchema = z.strictObject({
+        "const GangwayDraft$RawSchema = z.strictObject({
   label: z.string(),
   width: z.number().int().min(0).max(4294967295),
 });
 
-export const Gangway$Schema: ZodType<Gangway> = Gangway$RawSchema.meta({
+export const GangwayDraft$Schema: ZodType<GangwayDraft> = GangwayDraft$RawSchema;
+
+export const Gangway$Schema = GangwayDraft$Schema.readonly().brand<\"Gangway\">().meta(GangwayDraft$Schema.meta() ?? {}).meta({
   examples: []
 });"
     );
@@ -466,7 +472,7 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
         " * A gangway, a type of the consumer's own with a `Default` of its own.",
         " * ",
         " */",
-        "export type Gangway = {",
+        "export type GangwayDraft = {",
         "  /**",
         "   * label",
         "   * ",
@@ -478,6 +484,8 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
         "   */",
         "  width: number;",
         "};",
+        "",
+        "export type Gangway = Readonly<GangwayDraft> & $brand<\"Gangway\">;",
     ];
     assert_eq!(Gangway::ts_definition(), lines.join("\n"));
 }

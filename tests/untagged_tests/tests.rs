@@ -636,7 +636,7 @@ fn test_untagged_entry_constructible() {
 fn test_tuple_single_union_typescript() {
     let ts = DateValue::ts_definition();
     assert!(
-        ts.contains("export type DateValue = number | DateString;"),
+        ts.contains("export type DateValueDraft = number | DateString;"),
         "Got:\n{ts}"
     );
 }
@@ -659,7 +659,7 @@ fn test_untagged_union_variant_reader_body_is_empty() {
 fn test_named_union_typescript() {
     let ts = NamedUnion::ts_definition();
     assert!(
-        ts.contains("export type NamedUnion = { x: string } | { y: number };"),
+        ts.contains("export type NamedUnionDraft = { x: string } | { y: number };"),
         "Got:\n{ts}"
     );
 }
@@ -670,7 +670,7 @@ fn test_rename_all_union_typescript() {
     let ts = RenameAllUnion::ts_definition();
     assert!(
         ts.contains(
-            r#"export type RenameAllUnion = { "subject-line": string } | { "reply-to": string };"#
+            r#"export type RenameAllUnionDraft = { "subject-line": string } | { "reply-to": string };"#
         ),
         "Got:\n{ts}"
     );
@@ -682,7 +682,7 @@ fn test_rename_all_union_typescript() {
 fn test_renamed_identifier_union_typescript() {
     let ts = RenamedIdentifierUnion::ts_definition();
     assert!(
-        ts.contains("export type RenamedIdentifierUnion = { replyTo: string };"),
+        ts.contains("export type RenamedIdentifierUnionDraft = { replyTo: string };"),
         "Got:\n{ts}"
     );
 }
@@ -714,7 +714,7 @@ fn test_compliant_union_typescript() {
 fn test_flatten_end_to_end_typescript() {
     let ts = DataElementSampleValueEntry::ts_definition();
     assert!(
-        ts.contains("} & DataElementSampleValueVariant;"),
+        ts.contains("} & DataElementSampleValueVariantDraft;"),
         "Got:\n{ts}"
     );
     let variant_ts = DataElementSampleValueVariant::ts_definition();
@@ -736,7 +736,7 @@ fn test_tuple_single_union_zod() {
     // The `ZodType<...> = ...$RawSchema` framing only appears when typescript is also enabled.
     #[cfg(feature = "typescript")]
     assert!(
-        zod.contains("export const DateValue$Schema: ZodType<DateValue> = DateValue$RawSchema.meta({\n  examples: []\n});"),
+        zod.contains("export const DateValue$Schema = DateValueDraft$Schema.readonly().brand<\"DateValue\">().meta(DateValueDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"),
         "Got:\n{zod}"
     );
 }
@@ -778,7 +778,7 @@ fn test_recursive_tuple_single_union_typescript_defers_only_the_map_member() {
     let ts = JsonValueUnion::ts_definition();
     assert!(
         ts.contains(
-            "export type JsonValueUnion = boolean | Array<JsonValueUnion> | \
+            "export type JsonValueUnionDraft = boolean | Array<JsonValueUnion> | \
              { [key: string]: JsonValueUnion | undefined } | number | string;"
         ),
         "Got:\n{ts}"
@@ -796,7 +796,7 @@ fn test_recursive_tuple_single_union_typescript_defers_only_the_map_member() {
 fn test_non_recursive_tuple_single_map_member_keeps_mapped_type() {
     let ts = LabelBagUnion::ts_definition();
     assert!(
-        ts.contains("export type LabelBagUnion = Partial<Record<string, string>> | string;"),
+        ts.contains("export type LabelBagUnionDraft = Partial<Record<string, string>> | string;"),
         "Got:\n{ts}"
     );
     assert!(!ts.contains("[key: string]"), "Got:\n{ts}");
@@ -818,7 +818,7 @@ fn test_recursive_enum_keyed_map_member_typescript_uses_mapped_type() {
     let ts = BucketTreeUnion::ts_definition();
     assert!(
         ts.contains(
-            "export type BucketTreeUnion = string | { [key in Bucket]?: BucketTreeUnion };"
+            "export type BucketTreeUnionDraft = string | { [key in Bucket]?: BucketTreeUnion };"
         ),
         "Got:\n{ts}"
     );
@@ -834,7 +834,9 @@ fn test_recursive_enum_keyed_map_member_typescript_uses_mapped_type() {
 fn test_recursive_flag_keyed_map_member_typescript_uses_mapped_type() {
     let ts = FlagTreeUnion::ts_definition();
     assert!(
-        ts.contains("export type FlagTreeUnion = string | { [key in FlagKey]?: FlagTreeUnion };"),
+        ts.contains(
+            "export type FlagTreeUnionDraft = string | { [key in FlagKey]?: FlagTreeUnion };"
+        ),
         "Got:\n{ts}"
     );
     assert!(!ts.contains("[key: "), "Got:\n{ts}");
@@ -846,7 +848,7 @@ fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() 
     let ts = StampTreeUnion::ts_definition();
     assert!(
         ts.contains(
-            "export type StampTreeUnion = string | { [key: string]: StampTreeUnion | undefined };"
+            "export type StampTreeUnionDraft = string | { [key: string]: StampTreeUnion | undefined };"
         ),
         "Got:\n{ts}"
     );
@@ -897,7 +899,7 @@ fn test_recursive_char_keyed_map_member_typescript_keeps_index_signature() {
     let ts = CodeTreeUnion::ts_definition();
     assert!(
         ts.contains(
-            "export type CodeTreeUnion = string | { [key: string]: CodeTreeUnion | undefined };"
+            "export type CodeTreeUnionDraft = string | { [key: string]: CodeTreeUnion | undefined };"
         ),
         "Got:\n{ts}"
     );
@@ -909,7 +911,7 @@ fn test_recursive_char_keyed_map_member_typescript_keeps_index_signature() {
 fn test_non_recursive_enum_keyed_map_member_keeps_mapped_record() {
     let ts = BucketBagUnion::ts_definition();
     assert!(
-        ts.contains("export type BucketBagUnion = Partial<Record<Bucket, number>> | string;"),
+        ts.contains("export type BucketBagUnionDraft = Partial<Record<Bucket, number>> | string;"),
         "Got:\n{ts}"
     );
     assert!(!ts.contains("key in"), "Got:\n{ts}");
@@ -1218,7 +1220,7 @@ fn test_untagged_newtype_option_content_typescript_null_flavor() {
     let ts = SlotUnion::ts_definition();
 
     assert!(
-        ts.contains("export type SlotUnion = number | null | string;"),
+        ts.contains("export type SlotUnionDraft = number | null | string;"),
         "Maybe's content is the slot the `None` fills with `null`, Plain's carries no null. \
          Got:\n{ts}"
     );
@@ -1257,7 +1259,7 @@ fn test_untagged_map_member_keys_typescript() {
     let ts = KeyedUnion::ts_definition();
     assert!(
         ts.contains(
-            "export type KeyedUnion = { counts: Partial<Record<Bucket, number>> } \
+            "export type KeyedUnionDraft = { counts: Partial<Record<Bucket, number>> } \
              | { labels: Partial<Record<string, string>> };"
         ),
         "Got:\n{ts}"
@@ -1427,7 +1429,7 @@ fn test_untagged_tuple_member_json_schema() {
 fn test_untagged_tuple_member_typescript() {
     let ts = ShapedUnion::ts_definition();
     assert!(
-        ts.contains("export type ShapedUnion = { pair: [number, string] };"),
+        ts.contains("export type ShapedUnionDraft = { pair: [number, string] };"),
         "Got:\n{ts}"
     );
 }
@@ -1977,7 +1979,7 @@ fn test_untagged_slot_constraint_json_schema() {
 fn test_untagged_slot_constraint_leaves_the_typescript_type_alone() {
     let ts = MimeType::ts_definition();
     assert!(
-        ts.contains("export type MimeType = KnownMimeType | string;"),
+        ts.contains("export type MimeTypeDraft = KnownMimeType | string;"),
         "Got:\n{ts}"
     );
 }
@@ -2302,7 +2304,7 @@ fn test_an_untagged_enums_own_check_json_schema() {
 fn test_an_untagged_enums_own_check_leaves_the_typescript_type_alone() {
     let ts = ContentKind::ts_definition();
     assert!(
-        ts.contains("export type ContentKind = KnownKind | string;"),
+        ts.contains("export type ContentKindDraft = KnownKind | string;"),
         "Got:\n{ts}"
     );
 }

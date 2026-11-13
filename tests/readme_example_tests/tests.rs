@@ -105,7 +105,7 @@ fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
         declaration,
         &Tagged::ts_definition(),
         &[
-            "export type Tagged = {",
+            "export type TaggedDraft = {",
             "  kind: \"Tagged\";",
             "  name: string;",
         ],
@@ -115,7 +115,7 @@ fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
         declaration,
         &Tagged::zod_schema(),
         &[
-            "const Tagged$RawSchema = z.object({",
+            "const TaggedDraft$RawSchema = z.object({",
             "  kind: z.literal(\"Tagged\"),",
             "  name: z.string(),",
             "});",
@@ -150,7 +150,7 @@ fn test_the_optional_fields_example_is_declarable_and_shows_what_it_emits() {
         "    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub email: Option<String>,\n",
         &UserWithOptionals::ts_definition(),
         &[
-            "export type UserWithOptionals = {",
+            "export type UserWithOptionalsDraft = {",
             "  id: string;",
             "  name: string;",
             "  email: string | undefined;",
@@ -306,7 +306,7 @@ fn test_the_object_id_example_is_declarable_and_shows_what_it_emits() {
         "    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub parent_id: Option<ObjectId>,\n",
         &Document::ts_definition(),
         &[
-            "export type Document = {",
+            "export type DocumentDraft = {",
             "  id: ObjectId;",
             "  title: string;",
             "  author_id: ObjectId;",
@@ -351,7 +351,7 @@ fn test_the_chrono_example_is_declarable_and_shows_what_it_emits() {
         "    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub updated_at: Option<DateTime<Utc>>,\n",
         &Event::ts_definition(),
         &[
-            "export type Event = {",
+            "export type EventDraft = {",
             "  name: string;",
             "  date: string;",
             "  time: string;",

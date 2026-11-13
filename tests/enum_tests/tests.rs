@@ -448,11 +448,13 @@ fn test_single_value_enum_in_tagged_union_zod() {
 fn test_plain_enum_special_chars_zod_has_raw_and_schema() {
     let zod = MimeType::zod_schema();
     assert!(
-        zod.contains("MimeType$RawSchema"),
+        zod.contains("MimeTypeDraft$RawSchema"),
         "Should contain $RawSchema. Got:\n{zod}"
     );
     assert!(
-        zod.contains("export const MimeType$Schema: ZodType<MimeType> = MimeType$RawSchema;"),
+        zod.contains(
+            "export const MimeTypeDraft$Schema: ZodType<MimeTypeDraft> = MimeTypeDraft$RawSchema;"
+        ),
         "Should contain exported $Schema referencing $RawSchema. Got:\n{zod}"
     );
     assert!(
@@ -484,11 +486,11 @@ fn test_plain_enum_special_chars_ts_definition() {
 fn test_distribution_mime_type_zod_schema() {
     let zod = DistributionValidMimeType::zod_schema();
     assert!(
-        zod.contains("DistributionValidMimeType$RawSchema"),
+        zod.contains("DistributionValidMimeTypeDraft$RawSchema"),
         "Should contain $RawSchema. Got:\n{zod}"
     );
     assert!(
-        zod.contains("export const DistributionValidMimeType$Schema: ZodType<DistributionValidMimeType> = DistributionValidMimeType$RawSchema;"),
+        zod.contains("export const DistributionValidMimeTypeDraft$Schema: ZodType<DistributionValidMimeTypeDraft> = DistributionValidMimeTypeDraft$RawSchema;"),
         "Should contain exported $Schema referencing $RawSchema. Got:\n{zod}"
     );
     assert!(

@@ -142,14 +142,16 @@ fn a_type_whose_value_writes_such_a_map_carries_the_note() {
         WideKeyedSlot::ts_definition(),
         format!(
             "/**\n * A map keyed by an `i64` as the value of a struct of one slot.\n * \n\
-             {type_noted}\n */\nexport type WideKeyedSlot = Partial<Record<number, boolean>>;"
+             {type_noted}\n */\nexport type WideKeyedSlotDraft = Partial<Record<number, boolean>>;\n\n\
+             {NOTE_BLOCK}\nexport type WideKeyedSlot = Readonly<WideKeyedSlotDraft> & $brand<\"WideKeyedSlot\">;"
         )
     );
     assert_eq!(
         WideKeyedSlots::ts_definition(),
         format!(
             "/**\n * A map keyed by an `i64` in a struct of two slots.\n * \n{type_noted}\n \
-             */\nexport type WideKeyedSlots = [Partial<Record<number, boolean>>, number];"
+             */\nexport type WideKeyedSlotsDraft = [Partial<Record<number, boolean>>, number];\n\n\
+             {NOTE_BLOCK}\nexport type WideKeyedSlots = Readonly<WideKeyedSlotsDraft> & $brand<\"WideKeyedSlots\">;"
         )
     );
     assert_eq!(

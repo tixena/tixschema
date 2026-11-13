@@ -19,7 +19,7 @@ mod typescript {
         let ts = ArchiveEntry::<String, f64, String, u32, String>::ts_definition();
         assert!(
             ts.contains(
-                "export type ArchiveEntry<IdType, DateType, TagType, SizeType, OwnerType> = {"
+                "export type ArchiveEntryDraft<IdType, DateType, TagType, SizeType, OwnerType> = {"
             ),
             "Got: {ts}"
         );
@@ -46,7 +46,7 @@ mod typescript {
         );
         let holder = ArchiveStamp::<String>::ts_definition();
         assert!(
-            holder.contains("export type ArchiveStamp<IdType> = {"),
+            holder.contains("export type ArchiveStampDraft<IdType> = {"),
             "Got: {holder}"
         );
         assert!(
@@ -83,7 +83,7 @@ mod typescript {
     fn a_recursive_generic_names_itself_with_the_arguments_it_was_declared_under() {
         let node = ArchiveNode::<String>::ts_definition();
         assert!(
-            node.contains("export type ArchiveNode<IdType> = {"),
+            node.contains("export type ArchiveNodeDraft<IdType> = {"),
             "Got: {node}"
         );
         assert!(
@@ -146,8 +146,8 @@ mod zod {
         let zod = ArchiveEntry::<String, f64, String, u32, String>::zod_schema();
         assert!(
             zod.contains(
-                "const ArchiveEntry$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, \
-                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, ArchiveEntry$SchemaOf<ZodType, \
+                "const ArchiveEntryDraft$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, \
+                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, ArchiveEntryDraft$SchemaOf<ZodType, \
                  ZodType, ZodType, ZodType, ZodType>>>>>>();"
             ),
             "Got: {zod}"
@@ -217,8 +217,8 @@ mod zod {
         let node = ArchiveNode::<String>::zod_schema();
         assert!(
             node.contains(
-                "interface ArchiveNode$SchemaOf<IdType extends ZodType> extends ReturnType<\n  \
-                 typeof buildArchiveNode$Schema<IdType>\n> {}\n"
+                "interface ArchiveNodeDraft$SchemaOf<IdType extends ZodType> extends ReturnType<\n  \
+                 typeof buildArchiveNodeDraft$Schema<IdType>\n> {}\n"
             ),
             "Got: {node}"
         );
@@ -226,14 +226,14 @@ mod zod {
         let branch = ArchiveBranch::<String>::zod_schema();
         assert!(
             branch.contains(
-                "interface ArchiveBranch$SchemaOf<IdType extends ZodType> extends ReturnType<"
+                "interface ArchiveBranchDraft$SchemaOf<IdType extends ZodType> extends ReturnType<"
             ),
             "Got: {branch}"
         );
 
         let trunk = ArchiveTrunk::<String>::zod_schema();
         assert!(
-            trunk.contains("type ArchiveTrunk$SchemaOf<IdType extends ZodType> = ReturnType<"),
+            trunk.contains("type ArchiveTrunkDraft$SchemaOf<IdType extends ZodType> = ReturnType<"),
             "Got: {trunk}"
         );
     }
@@ -478,7 +478,7 @@ mod readme {
             "pub struct Node<IdType> {\n    pub children: Vec<Self>,\n    pub id: IdType,\n}",
             &Node::<String>::ts_definition(),
             &[
-                "export type Node<IdType> = {",
+                "export type NodeDraft<IdType> = {",
                 "  children: Array<Node<IdType>>;",
                 "  id: IdType;",
             ],
@@ -487,15 +487,15 @@ mod readme {
             "pub struct Node<IdType> {",
             &Node::<String>::zod_schema(),
             &[
-                "const buildNode$Schema = <IdType extends ZodType>(",
+                "const buildNodeDraft$Schema = <IdType extends ZodType>(",
                 "  idType: IdType,",
                 ") =>",
                 "  z.strictObject({",
                 "  get children() { return z.array(Node$SchemaFactory(idType)); },",
                 "  id: idType,",
                 "});",
-                "interface Node$SchemaOf<IdType extends ZodType> extends ReturnType<",
-                "  typeof buildNode$Schema<IdType>",
+                "interface NodeDraft$SchemaOf<IdType extends ZodType> extends ReturnType<",
+                "  typeof buildNodeDraft$Schema<IdType>",
                 "> {}",
             ],
         );

@@ -556,7 +556,7 @@ fn test_documented_struct() {
     assert!(properties.contains_key("is_active"));
     assert!(properties.contains_key("metadata"));
 
-    assert!(ts_definition.contains("export type DocumentedUser = {"));
+    assert!(ts_definition.contains("export type DocumentedUserDraft = {"));
     assert!(ts_definition.contains("id: string;"));
     assert!(ts_definition.contains("name: string;"));
     assert!(ts_definition.contains("email: string;"));

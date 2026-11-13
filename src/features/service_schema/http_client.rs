@@ -1211,11 +1211,11 @@ fn parsed_fn(named: &str, prefix: &str) -> String {
          * or JSON that is not that type, answer the fault instead, naming the first failing \
          key.\n \
          */\n\
-         function {prefix}HttpParsed<Parsed>(\n  \
+         function {prefix}HttpParsed<Schema extends ZodType>(\n  \
          operation: string,\n  \
          body: Uint8Array,\n  \
-         schema: ZodType<Parsed>,\n\
-         ): {{ ok: true; value: Parsed }} | {{ ok: false; fault: {named}Fault }} {{\n  \
+         schema: Schema,\n\
+         ): {{ ok: true; value: z.output<Schema> }} | {{ ok: false; fault: {named}Fault }} {{\n  \
          let detail: string;\n  \
          try {{\n    \
          const text = new TextDecoder(\"utf-8\", {{ fatal: true }}).decode(body);\n    \

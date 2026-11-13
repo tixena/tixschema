@@ -130,7 +130,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_typescript() {
     assert!(wire.is_string(), "wire: {wire}");
 
     let ts = Plain::ts_definition();
-    assert!(ts.contains("export type Plain = string;"), "Got: {ts}");
+    assert!(ts.contains("export type PlainDraft = string;"), "Got: {ts}");
     assert!(!ts.contains(": string;"), "Got: {ts}");
 }
 
@@ -167,7 +167,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_typescript() {
 
     let ts = Pair::ts_definition();
     assert!(
-        ts.contains("export type Pair = [string, number];"),
+        ts.contains("export type PairDraft = [string, number];"),
         "Got: {ts}"
     );
     assert!(!ts.contains(": string;"), "Got: {ts}");
@@ -199,7 +199,7 @@ fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     let zod = Pair::zod_schema();
     assert!(
         zod.contains(
-            "export const Pair$Schema: ZodType<Pair> = Pair$RawSchema.meta({\n  examples: []\n});"
+            "export const Pair$Schema = PairDraft$Schema.readonly().brand<\"Pair\">().meta(PairDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"
         ),
         "Got: {zod}"
     );
@@ -231,7 +231,7 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_typescript() {
 
     let ts = MaybeName::ts_definition();
     assert!(
-        ts.contains("export type MaybeName = string | null;"),
+        ts.contains("export type MaybeNameDraft = string | null;"),
         "Got: {ts}"
     );
 }
@@ -336,7 +336,7 @@ fn test_a_dropped_slot_is_no_element_of_the_typescript_tuple() {
 
     let ts = SkippedLeadSlot::ts_definition();
     assert!(
-        ts.contains("export type SkippedLeadSlot = [string];"),
+        ts.contains("export type SkippedLeadSlotDraft = [string];"),
         "Got: {ts}"
     );
     assert!(!ts.contains("null"), "Got: {ts}");
@@ -348,7 +348,7 @@ fn test_a_dropped_slot_is_no_element_of_the_typescript_tuple() {
 fn test_typescript_answers_the_two_slot_halves_the_way_it_answers_the_word() {
     let ts = BothHalvesDroppedSlot::ts_definition();
     assert!(
-        ts.contains("export type BothHalvesDroppedSlot = [string];"),
+        ts.contains("export type BothHalvesDroppedSlotDraft = [string];"),
         "Got: {ts}"
     );
 }
@@ -492,20 +492,20 @@ fn test_every_key_written_on_a_plain_slot_reaches_zod() {
     for (zod, binding) in [
         (
             PreprocessedSlot::zod_schema(),
-            "const PreprocessedSlot$RawSchema = z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(trim, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.string())));",
+            "const PreprocessedSlotDraft$RawSchema = z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(trim, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.string())));",
         ),
         (
             LiteralSlot::zod_schema(),
-            "const LiteralSlot$RawSchema = z.literal(\"fixed\", { error: (issue) => `not the \
+            "const LiteralSlotDraft$RawSchema = z.literal(\"fixed\", { error: (issue) => `not the \
              literal \"fixed\", got ${String(issue.input)}` }).check(z.superRefine((_, ctx) => {",
         ),
         (
             NullableSlot::zod_schema(),
-            "const NullableSlot$RawSchema = z.nullable(z.string());",
+            "const NullableSlotDraft$RawSchema = z.nullable(z.string());",
         ),
         (
             SubstitutedSlot::zod_schema(),
-            "const SubstitutedSlot$RawSchema = z.string();",
+            "const SubstitutedSlotDraft$RawSchema = z.string();",
         ),
     ] {
         assert_eq!(zod.lines().next(), Some(binding), "Got:\n{zod}");
@@ -519,21 +519,21 @@ fn test_every_key_written_on_a_plain_slot_reaches_typescript() {
     for (ts, declaration) in [
         (
             PreprocessedSlot::ts_definition(),
-            "export type PreprocessedSlot = string;",
+            "export type PreprocessedSlotDraft = string;",
         ),
         (
             LiteralSlot::ts_definition(),
-            "export type LiteralSlot = \"fixed\";",
+            "export type LiteralSlotDraft = \"fixed\";",
         ),
         (
             NullableSlot::ts_definition(),
-            "export type NullableSlot = string | null;",
+            "export type NullableSlotDraft = string | null;",
         ),
         (
             SubstitutedSlot::ts_definition(),
-            "export type SubstitutedSlot = string;",
+            "export type SubstitutedSlotDraft = string;",
         ),
     ] {
-        assert!(ts.ends_with(declaration), "Got:\n{ts}");
+        assert!(ts.contains(declaration), "Got:\n{ts}");
     }
 }

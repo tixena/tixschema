@@ -129,9 +129,9 @@ fn the_documents_state_the_signatures_of_the_functions_that_compile() {
     assert!(readme().contains(&format!("`{generic}`")));
     for signature in [
         "function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void",
-        "function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void",
-        "function withACode<CodeType>(value: Crate<CodeType>, ctx: \
-         ParsePayload<Crate<CodeType>>): void",
+        "function withinParcel(value: ParcelDraft, ctx: ParsePayload<ParcelDraft>): void",
+        "function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: \
+         ParsePayload<CrateDraft<CodeType>>): void",
     ] {
         assert!(
             compiled_typescript().contains(&format!("export {signature} {{")),

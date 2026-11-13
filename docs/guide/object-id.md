@@ -24,7 +24,7 @@ pub struct Document {
 Generated TypeScript:
 
 ```typescript
-export type Document = {
+export type DocumentDraft = {
   id: ObjectId;
   title: string;
   author_id: ObjectId;
@@ -33,6 +33,8 @@ export type Document = {
   parent_id: ObjectId | undefined;
   related_docs: Partial<Record<string, Array<ObjectId>>>;
 };
+
+export type Document = Readonly<DocumentDraft> & $brand<"Document">;
 
 export const Document$Schema = z.strictObject({
   id: z.strictObject({ $oid: z.string().regex(/^[a-f0-9]{24}$/, { message: "Invalid ObjectId" }) }),

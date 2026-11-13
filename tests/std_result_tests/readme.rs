@@ -47,13 +47,13 @@ fn the_readme_declares_the_model_this_binary_compiles() {
 fn the_readme_shows_what_typescript_and_zod_write() {
     let typescript = without_docs(&Reply::ts_definition());
     let declared = typescript
-        .split_once("export type Reply = {")
-        .map(|(_, rest)| format!("export type Reply = {{{rest}"))
+        .split_once("export type ReplyDraft = {")
+        .map(|(_, rest)| format!("export type ReplyDraft = {{{rest}"))
         .unwrap();
     assert!(README.contains(declared.trim_end()), "{declared}");
     let zod = Reply::zod_schema();
     let raw = zod.split("\n\n").next().unwrap();
-    assert!(raw.starts_with("const Reply$RawSchema"), "{zod}");
+    assert!(raw.starts_with("const ReplyDraft$RawSchema"), "{zod}");
     assert!(README.contains(raw), "{raw}");
 }
 
