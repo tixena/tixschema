@@ -521,7 +521,8 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
              (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
              Gangway._(read); }} factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) => \
              Gangway._(GangwayDraft.fromJson(json)); Map<String, dynamic> toJson() => \
-             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); }}"
+             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static \
+             Object $thrown(Object thrown) => thrown is GangwayDraft ? thrown.validate() : thrown; }}"
         )
     );
 }

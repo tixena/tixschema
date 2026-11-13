@@ -604,7 +604,8 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
          Tide._(read); } factory Tide.fromJsonUnjudged(Map<String, dynamic> json) => \
          Tide._(TideDraft.fromJson(json)); dynamic toJson() => _draft.toJson(); List<String> \
-         validationIssues() => _draft.validationIssues(); } class TideEbbing extends TideDraft \
+         validationIssues() => _draft.validationIssues(); static Object $thrown(Object thrown) => \
+         thrown is TideDraft ? thrown.validate() : thrown; } class TideEbbing extends TideDraft \
          { const TideEbbing({required this.height,}); final int height; factory \
          TideEbbing.fromJson(Map<String, dynamic> json) { for (final key in json.keys) { if \
          (!const <String>{'kind', 'height'}.contains(key)) throw FormatException('Unknown key \
