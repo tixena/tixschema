@@ -218,17 +218,17 @@ class Recorder : WharfClientServiceHttpTransport, WharfFilingClientServiceHttpTr
 
 fun main() = runBlocking {
     val recorder = Recorder()
-    val ticket = WharfTicketNumber(9007199254740993L)
+    val ticket = WharfTicketNumber.of(9007199254740993L)
     WharfClientServiceHttpClient(recorder).find(FindRequest(
-        berth = WharfBerthNumber(7u),
+        berth = WharfBerthNumber.of(7u),
         ticket = ticket,
-        label = WharfBerthLabel("007"),
-        since = WharfBerthNumber(9u),
-        berths = listOf(WharfBerthNumber(1u), WharfBerthNumber(2u)),
+        label = WharfBerthLabel.of("007"),
+        since = WharfBerthNumber.of(9u),
+        berths = listOf(WharfBerthNumber.of(1u), WharfBerthNumber.of(2u)),
     ))
-    val moored = WharfClientServiceHttpClient(recorder).moor("n", WharfBerthNumber(7u), ticket, WharfBerthLabel("42"))
+    val moored = WharfClientServiceHttpClient(recorder).moor("n", WharfBerthNumber.of(7u), ticket, WharfBerthLabel.of("42"))
     WharfFilingClientServiceHttpClient(recorder).file(
-        FileRequest(berth = WharfBerthNumber(7u), ticket = ticket, label = WharfBerthLabel("007")),
+        FileRequest(berth = WharfBerthNumber.of(7u), ticket = ticket, label = WharfBerthLabel.of("007")),
         JsonPrimitive(1),
     )
     for (sent in recorder.sent) println(sent)
