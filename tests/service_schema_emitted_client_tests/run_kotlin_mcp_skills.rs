@@ -30,18 +30,18 @@ object LessonHandlers : LessonServiceHandlers {
         "SKILL.md" -> LessonServiceReleaseNotesSkillResult.Ok("# Release notes\n\nRead the changes since 2026-11-01, then write one line per change.\n")
         "references/changes.md" -> LessonServiceReleaseNotesSkillResult.Ok("- renamed a document\n")
         "panic" -> throw IllegalStateException("the handler came apart")
-        else -> LessonServiceReleaseNotesSkillResult.Declared(BookErrorNotFound)
+        else -> LessonServiceReleaseNotesSkillResult.Declared(BookErrorNotFound.validate())
     }
 
     override suspend fun figuresSkill(req: String): LessonServiceFiguresSkillResult = when (req) {
         "SKILL.md" -> LessonServiceFiguresSkillResult.Ok(%TUPLE%("# Figures\n".encodeToByteArray().map { it.toUByte() }, "text/markdown"))
         "figures.bin" -> LessonServiceFiguresSkillResult.Ok(%TUPLE%(listOf<UByte>(0u, 255u, 128u, 1u), "application/octet-stream"))
-        else -> LessonServiceFiguresSkillResult.Declared(BookErrorNotFound)
+        else -> LessonServiceFiguresSkillResult.Declared(BookErrorNotFound.validate())
     }
 
     override suspend fun getLesson(req: BookRequest): LessonServiceGetLessonResult =
-        if (req.bookId == "lesson-1") LessonServiceGetLessonResult.Ok(BookInfo(3u))
-        else LessonServiceGetLessonResult.Declared(BookErrorNotFound)
+        if (req.bookId == "lesson-1") LessonServiceGetLessonResult.Ok(BookInfoDraft(3u).validate())
+        else LessonServiceGetLessonResult.Declared(BookErrorNotFound.validate())
 }
 
 fun nullable(text: String?): JsonElement = if (text == null) JsonNull else JsonPrimitive(text)

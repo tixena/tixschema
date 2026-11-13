@@ -31,7 +31,7 @@ fun withoutDuplicates(value: List<String>): List<String> {
     return emptyList()
 }
 
-fun withinParcel(value: Parcel): List<String> =
+fun withinParcel(value: ParcelDraft): List<String> =
     value.fragileItemCodes.withIndex()
         .filter { it.value !in value.itemCodeList }
         .map { "'fragileItemCodes.${it.index}': ${it.value} is outside of itemCodeList" }
@@ -39,36 +39,37 @@ fun withinParcel(value: Parcel): List<String> =
 
 /// The functions the checks of the shapes name.
 const SHAPE_CHECKS: &str = r#"
-fun sealedParcel(value: Parcel): List<String> =
+fun sealedParcel(value: ParcelDraft): List<String> =
     if (value.label == "open") listOf("an open parcel is not sealed") else emptyList()
 
 fun unreserved(value: Code): List<String> =
     if (value.value == "NONE") listOf("a code is not NONE") else emptyList()
 
-fun takingParcels(value: ClosedDock): List<String> =
-    if (value == ClosedDock) listOf("a closed dock takes no parcel") else emptyList()
+fun takingParcels(value: ClosedDockDraft): List<String> =
+    if (value == ClosedDockDraft) listOf("a closed dock takes no parcel") else emptyList()
 
-fun <CodeType> withACode(value: Crate<CodeType>): List<String> =
+fun <CodeType> withACode(value: CrateDraft<CodeType>): List<String> =
     if (value.codes.isEmpty()) listOf("'codes': a crate holds at least one code") else emptyList()
 
-fun <IdType> withEntries(value: Casket<IdType>): List<String> =
+fun <IdType> withEntries(value: CasketDraft<IdType>): List<String> =
     if (value.entries.isEmpty()) listOf("'entries': a casket holds at least one entry") else emptyList()
 
 class Chosen(private val value: Any) {
-    fun validate(): List<String> = listOf(value::class.simpleName!!)
+    fun validationIssues(): List<String> =
+        listOf((value.javaClass.methods.firstOrNull { it.name == "getDraft" }?.invoke(value) ?: value)::class.simpleName!!)
 }
 
 fun rated(value: Grade): List<String> =
     if (value == Grade.Unrated) listOf("a parcel is rated") else emptyList()
 
-fun labelled(value: Freight): List<String> =
+fun labelled(value: FreightDraft): List<String> =
     if (value is FreightLoose && value.freightLabel.isEmpty()) {
         listOf("'loose.freightLabel': a loose freight is labelled")
     } else {
         emptyList()
     }
 
-fun aReference(value: Reference): List<String> =
+fun aReference(value: ReferenceDraft): List<String> =
     if (value is ReferenceNumbered && value.value == 7u) listOf("a reference is not 7") else emptyList()
 "#;
 
@@ -753,7 +754,7 @@ fn driver(rows: &[Row]) -> String {
     {
         let _ = writeln!(
             main,
-            "    report({}, {kotlin}.validate())",
+            "    report({}, {kotlin}.validationIssues())",
             kotlin_string(held.name)
         );
     }
@@ -1353,7 +1354,7 @@ fn struct_rows() -> Vec<Row> {
         // holds one that breaks its bound is built, and its read is another run's.
         Row {
             expected: probe.validate().err().unwrap_or_default(),
-            kotlin: Some("Probe(Later(\"\"), Crate<UInt>(emptyList(), \"\"), \"\", 0u)".to_owned()),
+            kotlin: Some("Probe.checked(ProbeDraft(Later.checked(LaterDraft(\"\")), Crate.checked(CrateDraft<UInt>(emptyList(), \"\")), \"\", 0u))".to_owned()),
             name: "Probe",
             read: None,
         },
@@ -1389,7 +1390,7 @@ fn slot_rows() -> Vec<Row> {
         ),
         built(
             "Sealed",
-            "Sealed(\"\")",
+            "Sealed.checked(SealedDraft(\"\"))",
             &["too short: minimum length is 1, got 0"],
         ),
     ]
@@ -1500,17 +1501,17 @@ fn bare_variant_rows() -> Vec<Row> {
         ),
         built(
             "Lift, a model in the one slot",
-            "LiftBoxed(Parcel(listOf(\"x\"), listOf(\"x\"), \"\"))",
+            "Lift.checked(LiftBoxed(Parcel.checked(ParcelDraft(listOf(\"x\"), listOf(\"x\"), \"\"))))",
             &["'label': too short: minimum length is 1, got 0"],
         ),
         built(
             "Reference, a named member",
-            "ReferenceNamed(\"\")",
+            "Reference.checked(ReferenceNamed(\"\"))",
             &["'name': too short: minimum length is 1, got 0"],
         ),
         built(
             "Reference, the one slot",
-            "ReferenceNumbered(0u)",
+            "Reference.checked(ReferenceNumbered(0u))",
             &["too small: minimum is 1, got 0"],
         ),
         pinned(
@@ -1728,22 +1729,22 @@ fn the_readme_shows_the_functions_and_the_statements_that_compile() {
     for (emitted, statement) in [
         (
             &depot,
-            "violations.addAll(firstParcel.validate().map { kotlinSchemaUnder(\"firstParcel\", \
+            "violations.addAll(firstParcel.validationIssues().map { kotlinSchemaUnder(\"firstParcel\", \
              it) })",
         ),
         (
             &depot,
-            "parcelList.forEachIndexed { index, held -> violations.addAll(held.validate().map { \
+            "parcelList.forEachIndexed { index, held -> violations.addAll(held.validationIssues().map { \
              kotlinSchemaUnder(\"parcelList.$index\", it) }) }",
         ),
         (
             &depot,
-            "spareParcel?.let { held -> violations.addAll(held.validate().map { \
+            "spareParcel?.let { held -> violations.addAll(held.validationIssues().map { \
              kotlinSchemaUnder(\"spareParcel\", it) }) }",
         ),
         (
             &depot,
-            "for ((key, held) in parcelsByDock) { violations.addAll(held.validate().map { \
+            "for ((key, held) in parcelsByDock) { violations.addAll(held.validationIssues().map { \
              kotlinSchemaUnder(\"parcelsByDock.$key\", it) }) }",
         ),
         (

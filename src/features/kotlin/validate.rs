@@ -9,6 +9,7 @@ extern crate alloc;
 
 use alloc::collections::BTreeSet;
 use core::cell::RefCell;
+use core::fmt::Write as _;
 use core::mem;
 use std::collections::HashMap;
 
@@ -130,6 +131,8 @@ struct Noted {
     /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
     /// for an alias, which is whatever it names.
     bound: Option<bool>,
+    /// Whether the type is a model with a draft, whose rules a holder asks of `draft`.
+    drafted: Answers,
     /// Whether the type carries `kotlinSchemaAtFilling()`, a brand whose declared default is a
     /// list.
     filling: Answers,
@@ -188,7 +191,7 @@ impl Helper {
                 "private fun Any?.kotlinSchemaAtFilling(filling: String): List<String> = \
                  emptyList()"
             }
-            Self::Fallback => "private fun Any?.validate(): List<String> = emptyList()",
+            Self::Fallback => "private fun Any?.validationIssues(): List<String> = emptyList()",
             Self::Key => {
                 "private fun <T> kotlinSchemaKey(key: T, serializer: KSerializer<T>?): String = \
                  (serializer?.let { Json.encodeToJsonElement(it, key) } ?: \
@@ -354,10 +357,19 @@ impl<'item> Rules<'item> {
         let Some(meta) = member.def.model_schema_prop_meta.as_ref() else {
             return Vec::new();
         };
+        let handed = if let FieldDefType::SiblingType(name, _) = &member.def.field_type
+            && member.def.array_depth == 0
+            && !member.def.is_optional()
+            && drafted(name)
+        {
+            format!("{read}.draft")
+        } else {
+            read.to_owned()
+        };
         meta.check
             .iter()
             .map(|check| {
-                let answered = format!("{}({read})", kotlin_name(&check.name));
+                let answered = format!("{}({handed})", kotlin_name(&check.name));
                 self.collected(&answered, member.place.as_deref())
             })
             .collect()
@@ -544,7 +556,8 @@ impl<'item> Rules<'item> {
                 } else {
                     String::new()
                 };
-                found.push(self.collected(&format!("{read}.{method}({handed})"), place));
+                let called = format!("{read}.{method}({handed})");
+                found.push(self.collected(&called, place));
             }
             if let Some(filling) = self.filling_told(name, arguments) {
                 let counted = format!("{read}.kotlinSchemaAtFilling({})", kotlin_quoted(&filling));
@@ -603,6 +616,17 @@ impl<'item> Rules<'item> {
         }
     }
 
+    /// [`Self::written`] for a model type, whose rules are `validationIssues()` where it has a
+    /// draft.
+    pub fn issues(&mut self, modifier: &str) -> String {
+        let method = if super::valid::drafted() {
+            "validationIssues"
+        } else {
+            "validate"
+        };
+        self.written_as(method, modifier)
+    }
+
     /// The judged serializer of the type, which hands `validate()` the serializer of each
     /// parameter a map is keyed by, and a brand counting a list default the serializer of the
     /// parameter it fills.
@@ -612,8 +636,18 @@ impl<'item> Rules<'item> {
         generic_params: &str,
         type_parameters: &[String],
         composed: bool,
+        drafted: bool,
     ) -> String {
         let keys: Vec<String> = self.keys.iter().cloned().collect();
+        if drafted {
+            return read::judged_valid(
+                export_name,
+                generic_params,
+                type_parameters,
+                composed,
+                (&keys, &[]),
+            );
+        }
         read::judged_counting(
             export_name,
             generic_params,
@@ -793,7 +827,7 @@ impl<'item> Rules<'item> {
                 if !validates(name) {
                     self.helpers.insert(Helper::Fallback);
                 }
-                Some("validate")
+                Some("validationIssues")
             }
         }
     }
@@ -923,16 +957,21 @@ impl<'item> Rules<'item> {
     /// `kotlinSchemaBound()` where the type answers its bounds alone, and each function their
     /// statements call.
     pub fn written(&mut self, modifier: &str) -> String {
+        self.written_as("validate", modifier)
+    }
+
+    fn written_as(&mut self, method: &str, modifier: &str) -> String {
         let statements = mem::take(&mut self.statements);
         self.keys.retain(|key| {
             let name = kotlin_serializer_param_name(key);
             statements.iter().any(|statement| hands(statement, &name))
         });
+        let mut aliased = String::new();
         let validate = if statements.is_empty() {
-            format!("{modifier}fun validate(): List<String> = emptyList()")
+            format!("{modifier}fun {method}(): List<String> = emptyList()")
         } else if self.keys.is_empty() {
             format!(
-                "{modifier}fun validate(): List<String> {{ val {VIOLATIONS} = \
+                "{modifier}fun {method}(): List<String> {{ val {VIOLATIONS} = \
                  mutableListOf<String>(); {}; return {VIOLATIONS} }}",
                 statements.join("; ")
             )
@@ -948,14 +987,30 @@ impl<'item> Rules<'item> {
                 .map(|key| format!("{}: KSerializer<{key}>?", kotlin_serializer_param_name(key)))
                 .collect::<Vec<_>>()
                 .join(", ");
+            if method == "validate" {
+                let names = taken_by
+                    .iter()
+                    .map(|key| kotlin_serializer_param_name(key))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let _ = write!(
+                    aliased,
+                    "; fun validationIssues({taken}): List<String> = validate({names})"
+                );
+            }
             format!(
-                "{modifier}fun validate(): List<String> = validate({nulls}); \
-                 fun validate({taken}): List<String> {{ val {VIOLATIONS} = \
+                "{modifier}fun {method}(): List<String> = {method}({nulls}); \
+                 fun {method}({taken}): List<String> {{ val {VIOLATIONS} = \
                  mutableListOf<String>(); {}; return {VIOLATIONS} }}",
                 statements.join("; ")
             )
         };
         let mut members = vec![validate];
+        if method == "validate" {
+            members.push(format!(
+                "{modifier}fun validationIssues(): List<String> = validate(){aliased}"
+            ));
+        }
         let counted = mem::take(&mut self.filling_statements);
         if let Some((_, declared)) = self.filled.as_ref().filter(|_| !counted.is_empty()) {
             members.push(format!(
@@ -1171,6 +1226,7 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
             filling: Answers::No,
             length,
             text,
+            drafted: Answers::No,
             unjudged: false,
             validates: false,
         },
@@ -1195,6 +1251,7 @@ pub fn note_brand(
             filling: Answers::of(filling),
             length: Answers::of(length),
             text,
+            drafted: Answers::No,
             unjudged: true,
             validates: true,
         },
@@ -1211,6 +1268,7 @@ pub fn note_model(rust_ident: &str) {
             filling: Answers::No,
             length: Answers::No,
             text: false,
+            drafted: Answers::of(super::valid::drafted()),
             unjudged: true,
             validates: true,
         },
@@ -1228,6 +1286,7 @@ pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
             filling: Answers::No,
             length: Answers::No,
             text: false,
+            drafted: Answers::No,
             unjudged,
             validates: true,
         },
@@ -1348,6 +1407,15 @@ fn text_statements(meta: &ModelSchemaPropMeta, text: &str, place: Option<&str>) 
         ));
     }
     statements
+}
+
+/// Whether the emitter wrote a model with a draft under `rust_ident`.
+fn drafted(rust_ident: &str) -> bool {
+    NOTED.with(|seen| {
+        seen.borrow()
+            .get(rust_ident)
+            .is_some_and(|noted| noted.drafted == Answers::Yes)
+    })
 }
 
 /// Whether the emitter wrote a type that carries `validate()` under `rust_ident`.

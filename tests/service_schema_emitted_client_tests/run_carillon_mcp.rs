@@ -267,7 +267,7 @@ fun main() = runBlocking {
     }
     val whole = Json.decodeFromString(serializer<CarillonChime>(), WHOLE)
     val read = REPLIES.map { told(CarillonMcpServiceMcpClient(Canned(it)).strike(whole)) }
-    val rung = TOLLS.map { tolled(CarillonMcpServiceMcpClient(Canned(it)).toll(CarillonBell(3u))) }
+    val rung = TOLLS.map { tolled(CarillonMcpServiceMcpClient(Canned(it)).toll(CarillonBellDraft(3u).validate())) }
     println(buildJsonObject {
         put("served", JsonArray(served))
         put("struck", JsonArray(strikes))

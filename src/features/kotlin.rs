@@ -15,6 +15,7 @@ mod arrays;
 mod preprocess;
 mod read;
 mod texts;
+mod valid;
 mod validate;
 
 extern crate alloc;
@@ -99,9 +100,6 @@ const KOTLIN_HARD_KEYWORDS: [&str; 28] = [
     "while",
 ];
 
-/// What a sealed interface declares the method each of its variants overrides as.
-const VALIDATE_DECLARED: &str = "{ fun validate(): List<String> }";
-
 /// The payload a serializer that corrects the plugin's reads, `transformDeserialize`'s parameter.
 const ELEMENT: &str = "element";
 
@@ -138,6 +136,8 @@ pub struct KotlinArgs<'args> {
     pub preprocess: &'args [FunctionName],
     /// The Rust name of the item, which a member written `Self` is named as.
     pub type_name: &'args str,
+    /// Whether the item is a type a service writes for itself, which has no draft.
+    pub undrafted: bool,
 }
 
 /// One field this module has decided belongs on the wire: its Rust name (camel-cased into the
@@ -263,6 +263,8 @@ struct DispatchedTaggedContext<'ctx> {
     args: &'ctx KotlinArgs<'ctx>,
     /// The defaults of the members of the enum's variants.
     defaults: &'ctx SerdeDefaults,
+    /// The draft the subclasses implement.
+    draft: &'ctx str,
     export_name: &'ctx str,
     generic_params: &'ctx str,
     /// The type parameters a map of any variant is keyed by.
@@ -866,9 +868,14 @@ pub fn kotlin_name(cased: &str) -> String {
 
 /// `rust_name` cased the way a Kotlin property is: `conversation_id` -> `conversationId`. Reuses
 /// serde's own `camelCase` rule (`rename_rule.rs`) rather than a second implementation, since the
-/// two rules coincide exactly on a `snake_case` Rust identifier.
+/// two rules coincide exactly on a `snake_case` Rust identifier. A member named `draft` is
+/// `draft_`, off the property of the valid class that gives its draft.
 pub fn kotlin_property_name(rust_name: &str) -> String {
-    kotlin_name(&RenameRule::CamelCase.apply_to_field(rust_name))
+    let cased = RenameRule::CamelCase.apply_to_field(rust_name);
+    if cased == "draft" {
+        return "draft_".to_owned();
+    }
+    kotlin_name(&cased)
 }
 
 /// Whether `field` carries `#[model_schema_prop(nullable)]` — the flag that keeps an `Option<T>`
@@ -2147,7 +2154,7 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 /// serializer the property names for it: a model's unjudged one, or the one that calls the
 /// member's own `preprocess`. Without it, the member is declared as the emitter's own serializer
 /// reads it ([`read::declared_typename`]).
-fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> String {
+fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> (String, String) {
     let prop_name = kotlin_property_name(&field.rust_name);
     let annotation = if kotlin_bare(&prop_name) == field.wire_name {
         String::new()
@@ -2194,16 +2201,37 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> Str
     } else {
         ""
     };
-    format!("{annotation}{written}{unjudged}val {prop_name}: {ty}{default}")
+    (
+        format!("{annotation}{written}{unjudged}val {prop_name}: {ty}{default}"),
+        ty,
+    )
 }
 
 /// The constructor parameter list a set of [`KotlinField`]s earns, joined by `, `.
 fn data_class_params(fields: &[KotlinField], plugin: Option<&Plugin<'_>>) -> String {
-    fields
+    data_class_members(fields, plugin).0
+}
+
+/// [`data_class_params`], and the members of the valid type that forward each property to the
+/// draft.
+fn data_class_members(fields: &[KotlinField], plugin: Option<&Plugin<'_>>) -> (String, String) {
+    let declared: Vec<(String, String)> = fields
         .iter()
         .map(|field| property_declaration(field, plugin))
+        .collect();
+    let forwards = valid::forwarded_properties(
+        &fields
+            .iter()
+            .zip(&declared)
+            .map(|(field, (_, ty))| (field.rust_name.as_str(), ty.clone()))
+            .collect::<Vec<_>>(),
+    );
+    let params = declared
+        .into_iter()
+        .map(|(declaration, _)| declaration)
         .collect::<Vec<_>>()
-        .join(", ")
+        .join(", ");
+    (params, forwards)
 }
 
 /// `field`'s own type with any outer `Option` stripped — the inner type a flatten field's plain
@@ -2759,7 +2787,7 @@ fn flatten_plan(
 /// wherever [`FlattenPlan::read`] knows every key the members read, but the tag of a variant under
 /// a tag alone, which its enum hands it with the object.
 fn flatten_merging_serializer(
-    export_name: &str,
+    (export_name, draft): (&str, &str),
     generic_params: &str,
     type_parameters: &[String],
     fields: &[KotlinField],
@@ -2772,8 +2800,8 @@ fn flatten_merging_serializer(
         BesideTag::Own(own_tag) => (Some(own_tag), None),
         BesideTag::Enum(key) => (None, Some(key)),
     };
-    let self_type = format!("{export_name}{generic_params}");
-    let serializer_head = read::written_head(export_name, type_parameters);
+    let self_type = format!("{draft}{generic_params}");
+    let serializer_head = read::written_head(draft, type_parameters);
     let mut plan = flatten_plan(fields, type_parameters, beside);
     // A struct's own tag is written ahead of everything merged into the object.
     if let Some((key, named)) = own_tag {
@@ -2805,7 +2833,7 @@ fn flatten_merging_serializer(
         )
     });
     let read = format!(
-        "val obj = {}; {tag_held}{}; {unknown}{export_name}({})",
+        "val obj = {}; {tag_held}{}; {unknown}{draft}({})",
         payload_read_as(&aliases::keys_named("element", renamed), JsonKind::Object),
         plan.deserialize_stmts.join("; "),
         plan.ctor_args.join(", "),
@@ -2878,12 +2906,117 @@ fn note_taken_keys(rust_ident: &str, keys: Vec<String>) {
     });
 }
 
+/// What a struct that names a function and each key its read takes publish to the types written
+/// after it.
+fn note_struct_reads(
+    item_struct: &ItemStruct,
+    fields: &[KotlinField],
+    own_tag: Option<&(String, String)>,
+    args: &KotlinArgs<'_>,
+) {
+    let rust_ident = item_struct.ident.to_string();
+    // A struct that names a function takes no key (`preprocess::note`), and an optional holder
+    // still looks for it by the keys its read reads.
+    let taken = keys_taken_when_flattened(
+        &item_struct.fields,
+        container_rename_rule(&item_struct.attrs),
+        &[],
+    );
+    note_taken_keys(&rust_ident, taken);
+    note_read_keys(&rust_ident, fields, own_tag, args.preprocess);
+    let handed_on = fields
+        .iter()
+        .any(|field| field.flatten && preprocess::takes_no_key(&field.field_def));
+    preprocess::note(&rust_ident, handed_on || !args.preprocess.is_empty());
+}
+
+/// The valid class of a struct and the serializers over it: its unjudged read, then its own.
+/// `members` are those the valid class carries, and `composed` says the draft's own serializer
+/// binds each type parameter to `Any`.
+fn struct_serializers(
+    rules: &Rules<'_>,
+    (export_name, draft, generic_params): (&str, &str, &str),
+    type_parameters: &[String],
+    (members, composed): (&str, bool),
+) -> String {
+    [
+        valid::pair(
+            export_name,
+            draft,
+            (generic_params, generic_params),
+            type_parameters,
+            (members, composed),
+        ),
+        rules.judged(
+            export_name,
+            generic_params,
+            type_parameters,
+            composed,
+            valid::drafted(),
+        ),
+    ]
+    .iter()
+    .filter(|part| !part.is_empty())
+    .map(String::as_str)
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+/// The members of the named-field struct `item_struct` that are on the wire.
+fn struct_fields(
+    item_struct: &ItemStruct,
+    args: &KotlinArgs<'_>,
+    type_parameters: &[String],
+    defaults: &SerdeDefaults,
+) -> Vec<KotlinField> {
+    collect_kotlin_fields(
+        &item_struct.fields,
+        container_rename_rule(&item_struct.attrs),
+        type_parameters,
+        args,
+        &|field| defaults.at(None, field),
+    )
+}
+
+/// The rules of the members of a struct, and the methods of its draft that carry them.
+fn struct_rules<'item>(
+    serializable: &'item [String],
+    fields: &[KotlinField],
+    args: &KotlinArgs<'_>,
+    (export_name, generic_params): (&str, &str),
+) -> (Rules<'item>, String) {
+    let mut rules = Rules::handing(serializable);
+    named_member_rules(&mut rules, fields, None);
+    rules.own(args.check);
+    let validated = valid::body(&mut rules, export_name, generic_params);
+    (rules, validated)
+}
+
+/// The declaration of the draft of a struct: Kotlin's own no-data `object` for a unit struct, a
+/// plain `class` for one of no member on the wire and a `data class` for any other.
+fn struct_body(
+    item_struct: &ItemStruct,
+    fields: &[KotlinField],
+    draft: &str,
+    params: &str,
+) -> String {
+    let generic_params = kotlin_generic_params(&item_struct.generics);
+    if matches!(item_struct.fields, Fields::Unit) {
+        format!("object {draft}{generic_params}")
+    } else if fields.is_empty() {
+        format!("class {draft}{generic_params}")
+    } else {
+        format!("data class {draft}{generic_params}({params})")
+    }
+}
+
 /// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()` and its two
 /// serializers, plus a `typealias` under its own Rust ident when `name = "..."` moved its
 /// published name elsewhere. The plugin's serializer is the unjudged one, and a struct carrying
 /// one or more `#[serde(flatten)]` fields, or a member serde never writes and the plugin would,
 /// earns [a merging one](flatten_merging_serializer) in its place.
 fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> TokenStream {
+    valid::enter(args);
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     if let Some(held) = brand_field(item_struct) {
         return value_class_tokens(item_struct, held, args);
@@ -2897,55 +3030,48 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     register_kotlin_name(&rust_ident, &export_name);
     validate::note_model(&rust_ident);
 
-    let rule = container_rename_rule(&item_struct.attrs);
     let defaults = SerdeDefaults::of(item_struct);
-    let fields = collect_kotlin_fields(
-        &item_struct.fields,
-        rule,
-        &type_parameters,
-        args,
-        &|field| defaults.at(None, field),
-    );
+    let fields = struct_fields(item_struct, args, &type_parameters, &defaults);
     let generic_params = kotlin_generic_params(&item_struct.generics);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let written_by_hand = fields
         .iter()
         .any(|field| field.flatten || field.never_written);
     let renamed = aliases::of_members(&fields);
-    // A struct that names a function takes no key (`preprocess::note`), and an optional holder
-    // still looks for it by the keys its read reads.
-    let taken = keys_taken_when_flattened(&item_struct.fields, rule, &[]);
-    note_taken_keys(&rust_ident, taken);
     let own_tag = struct_tag(item_struct);
-    note_read_keys(&rust_ident, &fields, own_tag.as_ref(), args.preprocess);
-    let handed_on = fields
-        .iter()
-        .any(|field| field.flatten && preprocess::takes_no_key(&field.field_def));
-    preprocess::note(&rust_ident, handed_on || !args.preprocess.is_empty());
+    note_struct_reads(item_struct, &fields, own_tag.as_ref(), args);
     let plugin = Plugin {
         owner: &export_name,
         type_parameters: &type_parameters,
     };
-    let body = if matches!(item_struct.fields, Fields::Unit) {
-        // A unit struct is Kotlin's own no-data type: `object`, not `class` below.
-        format!("object {export_name}{generic_params}")
-    } else if fields.is_empty() {
-        format!("class {export_name}{generic_params}")
-    } else {
-        format!(
-            "data class {export_name}{generic_params}({})",
-            data_class_params(&fields, (!written_by_hand).then_some(&plugin))
+    let draft = valid::draft_name(&export_name);
+    let (params, forwards) = data_class_members(&fields, (!written_by_hand).then_some(&plugin));
+    let body = struct_body(item_struct, &fields, &draft, &params);
+    let serializable = serialized_parameters(&item_struct.generics);
+    let (rules, validated) = struct_rules(
+        &serializable,
+        &fields,
+        args,
+        (&export_name, &generic_params),
+    );
+    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
+    let serializers = |composed: bool| {
+        struct_serializers(
+            &rules,
+            (&export_name, &draft, &generic_params),
+            &type_parameters,
+            (
+                &format!(
+                    "{forwards}{}",
+                    valid::forwarded_issues(&rules.handed_keys())
+                ),
+                composed,
+            ),
         )
     };
-    let serializable = serialized_parameters(&item_struct.generics);
-    let mut rules = Rules::handing(&serializable);
-    named_member_rules(&mut rules, &fields, None);
-    rules.own(args.check);
-    let validated = rules.written("");
-    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let kotlin_source = if written_by_hand {
         let unjudged = flatten_merging_serializer(
-            &export_name,
+            (&export_name, &draft),
             &generic_params,
             &type_parameters,
             &fields,
@@ -2954,9 +3080,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             &renamed,
         );
         format!(
-            "@Serializable(with = {export_name}Serializer::class) {body} {{ {validated} }} \
-             {unjudged} {}{alias}",
-            rules.judged(&export_name, &generic_params, &type_parameters, true)
+            "{} {body} {{ {validated} }} {unjudged} {}{alias}",
+            read::written_draft(&draft),
+            serializers(true)
         )
     } else {
         // A struct's own tag: a property outside the constructor, always written and holding the
@@ -2967,10 +3093,10 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             .map_or_else(String::new, |(key, named)| own_tag_property(key, named));
         format!(
             "{}{} {body} {{ {tag}{validated} }} {} {}{alias}",
-            read::kept(&export_name),
+            read::kept_draft(&draft),
             read::ignoring_unknown_keys(),
             kept_unjudged(
-                &export_name,
+                &draft,
                 &generic_params,
                 &type_parameters,
                 &preprocess::keyed(
@@ -2982,7 +3108,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
                 ),
                 own_tag.as_ref()
             ),
-            rules.judged(&export_name, &generic_params, &type_parameters, false)
+            serializers(false)
         )
     };
 
@@ -3127,7 +3253,13 @@ fn value_class_tokens(
         "{} value class {export_name}{generic_params} private constructor(val value: \
          {value_type}) {{ {answered}{validated}; {built}{nested} }} {sealed_read} {}{}{}{alias}",
         read::kept_inline(&export_name),
-        rules.judged(&export_name, &generic_params, &type_parameters, false),
+        rules.judged(
+            &export_name,
+            &generic_params,
+            &type_parameters,
+            false,
+            false
+        ),
         delegating.map_or_else(String::new, |object| format!(" {object}")),
         mapped.map_or_else(String::new, |object| format!(" {object}"))
     );
@@ -3168,14 +3300,9 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         .collect();
 
     let generic_params = kotlin_generic_params(&item_struct.generics);
-    let serializer_name = format!("{export_name}Serializer");
-    let serializer_head = read::written_head(&export_name, &type_parameters);
-    let params = slots
-        .iter()
-        .enumerate()
-        .map(|(slot, element)| format!("val slot{slot}: {}", read::declared_typename(element)))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let draft = valid::draft_name(&export_name);
+    let serializer_head = read::written_head(&draft, &type_parameters);
+    let (params, forwards) = tuple_members(&slots);
     let payload = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
     let serializable = serialized_parameters(&item_struct.generics);
     let mut rules = Rules::handing(&serializable);
@@ -3193,14 +3320,15 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     }
     rules.own(args.check);
     let (written, read_slots) = tuple_struct_wire(
-        &export_name,
+        &draft,
         lone_slot.map_or(Slots::Array(&slots), Slots::Lone),
         &type_parameters,
         "element",
     );
     let read_back = read::read_at("input", &payload, &read_slots);
-    let validated = rules.written("");
-    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
+    let validated = valid::body(&mut rules, &export_name, &generic_params);
+    let keyed = rules.handed_keys();
+    validate::note_hands(&rust_ident, &type_parameters, &keyed);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     // kotlinc refuses a data class of no property: a struct of no slot is a plain class.
     let class = if slots.is_empty() {
@@ -3208,18 +3336,26 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     } else {
         "data class"
     };
+    let serializers = struct_serializers(
+        &rules,
+        (&export_name, &draft, &generic_params),
+        &type_parameters,
+        (
+            &format!("{forwards}{}", valid::forwarded_issues(&keyed)),
+            true,
+        ),
+    );
     let kotlin_source = format!(
-        "@Serializable(with = {serializer_name}::class) \
-         {class} {export_name}{generic_params}({params}) {{ {validated} }} \
-         {serializer_head} : KSerializer<{export_name}{generic_params}> {{ \
+        "{} {class} {draft}{generic_params}({params}) {{ {validated} }} \
+         {serializer_head} : KSerializer<{draft}{generic_params}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
-         override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
+         override fun serialize(encoder: Encoder, value: {draft}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement({written}) }}; \
-         {}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
-         val input = decoder as JsonDecoder; {read_back} }} }} {}{alias}",
+         {}override fun deserialize(decoder: Decoder): {draft}{generic_params} {{ \
+         val input = decoder as JsonDecoder; {read_back} }} }} {serializers}{alias}",
+        read::written_draft(&draft),
         read::helpers_for(&read_back),
-        rules.judged(&export_name, &generic_params, &type_parameters, true)
     );
 
     kotlin_module_tokens(
@@ -3228,6 +3364,28 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         &kotlin_source,
         &SerdeDefaults::none(),
     )
+}
+
+/// The constructor parameters of the draft of a tuple struct over `slots`, and the members of the
+/// valid type that forward each of them.
+fn tuple_members(slots: &[FieldDef]) -> (String, String) {
+    let declared: Vec<(String, String)> = slots
+        .iter()
+        .enumerate()
+        .map(|(slot, element)| (format!("slot{slot}"), read::declared_typename(element)))
+        .collect();
+    let params = declared
+        .iter()
+        .map(|(name, ty)| format!("val {name}: {ty}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let forwards = valid::forwarded_properties(
+        &declared
+            .iter()
+            .map(|(name, ty)| (name.as_str(), ty.clone()))
+            .collect::<Vec<_>>(),
+    );
+    (params, forwards)
 }
 
 /// What the serializer of the tuple struct `export_name` writes of `value`, and the statements,
@@ -3331,6 +3489,7 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
 /// declaration; a `sealed interface` for every tagged or untagged shape otherwise — mirroring
 /// exactly the shape `process_enum` itself dispatches a declaration to.
 fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream {
+    valid::enter(args);
     // Plain or not as every variant declared reads, as `process_enum` dispatches it.
     let plain = is_plain_enum(declared);
     let item_enum = &variants_on_the_wire(declared);
@@ -3404,7 +3563,7 @@ fn variant_body(
 ) -> String {
     let mut rules = Rules::of(ctx.serializable).handed(ctx.keyed);
     variant_rules(&mut rules, payload, ctx.tagging, wire_tag, ctx.args);
-    format!("{{ {} }}", rules.written("override "))
+    format!("{{ {} }}", rules.issues("override "))
 }
 
 /// The type parameters a map in any variant of `item_enum` is keyed by, whose serializers the
@@ -3536,7 +3695,7 @@ fn variant_serializer(
     };
     written_by_hand(payload).then(|| {
         flatten_merging_serializer(
-            plugin.owner,
+            (plugin.owner, plugin.owner),
             generic_params,
             plugin.type_parameters,
             fields,
@@ -3776,7 +3935,7 @@ fn dispatched_tagged_variant(
         type_parameters: ctx.type_parameters,
     };
     let (declaration, declared) = variant_subclass(
-        ctx.export_name,
+        ctx.draft,
         &plugin,
         ctx.generic_params,
         ctx.nothing_generic_args,
@@ -3919,9 +4078,11 @@ fn dispatched_tagged_enum_kotlin_source(
         tag_attrs.rename_all_fields.as_deref(),
         (export_name, args, defaults),
     );
+    let draft = valid::draft_name(export_name);
     let ctx = DispatchedTaggedContext {
         args,
         defaults,
+        draft: &draft,
         export_name,
         generic_params: &generic_params,
         keyed: &keyed,
@@ -3953,33 +4114,28 @@ fn dispatched_tagged_enum_kotlin_source(
     let deserialize_body =
         format!("val element = {whole}; return kotlinSchemaAt(input) {{ {read} }}");
 
-    let serializer_name = format!("{export_name}Serializer");
-    let base = format!(
-        "@Serializable(with = {serializer_name}::class) sealed interface {export_name}{} \
-         {VALIDATE_DECLARED}",
-        kotlin_out_generic_params(&item_enum.generics)
-    );
-    let serializer_head = read::written_head(export_name, &type_parameters);
+    let base = enum_base(item_enum, export_name, &draft);
+    let serializer_head = read::written_head(&draft, &type_parameters);
     let serializer_object = format!(
-        "{serializer_head} : KSerializer<{export_name}{generic_params}> {{ \
+        "{serializer_head} : KSerializer<{draft}{generic_params}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
-         override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
+         override fun serialize(encoder: Encoder, value: {draft}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(when (value) {{ {} }}) }}; \
-         {}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
+         {}override fun deserialize(decoder: Decoder): {draft}{generic_params} {{ \
          val input = decoder as JsonDecoder; {deserialize_body} }} }}",
         serialize_arms.join("; "),
         read::helpers_for(&deserialize_body),
     );
 
     format!(
-        "{base} {} {serializer_object} {}",
+        "{base} {} {serializer_object} {} {}",
         subclasses.join(" "),
-        read::judged(
+        enum_valid_class(item_enum, export_name, &draft, (&keyed, &taking)),
+        enum_judged(
             export_name,
             &generic_params,
             &type_parameters,
-            true,
             (&keyed, &taking)
         )
     )
@@ -4007,6 +4163,7 @@ fn untagged_enum_kotlin_source(
         (export_name, args, defaults),
     );
 
+    let draft = valid::draft_name(export_name);
     let mut subclasses = Vec::new();
     let mut serialize_arms = Vec::new();
     let mut deserialize_chain = String::from("runCatching { error(\"unreachable\") as Nothing }");
@@ -4032,7 +4189,7 @@ fn untagged_enum_kotlin_source(
         };
         let (declaration, serializer) = within_variant(&variant.ident, || {
             let (declaration, _) = variant_subclass(
-                export_name,
+                &draft,
                 &plugin,
                 &generic_params,
                 &nothing_generic_args,
@@ -4043,10 +4200,7 @@ fn untagged_enum_kotlin_source(
             let serializer = variant_serializer(&plugin, &generic_params, &payload, None);
             (declaration, serializer)
         });
-        subclasses.push(format!(
-            "{declaration} {{ {} }}",
-            rules.written("override ")
-        ));
+        subclasses.push(format!("{declaration} {{ {} }}", rules.issues("override ")));
         subclasses.extend(serializer);
         let subclass_serializer = kotlin_subclass_serializer_expr(&subclass_name, &type_parameters);
         serialize_arms.push(format!(
@@ -4062,24 +4216,19 @@ fn untagged_enum_kotlin_source(
             )
         };
         deserialize_chain = format!(
-            "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, {handed}){held_to_its_bounds} as {export_name}{generic_params} }}"
+            "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, {handed}){held_to_its_bounds} as {draft}{generic_params} }}"
         );
     }
 
-    let serializer_name = format!("{export_name}Serializer");
-    let base = format!(
-        "@Serializable(with = {serializer_name}::class) sealed interface {export_name}{} \
-         {VALIDATE_DECLARED}",
-        kotlin_out_generic_params(&item_enum.generics)
-    );
-    let serializer_head = read::written_head(export_name, &type_parameters);
+    let base = enum_base(item_enum, export_name, &draft);
+    let serializer_head = read::written_head(&draft, &type_parameters);
     let serializer_object = format!(
-        "{serializer_head} : KSerializer<{export_name}{generic_params}> {{ \
+        "{serializer_head} : KSerializer<{draft}{generic_params}> {{ \
          override val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"{export_name}\"); \
-         override fun serialize(encoder: Encoder, value: {export_name}{generic_params}) {{ \
+         override fun serialize(encoder: Encoder, value: {draft}{generic_params}) {{ \
          val output = encoder as JsonEncoder; \
          output.encodeJsonElement(when (value) {{ {} }}) }}; \
-         {PATHED}override fun deserialize(decoder: Decoder): {export_name}{generic_params} {{ \
+         {PATHED}override fun deserialize(decoder: Decoder): {draft}{generic_params} {{ \
          val input = decoder as JsonDecoder; val element = {}; \
          return kotlinSchemaAt(input) {{ {deserialize_chain}.getOrElse {{ throw \
          SerializationException(\"No variant of {export_name} matched\") }} }} }} }}",
@@ -4088,15 +4237,72 @@ fn untagged_enum_kotlin_source(
     );
 
     format!(
-        "{base} {} {serializer_object} {}",
+        "{base} {} {serializer_object} {} {}",
         subclasses.join(" "),
-        read::judged(
+        enum_valid_class(item_enum, export_name, &draft, (&keyed, &taking)),
+        enum_judged(
             export_name,
             &generic_params,
             &type_parameters,
-            true,
             (&keyed, &taking)
         )
+    )
+}
+
+/// The sealed interface the subclasses of `item_enum` implement: its draft.
+fn enum_base(item_enum: &ItemEnum, export_name: &str, draft: &str) -> String {
+    let generic_params = kotlin_generic_params(&item_enum.generics);
+    let out_params = kotlin_out_generic_params(&item_enum.generics);
+    if valid::drafted() {
+        format!(
+            "@Serializable(with = {draft}Unjudged::class) sealed interface {draft}{out_params} \
+             {{ fun validationIssues(): List<String>; {} }}",
+            valid::validate_method(export_name, &generic_params)
+        )
+    } else {
+        format!(
+            "@Serializable(with = {draft}Serializer::class) sealed interface {draft}{out_params} \
+             {{ fun validate(): List<String>; fun validationIssues(): List<String> }}"
+        )
+    }
+}
+
+/// The enum's own serializer: its unjudged read, judged by what its draft, or it, reports.
+fn enum_judged(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    keyed_by: (&[String], &[String]),
+) -> String {
+    if valid::drafted() {
+        read::judged_valid(export_name, generic_params, type_parameters, true, keyed_by)
+    } else {
+        read::judged(export_name, generic_params, type_parameters, true, keyed_by)
+    }
+}
+
+/// The valid class of `item_enum` and its unjudged serializer, where the enum has a draft.
+fn enum_valid_class(
+    item_enum: &ItemEnum,
+    export_name: &str,
+    draft: &str,
+    (keyed, taking): (&[String], &[String]),
+) -> String {
+    let generic_params = kotlin_generic_params(&item_enum.generics);
+    let type_parameters = type_parameters_in_scope(&item_enum.generics);
+    let pair = valid::pair(
+        export_name,
+        draft,
+        (
+            &kotlin_out_generic_params(&item_enum.generics),
+            &generic_params,
+        ),
+        &type_parameters,
+        (&valid::enum_forwarded_issues(), true),
+    );
+    format!(
+        "{pair}{}",
+        valid::keyed_extension(export_name, &generic_params, keyed, taking)
     )
 }
 

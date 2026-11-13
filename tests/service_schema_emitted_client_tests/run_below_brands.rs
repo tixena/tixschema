@@ -83,7 +83,7 @@ mod kotlin {
     const DRIVER: &str = r#"
 fun told(at: Int, payload: String) {
     try {
-        println("$at: " + Json.decodeFromString(serializer<Fastening>(), payload)::class.simpleName)
+        println("$at: " + Json.decodeFromString(serializer<Fastening>(), payload).draft::class.simpleName)
     } catch (refusal: SerializationException) {
         println("$at: refused")
     }

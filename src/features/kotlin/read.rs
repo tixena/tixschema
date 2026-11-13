@@ -96,6 +96,9 @@ const WRITTEN: Annotated = Annotated {
     unjudged: true,
 };
 
+/// The type parameters a map is keyed by, and the variants that take their serializers.
+type KeyedBy<'keys> = (&'keys [String], &'keys [String]);
+
 /// How a declaration reads a number and a `bool`: a map's key is written between quotes, and is
 /// read as the library reads it.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -379,6 +382,24 @@ pub fn judged(
     )
 }
 
+/// [`judged`] for the valid type of a model, which asks its draft for what the value breaks.
+pub fn judged_valid(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    composed: bool,
+    keyed_by: (&[String], &[String]),
+) -> String {
+    judging(
+        export_name,
+        generic_params,
+        type_parameters,
+        composed,
+        (keyed_by, None),
+        true,
+    )
+}
+
 /// [`judged`] for a brand that counts a list default, which hands `kotlinSchemaAtFilling()` the
 /// declared type `filled` names where the serializer of the parameter it names is that type's.
 pub fn judged_counting(
@@ -386,9 +407,28 @@ pub fn judged_counting(
     generic_params: &str,
     type_parameters: &[String],
     composed: bool,
-    (keyed, variants): (&[String], &[String]),
+    keyed_by: (&[String], &[String]),
     filled: Option<(&str, &str)>,
 ) -> String {
+    judging(
+        export_name,
+        generic_params,
+        type_parameters,
+        composed,
+        (keyed_by, filled),
+        false,
+    )
+}
+
+fn judging(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    composed: bool,
+    (keyed_by, filled): (KeyedBy<'_>, Option<(&str, &str)>),
+    drafted: bool,
+) -> String {
+    let (keyed, variants) = keyed_by;
     let own = format!("{export_name}{generic_params}");
     let kept: Vec<String> = keyed
         .iter()
@@ -429,7 +469,9 @@ pub fn judged_counting(
             kotlin_quoted(declared),
         )
     });
-    let validated = if variants.is_empty() {
+    let validated = if drafted {
+        format!("read.validationIssues({handing})")
+    } else if variants.is_empty() {
         format!("read.validate({handing}){counted}")
     } else {
         let arms = variants
@@ -473,6 +515,73 @@ fn kept_parameters(type_parameters: &[String], kept: &[String]) -> String {
 pub fn kept(export_name: &str) -> String {
     format!(
         "{OPTED_IN} @Serializable(with = {export_name}Serializer::class) @KeepGeneratedSerializer"
+    )
+}
+
+/// The annotations of the draft class the plugin writes a serializer for. It keeps the plugin's
+/// serial name, which [`valid_unjudged`] rewrites to the declared one in what a read refuses.
+pub fn kept_draft(draft: &str) -> String {
+    if !super::valid::drafted() {
+        return kept(draft);
+    }
+    format!("{OPTED_IN} @Serializable(with = {draft}Unjudged::class) @KeepGeneratedSerializer")
+}
+
+/// The annotation of a draft class that a serializer the emitter writes reads and writes.
+pub fn written_draft(draft: &str) -> String {
+    if !super::valid::drafted() {
+        return format!("@Serializable(with = {draft}Serializer::class)");
+    }
+    format!("@Serializable(with = {draft}Unjudged::class)")
+}
+
+/// The unjudged serializer of the valid type `export_name`: the draft's unjudged read, wrapped
+/// without a check, and the draft written as it is. Private to the file the emitted types are
+/// joined into, which every holder is in. `composed` says the draft's own serializer binds each
+/// type parameter to `Any`.
+pub fn valid_unjudged(
+    export_name: &str,
+    draft: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    composed: bool,
+) -> String {
+    let own = format!("{export_name}{generic_params}");
+    let (opens, held) = if type_parameters.is_empty() {
+        (
+            format!("{OPTED_IN} private object {export_name}Unjudged"),
+            format!("{draft}Unjudged"),
+        )
+    } else {
+        let bound = if composed { COMPOSED } else { "" };
+        (
+            format!(
+                "{OPTED_IN} private class {export_name}Unjudged{}({})",
+                parameter_list(type_parameters, bound),
+                handed(type_parameters, "")
+            ),
+            "kotlinSchemaDraft".to_owned(),
+        )
+    };
+    let property = if type_parameters.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "private val kotlinSchemaDraft = {draft}Unjudged({}); ",
+            arguments(type_parameters)
+        )
+    };
+    format!(
+        "{opens} : KSerializer<{own}> {{ {property}override val descriptor: SerialDescriptor = \
+         {held}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
+         {held}.serialize(encoder, value.draft); override fun deserialize(decoder: Decoder): \
+         {own} = {export_name}.checked(try {{ {held}.deserialize(decoder) }} catch (refused: \
+         SerializationException) {{ val named = {held}.descriptor.serialName; val said = \
+         refused.message.orEmpty(); if (\"'\" + named + \"'\" !in said) throw refused; val declared = \
+         named.removeSuffix(\"Draft\"); throw if (refused is MissingFieldException) \
+         MissingFieldException(refused.missingFields, declared) else \
+         SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
+         refused.cause) }}) }}"
     )
 }
 

@@ -227,10 +227,10 @@ class ManualSocket(private val onSend: (String) -> Unit) : BelfryServiceWsSocket
 object Handlers : BelfryServiceHandlers {
     val rung = java.util.concurrent.atomic.AtomicInteger(0)
     override suspend fun ringBell(req: RingBellRequest): BelfryServiceRingBellResult =
-        BelfryServiceRingBellResult.Ok(BellPeal(rung.incrementAndGet().toUInt()))
+        BelfryServiceRingBellResult.Ok(BellPealDraft(rung.incrementAndGet().toUInt()).validate())
     override suspend fun tollBell(req: BellToll): BelfryServiceTollBellResult {
         rung.incrementAndGet()
-        return BelfryServiceTollBellResult.Ok(BellPeal(req.strokes * req.rope.length))
+        return BelfryServiceTollBellResult.Ok(BellPealDraft(req.strokes * req.rope.length).validate())
     }
 }
 

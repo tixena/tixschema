@@ -78,7 +78,8 @@ fn an_enum_published_under_its_own_ident_writes_no_alias() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              SeasonUnjudged::class) @KeepGeneratedSerializer enum class Season {{ Autumn; fun \
-             validate(): List<String> = emptyList() }} {}",
+             validate(): List<String> = emptyList(); fun \
+             validationIssues(): List<String> = validate() }} {}",
             plain_enum_unjudged("Season", &[("Autumn", "Autumn", &[])], "element")
         )
     );

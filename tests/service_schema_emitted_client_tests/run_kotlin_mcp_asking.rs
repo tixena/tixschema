@@ -57,7 +57,7 @@ object AskingHandlers : AskingServiceHandlers {
             AskingRenamedErrorNeedsConnection(
                 "Connect your Google Drive so this server can import the file.",
                 "https://mcp.example.com/connect/drive?request=7f3a",
-            ),
+            ).validate(),
         )
     }
 
@@ -67,7 +67,7 @@ object AskingHandlers : AskingServiceHandlers {
             AskingAdjacentErrorNeedsConnection(
                 "Connect your Google Drive so this server can import the file.",
                 "https://mcp.example.com/connect/drive?request=7f3a",
-            ),
+            ).validate(),
         )
     }
 
@@ -78,12 +78,12 @@ object AskingHandlers : AskingServiceHandlers {
             JsonPrimitive(req.documentId),
             if (confirmation == null) JsonNull else Json.encodeToJsonElement(serializer<AskingConfirmation>(), confirmation),
         )
-        if (req.documentId == "missing") return AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorNotFound)
+        if (req.documentId == "missing") return AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorNotFound.validate())
         if (confirmation == null) {
-            return AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorNeedsConfirmation("Delete this document for good?"))
+            return AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorNeedsConfirmation("Delete this document for good?").validate())
         }
         return if (confirmation.confirm) AskingServiceDeleteAdjacentResult.Ok
-        else AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorRefused)
+        else AskingServiceDeleteAdjacentResult.Declared(AskingAdjacentErrorRefused.validate())
     }
 
     override suspend fun connectByKind(req: String): AskingServiceConnectByKindResult {
@@ -92,7 +92,7 @@ object AskingHandlers : AskingServiceHandlers {
             AskingKindErrorNeedsConnection(
                 "Connect your Google Drive so this server can import the file.",
                 "https://mcp.example.com/connect/drive?request=7f3a",
-            ),
+            ).validate(),
         )
     }
 
@@ -103,22 +103,22 @@ object AskingHandlers : AskingServiceHandlers {
             JsonPrimitive(req.documentId),
             if (confirmation == null) JsonNull else Json.encodeToJsonElement(serializer<AskingConfirmation>(), confirmation),
         )
-        if (req.documentId == "missing") return AskingServiceDeleteDocumentResult.Declared(AskingErrorNotFound)
+        if (req.documentId == "missing") return AskingServiceDeleteDocumentResult.Declared(AskingErrorNotFound.validate())
         if (confirmation == null) {
-            return AskingServiceDeleteDocumentResult.Declared(AskingErrorNeedsConfirmation("Delete this document for good?"))
+            return AskingServiceDeleteDocumentResult.Declared(AskingErrorNeedsConfirmation("Delete this document for good?").validate())
         }
         return if (confirmation.confirm) AskingServiceDeleteDocumentResult.Ok
-        else AskingServiceDeleteDocumentResult.Declared(AskingErrorRefused)
+        else AskingServiceDeleteDocumentResult.Declared(AskingErrorRefused.validate())
     }
 
     override suspend fun importFromDrive(req: String): AskingServiceImportFromDriveResult {
         note(JsonPrimitive("import-from-drive"), JsonPrimitive(req))
-        if (req == "connected") return AskingServiceImportFromDriveResult.Ok(AskingLinked("doc-" + req))
+        if (req == "connected") return AskingServiceImportFromDriveResult.Ok(AskingLinkedDraft("doc-" + req).validate())
         return AskingServiceImportFromDriveResult.Declared(
             AskingLinkErrorNeedsConnection(
                 "Connect your Google Drive so this server can import the file.",
                 "https://mcp.example.com/connect/drive?request=7f3a",
-            ),
+            ).validate(),
         )
     }
 
@@ -130,7 +130,7 @@ object AskingHandlers : AskingServiceHandlers {
             if (shipping == null) JsonNull else Json.encodeToJsonElement(serializer<AskingShipping>(), shipping),
         )
         if (shipping == null) {
-            return AskingServiceShipDocumentResult.Declared(AskingErrorNeedsConfirmation("How should it ship?"))
+            return AskingServiceShipDocumentResult.Declared(AskingErrorNeedsConfirmation("How should it ship?").validate())
         }
         return AskingServiceShipDocumentResult.Ok
     }
@@ -143,7 +143,7 @@ object PreviewHandlers : PreviewServiceHandlers {
             "doc-1" -> PreviewServiceDocumentPreviewResult.Ok(%TUPLE%(listOf<UByte>(0x89u, 0x50u, 0x4eu, 0x47u), "image/png"))
             "voice" -> PreviewServiceDocumentPreviewResult.Ok(%TUPLE%(listOf<UByte>(1u, 2u, 3u, 4u, 5u), "audio/mpeg"))
             "plain" -> PreviewServiceDocumentPreviewResult.Ok(%TUPLE%(listOf<UByte>(37u, 80u, 68u, 70u, 45u), "application/pdf"))
-            else -> PreviewServiceDocumentPreviewResult.Declared(AskingMissNotFound)
+            else -> PreviewServiceDocumentPreviewResult.Declared(AskingMissNotFound.validate())
         }
     }
 }
@@ -229,12 +229,12 @@ suspend fun clientReport(input: JsonObject): JsonObject {
     val previewer = PreviewServiceMcpClient(canned)
     val calls: Map<String, suspend () -> JsonElement> = mapOf(
         "declared" to { deleted(client.deleteDocument(DeleteDocumentRequest("doc-1", null))) },
-        "confirmed" to { deleted(client.deleteDocument(DeleteDocumentRequest("doc-1", AskingConfirmation(true)))) },
+        "confirmed" to { deleted(client.deleteDocument(DeleteDocumentRequest("doc-1", AskingConfirmationDraft(true).validate()))) },
         "image" to { previewed(previewer.documentPreview("doc-1")) },
         "audio" to { previewed(previewer.documentPreview("voice")) },
         "plain" to { previewed(previewer.documentPreview("plain")) },
         "missing" to { previewed(previewer.documentPreview("nothing")) },
-        "report" to { reported(client.buildReport(AskingReportRequest("Q3"))) },
+        "report" to { reported(client.buildReport(AskingReportRequestDraft("Q3").validate())) },
         "link" to { imported(client.importFromDrive("1A2b3C")) },
         "linked" to { imported(client.importFromDrive("connected")) },
     )

@@ -58,7 +58,7 @@ object Handlers : StacksServiceHandlers {
 
     override suspend fun countItems(req: BookRequest): StacksServiceCountItemsResult {
         reached += 1
-        return StacksServiceCountItemsResult.Ok(BookInfo(3u))
+        return StacksServiceCountItemsResult.Ok(BookInfoDraft(3u).validate())
     }
 }
 

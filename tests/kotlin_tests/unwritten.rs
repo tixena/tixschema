@@ -16,8 +16,8 @@ fn a_member_serde_never_writes_is_read_and_has_no_put() {
     let furling = super::tests::renumbered(&furling_kotlin::kotlin_definition());
     assert!(
         furling.contains(
-            "@Serializable(with = FurlingSerializer::class) data class Furling(val label: \
-             String, val spare: UInt? = null)"
+            "@Serializable(with = FurlingDraftUnjudged::class) data class FurlingDraft(val \
+             label: String, val spare: UInt? = null)"
         ),
         "got: {furling}"
     );
@@ -92,7 +92,7 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
         assert!(
             kotlin.contains(&format!(
                 "@Serializable(with = {name}FurledUnjudged::class) data class {name}Furled(val \
-                 label: String, val spare: UInt? = null) : {name} "
+                 label: String, val spare: UInt? = null) : {name}Draft "
             )),
             "got: {kotlin}"
         );
@@ -128,7 +128,7 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
         };
         assert!(
             kotlin.contains(&format!(
-                "@Serializable data class {name}{plain}(val label: String) : {name} "
+                "@Serializable data class {name}{plain}(val label: String) : {name}Draft "
             )),
             "got: {kotlin}"
         );
@@ -156,7 +156,7 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     assert!(flemishing.contains(read), "no `{read}` in: {flemishing}");
     let splaying = super::tests::renumbered(&splaying_kotlin::kotlin_definition());
     for held in [
-        "data class Splaying(val braiding: Braiding, val note: String)",
+        "data class SplayingDraft(val braiding: Braiding, val note: String)",
         "val braiding = kotlinSchemaFlattened { input.json.decodeFromString(BraidingUnjudged, \
          JsonObject(obj.filterKeys { \
          it in setOf(\"label\") }).toString()) };",
@@ -166,7 +166,7 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     }
     let ranging = super::tests::renumbered(&ranging_kotlin::kotlin_definition());
     for held in [
-        "data class Ranging(val counts: Map<String, UByte>)",
+        "data class RangingDraft(val counts: Map<String, UByte>)",
         "output.encodeJsonElement(buildJsonObject {  })",
         "val counts = kotlinSchemaFlattened { obj.mapValues { (k, v) -> \
          kotlinSchemaDecoded(input.json, KotlinNumber1, v, \

@@ -60,14 +60,14 @@ fn where_the_emitter_writes_the_read_it_composes_the_serializer_of_the_form() {
     assert!(marks.starts_with(&letter("KotlinText1")), "got: {marks}");
     assert!(
         marks.contains(
-            "data class Marks(val slot0: String, val slot1: List<String?>) { fun validate(): \
-             List<String> = emptyList() }"
+            "data class MarksDraft(val slot0: String, val slot1: List<String?>) { fun \
+             validationIssues(): List<String> = emptyList() "
         ),
         "got: {marks}"
     );
     assert!(
         marks.contains(
-            "Marks(kotlinSchemaDecoded(input.json, KotlinText1, array[0], \"0\", \"[0]\"), \
+            "MarksDraft(kotlinSchemaDecoded(input.json, KotlinText1, array[0], \"0\", \"[0]\"), \
              kotlinSchemaDecoded(input.json, ListSerializer(KotlinText1.nullable), array[1], \
              \"1\", \"[1]\"))"
         ),
@@ -119,7 +119,7 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
     };
     let signed_read = plain(&signed);
     assert!(
-        signed_read.contains("data class Signed(val initial: InitialType) {"),
+        signed_read.contains("data class SignedDraft(val initial: InitialType) {"),
         "got: {signed_read}"
     );
     assert!(
@@ -137,7 +137,7 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
     assert!(
         initials_read.contains(
             "val element = input.decodeJsonElement(); return kotlinSchemaAt(input) { \
-             Initials(kotlinSchemaDecoded(input.json, KotlinText2, element, \"0\", \"\")) }"
+             InitialsDraft(kotlinSchemaDecoded(input.json, KotlinText2, element, \"0\", \"\")) }"
         ),
         "got: {initials_read}"
     );
@@ -162,7 +162,7 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
         }
     };
     assert!(
-        plain(&held).contains("data class Held<T>(val held: T)"),
+        plain(&held).contains("data class HeldDraft<T>(val held: T)"),
         "a model is written above the types that hold it"
     );
     let pairing: ItemStruct = syn::parse_quote! {
@@ -175,7 +175,7 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let pairing_read = plain(&pairing);
     assert!(
         pairing_read.contains(
-            "data class Pairing(@Serializable(with = HeldUnjudged::class) val held: \
+            "data class PairingDraft(@Serializable(with = HeldUnjudged::class) val held: \
              Held<@Serializable(with = KotlinText1::class) String>, val later: \
              Later<@Serializable(with = KotlinText1::class) String>, val pair: \
              PairType<@Serializable(with = KotlinText1::class) String>) {"
@@ -188,7 +188,7 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let paired_read = plain(&paired);
     assert!(
         paired_read.contains(
-            "Paired(kotlinSchemaDecoded(input.json, HeldUnjudged(KotlinText2), array[0], \
+            "PairedDraft(kotlinSchemaDecoded(input.json, HeldUnjudged(KotlinText2), array[0], \
              \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, serializer<Later<String>>(), \
              array[1], \"1\", \"[1]\"), kotlinSchemaDecoded(input.json, \
              serializer<PairType<String>>(), array[2], \"2\", \"[2]\"))"

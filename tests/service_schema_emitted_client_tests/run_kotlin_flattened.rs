@@ -707,6 +707,11 @@ where
     serde_json::from_str::<T>(json).map_or_else(|_| "refused".to_owned(), |read| shown(&read))
 }
 
+/// The Kotlin expression that builds the holder `holder` over the draft variant `built`, valid.
+fn validated_holder(holder: &str, built: &str) -> String {
+    format!("{holder}Draft(\"a\", {built}.validate()).validate()")
+}
+
 /// The JSON serde writes of `value`.
 fn json<T>(value: &T) -> String
 where
@@ -1047,14 +1052,18 @@ fn a_flattened_enum_writes_in_kotlin_as_serde_writes_it() {
             ("Yawing", json(&yawing)),
         ];
         rows.extend(
-            written.map(|(holder, wrote)| (holder, wrote, format!("{holder}(\"a\", {built})"))),
+            written.map(|(holder, wrote)| (holder, wrote, validated_holder(holder, built))),
         );
     }
     let unheld = BeltingDraft {
         note: note(),
         tacking: None,
     };
-    rows.push(("Belting", json(&unheld), "Belting(\"a\", null)".to_owned()));
+    rows.push((
+        "Belting",
+        json(&unheld),
+        "BeltingDraft(\"a\", null).validate()".to_owned(),
+    ));
     let mut expected = String::new();
     let mut main = String::from(WRITTEN);
     main.push_str("fun main() {\n");
@@ -1710,23 +1719,23 @@ fn a_variant_reads_and_writes_a_flattened_member_in_kotlin_as_serde_does() {
     let mut rows: Vec<(&str, &str, String)> = Vec::new();
     rows.extend(GAFFING.map(|json| {
         let told = variant_read::<Gaffing>("Gaffing", json);
-        (json, "GaffingSerializer", told)
+        (json, "GaffingDraftUnjudged", told)
     }));
     rows.extend(BOWLINING.map(|json| {
         let told = variant_read::<Bowlining>("Bowlining", json);
-        (json, "BowliningSerializer", told)
+        (json, "BowliningDraftUnjudged", told)
     }));
     rows.extend(SWAYING.map(|json| {
         let told = variant_read::<Swaying>("Swaying", json);
-        (json, "SwayingSerializer", told)
+        (json, "SwayingDraftUnjudged", told)
     }));
     rows.extend(WHELPING.map(|json| {
         let told = variant_read::<Whelping>("Whelping", json);
-        (json, "WhelpingSerializer", told)
+        (json, "WhelpingDraftUnjudged", told)
     }));
     rows.extend(BROACHING.map(|json| {
         let told = variant_read::<Broaching<u8>>("Broaching", json);
-        (json, "BroachingSerializer(serializer<UByte>())", told)
+        (json, "BroachingDraftUnjudged(serializer<UByte>())", told)
     }));
     let mut expected = String::new();
     let mut main = String::from(VARIANT_READ);

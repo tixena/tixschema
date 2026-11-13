@@ -9,8 +9,11 @@ use tixschema::model_schema;
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
 #[cfg(feature = "serde")]
-use super::read::{DECODED, judged};
-use super::read::{judged_over, kept};
+use super::read::DECODED;
+use super::read::{
+    NO_ISSUES, judged_valid, judged_valid_over, kept_draft, to_valid, valid_class,
+    valid_class_over, valid_unjudged, valid_unjudged_over,
+};
 
 /// The parcel of the documents' sample, under a name of this file's own.
 #[model_schema(preprocess = ["withoutFragile"])]
@@ -119,13 +122,13 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
     assert_eq!(
         packet_kotlin::kotlin_definition(),
         format!(
-            "{} data class Packet(val fragileItemCodes: List<String>, val itemCodeList: \
+            "{} data class PacketDraft(val fragileItemCodes: List<String>, val itemCodeList: \
              List<String>, @Serializable(with = PacketLabelPreprocess::class) val label: String) \
-             {{ fun validate(): List<String> {{ val violations = mutableListOf<String>(); if \
-             (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: \
+             {{ fun validationIssues(): List<String> {{ val violations = mutableListOf<String>(); \
+             if (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: \
              minimum length is 1, got ${{label.codePointCount(0, label.length)}}\"); return \
-             violations }} }} @OptIn(ExperimentalSerializationApi::class) object PacketUnjudged : \
-             KSerializer<Packet> {} {} object \
+             violations }} {} }} @OptIn(ExperimentalSerializationApi::class) object \
+             PacketDraftUnjudged : KSerializer<PacketDraft> {} {} {} {} object \
              PacketLabelPreprocess : KSerializer<String> {{ private val held = \
              serializer<String>(); override val descriptor: SerialDescriptor = held.descriptor; \
              override fun serialize(encoder: Encoder, value: String) = held.serialize(encoder, \
@@ -135,13 +138,21 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
              transformDeserialize(element).toString()) }} }}; private fun \
              transformDeserialize(element: JsonElement): JsonElement = \
              kotlinSchemaKinded(serializer<String>(), trimmed(element), \"label\") }}",
-            kept("Packet"),
+            kept_draft("Packet"),
+            to_valid("Packet", ""),
             transform(
-                "Packet",
-                "Packet.generatedSerializer()",
+                "PacketDraft",
+                "PacketDraft.generatedSerializer()",
                 "withoutFragile(element)"
             ),
-            judged("Packet")
+            valid_class(
+                "Packet",
+                "val fragileItemCodes: List<String> get() = draft.fragileItemCodes; val \
+                 itemCodeList: List<String> get() = draft.itemCodeList; val label: String get() = \
+                 draft.label; "
+            ),
+            valid_unjudged("Packet"),
+            judged_valid("Packet")
         )
     );
 }
@@ -153,7 +164,7 @@ fn a_holder_reads_the_type_through_the_serializer_that_corrects_it() {
     let lading = lading_kotlin::kotlin_definition();
     assert!(
         lading.contains(
-            "data class Lading(@Serializable(with = PacketUnjudged::class) val packet: Packet) {"
+            "data class LadingDraft(@Serializable(with = PacketUnjudged::class) val packet: Packet) {"
         ),
         "got: {lading}"
     );
@@ -168,7 +179,8 @@ fn a_plain_enum_that_names_a_function_has_one_serializer_that_calls_it() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              TierUnjudged::class) @KeepGeneratedSerializer enum class Tier {{ Express, Standard; \
-             fun validate(): List<String> = emptyList() }} {}",
+             fun validate(): List<String> = emptyList(); fun \
+             validationIssues(): List<String> = validate() }} {}",
             plain_enum_unjudged(
                 "Tier",
                 &[("Express", "Express", &[]), ("Standard", "Standard", &[])],
@@ -188,17 +200,24 @@ fn a_type_with_a_parameter_corrects_the_whole_payload_and_then_the_member() {
     assert_eq!(
         hamper_kotlin::kotlin_definition(),
         format!(
-            "{} data class Hamper<CodeType>(val codes: List<CodeType>) {{ fun validate(): \
-             List<String> = emptyList() }} @OptIn(ExperimentalSerializationApi::class) class \
-             HamperUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
-             KSerializer<Hamper<CodeType>> {} {}",
-            kept("Hamper"),
+            "{} data class HamperDraft<CodeType>(val codes: List<CodeType>) {{ {NO_ISSUES} {} }} \
+             @OptIn(ExperimentalSerializationApi::class) class \
+             HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
+             KSerializer<HamperDraft<CodeType>> {} {} {} {}",
+            kept_draft("Hamper"),
+            to_valid("Hamper", "<CodeType>"),
             transform(
-                "Hamper<CodeType>",
-                "Hamper.generatedSerializer(codeTypeSerializer)",
+                "HamperDraft<CodeType>",
+                "HamperDraft.generatedSerializer(codeTypeSerializer)",
                 corrected
             ),
-            judged_over("Hamper", "CodeType", "", "codeTypeSerializer")
+            valid_class_over(
+                "Hamper",
+                "<CodeType>",
+                "val codes: List<CodeType> get() = draft.codes; "
+            ),
+            valid_unjudged_over("Hamper", "CodeType", "", "codeTypeSerializer"),
+            judged_valid_over("Hamper", "CodeType", "", "codeTypeSerializer")
         )
     );
 }

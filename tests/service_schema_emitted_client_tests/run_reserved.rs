@@ -84,7 +84,7 @@ fun main() = runBlocking {
     val client = LookupClientServiceHttpClient(transport)
     client.import(ImportRequest(`class` = "k", `object` = "o", default = "d", `var` = "v"))
     client.`for`(ForRequest(`in` = "i", final = "f"), "t", "n")
-    client.`object`(LookupThing(`class` = "c", `var` = "w"))
+    client.`object`(LookupThingDraft(`class` = "c", `var` = "w").validate())
     client.shadow(ShadowRequest(message = "m", sending = "s"), body = "b", path = "p", status = "t")
     val report = buildJsonArray {
         for (request in transport.sent) {

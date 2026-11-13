@@ -101,7 +101,7 @@ fun withItsSeen(payload: JsonElement): JsonElement =
         payload
     }
 
-fun withinLimit(value: Scaled): List<String> =
+fun withinLimit(value: ScaledDraft): List<String> =
     if (value.grams > 1000u) listOf("'grams': ${value.grams} is over the limit of 1000") else emptyList()
 "#;
 
@@ -205,7 +205,7 @@ a key the payload leaves out: SerializationException: Field 'label' is required 
 a number left as it is: SerializationException: Expected quotation mark '\"', but had 'EOF' instead at path: $.label
 a list left as it is: SerializationException: 'label': STRING cannot be read from an array at path: $.label
 an item left as it is, below a type that names a function: SerializationException: Expected quotation mark '\"', but had '1' instead at path: $.packet.itemCodeList[0]
-the unjudged read: read Packet(fragileItemCodes=[], itemCodeList=[x], label=)
+the unjudged read: read Packet(draft=PacketDraft(fragileItemCodes=[], itemCodeList=[x], label=))
 a value built in code, written: read {\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"  A  \"}
 the calls of a nullable's function: read [null, \"a\"]
 ";
@@ -242,11 +242,11 @@ fun made(answered: PacketClientServiceSentResult): JsonElement = when (answered)
 }
 
 suspend fun overHttp(body: String): JsonElement =
-    made(PacketClientServiceHttpClient(Answering(body)).sent(PacketRequest("north")))
+    made(PacketClientServiceHttpClient(Answering(body)).sent(PacketRequestDraft("north").validate()))
 
 suspend fun overTheSocket(reply: String): JsonElement {
     val transport = PacketClientServiceWsTransport(Replying(reply), PacketClientServiceWsOptions(heartbeat = null))
-    val answered = made(PacketClientServiceWsClient(transport).sent(PacketRequest("north")))
+    val answered = made(PacketClientServiceWsClient(transport).sent(PacketRequestDraft("north").validate()))
     transport.close()
     return answered
 }
@@ -1365,7 +1365,7 @@ fn where_the_kotlin_read_answers_in_its_own_words_it_is_this() {
             read("PacketUnjudged", r#"{"label":"   ","itemCodeList":["x"]}"#)
         ),
         "thrown(\"a value built in code, written\") { Json.encodeToString(serializer<Packet>(), \
-         Packet(emptyList(), listOf(\"x\"), \"  A  \")) }"
+         PacketDraft(emptyList(), listOf(\"x\"), \"  A  \").validate()) }"
             .to_owned(),
         format!(
             "{}; {}; {}",

@@ -40,6 +40,10 @@ npm install zod@^4.3.2
 yarn add zod@^4.3.2
 ```
 
+### Kotlin Dependencies
+
+**Kotlin 2.0.20 or later** compiles the generated types: the valid class of a model type is `@ConsistentCopyVisibility`, which makes its `copy()` as private as its constructor, and Kotlin declares it from 2.0.20.
+
 ## Quick Start
 
 ```rust

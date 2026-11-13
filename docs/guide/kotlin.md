@@ -1,15 +1,27 @@
 ### `validate()` in the Kotlin client
 
-Every type `kotlin_definition()` writes carries `fun validate(): List<String>`: a data class, the `object` of a unit struct, the value class of a brand, a tuple struct, a sealed interface with each of its variants, and a plain enum. It answers the messages Rust's [`validate()`](validation.md#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. A type with no rule answers `emptyList()`.
+Every model type `kotlin_definition()` writes is two classes, the draft code builds and the valid class that only `validate()` and a read make. `ShipmentDraft` is the data class, the `object` of a unit struct, the tuple struct or the sealed interface with its variants that the declaration is, and it carries `fun validationIssues(): List<String>` and `fun validate(): Shipment`. `Shipment` wraps a draft that passed in a private constructor, forwards each member as a property, and answers `draft` for the draft back. A [brand](generics-and-brands.md#a-brand-is-sealed) and a plain enum are one type with `fun validate(): List<String>` and `fun validationIssues(): List<String>`, the same list, a model a service writes for itself keeps its one class, and a type with no rule answers `emptyList()`.
 
-The serializer of a type calls it on the value it read: [the read refuses what `validate()` refuses](#the-read-in-the-kotlin-client). You call it yourself on a value built in code, and on one changed after it was read.
+`validationIssues()` answers the messages Rust's [`validate()`](validation.md#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. `validate()` throws a `SerializationException` whose message is those lines joined by `; `, the text the read throws, and answers the valid class where there are none:
+
+```kotlin
+val shipment = ShipmentDraft(LabelText.of("Shipping"), 3u).validate()
+println(shipment.parcelCount)                       // 3
+println(Json.encodeToString(shipment))              // {"label":"Shipping","parcelCount":3}
+runCatching { shipment.draft.copy(parcelCount = 200u).validate() }.onFailure { println(it.message) }
+// 'parcelCount': too large: maximum is 100, got 200
+```
+
+The valid class has no public constructor and a private `copy()` (`@ConsistentCopyVisibility`, from Kotlin 2.0.20): from another file `Shipment(draft)` is ``cannot access 'constructor(draft: ShipmentDraft): Shipment': it is private in 'Shipment'`` and `shipment.copy(...)` is ``cannot access 'fun copy(draft: ShipmentDraft = ...): Shipment': it is private in 'Shipment'``. `Json.encodeToString(shipment)` is the encoding of its draft, and a read of `Shipment` throws what `validate()` throws. A draft is read as no rule judges it, `Json.decodeFromString<ShipmentDraft>(text)`, and is what you change: `shipment.draft.copy(parcelCount = 5u).validate()`. A member named `draft` is declared `draft_`, on the draft and as the valid class's forwarding property, with `@SerialName("draft")`: the key on the wire is still `draft`, `holder.draft_` reads the member and `holder.draft` is the draft.
+
+The serializer of a type calls the rules on the value it read: [the read refuses what `validate()` refuses](#the-read-in-the-kotlin-client). You call `validationIssues()` yourself on a draft you built or changed, where you want the list and no throw.
 
 This is what the `Parcel` and the `Manifest` of [Checks](checks.md#checks-check) emit. The emitter writes each type on one line, and each line break below stands for one space of it:
 
 ```kotlin
-@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelSerializer::class) @KeepGeneratedSerializer
-data class Parcel(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
-  fun validate(): List<String> {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelDraftUnjudged::class) @KeepGeneratedSerializer
+data class ParcelDraft(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
+  fun validationIssues(): List<String> {
     val violations = mutableListOf<String>();
     if (label.codePointCount(0, label.length) < 1) violations.add("'label': too short: minimum length is 1, got ${label.codePointCount(0, label.length)}");
     violations.addAll(withoutDuplicates(itemCodeList).map { kotlinSchemaUnder("itemCodeList", it) });
@@ -20,47 +32,97 @@ data class Parcel(val label: String, val itemCodeList: List<String>, val fragile
     val end = violation.indexOf('\'', 1);
     return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
   }
+  fun validate(): Parcel {
+    val violations = validationIssues();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    return Parcel.checked(this)
+  }
 }
-@OptIn(ExperimentalSerializationApi::class) object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()
+@OptIn(ExperimentalSerializationApi::class)
+object ParcelDraftUnjudged : KSerializer<ParcelDraft> by ParcelDraft.generatedSerializer()
+@ConsistentCopyVisibility @Serializable(with = ParcelSerializer::class)
+data class Parcel private constructor(val draft: ParcelDraft) {
+  val label: String get() = draft.label;
+  val itemCodeList: List<String> get() = draft.itemCodeList;
+  val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
+  fun validationIssues(): List<String> = draft.validationIssues();
+  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft) }
+}
+@OptIn(ExperimentalSerializationApi::class)
+private object ParcelUnjudged : KSerializer<Parcel> {
+  override val descriptor: SerialDescriptor = ParcelDraftUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Parcel) = ParcelDraftUnjudged.serialize(encoder, value.draft);
+  override fun deserialize(decoder: Decoder): Parcel = Parcel.checked(try { ParcelDraftUnjudged.deserialize(decoder) } catch (refused: SerializationException) {
+    val named = ParcelDraftUnjudged.descriptor.serialName;
+    val said = refused.message.orEmpty();
+    if ("'" + named + "'" !in said) throw refused;
+    val declared = named.removeSuffix("Draft");
+    throw if (refused is MissingFieldException) MissingFieldException(refused.missingFields, declared) else SerializationException(said.replace("'" + named + "'", "'" + declared + "'"), refused.cause)
+  })
+}
 object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   override fun invoke(): KSerializer<Parcel> = ParcelUnjudged;
   override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Parcel {
     val read = ParcelUnjudged.deserialize(decoder);
-    val violations = read.validate();
+    val violations = read.validationIssues();
     if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
     return read
   }
 }
 
-@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ManifestSerializer::class) @KeepGeneratedSerializer
-data class Manifest(@Serializable(with = ParcelUnjudged::class) val parcel: Parcel) {
-  fun validate(): List<String> {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ManifestDraftUnjudged::class) @KeepGeneratedSerializer
+data class ManifestDraft(@Serializable(with = ParcelUnjudged::class) val parcel: Parcel) {
+  fun validationIssues(): List<String> {
     val violations = mutableListOf<String>();
-    violations.addAll(parcel.validate().map { kotlinSchemaUnder("parcel", it) });
+    violations.addAll(parcel.validationIssues().map { kotlinSchemaUnder("parcel", it) });
     return violations
   };
   private fun kotlinSchemaUnder(place: String, violation: String): String {
     val end = violation.indexOf('\'', 1);
     return if (violation.startsWith("'") && end > 0) { "'$place.${violation.substring(1, end)}'${violation.substring(end + 1)}" } else { "'$place': $violation" }
   }
+  fun validate(): Manifest {
+    val violations = validationIssues();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    return Manifest.checked(this)
+  }
 }
-@OptIn(ExperimentalSerializationApi::class) object ManifestUnjudged : KSerializer<Manifest> by Manifest.generatedSerializer()
+@OptIn(ExperimentalSerializationApi::class)
+object ManifestDraftUnjudged : KSerializer<ManifestDraft> by ManifestDraft.generatedSerializer()
+@ConsistentCopyVisibility @Serializable(with = ManifestSerializer::class)
+data class Manifest private constructor(val draft: ManifestDraft) {
+  val parcel: Parcel get() = draft.parcel;
+  fun validationIssues(): List<String> = draft.validationIssues();
+  companion object { internal fun checked(draft: ManifestDraft): Manifest = Manifest(draft) }
+}
+@OptIn(ExperimentalSerializationApi::class)
+private object ManifestUnjudged : KSerializer<Manifest> {
+  override val descriptor: SerialDescriptor = ManifestDraftUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Manifest) = ManifestDraftUnjudged.serialize(encoder, value.draft);
+  override fun deserialize(decoder: Decoder): Manifest = Manifest.checked(try { ManifestDraftUnjudged.deserialize(decoder) } catch (refused: SerializationException) {
+    val named = ManifestDraftUnjudged.descriptor.serialName;
+    val said = refused.message.orEmpty();
+    if ("'" + named + "'" !in said) throw refused;
+    val declared = named.removeSuffix("Draft");
+    throw if (refused is MissingFieldException) MissingFieldException(refused.missingFields, declared) else SerializationException(said.replace("'" + named + "'", "'" + declared + "'"), refused.cause)
+  })
+}
 object ManifestSerializer : KSerializer<Manifest>, () -> KSerializer<Manifest> {
   override fun invoke(): KSerializer<Manifest> = ManifestUnjudged;
   override val descriptor: SerialDescriptor = ManifestUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Manifest) = ManifestUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Manifest {
     val read = ManifestUnjudged.deserialize(decoder);
-    val violations = read.validate();
+    val violations = read.validationIssues();
     if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
     return read
   }
 }
 ```
 
-The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and that of a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
+The `validationIssues()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileItemCodes":["y"]}` answers the three lines Rust answers, and that of a manifest that holds a parcel with `"y"` outside its codes answers the fourth:
 
 ```text
 'label': too short: minimum length is 1, got 0
@@ -71,7 +133,7 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 
 - **The order is Rust's.** Each member in the order declared: what the value it holds reports, then its bounds, then the checks it names. The type's own checks run last. Every rule runs, and none stops another.
 - **A member with a bound of its own** is asked for what its type declares too, its own bound after the type's, as in Rust.
-- **Every function a type calls is in the type's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each type that names a place. The emitted types are joined into one file, so no function is written beside a type, and tixschema ships no runtime library. The two serializers of a type are the only declarations beside it, each under the type's own name.
+- **Every function a type calls is in the draft's own body.** `kotlinSchemaUnder` writes a holder's key into a message, and is written into each draft that names a place. The emitted types are joined into one file, so no function is written beside a type, and tixschema ships no runtime library. The valid class and the serializers of a type are the only declarations beside the draft, each under the type's own name.
 - **A member named `validate` builds and keeps its key**, a property and a method being two names to Kotlin. A member named `violations` is read as `this.violations`.
 - **Every build with the `kotlin` feature writes the same `validate()`.** The emitter reads the declaration itself, and writes each bound a field declares into the Kotlin client whatever the other features.
 
@@ -94,20 +156,20 @@ The `validate()` of the parcel `{"label":"","itemCodeList":["x","x"],"fragileIte
 
 #### What a holder runs
 
-A holder calls the `validate()` of each value of a declared type it holds, and writes each message under the place the payload holds the value at:
+A holder asks each value of a declared type it holds, `held.validationIssues()`, and writes each message under the place the payload holds the value at:
 
 ```kotlin
-violations.addAll(firstParcel.validate().map { kotlinSchemaUnder("firstParcel", it) });
-parcelList.forEachIndexed { index, held -> violations.addAll(held.validate().map { kotlinSchemaUnder("parcelList.$index", it) }) };
-spareParcel?.let { held -> violations.addAll(held.validate().map { kotlinSchemaUnder("spareParcel", it) }) };
-for ((key, held) in parcelsByDock) { violations.addAll(held.validate().map { kotlinSchemaUnder("parcelsByDock.$key", it) }) }
+violations.addAll(firstParcel.validationIssues().map { kotlinSchemaUnder("firstParcel", it) });
+parcelList.forEachIndexed { index, held -> violations.addAll(held.validationIssues().map { kotlinSchemaUnder("parcelList.$index", it) }) };
+spareParcel?.let { held -> violations.addAll(held.validationIssues().map { kotlinSchemaUnder("spareParcel", it) }) };
+for ((key, held) in parcelsByDock) { violations.addAll(held.validationIssues().map { kotlinSchemaUnder("parcelsByDock.$key", it) }) }
 ```
 
 - **A list** names each item by its index at each level, and **a tuple** written as a field's type each position: `'parcelGrid.0.1.label'`, `'deckPair.1.label'`.
 - **A map** is walked in the order it holds its entries, and names each by its key as serde writes it. A key that is a string, a number or a `Boolean` is written as it is. A key of a declared type is written as its serializer writes it, so a plain enum goes by the name serde writes the variant under: `'byWing.north.label'`.
 - **A `#[serde(flatten)]` member** writes no key, and what it reports is written under no name. A flattened map names each entry by its key alone.
 - **A value behind a type parameter is not reached**, as in Rust. A key typed with a type parameter is written where the Rust type declares `Serialize` for the parameter, as the serializer of the key's class writes it (`'byKey.north-dock.itemLabel'` for a plain enum under `rename_all`, the string of a brand), and left out where the type declares none. A key whose class declares a type parameter of its own, a generic brand, has no serializer to find from the key alone and is written as Kotlin prints it.
-- **A type the emitter has not written** when it writes the holder has no `validate()` the holder can count on: a type of your own you supply to Kotlin, an alias of a string or of a list, a type declared below. The holder then carries `private fun Any?.validate(): List<String> = emptyList()` in its own body. A member is found ahead of an extension, so a type that has `validate()` answers with its own.
+- **A type the emitter has not written** when it writes the holder has no `validationIssues()` the holder can count on: a type of your own you supply to Kotlin, an alias of a string or of a list, a type declared below. The holder then carries `private fun Any?.validationIssues(): List<String> = emptyList()` in its own body. A member is found ahead of an extension, so a type that has `validationIssues()` answers with its own: every type the emitter writes has it, and a valid class answers `fun validationIssues(): List<String> = draft.validationIssues()`.
 
 #### A bound on a field typed with a declared type
 
@@ -148,7 +210,7 @@ A message names a value by the steps serde writes on the way to it: a key, a pos
 | the one slot, tag alone | its own keys beside the tag | none |
 | a member of an `#[serde(untagged)]` variant | as the value itself, or under its key | none for the slot, its key for a named member |
 
-The variant's step is the name serde writes it under: the variant's own `rename`, or the enum's `rename_all` applied to its ident. Each variant of a sealed interface overrides `validate()` with the rules of its own members, and the enum's own checks run last in each. A string check written on the enum reaches in Kotlin the fields [it reaches in Rust](enums.md#a-check-written-on-the-enum).
+The variant's step is the name serde writes it under: the variant's own `rename`, or the enum's `rename_all` applied to its ident. Each variant of the draft's sealed interface overrides `validationIssues()` with the rules of its own members, a variant is a `{Enum}Draft` that `validate()` turns into the valid enum, and a `when` over a valid value reads `payment.draft`, and the enum's own checks run last in each. A string check written on the enum reaches in Kotlin the fields [it reaches in Rust](enums.md#a-check-written-on-the-enum).
 
 #### The checks
 
@@ -157,8 +219,8 @@ A check is called under the name the attribute writes, on the value Rust hands i
 | | Kotlin |
 |---|---|
 | A field's check | `fun withoutDuplicates(value: List<String>): List<String>` |
-| A type's check | `fun withinParcel(value: Parcel): List<String>` |
-| The check of a type with a parameter, written once | `fun <CodeType> withACode(value: Crate<CodeType>): List<String>` |
+| A type's check | `fun withinParcel(value: ParcelDraft): List<String>` |
+| The check of a type with a parameter, written once | `fun <CodeType> withACode(value: CrateDraft<CodeType>): List<String>` |
 
 ```kotlin
 fun withoutDuplicates(value: List<String>): List<String> {
@@ -169,13 +231,13 @@ fun withoutDuplicates(value: List<String>): List<String> {
     return emptyList()
 }
 
-fun withinParcel(value: Parcel): List<String> =
+fun withinParcel(value: ParcelDraft): List<String> =
     value.fragileItemCodes.withIndex()
         .filter { it.value !in value.itemCodeList }
         .map { "'fragileItemCodes.${it.index}': ${it.value} is outside of itemCodeList" }
 ```
 
-A field's check names no path, and `validate()` writes its messages under the field. A type's check leads each message with the path of what it refuses, as [in Rust](checks.md#the-messages). The check of a nullable member is called only where the member holds a value, and the check of a brand takes the value class.
+A field's check names no path, and `validationIssues()` writes its messages under the field. A function takes the draft, `ParcelDraft`, as Rust's takes `&ParcelDraft`, and so does the function a member's check names where the member is a model, which is called with that member's `draft`; `fun withinParcel(value: Parcel)` is ``error: argument type mismatch: actual type is 'ParcelDraft', but 'Parcel' was expected.`` A type's check leads each message with the path of what it refuses, as [in Rust](checks.md#the-messages). The check of a nullable member is called only where the member holds a value, and the check of a brand takes the value class.
 
 **A name with no Kotlin function does not compile**, and the Kotlin compiler says so at the call:
 
@@ -185,23 +247,24 @@ error: unresolved reference 'withinParcel'.
 
 #### The read in the Kotlin client
 
-The serializer of a type throws for a payload whose value breaks a bound or a check, and hands no object back. `Json.decodeFromString<Parcel>(payload)`, `serializer<Parcel>()` and a property typed `Parcel` in a class of your own all read through `ParcelSerializer`, the type's own serializer: it reads the value and calls `validate()` on it. What it throws is `SerializationException`, the exception of `kotlinx.serialization`, and its message is what `validate()` answers of the value read, every message, joined by `; `:
+The serializer of a type throws for a payload whose value breaks a bound or a check, and hands no object back. `Json.decodeFromString<Parcel>(payload)`, `serializer<Parcel>()` and a property typed `Parcel` in a class of your own all read through `ParcelSerializer`, the type's own serializer: it reads the value and asks its draft for `validationIssues()`. What it throws is `SerializationException`, the exception of `kotlinx.serialization`, and its message is what `validate()` answers of the value read, every message, joined by `; `:
 
 ```kotlin
 Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCodes":["x","y"]}""")
 // SerializationException: 'label': too short: minimum length is 1, got 0; 'fragileItemCodes.1': y is outside of itemCodeList
 ```
 
-**Every type has two serializers**, a plain enum that names no check apart:
+**Every type has two serializers**, a plain enum that names no check apart, and a model's draft has a third:
 
 | | What it reads | Who names it |
 |---|---|---|
-| `{Type}Unjudged` | the payload, with no judgement | a holder, for each model it holds, and you, to read a value that breaks a rule |
-| `{Type}Serializer` | through the first, and then throws what `validate()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
+| `{Type}Unjudged` | the payload, with no judgement, into the valid class | a holder, for each model it holds: `private` to the file the emitted types are joined into |
+| `{Type}Serializer` | through the first, and then throws what the draft's `validationIssues()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
+| `{Type}DraftUnjudged` | the payload, with no judgement, into the draft | the draft: `@Serializable(with = ParcelDraftUnjudged::class)`, and you, to read a value that breaks a rule |
 
-Both write the same payload, and writing judges nothing: a broken value built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`. The type's own serializer is a function too: called, `ParcelSerializer()` answers `ParcelUnjudged`, which is how a read tixschema writes reaches the unjudged serializer of a type it holds but cannot name, one declared below it.
+All write the same payload, and writing judges nothing: a broken draft built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`. The type's own serializer is a function too: called, `ParcelSerializer()` answers `ParcelUnjudged`, which is how a read tixschema writes reaches the unjudged serializer of a type it holds but cannot name, one declared below it.
 
-- **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and `{Type}Unjudged` is that serializer under a name: `object ParcelUnjudged : KSerializer<Parcel> by Parcel.generatedSerializer()`. A struct under its own `#[serde(tag = "...")]` holds the tag in a property the plugin reads and writes after the struct's members, so its `{Type}Unjudged` wraps the plugin's serializer, refuses a payload whose tag is not the struct's name (below), and writes the tag ahead of the members, as serde writes it: `#[serde(tag = "kind")] struct Flag { label: String }` is written `{"kind":"Flag","label":"n"}`, alone and flattened into a holder. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
+- **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and the unjudged one of a draft is that serializer under a name: `object ParcelDraftUnjudged : KSerializer<ParcelDraft> by ParcelDraft.generatedSerializer()`, left under the plugin's own serial name, `demo.ParcelDraft` under `package demo`. `ParcelUnjudged` reads it, wraps the draft with no check, and rewrites the serial name in a refusal that states it, so a missing key is stated as it was before a model type was a pair: `Field 'label' is required for type with serial name 'demo.Parcel', but it was missing at path: $`, whatever the package. A `MissingFieldException` stays one, and a `SerializationException` stays the one it is. A struct under its own `#[serde(tag = "...")]` holds the tag in a property the plugin reads and writes after the struct's members, so its `{Type}Unjudged` wraps the plugin's serializer, refuses a payload whose tag is not the struct's name (below), and writes the tag ahead of the members, as serde writes it: `#[serde(tag = "kind")] struct Flag { label: String }` is written `{"kind":"Flag","label":"n"}`, alone and flattened into a holder. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
 - **A struct with a `#[serde(flatten)]` member, a struct with a member serde never writes, a tuple struct and an enum under every tagging** have a serializer tixschema writes, and it is the unjudged one. So does the class of a variant with a `#[serde(flatten)]` member or a member serde never writes, `{Enum}{Variant}Unjudged`, its one serializer: the enum's own serializer judges the variant.
 - **Every refusal of a serializer tixschema writes is a `SerializationException`**, the exception the plugin's own serializers throw, so a caller that catches it catches each. Its message says what the read expected and found: ``missing field `held` `` for a key serde requires, `expected an object, found []` for a value of another kind, `expected value`, serde's words for text that is not the document, for an externally tagged enum or a `Result` read from a value that is neither a string nor an object of one key, `unknown tag Gale` for a tag no variant has, and `invalid length 3, expected 2` for the array of a tuple, or of a fixed array, of another length, a longer one among them, as serde refuses each.
 - **A refusal states the path of the value refused, from the root of the payload**, as kotlinx states a path: an `i64` item out of range is refused with ``invalid type: floating point `-9.223372036854776e+18`, expected i64 at path: $.listed[1]``, and the fixed array below with `invalid length 3, expected 2 at path: $.pair`. A serializer tixschema writes reads each part of the value it took off the decoder from the part's text, where kotlinx states the part's path, and places a refusal below it at the path the decoder read the value at, the part's step ahead. What it throws is a `SerializationException` over the refusal, its message the refusal's with that path and without the `Unexpected JSON token at offset N: ` kotlinx writes ahead of the words of a text it refuses. A map keyed by a [brand](generics-and-brands.md#branded-newtypes) is read through `class {Brand}MapSerializer<KotlinSchemaValue>`, which the brand declares when it holds a text, a number or a `bool` and the member names on the map, `val pitches: @Serializable(with = PitchMapSerializer::class) Map<@Serializable(with = PitchKeySerializer::class) Pitch, UInt>`: it reads each key from its text at the map's path, as serde names a key that does not read, and each value from its text under the key's text, where kotlinx would state the key as the brand's `toString()`, so `{"pitches":{"3":-1}}` is refused at `$.pitches.3`, and writes the map as kotlinx writes it.
@@ -297,11 +360,11 @@ A payload no variant takes throws `SerializationException: No variant of Mark ma
 
 **The generated clients answer their fault for a reply that breaks a rule**, with the messages in the fault's detail: `undeserializable-payload` from the `http_rest` client, and `failed-validation` from the `ws_rpc` one, which names the field the Rust `ws_rpc` dispatcher names for the same payload ([the field a refused message names](ws-rpc.md)).
 
-**To read a value that breaks a rule**, name the unjudged serializer, and call `validate()` for what is wrong with it:
+**To read a value that breaks a rule**, read the draft, which no rule judges, and call `validationIssues()` for what is wrong with it:
 
 ```kotlin
-val parcel = Json.decodeFromString(ParcelUnjudged, payload)
-parcel.validate()
+val parcel = Json.decodeFromString<ParcelDraft>(payload)
+parcel.validationIssues()
 // ['label': too short: minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]
 ```
 
@@ -331,18 +394,24 @@ fun withoutFragile(payload: JsonElement): JsonElement =
 This is what the `Parcel` of that example emits. The emitter writes it on one line, and each line break below stands for one space of it:
 
 ```kotlin
-@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelSerializer::class) @KeepGeneratedSerializer
-data class Parcel(@Serializable(with = ParcelLabelPreprocess::class) val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
-  fun validate(): List<String> {
+@OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelDraftUnjudged::class) @KeepGeneratedSerializer
+data class ParcelDraft(@Serializable(with = ParcelLabelPreprocess::class) val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
+  fun validationIssues(): List<String> {
     val violations = mutableListOf<String>();
     if (label.codePointCount(0, label.length) < 1) violations.add("'label': too short: minimum length is 1, got ${label.codePointCount(0, label.length)}");
     return violations
   }
+  fun validate(): Parcel {
+    val violations = validationIssues();
+    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    return Parcel.checked(this)
+  }
 }
-@OptIn(ExperimentalSerializationApi::class) object ParcelUnjudged : KSerializer<Parcel> {
-  private val held = Parcel.generatedSerializer();
+@OptIn(ExperimentalSerializationApi::class)
+object ParcelDraftUnjudged : KSerializer<ParcelDraft> {
+  private val held = ParcelDraft.generatedSerializer();
   override val descriptor: SerialDescriptor = held.descriptor;
-  override fun serialize(encoder: Encoder, value: Parcel) = held.serialize(encoder, value);
+  override fun serialize(encoder: Encoder, value: ParcelDraft) = held.serialize(encoder, value);
   private fun kotlinSchemaRebased(refused: SerializationException, at: String): SerializationException {
     if (refused.cause?.message == "validate()") return refused;
     val said = refused.message.orEmpty().replaceFirst(Regex("^Unexpected JSON token at offset \\d+: "), "");
@@ -353,12 +422,32 @@ data class Parcel(@Serializable(with = ParcelLabelPreprocess::class) val label: 
     throw kotlinSchemaRebased(refused, at)
   };
   private inline fun <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw kotlinSchemaRebased(refused, "\$" + step) };
-  override fun deserialize(decoder: Decoder): Parcel {
+  override fun deserialize(decoder: Decoder): ParcelDraft {
     val input = decoder as JsonDecoder;
     val element = input.decodeJsonElement();
     return kotlinSchemaAt(input) { input.json.decodeFromString(held, transformDeserialize(element).toString()) }
   };
   private fun transformDeserialize(element: JsonElement): JsonElement = withoutFragile(element)
+}
+@ConsistentCopyVisibility @Serializable(with = ParcelSerializer::class)
+data class Parcel private constructor(val draft: ParcelDraft) {
+  val label: String get() = draft.label;
+  val itemCodeList: List<String> get() = draft.itemCodeList;
+  val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
+  fun validationIssues(): List<String> = draft.validationIssues();
+  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft) }
+}
+@OptIn(ExperimentalSerializationApi::class)
+private object ParcelUnjudged : KSerializer<Parcel> {
+  override val descriptor: SerialDescriptor = ParcelDraftUnjudged.descriptor;
+  override fun serialize(encoder: Encoder, value: Parcel) = ParcelDraftUnjudged.serialize(encoder, value.draft);
+  override fun deserialize(decoder: Decoder): Parcel = Parcel.checked(try { ParcelDraftUnjudged.deserialize(decoder) } catch (refused: SerializationException) {
+    val named = ParcelDraftUnjudged.descriptor.serialName;
+    val said = refused.message.orEmpty();
+    if ("'" + named + "'" !in said) throw refused;
+    val declared = named.removeSuffix("Draft");
+    throw if (refused is MissingFieldException) MissingFieldException(refused.missingFields, declared) else SerializationException(said.replace("'" + named + "'", "'" + declared + "'"), refused.cause)
+  })
 }
 object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   override fun invoke(): KSerializer<Parcel> = ParcelUnjudged;
@@ -366,7 +455,7 @@ object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Parcel {
     val read = ParcelUnjudged.deserialize(decoder);
-    val violations = read.validate();
+    val violations = read.validationIssues();
     if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
     return read
   }
@@ -379,8 +468,7 @@ object ParcelLabelPreprocess : KSerializer<String> {
     var held = serializer.descriptor;
     while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0);
     val kind = held.kind;
-    if ((kind is PrimitiveKind && element !is JsonPrimitive) || (kind == StructureKind.LIST && element !is JsonArray) || (kind == StructureKind.MAP && element !is JsonObject))
-      throw SerializationException("'" + at + "': " + kind + " cannot be read from " + when (element) { is JsonArray -> "an array"; is JsonObject -> "an object"; else -> "a primitive" });
+    if ((kind is PrimitiveKind && element !is JsonPrimitive) || (kind == StructureKind.LIST && element !is JsonArray) || (kind == StructureKind.MAP && element !is JsonObject)) throw SerializationException("'" + at + "': " + kind + " cannot be read from " + when (element) { is JsonArray -> "an array"; is JsonObject -> "an object"; else -> "a primitive" });
     return element
   };
   private fun <KotlinSchemaRead> kotlinSchemaDecoded(json: Json, serializer: DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String, step: String): KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, kotlinSchemaKinded(serializer, element, at).toString()) };

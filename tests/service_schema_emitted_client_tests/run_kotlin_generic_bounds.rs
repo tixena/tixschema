@@ -274,7 +274,7 @@ fn rows() -> Vec<Row> {
         },
         Row {
             dart: "Shelf<Slot>(by_slot: {'north-dock': Item(label: ''), 'south-dock': Item(label: 'a')}).validate()",
-            kotlin: "Shelf<Slot>(mapOf(Slot.NorthDock to Item(\"\"), Slot.SouthDock to Item(\"a\"))).validate()",
+            kotlin: "ShelfDraft<Slot>(mapOf(Slot.NorthDock to Item.checked(ItemDraft(\"\")), Slot.SouthDock to Item.checked(ItemDraft(\"a\")))).validationIssues()",
             swift: "Shelf<Slot>(bySlot: [\"north-dock\": Item(label: \"\"), \"south-dock\": Item(label: \"a\")]).validate()",
             name: "a map keyed by a plain enum",
             rust: shelf(vec![
@@ -286,7 +286,7 @@ fn rows() -> Vec<Row> {
         },
         Row {
             dart: "Shelf<Berth>(by_slot: {'b1': Item(label: '')}).validate()",
-            kotlin: "Shelf<Berth>(mapOf(Berth.of(\"b1\") to Item(\"\"))).validate()",
+            kotlin: "ShelfDraft<Berth>(mapOf(Berth.of(\"b1\") to Item.checked(ItemDraft(\"\")))).validationIssues()",
             swift: "Shelf<Berth>(bySlot: [\"b1\": Item(label: \"\")]).validate()",
             name: "a map keyed by a brand",
             rust: ShelfDraft {
@@ -297,7 +297,7 @@ fn rows() -> Vec<Row> {
         },
         Row {
             dart: "Shelf<String>(by_slot: {'k': Item(label: '')}).validate()",
-            kotlin: "Shelf<String>(mapOf(\"k\" to Item(\"\"))).validate()",
+            kotlin: "ShelfDraft<String>(mapOf(\"k\" to Item.checked(ItemDraft(\"\")))).validationIssues()",
             swift: "Shelf<String>(bySlot: [\"k\": Item(label: \"\")]).validate()",
             name: "a map keyed by the default",
             rust: ShelfDraft {
@@ -308,7 +308,7 @@ fn rows() -> Vec<Row> {
         },
         Row {
             dart: "Shelf<int>(by_slot: {'7': Item(label: '')}).validate()",
-            kotlin: "Shelf<UInt>(mapOf(7u to Item(\"\"))).validate()",
+            kotlin: "ShelfDraft<UInt>(mapOf(7u to Item.checked(ItemDraft(\"\")))).validationIssues()",
             swift: "Shelf<UInt32>(bySlot: [\"7\": Item(label: \"\")]).validate()",
             name: "a map keyed by a number",
             rust: ShelfDraft {
@@ -406,7 +406,7 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
         REPORT.to_owned(),
         READ.to_owned(),
         "fun main() {\n    read<Shelf<Tag<String>>>(\"read\", \"\"\"{\"by_slot\":{\"t\":{\"label\":\"\"}}}\"\"\")\n    \
-         report(\"hand built\", Shelf<Tag<String>>(mapOf(Tag.of(\"t\") to Item(\"\"))).validate())\n}\n"
+         report(\"hand built\", ShelfDraft<Tag<String>>(mapOf(Tag.of(\"t\") to Item.checked(ItemDraft(\"\")))).validationIssues())\n}\n"
             .to_owned(),
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
@@ -499,22 +499,22 @@ fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_in_a_variant_and_
     let built = [
         (
             "hand built tagged variant",
-            "DepotStocked<Tag<String>>(mapOf(Tag.of(\"t\") to Item(\"\"))).validate()",
+            "DepotStocked<Tag<String>>(mapOf(Tag.of(\"t\") to Item.checked(ItemDraft(\"\")))).validationIssues()",
             reads[0].3.clone(),
         ),
         (
             "hand built untagged variant",
-            "PalletLoaded<Tag<String>>(mapOf(Tag.of(\"t\") to Item(\"\"))).validate()",
+            "PalletLoaded<Tag<String>>(mapOf(Tag.of(\"t\") to Item.checked(ItemDraft(\"\")))).validationIssues()",
             reads[1].3.clone(),
         ),
         (
             "hand built generic holder",
-            "Annex<Tag<String>>(Shelf(mapOf(Tag.of(\"t\") to Item(\"\")))).validate()",
+            "AnnexDraft<Tag<String>>(Shelf.checked(ShelfDraft(mapOf(Tag.of(\"t\") to Item.checked(ItemDraft(\"\")))))).validationIssues()",
             reads[3].3.clone(),
         ),
         (
             "hand built brand of the holder's parameter",
-            "Armoire<String>(Shelf(mapOf(Tag.of(\"t\") to Item(\"\")))).validate()",
+            "ArmoireDraft<String>(Shelf.checked(ShelfDraft(mapOf(Tag.of(\"t\") to Item.checked(ItemDraft(\"\")))))).validationIssues()",
             reads[4].3.clone(),
         ),
     ];
