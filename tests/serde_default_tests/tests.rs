@@ -537,7 +537,12 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
         swift_valid::draft_of(&super::models::gangway_swift::swift_definition()),
         format!(
             "{}{FITTED}; {}{} }};",
-            "public struct GangwayDraft: Codable, Sendable { public var label: String; public var width: UInt32; enum CodingKeys: String, CodingKey { case label; case width;  }; public init(label: String, width: UInt32) { self.label = label; self.width = width;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; ",
+            "public struct GangwayDraft: Codable, Sendable { public var label: String; public var \
+             width: UInt32; enum CodingKeys: String, CodingKey { case label; case width;  }; \
+             public init(label: String, width: UInt32) { self.label = label; self.width = width;  \
+             }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var \
+             intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue \
+             }; init?(intValue: Int) { nil } }; ",
             "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
              throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.label \
              = try container.decode(String.self, forKey: .label); self.width = try \
@@ -553,15 +558,34 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
     assert_eq!(
         without_number_readers(&super::models::gangway_kotlin::kotlin_definition()),
         "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-         GangwaySerializer::class) @KeepGeneratedSerializer data class Gangway(val label: String, \
-         val width: UInt) { fun validate(): List<String> = emptyList() } \
-         @OptIn(ExperimentalSerializationApi::class) object GangwayUnjudged : KSerializer<Gangway> \
-         by Gangway.generatedSerializer() object GangwaySerializer : KSerializer<Gangway>, () -> \
+         GangwayDraftUnjudged::class) @KeepGeneratedSerializer data class GangwayDraft(val label: \
+         String, val width: UInt) { fun validationIssues(): List<String> = emptyList() fun \
+         validate(): Gangway { val violations = validationIssues(); if (violations.isNotEmpty()) \
+         throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return Gangway.checked(this) } } \
+         @OptIn(ExperimentalSerializationApi::class) object GangwayDraftUnjudged : \
+         KSerializer<GangwayDraft> by GangwayDraft.generatedSerializer() @ConsistentCopyVisibility \
+         @Serializable(with = GangwaySerializer::class) data class Gangway private constructor(val \
+         draft: GangwayDraft) { val label: String get() = draft.label; val width: UInt get() = \
+         draft.width; fun validationIssues(): List<String> = draft.validationIssues(); companion \
+         object { internal fun checked(draft: GangwayDraft): Gangway = Gangway(draft) } } \
+         @OptIn(ExperimentalSerializationApi::class) private object GangwayUnjudged : \
+         KSerializer<Gangway> { override val descriptor: SerialDescriptor = \
+         GangwayDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Gangway) \
+         = GangwayDraftUnjudged.serialize(encoder, value.draft); override fun deserialize(decoder: \
+         Decoder): Gangway = Gangway.checked(try { GangwayDraftUnjudged.deserialize(decoder) } \
+         catch (refused: SerializationException) { val named = \
+         GangwayDraftUnjudged.descriptor.serialName; val said = refused.message.orEmpty(); if \
+         (\"'\" + named + \"'\" !in said) throw refused; val declared = \
+         named.removeSuffix(\"Draft\"); throw if (refused is MissingFieldException) \
+         MissingFieldException(refused.missingFields, declared) else \
+         SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
+         refused.cause) }) } object GangwaySerializer : KSerializer<Gangway>, () -> \
          KSerializer<Gangway> { override fun invoke(): KSerializer<Gangway> = GangwayUnjudged; \
          override val descriptor: SerialDescriptor = GangwayUnjudged.descriptor; override fun \
          serialize(encoder: Encoder, value: Gangway) = GangwayUnjudged.serialize(encoder, value); \
          override fun deserialize(decoder: Decoder): Gangway { val read = \
-         GangwayUnjudged.deserialize(decoder); val violations = read.validate(); if \
+         GangwayUnjudged.deserialize(decoder); val violations = read.validationIssues(); if \
          (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
          IllegalArgumentException(\"validate()\")); return read } }"
     );
@@ -611,7 +635,7 @@ fn kotlin_reads_a_key_left_out_from_the_json_of_its_default() {
     let written = super::models::wharf_kotlin::kotlin_definition();
     assert!(
         written.contains(
-            "data class Wharf(val dock: String = Json.decodeFromString(serializer<String>(), \
+            "data class WharfDraft(val dock: String = Json.decodeFromString(serializer<String>(), \
              \"\\\"\\\"\"), @Serializable(with = GangwayUnjudged::class) val gangway: Gangway = \
              Json.decodeFromString(GangwayUnjudged, \
              \"{\\\"label\\\":\\\"main\\\",\\\"width\\\":2}\"), val gate: String = \

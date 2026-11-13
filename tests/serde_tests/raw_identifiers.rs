@@ -214,7 +214,7 @@ mod on_a_mobile_surface {
     fn kotlin_names_the_member_without_the_prefix() {
         let definition = raw_mobile_kotlin::kotlin_definition();
         assert!(
-            definition.contains("data class RawMobile(val match: String, val type: String)"),
+            definition.contains("data class RawMobileDraft(val match: String, val type: String)"),
             "got: {definition}"
         );
     }
