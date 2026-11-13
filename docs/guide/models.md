@@ -29,12 +29,12 @@ let draft = UserProfileDraft {
     is_verified: true,
 };
 
-// `validate()` takes the draft and answers the valid value, or every rule it breaks.
-let profile: UserProfile = draft.clone().validate().unwrap();
-assert_eq!(profile.age, 36);
-
-// The draft lists the same rules without being consumed.
+// The draft lists the rules it breaks without being consumed.
 assert!(draft.validation_issues().is_empty());
+
+// `validate()` takes the draft and answers the valid value, or every rule it breaks.
+let profile: UserProfile = draft.validate().unwrap();
+assert_eq!(profile.age, 36);
 
 // A valid value turns back into its draft, which is open again.
 let mut again: UserProfileDraft = profile.into();

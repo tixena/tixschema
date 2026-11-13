@@ -1,11 +1,11 @@
 ## Compiler-Validated Examples
 
-You can provide compiler-validated example values for your types. Every generated Zod schema holds them in its `.meta()` under `examples`: a list with one item per example block, in the order written, and an empty list where the type writes none. Examples are written in doc comment code blocks and fully type-checked at compile time.
+You can provide compiler-validated example values for your types. Every generated Zod schema holds them in its `.meta()` under `examples`: a list with one item per example block, in the order written, and an empty list where the type writes none. Examples are written in doc comment code blocks and fully type-checked at compile time. An example expression is evaluated as the type's [draft](models.md#a-draft-and-a-valid-type): a struct or an enum writes `UserDraft { .. }` and `ShapeDraft::Circle { .. }`, and a block that writes `User { .. }` or `Shape::Circle { .. }`, the valid type, is a compile error. A brand has no draft, so its example builds the brand itself.
 
 ```rust
 /// User profile
 /// ```rust example
-/// User {
+/// UserDraft {
 ///     name: "John Doe".to_string(),
 ///     email: "john@example.com".to_string(),
 ///     age: 25,
@@ -39,7 +39,7 @@ You can include arbitrary setup code before the example value:
 /// ```rust example
 /// let user_id = "usr_123".to_string();
 /// let tags = vec!["admin".to_string(), "active".to_string()];
-/// User {
+/// UserDraft {
 ///     id: user_id,
 ///     tags,
 ///     age: 30,
@@ -59,7 +59,7 @@ Enum examples work similarly:
 ```rust
 /// Data type enumeration
 /// ```rust example
-/// DataType::Numeric
+/// DataTypeDraft::Numeric
 /// ```
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -75,10 +75,10 @@ A type can write several blocks, one value each, for example one per variant of 
 ```rust
 /// A shape
 /// ```rust example
-/// Shape::Circle { radius: 2 }
+/// ShapeDraft::Circle { radius: 2 }
 /// ```
 /// ```rust example
-/// Shape::Square { side: 3 }
+/// ShapeDraft::Square { side: 3 }
 /// ```
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]

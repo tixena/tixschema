@@ -57,7 +57,7 @@ pub struct Greeting<'text> {
     pub name: &'text str,
 }
 
-Greeting { name: "al" }.validate();
+GreetingDraft { name: "al" }.validate();
 // Err(["'name': too short: minimum length is 3, got 2"])
 ```
 
@@ -190,7 +190,7 @@ pub struct Document {
     pub name_config: Vec<Part>,
 }
 
-Document { name_config: Vec::new() }.validate();
+DocumentDraft { name_config: Vec::new() }.validate();
 // Err(["'nameConfig': too short: minimum length is 1, got 0"])
 ```
 
@@ -238,7 +238,7 @@ pub struct Article {
     pub tags: Tags,
 }
 
-Article { tags: Tags(Vec::new()) }.validate();
+ArticleDraft { tags: Tags::new(Vec::new()).unwrap() }.validate();
 // Err(["'tags': too short: minimum length is 1, got 0"])
 ```
 
@@ -284,7 +284,7 @@ A bound no value meets is refused too, on a field and on a brand's own `minLengt
 
 ### The `validate()` Method
 
-When any field carries a constraint, or the type or one of its fields names a [check](checks.md#checks-check), the macro generates a `validate(&self) -> Result<(), Vec<String>>` method. It is what checks a field's constraints. A serde read of the type calls it on the value it read and [refuses what it refuses](#a-read-refuses-what-validate-refuses), and you call it on an instance built or changed in Rust.
+When any field carries a constraint, or the type or one of its fields names a [check](checks.md#checks-check), the macro generates a `validate(self) -> Result<Registration, Vec<String>>` method on the draft, which answers the valid type or every rule the value breaks. It is what checks a field's constraints. A serde read of the type calls it on the value it read and [refuses what it refuses](#a-read-refuses-what-validate-refuses), and you call it on an instance built or changed in Rust.
 
 ```rust
 #[model_schema()]
@@ -297,10 +297,10 @@ pub struct Registration {
     pub age: u32,
 }
 
-let reg = Registration { username: "ab".to_string(), age: 150 };
+let reg = RegistrationDraft { username: "ab".to_string(), age: 150 };
 
 match reg.validate() {
-    Ok(()) => println!("valid"),
+    Ok(_) => println!("valid"),
     Err(errors) => {
         for e in &errors {
             println!("Error: {e}");
@@ -334,13 +334,13 @@ pub enum Action {
     },
 }
 
-let deleting = Action::Delete { note: "abc".to_string() };
+let deleting = ActionDraft::Delete { note: "abc".to_string() };
 assert_eq!(
-    deleting.validate().unwrap_err(),
+    deleting.validate().err().unwrap(),
     vec!["'note': too short: minimum length is 5, got 3".to_string()],
 );
 // The same value read as an `Upload` is held to that variant's own minimum, and passes.
-assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
+assert!(ActionDraft::Upload { note: "abc".to_string() }.validate().is_ok());
 ```
 
 Parity with structs runs both ways: an enum no member of which carries a constraint has the `validate()` of its draft as a struct holding no rule has, and a set, a deque and a heap are walked only where they hold a declared type, so a struct whose only member is a `HashSet<String>` holds no rule and its `validate()` answers `Ok` for every value. A `validate` of your own on the draft stops building, as `E0592` names the two.
@@ -365,12 +365,12 @@ pub struct Depot {
     pub named: Crate<String>,
 }
 
-Crate::<u32> { codes: vec![], label: String::new() }.validate();
+CrateDraft::<u32> { codes: vec![], label: String::new() }.validate();
 // Err(["'label': too short: minimum length is 1, got 0"])
 
-Depot {
-    numbered: Crate { codes: vec![], label: String::new() },
-    named: Crate { codes: vec![], label: String::new() },
+DepotDraft {
+    numbered: Crate::<u32>::model_schema_wrap_unjudged(CrateDraft { codes: vec![], label: String::new() }),
+    named: Crate::<String>::model_schema_wrap_unjudged(CrateDraft { codes: vec![], label: String::new() }),
 }
 .validate();
 // Err(["'numbered.label': too short: minimum length is 1, got 0", "'named.label': too short: minimum length is 1, got 0"])
@@ -471,18 +471,19 @@ pub struct Manifest {
     pub starting_base: Base,
 }
 
-let broken = || Package {
-    item_label: String::new(),
-    listed_item_codes: Vec::new(),
-    parcel_code: Code::model_schema_read_unjudged(serde_json::json!("a")).unwrap(),
+let broken = || {
+    Package::model_schema_read_unjudged(
+        serde_json::json!({ "itemLabel": "", "codes": [], "parcelCode": "a" }),
+    )
+    .unwrap()
 };
-let manifest = Manifest {
+let manifest = ManifestDraft {
     first_parcel: broken(),
     parcel_list: vec![broken(), broken()],
     spare_parcel: Some(broken()),
-    starting_base: Base { base_name: String::new() },
+    starting_base: Base::model_schema_read_unjudged(serde_json::json!({ "baseName": "" })).unwrap(),
 };
-println!("{}", manifest.validate().unwrap_err().join("\n"));
+println!("{}", manifest.validate().err().unwrap().join("\n"));
 ```
 
 ```text
@@ -523,11 +524,11 @@ pub enum Entry {
     ),
 }
 
-Entry::Code("abc".to_string()).validate();
+EntryDraft::Code("abc".to_string()).validate();
 // Err(["'Code': does not match pattern '^[A-Z]{3}$'"])
-Entry::Pair("a".to_string(), 0).validate();
+EntryDraft::Pair("a".to_string(), 0).validate();
 // Err(["'Pair.0': too short: minimum length is 2, got 1", "'Pair.1': too small: minimum is 1, got 0"])
-MimeType::Other(String::new()).validate();
+MimeTypeDraft::Other(String::new()).validate();
 // Err(["too short: minimum length is 1, got 0", "does not match pattern '^[a-z]+/[a-z0-9.+-]+$'"])
 ```
 
@@ -545,7 +546,7 @@ pub struct Pair(
     #[model_schema_prop(minimum = 1)] pub u32,
 );
 
-Pair(String::new(), 0).validate();
+PairDraft(String::new(), 0).validate();
 // Err(["'0': too short: minimum length is 1, got 0", "'1': too small: minimum is 1, got 0"])
 ```
 
@@ -647,7 +648,7 @@ The messages come in the order `validate()` reports them: member by member as de
 pub struct Label(String);
 
 fn label_in_upper_case(value: &Label) -> Result<(), Vec<String>> {
-    if value.0.chars().any(char::is_lowercase) {
+    if value.as_inner().chars().any(char::is_lowercase) {
         return Err(vec!["a label is upper case".to_owned()]);
     }
     Ok(())
@@ -676,9 +677,10 @@ A brand that carries no bound and names no check publishes no `validate()`, and 
 **What `validate()` is for.** A value built in code, and a value changed after it was read:
 
 ```rust
-let mut parcel: Parcel = serde_json::from_str(payload)?;
-parcel.fragile_item_codes.push("y".to_string());
-parcel.validate();
+let parcel: Parcel = serde_json::from_str(payload)?;
+let mut draft: ParcelDraft = parcel.into();
+draft.fragile_item_codes.push("y".to_string());
+draft.validate();
 // Err(["'fragileItemCodes.1': y is outside of itemCodeList"])
 ```
 
@@ -750,7 +752,7 @@ pub struct Enrolment {
 ```
 
 ```rust
-Enrolment { slug: Slug("a".to_string()) }.validate();
+EnrolmentDraft { slug: Slug::model_schema_read_unjudged(serde_json::json!("a")).unwrap() }.validate();
 // Err(["'slug': too short: minimum length is 3, got 1"])
 ```
 
@@ -791,16 +793,17 @@ pub struct Terminal {
 #[derive(Serialize, Deserialize)]
 pub struct Consignment(#[model_schema_prop(minLength = 1)] pub String, pub Parcel);
 
-let unlabelled = || Parcel { item_label: String::new() };
+let parcel = |label: &str| Parcel::model_schema_read_unjudged(serde_json::json!({ "itemLabel": label })).unwrap();
+let unlabelled = || parcel("");
 
-Terminal {
-    first_parcel: Parcel { item_label: "A".to_string() },
+TerminalDraft {
+    first_parcel: parcel("A"),
     parcels_by_dock: BTreeMap::from([("north".to_string(), unlabelled())]),
 }
 .validate();
 // Err(["'parcelsByDock.north.itemLabel': too short: minimum length is 1, got 0"])
 
-Consignment(String::new(), unlabelled()).validate();
+ConsignmentDraft(String::new(), unlabelled()).validate();
 // Err(["'0': too short: minimum length is 1, got 0", "'1.itemLabel': too short: minimum length is 1, got 0"])
 ```
 

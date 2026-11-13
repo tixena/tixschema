@@ -33,7 +33,7 @@ pub struct Crate<CodeType> {
     pub codes: Vec<CodeType>,
 }
 
-fn without_repeats<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>
+fn without_repeats<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>
 where
     CodeType: PartialEq,
 {

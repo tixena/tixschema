@@ -1248,3 +1248,27 @@ fn a_tuple_struct_carries_its_examples() {
     let zod = Point::zod_schema();
     assert!(ends_in_examples(&zod, "[[1,2],[3,4]]"), "Got: {zod}");
 }
+
+#[test]
+fn the_guide_states_that_an_example_is_evaluated_as_the_draft() {
+    let guide = include_str!("../../docs/guide/examples.md");
+    assert!(
+        guide.contains(
+            "An example expression is evaluated as the type's [draft](models.md#a-draft-and-a-valid-type)"
+        ),
+        "examples.md no longer says what an example expression is evaluated as"
+    );
+    let written: Vec<&str> = guide
+        .lines()
+        .filter_map(|line| line.strip_prefix("/// "))
+        .filter(|line| {
+            ["User", "Shape", "DataType"].iter().any(|name| {
+                line.starts_with(&format!("{name} {{")) || line.starts_with(&format!("{name}::"))
+            })
+        })
+        .collect();
+    assert!(
+        written.is_empty(),
+        "an example names a valid type: {written:?}"
+    );
+}

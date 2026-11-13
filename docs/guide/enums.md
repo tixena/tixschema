@@ -475,9 +475,9 @@ pub enum ContentKind {
     Other(String),
 }
 
-ContentKind::Other(String::new()).validate();
+ContentKindDraft::Other(String::new()).validate();
 // Err(["too short: minimum length is 1, got 0"])
-ContentKind::Other("a".repeat(21)).validate();
+ContentKindDraft::Other("a".repeat(21)).validate();
 // Err(["too long: maximum length is 20, got 21"])
 ```
 
@@ -506,9 +506,9 @@ pub enum Tag {
     },
 }
 
-Tag::Plain { word: "abcdef".to_string() }.validate();
+TagDraft::Plain { word: "abcdef".to_string() }.validate();
 // Err(["'word': too long: maximum length is 5, got 6"])
-Tag::Prefixed { word: "XY".to_string() }.validate();
+TagDraft::Prefixed { word: "XY".to_string() }.validate();
 // Err(["'word': too short: minimum length is 3, got 2", "'word': does not match pattern '^ab'", "'word': does not match pattern '^[a-z]+$'"])
 ```
 

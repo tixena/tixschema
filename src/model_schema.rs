@@ -3100,6 +3100,25 @@ fn drafted_schema_example_method(
 /// fn main() {}
 /// ```
 ///
+/// A block is evaluated as the draft, so one that writes the valid name does not build:
+///
+/// ```rust,compile_fail,E0308
+/// use serde::{Deserialize, Serialize};
+/// use tixschema::model_schema;
+///
+/// /// A sample
+/// /// ```rust example
+/// /// Sample { value: 1 }
+/// /// ```
+/// #[model_schema(enable = ["jsonschema"])]
+/// #[derive(Deserialize, Serialize)]
+/// pub struct Sample {
+///     pub value: u32,
+/// }
+///
+/// fn main() {}
+/// ```
+///
 /// Compiled standalone as an ordinary test file, this is the only error it earned:
 ///
 /// ```text

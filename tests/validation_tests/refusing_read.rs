@@ -751,7 +751,7 @@ mod a_read_refuses_what_validate_refuses {
             format!("```text\n{}\n```", MANIFEST_REFUSAL.replace("; ", ";\n")),
             "`invalid type: integer `5`, expected a string at line 1 column 39`".to_owned(),
             "`... at line 1 column 58`".to_owned(),
-            format!("parcel.validate();\n// {:?}\n", changed.validate()),
+            format!("draft.validate();\n// {:?}\n", changed.validate()),
         ] {
             assert!(
                 readme.contains(&shown),
