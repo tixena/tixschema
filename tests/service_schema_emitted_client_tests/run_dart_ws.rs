@@ -225,7 +225,7 @@ void main() async {
       },
       stacks: (ctx, req) async => <Shelf>[ShelfDraft(title: req.prefix).validate()],
       tally: (ctx, req) async {
-        if (req.deep) throw ShelfError.missing;
+        if (req.deep) throw ShelfErrorDraft.missing;
         return 7;
       },
       titles: (ctx, req) async => <String>[req.prefix],

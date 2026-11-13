@@ -68,7 +68,7 @@ pub fn dart_value(held_by: &str, json: &str) -> String {
             let mut letters = text.chars();
             let first = letters.next().map(|letter| letter.to_ascii_lowercase());
             format!(
-                "ConveyedSlot.{}{}",
+                "ConveyedSlotDraft.{}{}.validate()",
                 first.unwrap_or_default(),
                 letters.as_str()
             )
