@@ -33,7 +33,7 @@ Future<Map<String, dynamic>> serveAll(List<String> frames) async {
     null,
     SpoolServiceHandlers<void>(
       spool: (ctx, label) async {
-        throw SpoolFault.jammed;
+        throw SpoolFaultDraft.jammed;
       },
       bare: (ctx, label) async {
         if (label == 'built') throw BareFaultDraft(code: 'x');

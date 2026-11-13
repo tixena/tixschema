@@ -51,3 +51,27 @@ pub fn plain_enum_read(named: &str, json: &str, arms: &str) -> String {
          found;"
     )
 }
+
+/// The `validate()` of the draft of a plain enum `named`.
+pub fn plain_enum_validate(named: &str) -> String {
+    format!(
+        "{named} validate() {{ final found = validationIssues(); if (found.isNotEmpty) throw \
+         FormatException(found.join('; ')); return {named}._(this); }} }}"
+    )
+}
+
+/// The valid class over the draft of a plain enum `named` whose read judges nothing.
+pub fn plain_enum_valid(named: &str) -> String {
+    format!(
+        "class {named} {{ const {named}._(this._draft); final {named}Draft _draft; {named}Draft \
+         toDraft() => _draft; factory {named}.fromJson(dynamic json) {{ final read = \
+         {named}Draft.fromJson(json); final violations = read.validationIssues(); if \
+         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
+         {named}._(read); }} factory {named}.fromJsonUnjudged(dynamic json) => \
+         {named}._({named}Draft.fromJson(json)); String toJson() => _draft.toJson(); \
+         List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
+         ==(Object other) => other is {named} && other._draft == _draft; @override int get \
+         hashCode => _draft.hashCode; static Object $thrown(Object thrown) => thrown is \
+         {named}Draft ? thrown.validate() : thrown; }}"
+    )
+}

@@ -14,11 +14,11 @@ use super::run_dart_validate::{dart, module};
 const UPHELD: &str = "
 dynamic tidied(dynamic payload) => payload is String ? payload.trim() : payload;
 
-List<String> allowed(Ruling value) =>
-    value == Ruling.denied ? const ['a ruling is allowed'] : const [];
+List<String> allowed(RulingDraft value) =>
+    value == RulingDraft.denied ? const ['a ruling is allowed'] : const [];
 
-List<String> affirmed(Verdict value) =>
-    value == Verdict.overturned ? const ['a verdict is upheld'] : const [];
+List<String> affirmed(VerdictDraft value) =>
+    value == VerdictDraft.overturned ? const ['a verdict is upheld'] : const [];
 ";
 
 const HARNESS: &str = "

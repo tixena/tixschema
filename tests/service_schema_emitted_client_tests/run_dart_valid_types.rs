@@ -3,6 +3,7 @@
 
 #![cfg(feature = "dart")]
 
+use alloc::collections::BTreeMap;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::env;
 use std::fs;
@@ -14,6 +15,8 @@ use tixschema::model_schema;
 use super::run_dart_validate::{dart, module};
 
 static RUNS: AtomicUsize = AtomicUsize::new(0);
+
+const TIER_FUNCTIONS: &str = "List<String> tierKept(CargoTierDraft value) => value == CargoTierDraft.retired ? const ['a tier is kept'] : const [];";
 
 #[model_schema(minLength = 1, maxLength = 80)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -51,6 +54,47 @@ pub enum CargoMove {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CargoShelf {
     pub cargo: Cargo,
+}
+
+#[model_schema(check = ["tierKept"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum CargoTier {
+    Retired,
+    Standard,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum CargoSpeed {
+    Fast,
+    Slow,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CargoTiers {
+    pub by_speed: BTreeMap<CargoSpeed, u32>,
+    pub tier: CargoTier,
+}
+
+fn tier_kept(value: &CargoTierDraft) -> Result<(), Vec<String>> {
+    if matches!(value, CargoTierDraft::Retired) {
+        return Err(vec!["a tier is kept".to_owned()]);
+    }
+    Ok(())
+}
+
+fn tiers() -> String {
+    module(
+        &[
+            cargo_tier_dart::dart_definition(),
+            cargo_speed_dart::dart_definition(),
+            cargo_tiers_dart::dart_definition(),
+        ],
+        &[TIER_FUNCTIONS],
+        "",
+    )
 }
 
 fn models() -> String {
@@ -236,4 +280,56 @@ fn the_analyzer_passes_a_second_library_that_builds_through_the_draft() {
     };
     assert!(clean, "{said}");
     assert!(said.contains("No issues found!"), "{said}");
+}
+
+#[test]
+fn a_second_library_cannot_build_a_valid_plain_enum() {
+    let user = "import 'tiers.dart';\n\nvoid main() {\n  CargoTier(CargoTierDraft.standard);\n  const CargoTier(CargoTierDraft.standard);\n  CargoTier._(CargoTierDraft.standard);\n  CargoTier.standard;\n  final CargoSpeed fast = CargoSpeedDraft.fast;\n}\n";
+    let Some((clean, said)) = dart_files(
+        "valid-tier",
+        &["analyze"],
+        &[("tiers.dart", tiers()), ("user.dart", user.to_owned())],
+        "user.dart",
+    ) else {
+        return;
+    };
+    assert!(!clean, "{said}");
+    for printed in [
+        "The class 'CargoTier' doesn't have an unnamed constructor.",
+        "The class 'CargoTier' doesn't have an unnamed constant constructor.",
+        "The class 'CargoTier' doesn't have a constructor named '_'.",
+        "The getter 'standard' isn't defined for the type 'CargoTier'.",
+        "A value of type 'CargoSpeedDraft' can't be assigned to a variable of type 'CargoSpeed'.",
+    ] {
+        assert!(said.contains(printed), "no `{printed}` in: {said}");
+    }
+}
+
+#[test]
+fn a_plain_enum_validates_through_its_draft_and_keeps_its_wire() {
+    let refused = CargoTierDraft::Retired.validation_issues().join("; ");
+    let rust = serde_json::to_string(&CargoTiersDraft {
+        by_speed: BTreeMap::from([
+            (CargoSpeedDraft::Fast.validate().unwrap(), 2),
+            (CargoSpeedDraft::Slow.validate().unwrap(), 1),
+        ]),
+        tier: CargoTierDraft::Standard.validate().unwrap(),
+    })
+    .unwrap();
+    let user = "import 'dart:convert';\nimport 'tiers.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  }\n  return 'built';\n}\n\nvoid main() {\n  final standard = CargoTierDraft.standard.validate();\n  print(standard.toDraft() == CargoTierDraft.standard);\n  print(jsonEncode(standard.toJson()));\n  print(refused(() => CargoTierDraft.retired.validate()));\n  print(refused(() => CargoTier.fromJson('Retired')));\n  print(CargoTier.fromJsonUnjudged('Retired').validationIssues().join('; '));\n  print(standard == CargoTier.fromJson('Standard'));\n  print(standard.hashCode == CargoTier.fromJson('Standard').hashCode);\n  print(<CargoTier>{standard, CargoTier.fromJson('Standard')}.length);\n  final held = CargoTiers.fromJson(jsonDecode('{\"bySpeed\":{\"Fast\":2,\"Slow\":1},\"tier\":\"Standard\"}'));\n  print(jsonEncode(held.toJson()));\n  print(held.by_speed[CargoSpeed.fromJson('Fast')]);\n  print(refused(() => CargoTiers.fromJson(jsonDecode('{\"bySpeed\":{},\"tier\":\"Retired\"}'))));\n}\n";
+    let Some((ran, printed)) = dart_files(
+        "valid-tier-run",
+        &[],
+        &[("tiers.dart", tiers()), ("user.dart", user.to_owned())],
+        "user.dart",
+    ) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(
+        printed,
+        format!(
+            "true\n\"Standard\"\n{refused}\n{refused}\n{refused}\ntrue\ntrue\n1\n{rust}\n2\n'tier': {refused}\n"
+        )
+    );
 }
