@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
-use super::unknown_keys::plain_enum_read;
+use super::unknown_keys::{plain_enum_read, plain_enum_valid, plain_enum_validate};
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -459,11 +459,11 @@ fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
 #[cfg(feature = "serde")]
 fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
     let dart = stock_status_dart::dart_definition();
-    assert!(dart.contains("enum StockStatus {"));
+    assert!(dart.contains("enum StockStatusDraft {"));
     assert!(dart.contains("inStock('instock')"));
     assert!(dart.contains("backordered('backordered')"));
     assert!(dart.contains("discontinued('discontinued')"));
-    assert!(dart.contains("static StockStatus fromJson(dynamic json)"));
+    assert!(dart.contains("static StockStatusDraft fromJson(dynamic json)"));
     assert!(dart.contains("String toJson() => wireValue;"));
 }
 
@@ -940,16 +940,17 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(
         reserved_member_dart::dart_definition(),
         format!(
-            "enum ReservedMember {{ default_('Default'), in_('In'), other('Other'); const \
-             ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
-             fromJson(dynamic json) {{ {} }} static ReservedMember fromJsonUnjudged(dynamic json) \
-             => fromJson(json); String toJson() => wireValue; List<String> validationIssues() => const []; \
-             static Object $thrown(Object thrown) => thrown; }}",
+            "enum ReservedMemberDraft {{ default_('Default'), in_('In'), other('Other'); const \
+             ReservedMemberDraft(this.wireValue); final String wireValue; static \
+             ReservedMemberDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue; \
+             List<String> validationIssues() => const []; {} {}",
             plain_enum_read(
                 "ReservedMember",
                 "json",
-                "'Default' => ReservedMember.default_,'In' => ReservedMember.in_,'Other' => ReservedMember.other,"
-            )
+                "'Default' => ReservedMemberDraft.default_,'In' => ReservedMemberDraft.in_,'Other' => ReservedMemberDraft.other,"
+            ),
+            plain_enum_validate("ReservedMember"),
+            plain_enum_valid("ReservedMember"),
         )
     );
     assert_eq!(

@@ -11,9 +11,10 @@ use super::kotlin_pathed::PATHED;
 use super::read::DECODED;
 use super::read::paired_plain_enum;
 use super::read::{
-    NO_ISSUES, judged_valid, judged_valid_over, kept_draft, to_valid, valid_class,
-    valid_class_over, valid_unjudged, valid_unjudged_over,
+    NO_ISSUES, judged_valid_over, kept_draft, to_valid, valid_class_over, valid_unjudged_over,
 };
+#[cfg(feature = "serde")]
+use super::read::{judged_valid, valid_class, valid_unjudged};
 
 /// The parcel of the documents' sample, under a name of this file's own.
 #[model_schema(preprocess = ["withoutFragile"])]

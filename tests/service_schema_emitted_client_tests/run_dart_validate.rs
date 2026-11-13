@@ -64,8 +64,8 @@ List<String> upperCase(Code value) =>
 List<String> routed(FreightDraft value) =>
     value is FreightHeld ? const ['a held freight has no route'] : const [];
 
-List<String> rated(Rating value) =>
-    value == Rating.unrated ? const ['a parcel is rated'] : const [];
+List<String> rated(RatingDraft value) =>
+    value == RatingDraft.unrated ? const ['a parcel is rated'] : const [];
 
 List<String> withACode<CodeType>(CrateDraft<CodeType> value) =>
     value.codes.isEmpty ? const ["'codes': a crate holds at least one code"] : const [];

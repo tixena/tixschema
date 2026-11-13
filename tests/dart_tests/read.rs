@@ -487,33 +487,40 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
     );
 }
 
-/// A plain enum that names no check reads as it did, and one that names a check judges. Both
-/// carry the unjudged read a holder calls.
+/// The draft of a plain enum reads with no check, and the valid type judges what its draft reads
+/// and carries the unjudged read a holder calls.
 #[test]
 fn a_plain_enum_judges_where_it_names_a_check() {
     assert_written(
         &grade_dart::dart_definition(),
         &format!(
-            "static Grade fromJson(dynamic json) {{ {} }} static Grade fromJsonUnjudged(dynamic \
-             json) => fromJson(json); String toJson() => wireValue;",
+            "static GradeDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue;",
             plain_enum_read(
                 "Grade",
                 "json",
-                "'Express' => Grade.express,'Standard' => Grade.standard,"
+                "'Express' => GradeDraft.express,'Standard' => GradeDraft.standard,"
             )
         ),
     );
     assert_written(
         &rating_dart::dart_definition(),
         &format!(
-            "static Rating fromJson(dynamic json) {{ final read = Rating.fromJsonUnjudged(json); \
-             {JUDGED} static Rating fromJsonUnjudged(dynamic json) {{ {} }} String toJson() => \
-             wireValue;",
+            "static RatingDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue;",
             plain_enum_read(
                 "Rating",
                 "json",
-                "'Express' => Rating.express,'Unrated' => Rating.unrated,"
+                "'Express' => RatingDraft.express,'Unrated' => RatingDraft.unrated,"
             )
+        ),
+    );
+    assert_written(
+        &rating_dart::dart_definition(),
+        &format!(
+            "factory Rating.fromJson(dynamic json) {{ final read = RatingDraft.fromJson(json); \
+             {} factory Rating.fromJsonUnjudged(dynamic json) => \
+             Rating._(RatingDraft.fromJson(json));",
+            "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
+             FormatException(violations.join('; ')); return Rating._(read); }"
         ),
     );
 }
@@ -524,11 +531,11 @@ fn an_enum_member_named_after_the_unjudged_read_moves() {
     let reading = reading_dart::dart_definition();
     assert_written(
         &reading,
-        "enum Reading { fromJsonUnjudged_('FromJsonUnjudged'), judged('Judged');",
+        "enum ReadingDraft { fromJsonUnjudged_('FromJsonUnjudged'), judged('Judged');",
     );
     assert_written(
         &reading,
-        "'FromJsonUnjudged' => Reading.fromJsonUnjudged_,'Judged' => Reading.judged,",
+        "'FromJsonUnjudged' => ReadingDraft.fromJsonUnjudged_,'Judged' => ReadingDraft.judged,",
     );
 }
 

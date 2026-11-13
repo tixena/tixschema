@@ -660,17 +660,27 @@ fn a_variant_is_named_by_the_steps_serde_writes() {
 fn an_enum_with_no_data_answers_its_checks() {
     let grade = grade_dart::dart_definition();
     assert!(
-        grade.ends_with(
-            "String toJson() => wireValue; List<String> validationIssues() => const []; static Object \
-             $thrown(Object thrown) => thrown; }"
+        grade.contains(
+            "String toJson() => wireValue; List<String> validationIssues() => const []; Grade \
+             validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
+             FormatException(found.join('; ')); return Grade._(this); } }"
+        ) && grade.ends_with(
+            "List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
+             ==(Object other) => other is Grade && other._draft == _draft; @override int get \
+             hashCode => _draft.hashCode; static Object $thrown(Object thrown) => thrown is \
+             GradeDraft ? thrown.validate() : thrown; }"
         ),
         "got: {grade}"
     );
     let rating = rating_dart::dart_definition();
     assert!(
-        rating.ends_with(
-            "String toJson() => wireValue; List<String> validationIssues() => [ ...rated(this), ]; static Object \
-             $thrown(Object thrown) => thrown; }"
+        rating.contains(
+            "String toJson() => wireValue; List<String> validationIssues() => [ ...rated(this), ]; \
+             Rating validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
+             FormatException(found.join('; ')); return Rating._(this); } }"
+        ) && rating.ends_with(
+            "static Object $thrown(Object thrown) => thrown is RatingDraft ? thrown.validate() : \
+             thrown; }"
         ),
         "got: {rating}"
     );

@@ -47,6 +47,8 @@ The valid type writes what its draft writes, and `serde_json::from_str::<UserPro
 
 A declaration whose `{Name}Draft` is the name of another type in the module stops the build with the compiler's duplicate-name error (`E0428`). The type the valid wrapper is made of is generic and hidden: the compiler prints a valid value's type as `UserProfile<UserProfileDraft>`, and a type declared in a function body is wrapped as one declared beside it.
 
+A plain enum, whose variants hold no data, is the pair in Rust, TypeScript, Swift and Dart, with a rule or without. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
+
 #### The Draft and the Valid Type in TypeScript and Zod
 
 TypeScript publishes the same pair. `ShipmentDraft` is the plain object type that was published as `Shipment`, and `Shipment` is the valid type: read-only, and branded with the `$brand` marker a [brand](generics-and-brands.md#a-brand-is-sealed) already carries, so the bundle imports `$brand` from `zod` as it does for a brand. Nothing but a `parse` returns one. A member that holds a model names the valid type, as in Rust (`label: LabelText`), so a draft is made of values that already passed:

@@ -575,8 +575,9 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          KSerializer<GangwayDraft> by GangwayDraft.generatedSerializer() @ConsistentCopyVisibility \
          @Serializable(with = GangwaySerializer::class) data class Gangway private constructor(val \
          draft: GangwayDraft) { val label: String get() = draft.label; val width: UInt get() = \
-         draft.width; fun validationIssues(): List<String> = draft.validationIssues(); companion \
-         object { internal fun checked(draft: GangwayDraft): Gangway = Gangway(draft) } } \
+         draft.width; fun validationIssues(): List<String> = draft.validationIssues(); fun \
+         kotlinSchemaChecked(): GangwayDraft = draft; companion object { internal fun \
+         checked(draft: GangwayDraft): Gangway = Gangway(draft) } } \
          @OptIn(ExperimentalSerializationApi::class) private object GangwayUnjudged : \
          KSerializer<Gangway> { override val descriptor: SerialDescriptor = \
          GangwayDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Gangway) \

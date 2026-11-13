@@ -1,0 +1,10 @@
+[package]
+name = "kotlin_members_apart"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# No feature of its own: the build that compiles this crate decides tixschema's.
+tixschema = { path = "../../..", default-features = false }
+serde = { version = "1", features = ["derive"] }
