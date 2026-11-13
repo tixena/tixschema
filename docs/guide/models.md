@@ -516,7 +516,7 @@ A JSON object is written with its keys in an order. The three maps describe as t
 `indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature.
 
 ```toml
-tixschema = { version = "0.4", features = ["indexmap"] }
+tixschema = { version = "0.5", features = ["indexmap"] }
 indexmap = { version = "2", features = ["serde"] }
 ```
 
