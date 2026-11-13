@@ -445,8 +445,8 @@ fn main() {
     assert!(swift.contains("public func validationIssues() -> [String]"));
 
     let kotlin = kotlin_file();
-    assert!(kotlin.contains("data class Invoice("));
-    assert!(kotlin.contains("fun validate(): List<String>"));
+    assert!(kotlin.contains("data class InvoiceDraft("));
+    assert!(kotlin.contains("fun validationIssues(): List<String>"));
 }
 ```
 "#

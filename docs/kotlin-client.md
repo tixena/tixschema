@@ -4,11 +4,45 @@
 
 #### The Kotlin client's `validate()`
 
-Every Kotlin type `src/features/kotlin.rs` writes carries `fun validate(): List<String>`, written
-by `src/features/kotlin/validate.rs`: a data class, a unit struct's `object`, a brand's value
-class, a tuple struct, a sealed interface with each variant, and a plain enum. It answers what
-Rust's `validate()` answers for the same value. `docs/guide/kotlin.md`'s "`validate()` in the Kotlin client"
+Every Kotlin model type `src/features/kotlin.rs` writes is a pair, `{Name}Draft` and `{Name}`
+(`src/features/kotlin/valid.rs`), and carries its rules as `fun validationIssues(): List<String>`,
+written by `src/features/kotlin/validate.rs`: a data class, a unit struct's `object`, a tuple
+struct and a sealed interface with each variant. It answers what Rust's `validation_issues()`
+answers for the same value. A brand and a plain enum are one type with `fun validate():
+List<String>` and a `validationIssues()` that answers the same (`Rules::written_as`), and a model a service writes for itself (`__tixschema_undrafted`, read through
+`valid::drafted`) keeps its one class. `docs/guide/kotlin.md`'s "`validate()` in the Kotlin client"
 section is the consumer's view; this is what a change has to keep.
+
+- **A model is a draft and a valid class.** `{Name}Draft` is the declared class, with its own
+  `validate(): {Name}`, which throws `SerializationException` joined by `; ` with the cause
+  `IllegalArgumentException("validate()")` the read throws, and builds the valid class through
+  `{Name}.checked(draft)`. `{Name}` is `@ConsistentCopyVisibility data class {Name} private
+  constructor(val draft: {Name}Draft)` (`valid::valid_class`), with a forwarding property for each
+  member the draft's constructor declares (`valid::forwarded_properties`, over the type the
+  property is declared with), a `fun validationIssues(): List<String>` that every holder asks
+  (`valid::forwarded_issues`, taking the serializers the draft takes), and `companion object { internal fun checked }`, which the generated code
+  reaches and which is the one way in a holder's unchecked read builds a value. The Kotlin floor is
+  2.0.20, for `@ConsistentCopyVisibility`, and is stated in `README.md` and `docs/guide/features.md`.
+- **Holders keep the unchecked read.** `{Name}Unjudged` is `private` to the file
+  (`read::valid_unjudged`, as `read::made_private` does a brand's), reads `{Name}DraftUnjudged` and
+  wraps with no check, and writes the draft. `{Name}DraftUnjudged` is the serializer the draft is
+  annotated with (`read::kept_draft` names the plugin's, which keeps its serial name `demo.{Name}Draft`,
+  and `read::written_draft` the one the emitter writes). The only refusal that states a serial name
+  is a `MissingFieldException`, or the `SerializationException` a read that names a `preprocess`
+  rebases it into, so `{Name}Unjudged` catches a `SerializationException`, and where its message names
+  the draft's serial name, throws `MissingFieldException(missingFields, serialName.removeSuffix("Draft"))`
+  (whose message is the library's own for `demo.{Name}`) for the first and the message with the name
+  replaced for the second: every refusal names the type as it did, in every package, and a refusal
+  of a type below it passes untouched. `{Name}Serializer` is
+  `read::judged_valid`: `read.validationIssues(...)`, so every message and every path is the one it was. An enum's variants keep their `{Enum}{Variant}` names and implement
+  the draft (`enum_base`); the valid enum is `{Enum}<T>` and its draft `{Enum}Draft<out T>`.
+- **A holder asks every held value the same thing.** `Rules::held_statements` writes
+  `held.validationIssues(...)` whatever the held type is and wherever it is declared: a valid class
+  forwards it, a brand, a plain enum and a model a service writes answer it beside their `validate()`,
+  and a type the emitter has not written answers the `Any?.validationIssues()` fallback. A check a
+  member names is called with the member's `draft` where the member is such a model
+  (`validate::drafted`, noted by `note_model`), as Rust's coerces `&Valid` to `&Draft`. A member
+  named `draft` is `draft_` (`kotlin_property_name`), with its wire key unchanged.
 
 - **The emitter reads what the web surfaces read.** `kotlin_schema_dispatch` takes `KotlinArgs`,
   which `kotlin_suffix_tokens` builds: the `name` override, the type's `check` names,
@@ -31,7 +65,7 @@ section is the consumer's view; this is what a change has to keep.
   the three; the message states the pattern as declared.
 - **Every function a type calls is private to the type's own body** (`Helper`): `kotlinSchemaUnder`,
   `kotlinSchemaShown`, the `String.kotlinSchemaText()` a declared type is asked through, and the
-  `Any?.validate()` a held type with no `validate()` answers with. The emitted types are joined
+  `Any?.validationIssues()` a held type with no `validationIssues()` answers with. The emitted types are joined
   into one file, where two file-scope declarations of one signature do not compile, and tixschema
   ships no runtime library.
 - **A declared type is asked for its text, and the language picks.** A brand over a string or a
@@ -40,7 +74,7 @@ section is the consumer's view; this is what a change has to keep.
   (`text_read`): a member is found ahead of the holder's own extension of `String`, so a brand
   declared above or below the holder and an alias of a string all build, and no expansion is
   refused. `NOTED` is read for four things alone: whether the declared type a brand holds was
-  written above and answers its text, whether a held type is known to carry `validate()`,
+  written above and answers its text, whether a held type is known to carry `validationIssues()`,
   which spares its holder the fallback, and the two the read asks: whether the type has an
   unjudged serializer a holder can name, and whether it carries `kotlinSchemaBound()`.
 - **A slot and a variant's member are named by the steps serde writes** (`Tagging`,
@@ -155,10 +189,11 @@ the consumer's view; this is what a change has to keep.
 - **A type has two serializers, a plain enum that names no check apart.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
   `@Serializable(with = ...)`: it reads through the first and throws
-  `SerializationException(validate().joinToString("; "))`. It is also a `() ->
-  KSerializer<{Type}>`, and called it answers the first, which a holder that cannot name it reads
-  by (`read_or_judged`, below). A type with parameters writes both as classes over one serializer
-  per parameter.
+  `SerializationException(validationIssues().joinToString("; "))`, `validate()` on a brand and a
+  plain enum. It is also a `() -> KSerializer<{Type}>`, and called it answers the first, which a
+  holder that cannot name it reads by (`read_or_judged`, below). A type with parameters writes
+  both as classes over one serializer per parameter. A model's draft has a third,
+  `{Type}DraftUnjudged`, the one the draft is annotated with.
 - **A brand is sealed.** Its value class has a private constructor, so `LabelText("")` does not
   compile outside it, and its companion's `of` (`brand_factory`) builds the value and throws what
   `{Type}Serializer` throws for one that breaks a rule. `{Type}Unjudged` of a brand is `private`

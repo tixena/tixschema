@@ -51,7 +51,7 @@ fn a_set_that_repeats_an_item_is_refused_by_the_kotlin_read() {
             payload.name, payload.read_as, payload.json
         );
     }
-    main.push_str("    println(Ticket(listOf(\"a\", \"a\")).validate())\n}\n");
+    main.push_str("    println(TicketDraft(listOf(\"a\", \"a\")).validationIssues())\n}\n");
     let source = [
         KOTLIN_IMPORTS.to_owned(),
         point_kotlin::kotlin_definition(),

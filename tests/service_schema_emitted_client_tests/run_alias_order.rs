@@ -113,7 +113,7 @@ mod kotlin {
     fn run(held: &str, definitions: [String; 2]) -> Option<String> {
         let driver = format!(
             "\nfun told(at: Int, payload: String) {{\n    try {{\n        \
-             println(\"$at: \" + Json.decodeFromString(serializer<{held}>(), payload)::class.simpleName)\n    \
+             println(\"$at: \" + Json.decodeFromString(serializer<{held}>(), payload).draft::class.simpleName)\n    \
              }} catch (refusal: SerializationException) {{\n        println(\"$at: refused\")\n    }}\n}}\n"
         );
         let mut main = String::from("fun main() {\n");

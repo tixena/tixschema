@@ -89,7 +89,8 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              SwellUnjudged::class) @KeepGeneratedSerializer enum class Swell {{ Ebb, Flood; \
-             fun validate(): List<String> = emptyList() }} {}",
+             fun validate(): List<String> = emptyList(); fun \
+             validationIssues(): List<String> = validate() }} {}",
             plain_enum_unjudged(
                 "Swell",
                 &[("Ebb", "Ebb", &["Low", "Neap"]), ("Flood", "Flood", &[])],
@@ -102,7 +103,8 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              LullingUnjudged::class) @KeepGeneratedSerializer enum class Lulling {{ Ebb, \
-             Flood; fun validate(): List<String> = emptyList() }} {}",
+             Flood; fun validate(): List<String> = emptyList(); fun \
+             validationIssues(): List<String> = validate() }} {}",
             plain_enum_unjudged(
                 "Lulling",
                 &[("Ebb", "Ebb", &["Low"]), ("Flood", "Flood", &[])],
@@ -119,8 +121,8 @@ fn an_untagged_enum_reads_a_member_under_its_alias() {
     let veering = veering_kotlin::kotlin_definition();
     let held = format!(
         "recoverCatching {{ input.json.decodeFromJsonElement(serializer<VeeringBerth>(), \
-         element.{NAME_AS_LABEL}) as Veering }}.recoverCatching {{ \
-         input.json.decodeFromJsonElement(serializer<VeeringCount>(), element) as Veering }}"
+         element.{NAME_AS_LABEL}) as VeeringDraft }}.recoverCatching {{ \
+         input.json.decodeFromJsonElement(serializer<VeeringCount>(), element) as VeeringDraft }}"
     );
     assert!(veering.contains(&held), "no `{held}` in: {veering}");
 }
@@ -131,11 +133,12 @@ fn an_untagged_enum_reads_a_member_under_its_alias() {
 fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
     let hawsing = hawsing_kotlin::kotlin_definition();
     let hawsing_read = format!(
-        "@OptIn(ExperimentalSerializationApi::class) object HawsingUnjudged : \
-         KSerializer<Hawsing> {{ private val held = Hawsing.generatedSerializer(); override val \
-         descriptor: SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
-         value: Hawsing) = held.serialize(encoder, value); {PATHED}override fun \
-         deserialize(decoder: Decoder): Hawsing {{ val input = decoder as JsonDecoder; val \
+        "@OptIn(ExperimentalSerializationApi::class) object HawsingDraftUnjudged : \
+         KSerializer<HawsingDraft> {{ private val held = HawsingDraft.generatedSerializer(); \
+         override val descriptor: SerialDescriptor = held.descriptor; override fun \
+         serialize(encoder: Encoder, value: HawsingDraft) = held.serialize(encoder, value); \
+         {PATHED}override fun deserialize(decoder: Decoder): HawsingDraft {{ val input = decoder \
+         as JsonDecoder; val \
          element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
          input.json.decodeFromString(held, transformDeserialize(element).toString()) }} }}; \
          private fun transformDeserialize(element: JsonElement): JsonElement = {HAWSING_NAMES} }}"
@@ -147,12 +150,13 @@ fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
     let gybing = gybing_kotlin::kotlin_definition();
     let gybing_read = format!(
         "@OptIn(ExperimentalSerializationApi::class) class \
-         GybingUnjudged<LabelType>(labelTypeSerializer: KSerializer<LabelType>) : \
-         KSerializer<Gybing<LabelType>> {{ private val held = \
-         Gybing.generatedSerializer(labelTypeSerializer); override val descriptor: \
+         GybingDraftUnjudged<LabelType>(labelTypeSerializer: KSerializer<LabelType>) : \
+         KSerializer<GybingDraft<LabelType>> {{ private val held = \
+         GybingDraft.generatedSerializer(labelTypeSerializer); override val descriptor: \
          SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, value: \
-         Gybing<LabelType>) = held.serialize(encoder, value); {PATHED}override fun \
-         deserialize(decoder: Decoder): Gybing<LabelType> {{ val input = decoder as JsonDecoder; \
+         GybingDraft<LabelType>) = held.serialize(encoder, value); {PATHED}override fun \
+         deserialize(decoder: Decoder): GybingDraft<LabelType> {{ val input = decoder as \
+         JsonDecoder; \
          val element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
          input.json.decodeFromString(held, transformDeserialize(element).toString()) }} }}; \
          private fun transformDeserialize(element: JsonElement): JsonElement = {HAWSING_NAMES} }}"

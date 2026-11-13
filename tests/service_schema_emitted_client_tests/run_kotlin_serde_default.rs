@@ -148,9 +148,9 @@ fn the_default_json_leaves_out_a_member_whose_value_is_its_default() {
         serde_json::json!({ "berths": 4_u32, "dock": "west", "moorings": ["a", "b"] })
     );
     let rows = [
-        "println(\"the container's default: ${Json.encodeToString(serializer<Jetty>(), Jetty())}\")"
+        "println(\"the container's default: ${Json.encodeToString(serializer<Jetty>(), JettyDraft().validate())}\")"
             .to_owned(),
-        "println(\"one key held: ${Json.encodeToString(serializer<Jetty>(), Jetty(dock = \"west\"))}\")"
+        "println(\"one key held: ${Json.encodeToString(serializer<Jetty>(), JettyDraft(dock = \"west\").validate())}\")"
             .to_owned(),
     ];
     let Some(printed) = ran_kotlin(&module(&rows)) else {
@@ -170,13 +170,13 @@ fn a_default_with_no_json_keeps_its_key_required() {
     );
     let marina = marina_kotlin::kotlin_definition();
     assert!(
-        marina.contains("data class Marina(val dock: String, val label: String)"),
+        marina.contains("data class MarinaDraft(val dock: String, val label: String)"),
         "{marina}"
     );
     let harbour = harbour_kotlin::kotlin_definition();
     assert!(
         harbour.contains(
-            "data class Harbour<Moored>(val berths: List<Moored>, val flagship: Moored, val \
+            "data class HarbourDraft<Moored>(val berths: List<Moored>, val flagship: Moored, val \
              slips: List<Moored>)"
         ),
         "{harbour}"
@@ -191,7 +191,7 @@ fn an_empty_collection_of_a_parameter_is_the_default_of_its_property() {
     let basin = basin_kotlin::kotlin_definition();
     assert!(
         basin.contains(
-            "data class Basin<Moored>(val dock: String = Json.decodeFromString(serializer<String>(), \
+            "data class BasinDraft<Moored>(val dock: String = Json.decodeFromString(serializer<String>(), \
              \"\\\"\\\"\"), val moored: List<Moored> = emptyList())"
         ),
         "{basin}"
@@ -199,7 +199,7 @@ fn an_empty_collection_of_a_parameter_is_the_default_of_its_property() {
     let config = config_kotlin::kotlin_definition();
     assert!(
         config.contains(
-            "data class Config<IdType>(val dataLinks: List<@Serializable(with = \
+            "data class ConfigDraft<IdType>(val dataLinks: List<@Serializable(with = \
              LinkUnjudged::class) Link<IdType>> = emptyList(), val sequences: List<String> = \
              Json.decodeFromString(serializer<List<String>>(), \"[]\"))"
         ),

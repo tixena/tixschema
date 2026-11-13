@@ -51,18 +51,18 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
 const HANDLERS: &str = r#"
 object DocumentHandlers : MobileDocumentServiceHandlers {
     private fun versionOf(id: String): VersionResponse? = when (id) {
-        "doc-1" -> VersionResponse(7u)
+        "doc-1" -> VersionResponseDraft(7u).validate()
         "panic" -> throw IllegalStateException("the handler came apart")
         else -> null
     }
 
     override suspend fun checkDrafts(req: DraftBatch): MobileDocumentServiceCheckDraftsResult =
-        MobileDocumentServiceCheckDraftsResult.Ok(VersionResponse(req.drafts.size.toUInt()))
+        MobileDocumentServiceCheckDraftsResult.Ok(VersionResponseDraft(req.drafts.size.toUInt()).validate())
 
     private fun checked(id: String?): MobileDocumentServiceCheckManyResult {
         val found = id?.let { versionOf(it) }
         return if (found != null) MobileDocumentServiceCheckManyResult.Ok(found)
-        else MobileDocumentServiceCheckManyResult.Declared(VersionErrorNotFound)
+        else MobileDocumentServiceCheckManyResult.Declared(VersionErrorNotFound.validate())
     }
 
     override suspend fun checkMany(req: List<GetVersionRequest>): MobileDocumentServiceCheckManyResult =
@@ -71,19 +71,19 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
     override suspend fun checkMaybe(req: GetVersionRequest?): MobileDocumentServiceCheckMaybeResult =
         when (val answered = checked(req?.documentId)) {
             is MobileDocumentServiceCheckManyResult.Ok -> MobileDocumentServiceCheckMaybeResult.Ok(answered.value)
-            else -> MobileDocumentServiceCheckMaybeResult.Declared(VersionErrorNotFound)
+            else -> MobileDocumentServiceCheckMaybeResult.Declared(VersionErrorNotFound.validate())
         }
 
     override suspend fun checkNamed(req: Map<String, GetVersionRequest>): MobileDocumentServiceCheckNamedResult =
         when (val answered = checked(req["first"]?.documentId)) {
             is MobileDocumentServiceCheckManyResult.Ok -> MobileDocumentServiceCheckNamedResult.Ok(answered.value)
-            else -> MobileDocumentServiceCheckNamedResult.Declared(VersionErrorNotFound)
+            else -> MobileDocumentServiceCheckNamedResult.Declared(VersionErrorNotFound.validate())
         }
 
     override suspend fun checkPair(req: CheckPairRequest): MobileDocumentServiceCheckPairResult =
         when (val answered = checked(req.second.documentId)) {
             is MobileDocumentServiceCheckManyResult.Ok -> MobileDocumentServiceCheckPairResult.Ok(answered.value)
-            else -> MobileDocumentServiceCheckPairResult.Declared(VersionErrorNotFound)
+            else -> MobileDocumentServiceCheckPairResult.Declared(VersionErrorNotFound.validate())
         }
 
     override suspend fun getTagged(req: String, knownTag: String?): MobileDocumentServiceGetTaggedResult {
@@ -92,7 +92,7 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
             MobileDocumentServiceGetTaggedResult.Ok(MobileDocumentServiceGetTaggedResultValue(found, "\"v7\""))
         } else {
             MobileDocumentServiceGetTaggedResult.Declared(
-                MobileDocumentServiceGetTaggedResultDeclared(VersionErrorNotFound, "no such document"),
+                MobileDocumentServiceGetTaggedResultDeclared(VersionErrorNotFound.validate(), "no such document"),
             )
         }
     }
@@ -100,22 +100,22 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
     override suspend fun getVersion(req: GetVersionRequest): MobileDocumentServiceGetVersionResult {
         val found = versionOf(req.documentId)
         return if (found != null) MobileDocumentServiceGetVersionResult.Ok(found)
-        else MobileDocumentServiceGetVersionResult.Declared(VersionErrorNotFound)
+        else MobileDocumentServiceGetVersionResult.Declared(VersionErrorNotFound.validate())
     }
 
     override suspend fun lookup(req: DocumentId): MobileDocumentServiceLookupResult {
         val found = versionOf(req.value)
         return if (found != null) MobileDocumentServiceLookupResult.Ok(found)
-        else MobileDocumentServiceLookupResult.Declared(VersionErrorNotFound)
+        else MobileDocumentServiceLookupResult.Declared(VersionErrorNotFound.validate())
     }
 
     override suspend fun renameDocument(req: RenameDocumentRequest): MobileDocumentServiceRenameDocumentResult =
         if (versionOf(req.documentId) != null) MobileDocumentServiceRenameDocumentResult.Ok
-        else MobileDocumentServiceRenameDocumentResult.Declared(VersionErrorNotFound)
+        else MobileDocumentServiceRenameDocumentResult.Declared(VersionErrorNotFound.validate())
 
     override suspend fun archiveDocument(req: ArchiveDocumentRequest, exchange: String): MobileDocumentServiceArchiveDocumentResult =
         if (versionOf(req.documentId) != null) MobileDocumentServiceArchiveDocumentResult.Ok
-        else MobileDocumentServiceArchiveDocumentResult.Declared(VersionErrorNotFound)
+        else MobileDocumentServiceArchiveDocumentResult.Declared(VersionErrorNotFound.validate())
 
     override suspend fun tagDocument(
         req: String,
@@ -123,7 +123,7 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
         message: String,
         outcome: String,
         members: String,
-    ): MobileDocumentServiceTagDocumentResult = MobileDocumentServiceTagDocumentResult.Ok(VersionResponse(9u))
+    ): MobileDocumentServiceTagDocumentResult = MobileDocumentServiceTagDocumentResult.Ok(VersionResponseDraft(9u).validate())
 
     override suspend fun labelDocument(
         req: String,
@@ -131,7 +131,7 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
         nextId: String,
         mcpSource: String,
         carried: String,
-    ): MobileDocumentServiceLabelDocumentResult = MobileDocumentServiceLabelDocumentResult.Ok(VersionResponse(10u))
+    ): MobileDocumentServiceLabelDocumentResult = MobileDocumentServiceLabelDocumentResult.Ok(VersionResponseDraft(10u).validate())
 
     override suspend fun touchDocument(req: TouchDocumentRequest) {
         if (req.reader == "panic") throw IllegalStateException("the handler came apart")
@@ -140,8 +140,8 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
 
 object BillingHandlers : MobileBillingServiceHandlers {
     override suspend fun getBalance(req: String, ledger: String): MobileBillingServiceGetBalanceResult =
-        if (req == "acct-1") MobileBillingServiceGetBalanceResult.Ok(BalanceResponse(1250L))
-        else MobileBillingServiceGetBalanceResult.Declared(BalanceErrorUnknownAccount)
+        if (req == "acct-1") MobileBillingServiceGetBalanceResult.Ok(BalanceResponseDraft(1250L).validate())
+        else MobileBillingServiceGetBalanceResult.Declared(BalanceErrorUnknownAccount.validate())
 }
 
 fun nullable(text: String?): JsonElement = if (text == null) JsonNull else JsonPrimitive(text)
@@ -397,7 +397,7 @@ class WriterHandlers(
     }
 
     override suspend fun getVersion(req: WriterVersionRequest): WriterServiceGetVersionResult =
-        WriterServiceGetVersionResult.Ok(WriterVersion(7u))
+        WriterServiceGetVersionResult.Ok(WriterVersionDraft(7u).validate())
 }
 
 class HeldHandlers(
@@ -413,7 +413,7 @@ class HeldHandlers(
     }
 
     override suspend fun getVersion(req: WriterVersionRequest): WriterServiceGetVersionResult =
-        WriterServiceGetVersionResult.Ok(WriterVersion(7u))
+        WriterServiceGetVersionResult.Ok(WriterVersionDraft(7u).validate())
 }
 
 class RecordingStream(private val goneAfter: Int? = null) : WriterServiceMcpHttpStream {
@@ -609,13 +609,13 @@ suspend fun clientReport(input: JsonObject): JsonObject {
     val canned = Canned(replies)
     val client = MobileDocumentServiceMcpClient(canned)
     val lines = mutableListOf<String>()
-    lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
-    lines.add(describedVersion(client.getVersion(GetVersionRequest("missing"))))
-    lines.add(describedVersion(client.getVersion(GetVersionRequest(""))))
-    lines.add(describedVersion(client.getVersion(GetVersionRequest("panic"))))
-    lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
-    lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
-    lines.add(describedVersion(client.getVersion(GetVersionRequest("doc-1"))))
+    lines.add(describedVersion(client.getVersion(GetVersionRequestDraft("doc-1").validate())))
+    lines.add(describedVersion(client.getVersion(GetVersionRequestDraft("missing").validate())))
+    lines.add(describedVersion(client.getVersion(GetVersionRequest.checked(GetVersionRequestDraft("")))))
+    lines.add(describedVersion(client.getVersion(GetVersionRequestDraft("panic").validate())))
+    lines.add(describedVersion(client.getVersion(GetVersionRequestDraft("doc-1").validate())))
+    lines.add(describedVersion(client.getVersion(GetVersionRequestDraft("doc-1").validate())))
+    lines.add(describedVersion(client.getVersion(GetVersionRequestDraft("doc-1").validate())))
     lines.add(
         when (val looked = client.lookup(DocumentId.of("doc-1"))) {
             is MobileDocumentServiceLookupResult.Ok -> "ok version=${looked.value.version}"

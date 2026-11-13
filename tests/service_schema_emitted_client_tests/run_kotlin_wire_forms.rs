@@ -64,13 +64,18 @@ pub fn kotlin_value(held_by: &str, json: &str) -> String {
 /// The model of `row` holding its value as it was handed.
 fn kotlin_handed(row: &WireFormRow) -> String {
     let value = kotlin_value(row.held_by, row.handed);
-    constructed(
+    let built = constructed(
         row.held_by,
         "NAME = ",
         &|key| format!("mapOf({key} to true)"),
         &|listed| format!("listOf({listed})"),
         &value,
         &value,
+    );
+    format!(
+        "{}Draft{}.validate()",
+        row.held_by,
+        &built[row.held_by.len()..]
     )
 }
 

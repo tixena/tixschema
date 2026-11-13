@@ -187,7 +187,7 @@ fn each_client_function_of_the_table_is_one_the_run_of_that_client_compiles() {
             " {",
         ),
         (
-            "fun withinParcel(value: Parcel): List<String>",
+            "fun withinParcel(value: ParcelDraft): List<String>",
             KOTLIN_CHECK,
             " =",
         ),

@@ -493,6 +493,13 @@ pub fn refused_by_kotlinc_beside(source: &str, beside: Option<&str>) -> Option<S
 /// instead, matching [`run_in`]'s rule.
 #[cfg(feature = "kotlin")]
 pub fn ran_kotlin(source: &str) -> Option<String> {
+    ran_kotlin_as(source, "MainKt")
+}
+
+/// [`ran_kotlin`] for a source whose `main` is in the class `main_class`, as one under a `package`
+/// has it.
+#[cfg(feature = "kotlin")]
+pub fn ran_kotlin_as(source: &str, main_class: &str) -> Option<String> {
     let toolchain = kotlin_toolchain()?;
     let at = workspace("kotlin");
     let compiled = kotlin_compiled(&toolchain, &at, source, None)?;
@@ -507,7 +514,7 @@ pub fn ran_kotlin(source: &str) -> Option<String> {
     let named_java = env::var(JAVA_VAR).ok();
     let run_classpath = format!("main.jar:{}", toolchain.classpath);
     let run_attempt = Command::new(&toolchain.java)
-        .args(["-cp", &run_classpath, "MainKt"])
+        .args(["-cp", &run_classpath, main_class])
         .current_dir(&at)
         .output();
     let Ok(run) = run_attempt else {
@@ -528,7 +535,7 @@ pub fn ran_kotlin(source: &str) -> Option<String> {
     fs::remove_dir_all(&at).unwrap();
     assert!(
         run.status.success(),
-        "`{} -cp main.jar MainKt` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
+        "`{} -cp main.jar {main_class}` failed.\n--- stdout ---\n{}\n--- stderr ---\n{}\n--- source ---\n{source}",
         toolchain.java,
         String::from_utf8_lossy(&run.stdout),
         String::from_utf8_lossy(&run.stderr)

@@ -40,8 +40,8 @@ pub const HANDLERS: &str = r##"
 object LibraryHandlers : LibraryServiceHandlers {
     override suspend fun getBook(req: BookRequest): LibraryServiceGetBookResult {
         if (req.bookId == "panic") throw IllegalStateException("the handler came apart")
-        return if (req.bookId == "book-1") LibraryServiceGetBookResult.Ok(BookInfo(7u))
-        else LibraryServiceGetBookResult.Declared(BookErrorNotFound)
+        return if (req.bookId == "book-1") LibraryServiceGetBookResult.Ok(BookInfoDraft(7u).validate())
+        else LibraryServiceGetBookResult.Declared(BookErrorNotFound.validate())
     }
 
     override suspend fun libraryGuide(req: LibraryGuideRequest): LibraryServiceLibraryGuideResult =
@@ -51,7 +51,7 @@ object LibraryHandlers : LibraryServiceHandlers {
         "book-1" -> LibraryServiceBookCoverResult.Ok(%TUPLE%(listOf<UByte>(37u, 80u, 68u, 70u, 45u), "application/pdf"))
         "book-2" -> LibraryServiceBookCoverResult.Ok(%TUPLE%(listOf<UByte>(0u, 255u, 128u, 1u, 2u, 3u, 4u), "image/png"))
         "panic" -> throw IllegalStateException("the handler came apart")
-        else -> LibraryServiceBookCoverResult.Declared(BookErrorNotFound)
+        else -> LibraryServiceBookCoverResult.Declared(BookErrorNotFound.validate())
     }
 
     override suspend fun listBooks(req: String?): LibraryServiceListBooksResult = when (req) {
@@ -75,13 +75,13 @@ object LibraryHandlers : LibraryServiceHandlers {
             ),
         )
         "panic" -> throw IllegalStateException("the handler came apart")
-        else -> LibraryServiceListBooksResult.Declared(BookErrorNotFound)
+        else -> LibraryServiceListBooksResult.Declared(BookErrorNotFound.validate())
     }
 
     override suspend fun suggestBooks(req: SuggestBooksRequest): LibraryServiceSuggestBooksResult = when (req.typed) {
         "many" -> LibraryServiceSuggestBooksResult.Ok((0 until 150).map { "many-$it" })
         "panic" -> throw IllegalStateException("the handler came apart")
-        "none" -> LibraryServiceSuggestBooksResult.Declared(BookErrorNotFound)
+        "none" -> LibraryServiceSuggestBooksResult.Declared(BookErrorNotFound.validate())
         "kind" -> LibraryServiceSuggestBooksResult.Ok(listOf(req.chosen["kind"] ?: ""))
         else -> LibraryServiceSuggestBooksResult.Ok(listOf("book-1", "book-2").filter { it.startsWith(req.typed) })
     }
@@ -90,7 +90,7 @@ object LibraryHandlers : LibraryServiceHandlers {
 object DepotHandlers : DepotServiceHandlers {
     override suspend fun getCrate(req: String): DepotServiceGetCrateResult =
         if (req == "crate-1") DepotServiceGetCrateResult.Ok("{\"total\":120}")
-        else DepotServiceGetCrateResult.Declared(BookErrorNotFound)
+        else DepotServiceGetCrateResult.Declared(BookErrorNotFound.validate())
 
     override suspend fun getBin(req: GetBinRequest): DepotServiceGetBinResult =
         DepotServiceGetBinResult.Ok(req.aisle + "/" + req.binId)
@@ -103,15 +103,15 @@ object DepotHandlers : DepotServiceHandlers {
                 ),
             )
         } else {
-            DepotServiceListCratesResult.Declared(BookErrorNotFound)
+            DepotServiceListCratesResult.Declared(BookErrorNotFound.validate())
         }
 }
 
 object BareHandlers : BareServiceHandlers {
     override suspend fun getPlain(req: BookRequest): BareServiceGetPlainResult {
         if (req.bookId == "panic") throw IllegalStateException("the handler came apart")
-        return if (req.bookId == "book-1") BareServiceGetPlainResult.Ok(BookInfo(7u))
-        else BareServiceGetPlainResult.Declared(BookErrorNotFound)
+        return if (req.bookId == "book-1") BareServiceGetPlainResult.Ok(BookInfoDraft(7u).validate())
+        else BareServiceGetPlainResult.Declared(BookErrorNotFound.validate())
     }
 }
 

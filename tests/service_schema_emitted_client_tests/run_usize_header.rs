@@ -43,7 +43,7 @@ class QuotaRecorder(private val quota: String) : QuotaClientServiceHttpTransport
 
 fun main() = runBlocking {
     for (quota in QUOTAS) {
-        val answered = QuotaClientServiceHttpClient(QuotaRecorder(quota)).ask(QuotaAsk(label = "a"))
+        val answered = QuotaClientServiceHttpClient(QuotaRecorder(quota)).ask(QuotaAskDraft(label = "a").validate())
         val said = when (answered) {
             is QuotaClientServiceAskResult.Ok -> "read ${answered.value.headerOut0.value}"
             is QuotaClientServiceAskResult.Fault -> "fault"

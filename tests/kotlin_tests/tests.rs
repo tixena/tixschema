@@ -44,7 +44,7 @@ use super::flattened_models::{
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
-use super::read::{kept, serializers};
+use super::read::{NO_ISSUES, drafted_serializers, kept_draft, to_valid};
 use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
@@ -551,7 +551,7 @@ fn test_struct_rename_and_optional() {
     let kotlin = without_number_readers(&renumbered(&window_request_kotlin::kotlin_definition()));
     assert!(kotlin.contains("@Serializable"), "got: {kotlin}");
     assert!(
-        kotlin.contains("data class WindowRequest("),
+        kotlin.contains("data class WindowRequestDraft("),
         "got: {kotlin}"
     );
     assert!(
@@ -569,10 +569,10 @@ fn test_unit_struct_is_an_object() {
     assert_eq!(ping, ping.clone());
     let kotlin = renumbered(&ping_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("@KeepGeneratedSerializer object Ping {"),
+        kotlin.contains("@KeepGeneratedSerializer object PingDraft {"),
         "got: {kotlin}"
     );
-    assert!(!kotlin.contains("class Ping"), "got: {kotlin}");
+    assert!(!kotlin.contains("class PingDraft"), "got: {kotlin}");
 }
 
 #[test]
@@ -635,7 +635,7 @@ fn test_internal_tagged_enum() {
     );
     assert!(
         kotlin.contains(
-            "@Serializable(with = WindowErrorSerializer::class) sealed interface WindowError"
+            "@Serializable(with = WindowErrorDraftUnjudged::class) sealed interface WindowErrorDraft"
         ),
         "got: {kotlin}"
     );
@@ -815,7 +815,7 @@ fn test_branded_newtype() {
 fn test_name_override() {
     let kotlin = renumbered(&widget_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("data class RenamedWidget(val label: String)"),
+        kotlin.contains("data class RenamedWidgetDraft(val label: String)"),
         "got: {kotlin}"
     );
     assert!(
@@ -828,7 +828,7 @@ fn test_name_override() {
 fn test_generic_struct() {
     let kotlin = renumbered(&wrapper_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("data class Wrapper<T>(val value: T)"),
+        kotlin.contains("data class WrapperDraft<T>(val value: T)"),
         "got: {kotlin}"
     );
 }
@@ -837,20 +837,21 @@ fn test_generic_struct() {
 fn test_generic_enum_unit_variant() {
     let kotlin = renumbered(&choice_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("sealed interface Choice<out T>"),
+        kotlin.contains("sealed interface ChoiceDraft<out T>"),
         "the sealed base declares its parameters `out`. got: {kotlin}"
     );
     assert!(
-        kotlin.contains("@Serializable data class ChoiceValue<T>(val value: T) : Choice<T>"),
+        kotlin.contains("@Serializable data class ChoiceValue<T>(val value: T) : ChoiceDraft<T>"),
         "a data-carrying variant still implements the base at its own `T`. got: {kotlin}"
     );
     assert!(
-        kotlin.contains("data object ChoiceNone : Choice<Nothing>"),
+        kotlin.contains("data object ChoiceNone : ChoiceDraft<Nothing>"),
         "a unit variant implements the base at `Nothing` rather than an unbound `T`. got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "class ChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Choice<T>>"
+            "class ChoiceDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<ChoiceDraft<T>>"
         ),
         "the generated serializer is a class over one constructor serializer per type parameter, \
          not the `object` a non-generic item keeps. got: {kotlin}"
@@ -862,7 +863,7 @@ fn test_generic_enum_unit_variant() {
 fn test_flatten_struct() {
     let kotlin = renumbered(&audit_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("@Serializable(with = AuditSerializer::class) data class Audit("),
+        kotlin.contains("@Serializable(with = AuditDraftUnjudged::class) data class AuditDraft("),
         "got: {kotlin}"
     );
     assert!(
@@ -878,7 +879,7 @@ fn test_flatten_optional_struct() {
     let kotlin = renumbered(&optional_audit_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = OptionalAuditSerializer::class) data class OptionalAudit("
+            "@Serializable(with = OptionalAuditDraftUnjudged::class) data class OptionalAuditDraft("
         ),
         "got: {kotlin}"
     );
@@ -894,7 +895,7 @@ fn test_flatten_map() {
     let kotlin = renumbered(&tagged_record_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = TaggedRecordSerializer::class) data class TaggedRecord("
+            "@Serializable(with = TaggedRecordDraftUnjudged::class) data class TaggedRecordDraft("
         ),
         "got: {kotlin}"
     );
@@ -1069,13 +1070,14 @@ fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead(
         (
             renumbered(&flag_kotlin::kotlin_definition()),
             format!(
-                "@OptIn(ExperimentalSerializationApi::class) object FlagUnjudged : \
-                 KSerializer<Flag> {{ private val held = Flag.generatedSerializer(); override val \
-                 descriptor: SerialDescriptor = held.descriptor; override fun serialize(encoder: \
-                 Encoder, value: Flag) {{ val output = encoder as JsonEncoder; \
+                "@OptIn(ExperimentalSerializationApi::class) object FlagDraftUnjudged : \
+                 KSerializer<FlagDraft> {{ private val held = FlagDraft.generatedSerializer(); \
+                 override val descriptor: SerialDescriptor = held.descriptor; override fun \
+                 serialize(encoder: Encoder, value: FlagDraft) {{ val output = encoder as \
+                 JsonEncoder; \
                  output.encodeJsonElement(transformSerialize(output.json.encodeToJsonElement(held, \
                  value))) }}; {PATHED}override fun \
-                 deserialize(decoder: Decoder): Flag {{ val input = decoder as JsonDecoder; val \
+                 deserialize(decoder: Decoder): FlagDraft {{ val input = decoder as JsonDecoder; val \
                  element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ \
                  input.json.decodeFromString(held, transformDeserialize(element).toString()) }} \
                  }}; {}; {moved} }}",
@@ -1086,14 +1088,14 @@ fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead(
             renumbered(&gonfalon_kotlin::kotlin_definition()),
             format!(
                 "@OptIn(ExperimentalSerializationApi::class) class \
-                 GonfalonUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
-                 KSerializer<Gonfalon<Held>> {{ private val held = \
-                 Gonfalon.generatedSerializer(heldSerializer); override val descriptor: \
+                 GonfalonDraftUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
+                 KSerializer<GonfalonDraft<Held>> {{ private val held = \
+                 GonfalonDraft.generatedSerializer(heldSerializer); override val descriptor: \
                  SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
-                 value: Gonfalon<Held>) {{ val output = encoder as JsonEncoder; \
+                 value: GonfalonDraft<Held>) {{ val output = encoder as JsonEncoder; \
                  output.encodeJsonElement(transformSerialize(output.json.encodeToJsonElement(held, \
                  value))) }}; {PATHED}override fun \
-                 deserialize(decoder: Decoder): Gonfalon<Held> {{ val input = decoder as \
+                 deserialize(decoder: Decoder): GonfalonDraft<Held> {{ val input = decoder as \
                  JsonDecoder; val element = input.decodeJsonElement(); return \
                  kotlinSchemaAt(input) {{ input.json.decodeFromString(held, \
                  transformDeserialize(element).toString()) }} }}; {}; {moved} }}",
@@ -1149,7 +1151,7 @@ fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
          element.let { it as? JsonObject ?: throw SerializationException(\"expected an object, \
          found \" + it) }; val rest = kotlinSchemaFlattened { obj.mapValues { (k, v) -> \
          kotlinSchemaDecoded(input.json, \
-         KotlinNumber1, v, k, \".\" + k) } }; Netting(rest = rest) } }",
+         KotlinNumber1, v, k, \".\" + k) } }; NettingDraft(rest = rest) } }",
     ] {
         assert!(netting.contains(held), "no `{held}` in: {netting}");
     }
@@ -1187,7 +1189,7 @@ fn an_optional_flattened_map_under_a_function_is_read_from_what_it_answers() {
                 "val counts = kotlinSchemaFlattened {{ asGiven(obj).let {{ if (it is JsonNull) \
                  null else (it as? JsonObject \
                  ?: throw SerializationException(\"expected an object, found \" + it)).{entries} \
-                 }} }}; CorrectedLocker(counts = counts) }} }}"
+                 }} }}; CorrectedLockerDraft(counts = counts) }} }}"
             ),
         ),
         (
@@ -1196,7 +1198,7 @@ fn an_optional_flattened_map_under_a_function_is_read_from_what_it_answers() {
                 "val counts = kotlinSchemaFlattened {{ asNull(obj).let {{ if (it is JsonNull) null \
                  else (it as? JsonObject \
                  ?: throw SerializationException(\"expected an object, found \" + it)).{entries} \
-                 }} }}; EmptiedLocker(counts = counts) }} }}"
+                 }} }}; EmptiedLockerDraft(counts = counts) }} }}"
             ),
         ),
     ] {
@@ -1250,7 +1252,7 @@ fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serial
         (
             renumbered(&cathead_kotlin::kotlin_definition()),
             format!(
-                "val lines = kotlinSchemaFlattened {{ obj.{entries} }}; Cathead(lines = lines) \
+                "val lines = kotlinSchemaFlattened {{ obj.{entries} }}; CatheadDraft(lines = lines) \
                      }} }}"
             ),
         ),
@@ -2054,8 +2056,8 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         (
             renumbered(&gaffing_kotlin::kotlin_definition()),
             "@Serializable(with = GaffingCountedUnjudged::class) data class \
-             GaffingCounted(val counts: Map<String, UByte>) : Gaffing { override fun validate(): \
-             List<String> = emptyList() } object GaffingCountedUnjudged : \
+             GaffingCounted(val counts: Map<String, UByte>) : GaffingDraft { override fun \
+             validationIssues(): List<String> = emptyList() } object GaffingCountedUnjudged : \
              KSerializer<GaffingCounted> {",
         ),
         (
@@ -2089,12 +2091,12 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
             renumbered(&swaying_kotlin::kotlin_definition()),
             ".recoverCatching { \
              input.json.decodeFromJsonElement(serializer<SwayingAnnotated>(), element) as \
-             Swaying }",
+             SwayingDraft }",
         ),
         (
             renumbered(&whelping_kotlin::kotlin_definition()),
             "@SerialName(\"Hoisted\") @Serializable(with = WhelpingHoistedUnjudged::class) data \
-             class WhelpingHoisted(val labelling: Labelling) : Whelping",
+             class WhelpingHoisted(val labelling: Labelling) : WhelpingDraft",
         ),
         (
             renumbered(&whelping_kotlin::kotlin_definition()),
@@ -2104,14 +2106,14 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
         (
             renumbered(&broaching_kotlin::kotlin_definition()),
             "@Serializable(with = BroachingCountedUnjudged::class) data class \
-             BroachingCounted<Count>(val counts: Map<String, Count>) : Broaching<Count> { \
-             override fun validate(): List<String> = emptyList() } class \
+             BroachingCounted<Count>(val counts: Map<String, Count>) : BroachingDraft<Count> { \
+             override fun validationIssues(): List<String> = emptyList() } class \
              BroachingCountedUnjudged<Count: Any>(private val countSerializer: \
              KSerializer<Count>) : KSerializer<BroachingCounted<Count>> {",
         ),
         (
             renumbered(&quaying_kotlin::kotlin_definition()),
-            "@Serializable data class QuayingBay(val label: String) : Quaying {",
+            "@Serializable data class QuayingBay(val label: String) : QuayingDraft {",
         ),
     ] {
         assert!(kotlin.contains(written), "no `{written}` in: {kotlin}");
@@ -2135,13 +2137,14 @@ fn test_generic_dispatched_enum_serializer_class() {
     let kotlin = renumbered(&choice_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = ChoiceSerializer::class) sealed interface Choice<out T>"
+            "@Serializable(with = ChoiceDraftUnjudged::class) sealed interface ChoiceDraft<out T>"
         ),
         "the base names its serializer so a property of this type still resolves. got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "class ChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Choice<T>>"
+            "class ChoiceDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<ChoiceDraft<T>>"
         ),
         "a generic item's serializer is a class over one constructor serializer per parameter, \
          not the singleton `object` a non-generic item keeps. got: {kotlin}"
@@ -2166,7 +2169,8 @@ fn test_generic_adjacent_tagged_enum() {
     let kotlin = renumbered(&adjacent_choice_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "class AdjacentChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<AdjacentChoice<T>>"
+            "class AdjacentChoiceDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<AdjacentChoiceDraft<T>>"
         ),
         "got: {kotlin}"
     );
@@ -2184,13 +2188,15 @@ fn test_generic_untagged_enum() {
     let kotlin = renumbered(&untagged_choice_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = UntaggedChoiceSerializer::class) sealed interface UntaggedChoice<out T>"
+            "@Serializable(with = UntaggedChoiceDraftUnjudged::class) sealed interface \
+             UntaggedChoiceDraft<out T>"
         ),
         "got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "class UntaggedChoiceUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<UntaggedChoice<T>>"
+            "class UntaggedChoiceDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<UntaggedChoiceDraft<T>>"
         ),
         "got: {kotlin}"
     );
@@ -2215,7 +2221,7 @@ fn test_generic_enum_two_type_parameters() {
     let kotlin = renumbered(&either_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "class EitherUnjudged<L: Any, R: Any>(private val lSerializer: KSerializer<L>, private val rSerializer: KSerializer<R>) : KSerializer<Either<L, R>>"
+            "class EitherDraftUnjudged<L: Any, R: Any>(private val lSerializer: KSerializer<L>, private val rSerializer: KSerializer<R>) : KSerializer<EitherDraft<L, R>>"
         ),
         "one constructor serializer per type parameter. got: {kotlin}"
     );
@@ -2252,13 +2258,14 @@ fn test_generic_tuple_struct_serializer_class() {
     let kotlin = renumbered(&generic_pair_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = GenericPairSerializer::class) data class GenericPair<T>("
+            "@Serializable(with = GenericPairDraftUnjudged::class) data class GenericPairDraft<T>("
         ),
         "got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "class GenericPairUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<GenericPair<T>>"
+            "class GenericPairDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<GenericPairDraft<T>>"
         ),
         "the tuple-struct path earns the same generic serializer class as the enum shapes. got: {kotlin}"
     );
@@ -2277,12 +2284,15 @@ fn test_generic_tuple_struct_serializer_class() {
 fn test_generic_flatten_own_field() {
     let kotlin = renumbered(&tagged_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("@Serializable(with = TaggedSerializer::class) data class Tagged<T>("),
+        kotlin.contains(
+            "@Serializable(with = TaggedDraftUnjudged::class) data class TaggedDraft<T>("
+        ),
         "got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "class TaggedUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Tagged<T>>"
+            "class TaggedDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<TaggedDraft<T>>"
         ),
         "the flatten-merging serializer earns the same generic class as the other hand-rolled \
          serializers, not the `object` a non-generic flatten struct keeps. got: {kotlin}"
@@ -2309,12 +2319,15 @@ fn test_generic_flatten_own_field() {
 fn test_generic_flatten_generic_sibling() {
     let kotlin = renumbered(&envelope_kotlin::kotlin_definition());
     assert!(
-        kotlin.contains("@Serializable(with = EnvelopeSerializer::class) data class Envelope<T>("),
+        kotlin.contains(
+            "@Serializable(with = EnvelopeDraftUnjudged::class) data class EnvelopeDraft<T>("
+        ),
         "got: {kotlin}"
     );
     assert!(
         kotlin.contains(
-            "class EnvelopeUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : KSerializer<Envelope<T>>"
+            "class EnvelopeDraftUnjudged<T: Any>(private val tSerializer: KSerializer<T>) : \
+             KSerializer<EnvelopeDraft<T>>"
         ),
         "got: {kotlin}"
     );
@@ -2344,10 +2357,15 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     assert_eq!(
         renumbered(&reserved_members_kotlin::kotlin_definition()),
         format!(
-            "{} data class ReservedMembers(val `class`: String, val `in`: String, val type: \
-             String) {{ fun validate(): List<String> = emptyList() }} {}",
-            kept("ReservedMembers"),
-            serializers("ReservedMembers")
+            "{} data class ReservedMembersDraft(val `class`: String, val `in`: String, val type: \
+             String) {{ {NO_ISSUES} {} }} {}",
+            kept_draft("ReservedMembers"),
+            to_valid("ReservedMembers", ""),
+            drafted_serializers(
+                "ReservedMembers",
+                "val `class`: String get() = draft.`class`; val `in`: String get() = \
+                 draft.`in`; val type: String get() = draft.type; "
+            )
         )
     );
     assert_eq!(
@@ -2355,7 +2373,8 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
         format!(
             "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
              ReservedMemberUnjudged::class) @KeepGeneratedSerializer enum class ReservedMember \
-             {{ Default, In, Other; fun validate(): List<String> = emptyList() }} {}",
+             {{ Default, In, Other; fun validate(): List<String> = emptyList(); fun \
+             validationIssues(): List<String> = validate() }} {}",
             plain_enum_unjudged(
                 "ReservedMember",
                 &[

@@ -31,12 +31,17 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      kotlinSchemaKinded(serializer, element, at).toString()) }; ";
 
 /// What a type with no rule answers.
-const NO_RULE: &str = "fun validate(): List<String> = emptyList()";
+const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
+     List<String> = validate()";
 
-/// What holds a pallet's label to one character.
-const LABELLED: &str = "fun validate(): List<String> { val violations = mutableListOf<String>(); \
-     if (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: minimum \
-     length is 1, got ${label.codePointCount(0, label.length)}\"); return violations }";
+/// What the draft of a type with no rule answers.
+pub const NO_ISSUES: &str = "fun validationIssues(): List<String> = emptyList()";
+
+/// What holds a pallet's label to one character, as the draft of a pallet asks it.
+const LABELLED_ISSUES: &str = "fun validationIssues(): List<String> { val violations = \
+     mutableListOf<String>(); if (label.codePointCount(0, label.length) < 1) \
+     violations.add(\"'label': too short: minimum length is 1, got \
+     ${label.codePointCount(0, label.length)}\"); return violations }";
 
 /// The annotation a holder reads a pallet unjudged with.
 const UNJUDGED: &str = "@Serializable(with = PalletUnjudged::class)";
@@ -136,11 +141,101 @@ pub fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> S
     )
 }
 
-/// The annotations of a type the plugin reads, which keeps the plugin's serializer.
-pub fn kept(named: &str) -> String {
+/// The annotations of the draft of a type the plugin reads, which keeps the plugin's serial name.
+pub fn kept_draft(named: &str) -> String {
     format!(
-        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-         {named}Serializer::class) @KeepGeneratedSerializer"
+        "@OptIn(ExperimentalSerializationApi::class) \
+         @Serializable(with = {named}DraftUnjudged::class) @KeepGeneratedSerializer"
+    )
+}
+
+/// What the draft of `named` makes of its rules: the valid type, or what it breaks.
+pub fn to_valid(named: &str, generic: &str) -> String {
+    format!(
+        "fun validate(): {named}{generic} {{ val violations = validationIssues(); if \
+         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
+         IllegalArgumentException(\"validate()\")); return {named}.checked(this) }}"
+    )
+}
+
+/// The valid class of `named`, over its draft, which forwards each property in `forwards`.
+pub fn valid_class(named: &str, forwards: &str) -> String {
+    valid_class_over(named, "", forwards)
+}
+
+/// [`valid_class`] of a type over the type parameters `generic`, written `<A, B>`.
+pub fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
+    let checked = if generic.is_empty() {
+        String::new()
+    } else {
+        format!("{generic} ")
+    };
+    format!(
+        "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
+         {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
+         validationIssues(): List<String> = draft.validationIssues(); companion object {{ internal \
+         fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
+    )
+}
+
+/// The unjudged serializer of the valid type `named`, which reads its draft and wraps it.
+pub fn valid_unjudged(named: &str) -> String {
+    format!(
+        "@OptIn(ExperimentalSerializationApi::class) private object {named}Unjudged : \
+         KSerializer<{named}> {{ override val descriptor: \
+         SerialDescriptor = {named}DraftUnjudged.descriptor; override fun serialize(encoder: \
+         Encoder, value: {named}) = {named}DraftUnjudged.serialize(encoder, value.draft); \
+         override fun deserialize(decoder: Decoder): {named} = \
+         {named}.checked(try {{ {named}DraftUnjudged.deserialize(decoder) }} catch (refused: \
+         SerializationException) {{ val named = {named}DraftUnjudged.descriptor.serialName; val said = \
+         refused.message.orEmpty(); if (\"'\" + named + \"'\" !in said) throw refused; val declared = \
+         named.removeSuffix(\"Draft\"); throw if (refused is MissingFieldException) \
+         MissingFieldException(refused.missingFields, declared) else \
+         SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
+         refused.cause) }}) }}"
+    )
+}
+
+/// [`valid_unjudged`] of a type of the one parameter `parameter`, whose serializer is `handed`.
+pub fn valid_unjudged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
+    format!(
+        "@OptIn(ExperimentalSerializationApi::class) private class \
+         {named}Unjudged<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
+         KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaDraft = \
+         {named}DraftUnjudged({handed}); override val descriptor: SerialDescriptor = \
+         kotlinSchemaDraft.descriptor; override fun serialize(encoder: Encoder, value: \
+         {named}<{parameter}>) = kotlinSchemaDraft.serialize(encoder, value.draft); override fun \
+         deserialize(decoder: Decoder): {named}<{parameter}> = \
+         {named}.checked(try {{ kotlinSchemaDraft.deserialize(decoder) }} catch (refused: \
+         SerializationException) {{ val named = kotlinSchemaDraft.descriptor.serialName; val said = \
+         refused.message.orEmpty(); if (\"'\" + named + \"'\" !in said) throw refused; val declared = \
+         named.removeSuffix(\"Draft\"); throw if (refused is MissingFieldException) \
+         MissingFieldException(refused.missingFields, declared) else \
+         SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
+         refused.cause) }}) }}"
+    )
+}
+
+/// The serializer of the valid type `named`: its unjudged read, judged by what its draft reports.
+pub fn judged_valid(named: &str) -> String {
+    judged(named).replace("read.validate()", "read.validationIssues()")
+}
+
+/// [`judged_valid`] of a type of the one parameter `parameter`.
+pub fn judged_valid_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
+    judged_over(named, parameter, bound, handed)
+        .replace("read.validate()", "read.validationIssues()")
+}
+
+/// What follows the draft class of `named`, a type with no parameter the plugin reads: its draft's
+/// unjudged serializer, the valid class forwarding `forwards`, and the two serializers over it.
+pub fn drafted_serializers(named: &str, forwards: &str) -> String {
+    format!(
+        "{} {} {} {}",
+        generated(&format!("{named}Draft")),
+        valid_class(named, forwards),
+        valid_unjudged(named),
+        judged_valid(named)
     )
 }
 
@@ -151,11 +246,6 @@ pub fn kept_inline(named: &str) -> String {
         "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
          {named}Serializer::class) @KeepGeneratedSerializer"
     )
-}
-
-/// The two serializers of `named`, a type with no parameter the plugin reads.
-pub fn serializers(named: &str) -> String {
-    format!("{} {}", generated(named), judged(named))
 }
 
 /// The two serializers of the brand `named`, whose unjudged read is private to the file.
@@ -296,9 +386,10 @@ fn a_class_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
         super::tests::renumbered(&pallet_kotlin::kotlin_definition()),
         format!(
-            "{} data class Pallet(val label: String) {{ {LABELLED} }} {}",
-            kept("Pallet"),
-            serializers("Pallet")
+            "{} data class PalletDraft(val label: String) {{ {LABELLED_ISSUES} {} }} {}",
+            kept_draft("Pallet"),
+            to_valid("Pallet", ""),
+            drafted_serializers("Pallet", "val label: String get() = draft.label; ")
         )
     );
 }
@@ -311,20 +402,28 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
     let bay = super::tests::renumbered(&bay_kotlin::kotlin_definition());
     assert!(
         bay.starts_with(&format!(
-            "{} data class Bay({UNJUDGED} val first: Pallet, val listed: List<{UNJUDGED} \
+            "{} data class BayDraft({UNJUDGED} val first: Pallet, val listed: List<{UNJUDGED} \
              Pallet>, {UNJUDGED} val spare: Pallet? = null, val stored: Map<String, {UNJUDGED} \
-             Pallet>, val trailer: Trailer) {{ fun validate(): List<String> {{",
-            kept("Bay")
+             Pallet>, val trailer: Trailer) {{ fun validationIssues(): List<String> {{",
+            kept_draft("Bay")
         )),
         "got: {bay}"
     );
-    assert!(bay.ends_with(&serializers("Bay")), "got: {bay}");
+    assert!(
+        bay.ends_with(&format!(
+            "{} {}",
+            valid_unjudged("Bay"),
+            judged_valid("Bay")
+        )),
+        "got: {bay}"
+    );
     assert_eq!(
         super::tests::renumbered(&trailer_kotlin::kotlin_definition()),
         format!(
-            "{} data class Trailer(val plate: String) {{ {NO_RULE} }} {}",
-            kept("Trailer"),
-            serializers("Trailer")
+            "{} data class TrailerDraft(val plate: String) {{ {NO_ISSUES} {} }} {}",
+            kept_draft("Trailer"),
+            to_valid("Trailer", ""),
+            drafted_serializers("Trailer", "val plate: String get() = draft.plate; ")
         )
     );
 }
@@ -336,18 +435,25 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     assert_eq!(
         super::tests::renumbered(&cask_kotlin::kotlin_definition()),
         format!(
-            "{} data class Cask<Held>(val held: List<Held>, val label: String) {{ {LABELLED} }} \
-             @OptIn(ExperimentalSerializationApi::class) class CaskUnjudged<Held>(heldSerializer: \
-             KSerializer<Held>) : KSerializer<Cask<Held>> by \
-             Cask.generatedSerializer(heldSerializer) {}",
-            kept("Cask"),
-            judged_over("Cask", "Held", "", "heldSerializer")
+            "{} data class CaskDraft<Held>(val held: List<Held>, val label: String) {{ \
+             {LABELLED_ISSUES} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+             CaskDraftUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
+             KSerializer<CaskDraft<Held>> by CaskDraft.generatedSerializer(heldSerializer) {} {} {}",
+            kept_draft("Cask"),
+            to_valid("Cask", "<Held>"),
+            valid_class_over(
+                "Cask",
+                "<Held>",
+                "val held: List<Held> get() = draft.held; val label: String get() = draft.label; "
+            ),
+            valid_unjudged_over("Cask", "Held", "", "heldSerializer"),
+            judged_valid_over("Cask", "Held", "", "heldSerializer")
         )
     );
     let cellar = super::tests::renumbered(&cellar_kotlin::kotlin_definition());
     assert!(
         cellar.contains(
-            "data class Cellar(@Serializable(with = CaskUnjudged::class) val cask: Cask<Pallet>, \
+            "data class CellarDraft(@Serializable(with = CaskUnjudged::class) val cask: Cask<Pallet>, \
              val casks: List<@Serializable(with = CaskUnjudged::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
         ),
         "got: {cellar}"
@@ -378,12 +484,13 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
     let load = super::tests::renumbered(&load_kotlin::kotlin_definition());
     for held in [
         format!(
-            "@Serializable(with = LoadSerializer::class) sealed interface Load {{ fun validate(): \
-             List<String> }} @Serializable data class LoadBoxed({UNJUDGED} val value: Pallet) : \
-             Load {{"
+            "@Serializable(with = LoadDraftUnjudged::class) sealed interface LoadDraft {{ fun \
+             validationIssues(): List<String>; {} }} @Serializable data class \
+             LoadBoxed({UNJUDGED} val value: Pallet) : LoadDraft {{",
+            to_valid("Load", "")
         ),
-        "} object LoadUnjudged : KSerializer<Load> { override val descriptor: SerialDescriptor = \
-         buildClassSerialDescriptor(\"Load\");"
+        "} object LoadDraftUnjudged : KSerializer<LoadDraft> { override val descriptor: \
+         SerialDescriptor = buildClassSerialDescriptor(\"Load\");"
             .to_owned(),
         "is LoadBoxed -> buildJsonObject { put(\"Boxed\", \
          output.json.encodeToJsonElement(PalletUnjudged, value.value)) }"
@@ -394,7 +501,15 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
     ] {
         assert!(load.contains(&held), "no `{held}` in: {load}");
     }
-    assert!(load.ends_with(&judged("Load")), "got: {load}");
+    assert!(
+        load.ends_with(&format!(
+            "{} {} {}",
+            valid_class("Load", ""),
+            valid_unjudged("Load"),
+            judged_valid("Load")
+        )),
+        "got: {load}"
+    );
 }
 
 /// The class `kotlin` declares that reads a list of `length` items, and refuses one of any other.
@@ -436,7 +551,7 @@ fn array_class(kotlin: &str, length: usize) -> String {
 fn a_fixed_array_is_read_through_the_class_of_its_length() {
     let bunt = super::tests::renumbered(&bunt_kotlin::kotlin_definition());
     assert!(
-        bunt.contains("data class Bunt(val held: List<@Serializable(with = KotlinNumber1::class) UByte>, val label: String)")
+        bunt.contains("data class BuntDraft(val held: List<@Serializable(with = KotlinNumber1::class) UByte>, val label: String)")
             && !bunt.contains("KotlinArray"),
         "got: {bunt}"
     );
@@ -461,7 +576,7 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         ),
         (
             &reefband,
-            "data class Reefband(val bunt: Bunt, val pair: List<UByte>) {".to_owned(),
+            "data class ReefbandDraft(val bunt: Bunt, val pair: List<UByte>) {".to_owned(),
         ),
         (
             &reefband,
@@ -481,7 +596,7 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         (
             &shroud,
             format!(
-                "data class ShroudPaired(val value: {} List<UByte>) : Shroud",
+                "data class ShroudPaired(val value: {} List<UByte>) : ShroudDraft",
                 annotated(&shroud)
             ),
         ),
@@ -496,14 +611,14 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         (
             &shrouding,
             format!(
-                "data class Shrouding(val byDock: Map<String, {} List<UByte>>)",
+                "data class ShroudingDraft(val byDock: Map<String, {} List<UByte>>)",
                 annotated(&shrouding)
             ),
         ),
         (
             &fishing,
             format!(
-                "data class Fishing(val maybe: {} List<UByte>? = null)",
+                "data class FishingDraft(val maybe: {} List<UByte>? = null)",
                 annotated(&fishing)
             ),
         ),
@@ -514,7 +629,7 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         (
             &cringling,
             format!(
-                "data class Cringling<T>(val pair: @Serializable(with = {}::class) List<T>)",
+                "data class CringlingDraft<T>(val pair: @Serializable(with = {}::class) List<T>)",
                 array_class(&cringling, 2)
             ),
         ),

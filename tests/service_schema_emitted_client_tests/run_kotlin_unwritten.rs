@@ -113,7 +113,7 @@ fn variants_main() -> String {
         .map(|(name, payload, _)| {
             format!(
                 "    val read{name} = Json.decodeFromString({name}.serializer(), \"\"\"{payload}\"\"\")\n    \
-                 println(\"{name}: read ${{(read{name} as {name}Furled).spare}}, written \
+                 println(\"{name}: read ${{(read{name}.draft as {name}Furled).spare}}, written \
                  ${{Json.encodeToString({name}.serializer(), read{name})}}\")"
             )
         })

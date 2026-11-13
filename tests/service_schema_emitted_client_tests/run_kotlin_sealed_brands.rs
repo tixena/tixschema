@@ -50,13 +50,13 @@ fun main() {
     } catch (refused: SerializationException) {
         println("refused: " + refused.message)
     }
-    println(Json.encodeToString(Label(text = LabelText.of("Shipping"))))
+    println(Json.encodeToString(LabelDraft(text = LabelText.of("Shipping")).validate()))
     try {
         Json.decodeFromString<Label>("""{"text":""}""")
     } catch (refused: SerializationException) {
         println("read refused: " + refused.message)
     }
-    println(Point(1u, 2u))
+    println(PointDraft(1u, 2u).validate())
 }
 "#;
     let label = LabelDraft {
@@ -76,7 +76,7 @@ fun main() {
          refused: too short: minimum length is 1, got 0\n\
          {\"text\":\"Shipping\"}\n\
          read refused: 'text': too short: minimum length is 1, got 0\n\
-         Point(slot0=1, slot1=2)\n"
+         Point(draft=PointDraft(slot0=1, slot1=2))\n"
     );
 }
 

@@ -42,13 +42,13 @@ object GuideHandlers : GuideServiceHandlers {
 
     override suspend fun getGuideVersion(req: GetGuideVersionRequest): GuideServiceGetGuideVersionResult {
         note(JsonPrimitive("get-guide-version"))
-        return GuideServiceGetGuideVersionResult.Ok(GuideVersion(3u))
+        return GuideServiceGetGuideVersionResult.Ok(GuideVersionDraft(3u).validate())
     }
 
     override suspend fun greet(req: String): GuideServiceGreetResult {
         note(JsonPrimitive("greet"), JsonPrimitive(req))
         if (req == "boom") throw IllegalStateException("the handler came apart")
-        if (req == "missing") return GuideServiceGreetResult.Declared(GuideErrorNotFound)
+        if (req == "missing") return GuideServiceGreetResult.Declared(GuideErrorNotFound.validate())
         return GuideServiceGreetResult.Ok("Say hello to " + req + ".")
     }
 

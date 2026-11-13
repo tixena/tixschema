@@ -132,7 +132,7 @@ fn a_char_and_a_date_name_the_serializer_of_their_form_where_the_plugin_reads() 
     );
     assert!(
         super::tests::without_number_readers(&kotlin).contains(&format!(
-            "data class Chronometer(@SerialName(\"by_date\") val byDate: Map<@Serializable(with = \
+            "data class ChronometerDraft(@SerialName(\"by_date\") val byDate: Map<@Serializable(with = \
              {date}::class) String, UByte>, @SerialName(\"by_letter\") val byLetter: \
              Map<@Serializable(with = {letter}::class) String, UByte>, val day: \
              @Serializable(with = {date}::class) String, val letter: @Serializable(with = \

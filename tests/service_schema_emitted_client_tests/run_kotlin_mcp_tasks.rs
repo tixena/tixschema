@@ -39,7 +39,7 @@ fun task(id: String, updated: String = "2026-11-01T20:00:00Z") =
 object JobHandlers : JobServiceHandlers {
     override suspend fun startExport(req: ExportRequest): JobServiceStartExportResult {
         note(JsonPrimitive("start-export"), JsonPrimitive(req.folder))
-        if (req.folder == "missing") return JobServiceStartExportResult.Declared(JobErrorNotFound)
+        if (req.folder == "missing") return JobServiceStartExportResult.Declared(JobErrorNotFound.validate())
         return JobServiceStartExportResult.Ok(task("7f3a"))
     }
 
@@ -48,7 +48,7 @@ object JobHandlers : JobServiceHandlers {
         if (req == "boom") throw IllegalStateException("the handler came apart")
         return when (req) {
             "7f3a" -> JobServiceExportStatusResult.Ok(McpTaskState.Working(task(req)))
-            "done" -> JobServiceExportStatusResult.Ok(McpTaskState.Completed(task(req, "2026-11-01T20:04:10Z"), ExportReport(3u)))
+            "done" -> JobServiceExportStatusResult.Ok(McpTaskState.Completed(task(req, "2026-11-01T20:04:10Z"), ExportReportDraft(3u).validate()))
             "needs" -> JobServiceExportStatusResult.Ok(
                 McpTaskState.InputRequired(
                     task(req),
@@ -66,19 +66,19 @@ object JobHandlers : JobServiceHandlers {
             )
             "broken" -> JobServiceExportStatusResult.Ok(McpTaskState.Failed(task(req), McpTaskError(-32603, "the folder vanished")))
             "stopped" -> JobServiceExportStatusResult.Ok(McpTaskState.Cancelled(task(req)))
-            else -> JobServiceExportStatusResult.Declared(JobErrorNotFound)
+            else -> JobServiceExportStatusResult.Declared(JobErrorNotFound.validate())
         }
     }
 
     override suspend fun cancelExport(req: String): JobServiceCancelExportResult {
         note(JsonPrimitive("cancel-export"), JsonPrimitive(req))
-        if (req == "gone") return JobServiceCancelExportResult.Declared(JobErrorNotFound)
+        if (req == "gone") return JobServiceCancelExportResult.Declared(JobErrorNotFound.validate())
         return JobServiceCancelExportResult.Ok
     }
 
     override suspend fun answerExport(req: AnswerExportRequest): JobServiceAnswerExportResult {
         note(JsonPrimitive("answer-export"), JsonPrimitive(req.taskId), JsonPrimitive(req.key), JsonPrimitive(req.action), req.content?.let { JsonPrimitive(it) } ?: JsonNull)
-        if (req.taskId == "gone") return JobServiceAnswerExportResult.Declared(JobErrorNotFound)
+        if (req.taskId == "gone") return JobServiceAnswerExportResult.Declared(JobErrorNotFound.validate())
         return JobServiceAnswerExportResult.Ok
     }
 }
@@ -198,7 +198,7 @@ suspend fun clientReport(input: JsonObject): JsonObject {
     val canned = Canned()
     val client = JobServiceMcpClient(canned)
     val calls: Map<String, suspend () -> JsonElement> = mapOf(
-        "started" to { started(client.startExport(ExportRequest("reports"))) },
+        "started" to { started(client.startExport(ExportRequestDraft("reports").validate())) },
         "working" to { status(client.exportStatus("7f3a")) },
         "completed" to { status(client.exportStatus("done")) },
         "waiting" to { status(client.exportStatus("needs")) },

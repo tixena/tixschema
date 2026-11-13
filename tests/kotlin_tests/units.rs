@@ -78,10 +78,10 @@ fn unit_is_one_object_per_item_read_from_null_and_written_as_null() {
 fn a_tuple_struct_of_no_slot_is_a_class_read_from_an_empty_array() {
     let slotless = probe_slotless_kotlin::kotlin_definition();
     for piece in [
-        "@Serializable(with = ProbeSlotlessSerializer::class) class ProbeSlotless() {",
+        "@Serializable(with = ProbeSlotlessDraftUnjudged::class) class ProbeSlotlessDraft() {",
         "output.encodeJsonElement(buildJsonArray {  })",
         "if (array.size != 0) throw SerializationException(\"invalid length \" + array.size + \", \
-         expected 0\"); ProbeSlotless()",
+         expected 0\"); ProbeSlotlessDraft()",
     ] {
         assert!(slotless.contains(piece), "no {piece} in: {slotless}");
     }

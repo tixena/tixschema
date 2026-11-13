@@ -26,7 +26,7 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
 const FUNCTIONS: &str = r#"
 fun asGiven(payload: JsonElement): JsonElement = payload
 
-fun aSpan(value: Span): List<String> = when (value) {
+fun aSpan(value: SpanDraft): List<String> = when (value) {
     is SpanHours -> if (value.hours == 0u) listOf("'hours': a span is not empty") else emptyList()
     is SpanDays -> if (value.days == "9") listOf("'days': a span is under nine days") else emptyList()
 }

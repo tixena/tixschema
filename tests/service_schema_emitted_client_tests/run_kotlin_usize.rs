@@ -39,7 +39,7 @@ fun defaulted(at: Int, payload: String) {
 
 fun validated(at: Int, bounded: ULong) {
     val payload = "{\"at\":0,\"bounded\":$bounded,\"by_index\":{},\"span\":{\"start\":0,\"end\":0}}"
-    println("$at: validate: " + Json.decodeFromString(OffsetsUnjudged, payload).validate().joinToString("; "))
+    println("$at: validate: " + Json.decodeFromString(OffsetsUnjudged, payload).validationIssues().joinToString("; "))
 }
 "#;
 

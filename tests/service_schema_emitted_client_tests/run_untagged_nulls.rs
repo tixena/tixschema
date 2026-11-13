@@ -76,7 +76,7 @@ const KOTLIN_TOLD: &str = r#"
 fun <T : Any> told(at: Int, serializer: KSerializer<T>, payload: String) {
     val told = try {
         val read = Json.decodeFromString(serializer, payload)
-        "read " + read::class.simpleName + " " + Json.encodeToString(serializer, read)
+        "read " + (read.javaClass.methods.firstOrNull { it.name == "getDraft" }?.invoke(read) ?: read)::class.simpleName + " " + Json.encodeToString(serializer, read)
     } catch (refusal: Exception) {
         if (refusal is SerializationException || refusal is IllegalArgumentException) "refused"
         else throw refusal

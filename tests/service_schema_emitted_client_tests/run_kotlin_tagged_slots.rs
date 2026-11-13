@@ -272,7 +272,7 @@ fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
     let docketed = docketed_kotlin::kotlin_definition();
     for held in [
         "@SerialName(\"Weighed\") @Serializable data class DocketedWeighed(@Serializable(with = \
-         TonnageUnjudged::class) val value: Tonnage) : Docketed {",
+         TonnageUnjudged::class) val value: Tonnage) : DocketedDraft {",
         "is DocketedWeighed -> buildJsonObject { put(\"kind\", \"Weighed\"); \
          output.json.encodeToJsonElement(TonnageUnjudged, value.value).jsonObject.forEach { (k, \
          v) -> put(k, v) } }",

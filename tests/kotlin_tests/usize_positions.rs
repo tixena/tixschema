@@ -42,7 +42,7 @@ fn a_usize_is_a_ulong_in_each_place_a_member_holds_one() {
         );
     }
     assert!(
-        declared.contains("<ULong>) { fun validate(): List<String>"),
+        declared.contains("<ULong>) { fun validationIssues(): List<String>"),
         "the range's bound is no `ULong`: {declared}"
     );
     let brand = slot_index_kotlin::kotlin_definition();
