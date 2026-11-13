@@ -181,14 +181,6 @@ fn mapped_over_a_brand(named: &str) -> String {
     )
 }
 
-/// The annotations of a type the plugin reads, which keeps the plugin's serializer.
-fn kept(named: &str) -> String {
-    format!(
-        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-         {named}Serializer::class) @KeepGeneratedSerializer"
-    )
-}
-
 /// The annotations of the draft of a type the plugin reads, which keeps the plugin's serial name.
 fn kept_draft(named: &str) -> String {
     format!(
@@ -683,12 +675,13 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     assert_eq!(
         definition(enum_kotlin_tokens(&graded, &args)),
         format!(
-            "{} enum class GradeDraft {{ Express, Unrated; {issues_of_a_grade} {} }} {} {} {}",
+            "{} enum class GradeDraft {{ Express, Unrated; {issues_of_a_grade} {} }} {} {} {} {}",
             kept_plain_draft("Grade"),
             to_valid("Grade", ""),
             plain_enum_unjudged("GradeDraft", &["Express", "Unrated"], "element"),
             valid_class("Grade", ""),
-            format!("{} {}", valid_unjudged("Grade"), judged_valid("Grade"))
+            valid_unjudged("Grade"),
+            judged_valid("Grade")
         )
     );
     let closed: ItemStruct = syn::parse_quote! {

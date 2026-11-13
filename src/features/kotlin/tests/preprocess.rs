@@ -3,10 +3,6 @@
 
 use super::*;
 
-/// What a type with no rule answers.
-const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
-     List<String> = validate()";
-
 /// What the draft of a type with no rule answers.
 const NO_ISSUES: &str = "fun validationIssues(): List<String> = emptyList()";
 
