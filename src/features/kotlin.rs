@@ -3511,7 +3511,11 @@ fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream
         tag_attrs.tag.is_none() && tag_attrs.content.is_none() && !tag_attrs.untagged;
     let defaults = SerdeDefaults::of_enum(item_enum);
     let kotlin_source = if plain && writes_bare_variant_names {
-        validate::note_plain_enum(&rust_ident, !args.check.is_empty());
+        if valid::drafted() {
+            validate::note_model(&rust_ident);
+        } else {
+            validate::note_plain_enum(&rust_ident, !args.check.is_empty());
+        }
         plain_enum_kotlin_source(item_enum, &export_name, args)
     } else {
         validate::note_model(&rust_ident);
@@ -4314,11 +4318,12 @@ fn plain_enum_member(variant: &Variant, rule: RenameRule) -> (String, String) {
     (rust_name, wire)
 }
 
-/// The Kotlin tokens a plain (all-unit, string-wire) enum earns: a serializable `enum class`,
-/// `@SerialName` only where the wire spelling differs from the Rust ident. One that names a
-/// check has the pair of serializers every other type has. Without a check, one that names a
-/// `preprocess` is read by `{Type}Unjudged`, its one serializer, and so is one that reads a
-/// variant under an alias, whose serializer is written by hand.
+/// The Kotlin tokens a plain (all-unit, string-wire) enum earns: the draft, a serializable
+/// `enum class` with `@SerialName` only where the wire spelling differs from the Rust ident, read
+/// by `{Draft}Unjudged`, which writes each variant under its wire name and reads it under that
+/// name and each alias; and the valid class over it, read and judged as every other model type is.
+/// An enum a service writes for itself has no draft: it is the one `enum class`, read by
+/// `{Type}Unjudged`, and by the judged serializer too where it names a check.
 fn plain_enum_kotlin_source(
     item_enum: &ItemEnum,
     export_name: &str,
@@ -4346,13 +4351,27 @@ fn plain_enum_kotlin_source(
         .join(", ");
     let mut rules = Rules::of(&[]);
     rules.own(args.check);
+    let draft = valid::draft_name(export_name);
     let body = format!(
-        "enum class {export_name} {{ {members}; {} }}",
-        rules.written("")
+        "enum class {draft} {{ {members}; {} }}",
+        valid::body(&mut rules, export_name, "")
     );
     let correction = preprocess::corrected(args.preprocess, ELEMENT);
-    let unjudged = aliases::plain_enum_serializer(export_name, &variants, &correction);
-    if args.check.is_empty() {
+    let unjudged = aliases::plain_enum_serializer(&draft, &variants, &correction);
+    if valid::drafted() {
+        format!(
+            "{} {body} {unjudged} {} {}",
+            read::kept_plain(&draft),
+            valid::pair(
+                export_name,
+                &draft,
+                ("", ""),
+                &[],
+                (&valid::enum_forwarded_issues(), false)
+            ),
+            read::judged_valid(export_name, "", &[], false, (&[], &[]))
+        )
+    } else if args.check.is_empty() {
         format!("{} {body} {unjudged}", read::kept_plain(export_name))
     } else {
         format!(

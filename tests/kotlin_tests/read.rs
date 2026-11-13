@@ -648,3 +648,27 @@ fn seal(text: &str) -> Seal {
 fn seal(text: &str) -> Seal {
     SealDraft(text.to_owned()).validate().unwrap()
 }
+
+/// The plain enum `named`: its draft, declared with `members` and read by `{Type}DraftUnjudged`
+/// over `variants` and `correction`, then the valid class over it with its two serializers.
+#[cfg(feature = "serde")]
+pub fn paired_plain_enum(
+    named: &str,
+    members: &str,
+    variants: &[(&str, &str, &[&str])],
+    correction: &str,
+) -> String {
+    format!(
+        "{} enum class {named}Draft {{ {members}; {NO_ISSUES} {} }} {} {} {} {}",
+        kept_draft(named),
+        to_valid(named, ""),
+        super::kotlin_plain_enum::plain_enum_unjudged(
+            &format!("{named}Draft"),
+            variants,
+            correction
+        ),
+        valid_class(named, ""),
+        valid_unjudged(named),
+        judged_valid(named)
+    )
+}

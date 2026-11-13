@@ -7,9 +7,9 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 use super::kotlin_pathed::PATHED;
-use super::kotlin_plain_enum::plain_enum_unjudged;
 #[cfg(feature = "serde")]
 use super::read::DECODED;
+use super::read::paired_plain_enum;
 use super::read::{
     NO_ISSUES, judged_valid, judged_valid_over, kept_draft, to_valid, valid_class,
     valid_class_over, valid_unjudged, valid_unjudged_over,
@@ -176,16 +176,11 @@ fn a_holder_reads_the_type_through_the_serializer_that_corrects_it() {
 fn a_plain_enum_that_names_a_function_has_one_serializer_that_calls_it() {
     assert_eq!(
         tier_kotlin::kotlin_definition(),
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             TierUnjudged::class) @KeepGeneratedSerializer enum class Tier {{ Express, Standard; \
-             fun validate(): List<String> = emptyList(); fun \
-             validationIssues(): List<String> = validate() }} {}",
-            plain_enum_unjudged(
-                "Tier",
-                &[("Express", "Express", &[]), ("Standard", "Standard", &[])],
-                "unwrapped(element)"
-            )
+        paired_plain_enum(
+            "Tier",
+            "Express, Standard",
+            &[("Express", "Express", &[]), ("Standard", "Standard", &[])],
+            "unwrapped(element)"
         )
     );
 }

@@ -59,8 +59,8 @@ class Chosen(private val value: Any) {
         listOf((value.javaClass.methods.firstOrNull { it.name == "getDraft" }?.invoke(value) ?: value)::class.simpleName!!)
 }
 
-fun rated(value: Grade): List<String> =
-    if (value == Grade.Unrated) listOf("a parcel is rated") else emptyList()
+fun rated(value: GradeDraft): List<String> =
+    if (value == GradeDraft.Unrated) listOf("a parcel is rated") else emptyList()
 
 fun labelled(value: FreightDraft): List<String> =
     if (value is FreightLoose && value.freightLabel.isEmpty()) {

@@ -8,7 +8,7 @@ use super::aliased_models::{
     lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, veering_kotlin,
 };
 use super::kotlin_pathed::PATHED;
-use super::kotlin_plain_enum::plain_enum_unjudged;
+use super::read::paired_plain_enum;
 
 /// What reads a payload's key `name` as `label`, and refuses the two together.
 const NAME_AS_LABEL: &str = "let { whole: JsonElement -> if (whole is JsonObject) \
@@ -86,30 +86,20 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_kotlin::kotlin_definition(),
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             SwellUnjudged::class) @KeepGeneratedSerializer enum class Swell {{ Ebb, Flood; \
-             fun validate(): List<String> = emptyList(); fun \
-             validationIssues(): List<String> = validate() }} {}",
-            plain_enum_unjudged(
-                "Swell",
-                &[("Ebb", "Ebb", &["Low", "Neap"]), ("Flood", "Flood", &[])],
-                "element"
-            )
+        paired_plain_enum(
+            "Swell",
+            "Ebb, Flood",
+            &[("Ebb", "Ebb", &["Low", "Neap"]), ("Flood", "Flood", &[])],
+            "element"
         )
     );
     assert_eq!(
         lulling_kotlin::kotlin_definition(),
-        format!(
-            "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-             LullingUnjudged::class) @KeepGeneratedSerializer enum class Lulling {{ Ebb, \
-             Flood; fun validate(): List<String> = emptyList(); fun \
-             validationIssues(): List<String> = validate() }} {}",
-            plain_enum_unjudged(
-                "Lulling",
-                &[("Ebb", "Ebb", &["Low"]), ("Flood", "Flood", &[])],
-                "unpadded(element)"
-            )
+        paired_plain_enum(
+            "Lulling",
+            "Ebb, Flood",
+            &[("Ebb", "Ebb", &["Low"]), ("Flood", "Flood", &[])],
+            "unpadded(element)"
         )
     );
 }
