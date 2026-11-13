@@ -115,7 +115,7 @@ pub(super) fn located(check: &FunctionName) -> Span {
 ///     pub codes: Vec<CodeType>,
 /// }
 ///
-/// fn without_repeats<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>
+/// fn without_repeats<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>
 /// where
 ///     CodeType: PartialEq,
 /// {
@@ -140,7 +140,7 @@ pub(super) fn located(check: &FunctionName) -> Span {
 /// note: required by a bound in `without_repeats`
 ///   --> tests/zz_probe.rs:12:15
 ///    |
-/// 10 | fn without_repeats<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>
+/// 10 | fn without_repeats<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>
 ///    |    --------------- required by a bound in this function
 /// 11 | where
 /// 12 |     CodeType: PartialEq,

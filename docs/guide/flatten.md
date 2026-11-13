@@ -5,15 +5,6 @@ A struct field marked `#[serde(flatten)]` is lifted into the parent type as a Ty
 ```rust
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DataElementSampleValueEntry {
-    pub data_element_id: String,
-    #[serde(flatten)]
-    pub variant: DataElementSampleValueVariant,
-}
-
-#[model_schema()]
-#[derive(Serialize, Deserialize)]
 #[serde(tag = "dataType")]
 pub enum DataElementSampleValueVariant {
     Alphanumeric {
@@ -25,6 +16,15 @@ pub enum DataElementSampleValueVariant {
         sample_values: Vec<i64>,
     },
 }
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataElementSampleValueEntry {
+    pub data_element_id: String,
+    #[serde(flatten)]
+    pub variant: DataElementSampleValueVariant,
+}
 ```
 
 Generated TypeScript:
@@ -32,7 +32,7 @@ Generated TypeScript:
 ```typescript
 export type DataElementSampleValueEntryDraft = {
   dataElementId: string;
-} & DataElementSampleValueVariant;
+} & DataElementSampleValueVariantDraft;
 
 export type DataElementSampleValueEntry = Readonly<DataElementSampleValueEntryDraft> & $brand<"DataElementSampleValueEntry">;
 ```
@@ -40,7 +40,7 @@ export type DataElementSampleValueEntry = Readonly<DataElementSampleValueEntryDr
 Generated Zod:
 
 ```typescript
-export const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueEntry> =
+const DataElementSampleValueEntryDraft$RawSchema =
   z.strictObject({
     dataElementId: z.string(),
   }).and(z.lazy(() => DataElementSampleValueVariant$Schema).superRefine((_read, ctx) => {
@@ -56,17 +56,21 @@ export const DataElementSampleValueEntry$Schema: ZodType<DataElementSampleValueE
       if (absent && steps.length > 1 && refused) return { ...issue, path: [last] };
       return width || (!absent && refused) ? { ...issue, path: [] } : issue;
     }));
-  }, { when: () => true })).meta({
-    examples: []
-  });
+  }, { when: () => true }));
+
+export const DataElementSampleValueEntryDraft$Schema: ZodType<DataElementSampleValueEntryDraft> = DataElementSampleValueEntryDraft$RawSchema;
+
+export const DataElementSampleValueEntry$Schema = DataElementSampleValueEntryDraft$Schema.readonly().brand<"DataElementSampleValueEntry">().meta(DataElementSampleValueEntryDraft$Schema.meta() ?? {}).meta({
+  examples: []
+});
 ```
 
 Notes:
 
 - The flattened base is read through a check that places a refusal serde reads at the holder there, as serde names the holder: serde reads a flattened member from the keys its holder buffers. With `pub struct Frame { #[serde(flatten)] pub beam: Beam, pub span: u32 }` over `pub struct Beam { pub oak: u32, pub reach: u32, pub deep: Deep }` and `pub struct Deep { pub inner: u32 }`, `{"span":1,"oak":"x"}` is refused at the holder, where Zod alone names `oak`, and so is a number beyond its integer's width, `{"span":1,"reach":4294967296}`, where Zod alone names `reach`. A key missing below the member's own keys is refused at the holder and the key, `{"span":1,"deep":{}}` at `inner`, where Zod alone names `deep.inner`. A key the member misses, a key no member reads, a value outside a declared bound and a value other than a declared literal keep the place Zod gives them: `{"span":1}` is refused at `oak`. A width is the bound of the integer's range written with no message of its own; a declared bound narrower than the width is judged by `validate()` and keeps its place, so a number beyond the width on a member that declares a narrower `maximum` is still named at the member. A value inside the member that serde refuses as text that is not the document, an externally tagged enum or a `Result` written as neither a string nor an object of one key, is refused at the holder too, as a value of the wrong kind: with `pub echo: Result<u32, String>` in `Beam`, `{"span":1,"oak":2,"echo":1}` is `failed-validation` naming `frame`, where the same value outside a flattened member is `undeserializable-payload` naming no field ([What is no document](ws-rpc.md)). So are the members of a variant of an internally tagged enum, which serde reads from the content the tag's object buffers: `failed-validation` naming the enum's own place, `turn`.
 - The flattened base joins the intersection under `z.lazy`. A base is a `const` of its own and nothing orders one type's schema against another's, so reading the name while the intersection's `const` initializes would fail for any base declared below -- and for two bases that flatten each other, no order puts each above the other. Deferred, every module loads whatever order it is assembled in, and a pair that does flatten each other fails when asked to validate rather than at import.
-- Multiple `#[serde(flatten)]` fields chain: `{ ... } & BasePart & ExtraPart` in TypeScript and `z.strictObject({ ... }).and(z.lazy(() => BasePart$Schema).superRefine(...)).and(z.lazy(() => ExtraPart$Schema).superRefine(...))` in Zod, each base read through the check above.
-- A struct whose only field is flattened becomes a plain alias (e.g. `export type FlattenOnly = DataElementSampleValueVariant;`).
+- Multiple `#[serde(flatten)]` fields chain: `{ ... } & BasePartDraft & ExtraPartDraft` in TypeScript and `z.strictObject({ ... }).and(z.lazy(() => BasePart$Schema).superRefine(...)).and(z.lazy(() => ExtraPart$Schema).superRefine(...))` in Zod, each base read through the check above.
+- A struct whose only field is flattened becomes a plain alias (e.g. `export type FlattenOnlyDraft = DataElementSampleValueVariantDraft;`).
 - A flattened `ObjectId` joins its `$oid` key, which Serde writes among the object's own: `{"id":1,"$oid":"507f1f77bcf86cd799439011"}` for `#[model_schema(nonstrict)] pub struct Stamped { pub id: u32, #[serde(flatten)] pub oid: ObjectId }`. TypeScript and Zod intersect the object with the `$oid` object, and the JSON Schema adds `$oid` to the object's members, required. Serde reads `$oid` from every key still left and refuses no key beside it, so a holder of a flattened `ObjectId`, a struct or the enum of a struct variant, is marked `nonstrict` ([Order and strictness of flattened members](#order-and-strictness-of-flattened-members)), and Zod and the JSON Schema read past a key none of its members reads, as Serde does. An `ObjectId` in the lone slot of a newtype variant under a `tag` with no `content` joins the tag's object the same way: Serde writes `{"kind":"Held","$oid":"507f1f77bcf86cd799439011"}` for `#[serde(tag = "kind")] pub enum Stamping { Held(ObjectId) }` and reads it back. TypeScript writes `{ kind: "Held"; } & ObjectId`, Zod intersects the tag's object with the `$oid` object, the JSON Schema adds `$oid` beside the tag, required, and the Dart, Swift and Kotlin types read the `ObjectId` from the object without the tag and write its `$oid` key beside the tag. The tag alone, `{"kind":"Held"}`, is refused as Serde refuses it: by Zod and the JSON Schema, and by TypeScript and each client where its `ObjectId` requires the `$oid` key. So is a key beside the tag and `$oid`, by Zod, the JSON Schema and each client's `ObjectId` as [the section on it](object-id.md#mongodb-objectid-support) declares it.
 - **A type parameter is not flattened.** A `#[serde(flatten)]` member whose keys are those of one of the type's own parameters stops the build, on a struct and on a variant of an enum: the parameter itself, an `Option` or a `Box` of it, and a generic type that writes the parameter's keys at its own level, through a flattened member or an untagged variant that holds it. What fills the parameter is written in plain Rust, `serde_json::to_string(&Stamped::<Note> { .. })`, where no expansion reads it, and a filling that writes a key the holder already writes, or an `Option` of a type that reads `{}`, does not read back. A generic type that holds its parameter under a key of its own, `pub struct Page<T> { pub item: T }`, is flattened as any struct is. `pub struct Stamped<T> { pub created_at: String, #[serde(flatten)] pub record: T }` answers:
 

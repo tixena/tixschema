@@ -82,8 +82,8 @@ pub struct Fixed {
     pub value: u8,
 }
 
-let seven = Fixed { value: 7 };
-assert_eq!(seven.validate(), Err(vec!["'value': not the literal 214, got 7".to_owned()]));
+let seven = FixedDraft { value: 7 };
+assert_eq!(seven.validate().unwrap_err(), vec!["'value': not the literal 214, got 7".to_owned()]);
 assert!(serde_json::from_str::<Fixed>(r#"{"value":7}"#).is_err());
 assert_eq!(serde_json::from_str::<Fixed>(r#"{"value":214}"#).unwrap().value, 214);
 ```

@@ -79,7 +79,7 @@ What differs is the position, and it costs the read its diagnosis. Serde tries a
 
 ```rust
 #[model_schema()]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum SoleConstrained {
     Slug {

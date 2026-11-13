@@ -519,7 +519,7 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
 
     // Declared in sorted order, so the keys read the same with `preserve_order` on or off.
     assert_readme_declares_and_shows(
-        "/// User profile\n/// ```rust example\n/// User {\n///     name: \"John \
+        "/// User profile\n/// ```rust example\n/// UserDraft {\n///     name: \"John \
          Doe\".to_string(),\n///     email: \"john@example.com\".to_string(),\n///     age: \
          25,\n/// }\n/// ```\n#[model_schema()]\n#[derive(Serialize, Deserialize, Debug, \
          Clone)]\npub struct User {",
@@ -532,8 +532,8 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
         ],
     );
     assert_readme_declares_and_shows_whole(
-        "/// A shape\n/// ```rust example\n/// Shape::Circle { radius: 2 }\n/// ```\n/// ```rust \
-         example\n/// Shape::Square { side: 3 }\n/// ```\n#[model_schema()]\n#[derive(Serialize, \
+        "/// A shape\n/// ```rust example\n/// ShapeDraft::Circle { radius: 2 }\n/// ```\n/// ```rust \
+         example\n/// ShapeDraft::Square { side: 3 }\n/// ```\n#[model_schema()]\n#[derive(Serialize, \
          Deserialize, Debug, Clone)]\n#[serde(tag = \"kind\")]\npub enum Shape {\n    Circle { \
          radius: u32 },\n    Square { side: u32 },\n}",
         &Shape::zod_schema(),
