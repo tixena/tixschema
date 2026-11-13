@@ -133,7 +133,7 @@ class MediaRecorder(private val statHeaders: List<Pair<String, String>>) : Media
 }
 
 fun main() = runBlocking {
-    val upload = MediaUpload(caption = "c", sha256 = MediaId.of("abc123"))
+    val upload = MediaUploadDraft(caption = "c", sha256 = MediaId.of("abc123")).validate()
     val recorder = MediaRecorder(listOf("x-media-id" to "abc123"))
     val client = MediaClientServiceHttpClient(recorder)
     client.upload(upload)

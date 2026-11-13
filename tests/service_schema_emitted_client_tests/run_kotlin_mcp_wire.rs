@@ -79,7 +79,7 @@ object Handlers : ShelfWireServiceHandlers {
 
 fun main() = runBlocking {
     val overHttp = ShelfWireServiceHttpClient(CannedHttp)
-    val httpDescribed = blocksOf(overHttp.describeShelf(ShelfWireRequest("history")))
+    val httpDescribed = blocksOf(overHttp.describeShelf(ShelfWireRequestDraft("history").validate()))
     val httpReviewed = messagesOf(overHttp.reviewShelf("history"))
     val httpListed = pageOf(overHttp.listShelves(null))
 
@@ -92,7 +92,7 @@ fun main() = runBlocking {
     }
     val transport = ShelfWireServiceWsTransport(socket, ShelfWireServiceWsOptions(heartbeat = null))
     val overWs = ShelfWireServiceWsClient(transport)
-    val wsDescribed = blocksOf(overWs.describeShelf(ShelfWireRequest("history")))
+    val wsDescribed = blocksOf(overWs.describeShelf(ShelfWireRequestDraft("history").validate()))
     val wsReviewed = messagesOf(overWs.reviewShelf("history"))
     val wsListed = pageOf(overWs.listShelves(null))
 

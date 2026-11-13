@@ -154,8 +154,9 @@ there by its `$defs` name before any test compares its bytes.
   `#[path]`, so the Rust, TypeScript, Dart and Kotlin servers are held to the same rows. A new fault
   rule is a row here, never a copy in one run.
 - `tests/service_schema_emitted_client_tests/`: the TypeScript, Dart and Kotlin servers and the five
-  clients under their own toolchains (`just test-emitted`). Each `mcp_*_rows.rs` file sends the same
-  requests to a server and to the Rust dispatcher, and asserts the same bytes. `mcp_streams.rs`
+  clients under their own toolchains (`just test-emitted`, whose last step runs the whole binary with
+  the Node, Dart, Swift and Kotlin variables set). Each `mcp_*_rows.rs` file sends the same requests
+  to a server and to the Rust dispatcher, and asserts the same bytes. `mcp_streams.rs`
   holds the streams that record each `begin` and `write` with the handler still running, so an
   order is asserted with no clock. Every service there is one test binary, and a `macro_rules!` name
   is global to its crate, so a new service takes a name no other service of the binary uses.

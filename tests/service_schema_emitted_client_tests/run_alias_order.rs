@@ -18,7 +18,7 @@ mod dart {
             "
 void told(int at, String payload) {{
   try {{
-    print('$at: ${{{held}.fromJson(jsonDecode(payload)).runtimeType}}');
+    print('$at: ${{{held}.fromJson(jsonDecode(payload)).toDraft().runtimeType}}');
   }} on FormatException {{
     print('$at: refused');
   }}
@@ -113,7 +113,7 @@ mod kotlin {
     fn run(held: &str, definitions: [String; 2]) -> Option<String> {
         let driver = format!(
             "\nfun told(at: Int, payload: String) {{\n    try {{\n        \
-             println(\"$at: \" + Json.decodeFromString(serializer<{held}>(), payload)::class.simpleName)\n    \
+             println(\"$at: \" + Json.decodeFromString(serializer<{held}>(), payload).draft::class.simpleName)\n    \
              }} catch (refusal: SerializationException) {{\n        println(\"$at: refused\")\n    }}\n}}\n"
         );
         let mut main = String::from("fun main() {\n");
@@ -173,7 +173,7 @@ mod swift {
     const DRIVER: &str = r#"
 func told(_ at: Int, _ payload: String) {
   do {
-    switch try JSONDecoder().decode(Tethering.self, from: Data(payload.utf8)) {
+    switch try JSONDecoder().decode(Tethering.self, from: Data(payload.utf8)).draft {
     case .strapped: print("\(at): Strapped")
     case .tallied: print("\(at): Tallied")
     }

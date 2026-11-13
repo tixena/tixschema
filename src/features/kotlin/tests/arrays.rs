@@ -31,7 +31,7 @@ fn each_level_of_one_length_names_the_class_of_its_length_where_the_plugin_reads
     let kotlin = plain(&item);
     assert!(
         kotlin.starts_with(&format!(
-            "{} {} {} {} data class Clasping(val grid: @Serializable(with = KotlinArray2::class) \
+            "{} {} {} {} data class ClaspingDraft(val grid: @Serializable(with = KotlinArray2::class) \
              List<@Serializable(with = KotlinArray1::class) List<@Serializable(with = \
              KotlinNumber1::class) UByte>>, val pairs: List<@Serializable(with = \
              KotlinArray1::class) List<@Serializable(with = KotlinNumber1::class) UByte>>, val \
@@ -40,7 +40,7 @@ fn each_level_of_one_length_names_the_class_of_its_length_where_the_plugin_reads
             number("KotlinNumber1", "UByte", "u8"),
             array("KotlinArray1", 2),
             array("KotlinArray2", 3),
-            kept("Clasping")
+            kept_draft("Clasping")
         )),
         "got: {kotlin}"
     );
@@ -63,8 +63,8 @@ fn where_the_emitter_writes_the_read_it_composes_the_class_of_the_length() {
         "got: {kotlin}"
     );
     for held in [
-        "data class Slots(val slot0: List<UByte>, val slot1: List<List<UByte>>) {",
-        "Slots(kotlinSchemaDecoded(input.json, KotlinArray1(KotlinNumber1), array[0], \
+        "data class SlotsDraft(val slot0: List<UByte>, val slot1: List<List<UByte>>) {",
+        "SlotsDraft(kotlinSchemaDecoded(input.json, KotlinArray1(KotlinNumber1), array[0], \
          \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, \
          ListSerializer(KotlinArray1(KotlinNumber1)), array[1], \"1\", \"[1]\"))",
     ] {
@@ -89,7 +89,7 @@ fn a_fixed_array_of_a_type_parameter_names_the_class_of_its_length() {
     let kotlin = plain(&item);
     assert!(
         kotlin.contains(
-            "data class Cringling<T>(val pair: @Serializable(with = KotlinArray1::class) List<T>)"
+            "data class CringlingDraft<T>(val pair: @Serializable(with = KotlinArray1::class) List<T>)"
         ),
         "got: {kotlin}"
     );

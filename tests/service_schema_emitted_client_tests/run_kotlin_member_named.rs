@@ -24,7 +24,7 @@ fun rated(value: Rating): List<String> =
 fun unrated(payload: JsonElement): JsonElement =
     if (payload is JsonPrimitive && payload.isString) JsonPrimitive(payload.content.trim()) else payload
 
-fun label(value: Parcel): List<String> =
+fun label(value: ParcelDraft): List<String> =
     if (value.label.isEmpty()) listOf("a parcel is labelled") else emptyList()
 
 fun code(value: String): List<String> =
@@ -36,19 +36,19 @@ fun note(payload: JsonElement): JsonElement =
 fun seal(payload: JsonElement): JsonElement =
     if (payload is JsonPrimitive && payload.isString) JsonPrimitive(payload.content.trim()) else payload
 
-fun validate(value: Gauge): List<String> =
+fun validate(value: GaugeDraft): List<String> =
     if (value.size > 9u) listOf("a gauge is at most 9") else emptyList()
 
 fun value(value: Stamp): List<String> =
     if (value.value.isEmpty()) listOf("a stamp is not empty") else emptyList()
 
-fun tag(value: Crate): List<String> =
+fun tag(value: CrateDraft): List<String> =
     if (value.tag == "x") listOf("a crate is not x") else emptyList()
 
-fun title(value: Freight): List<String> =
+fun title(value: FreightDraft): List<String> =
     if (value is FreightHeld && value.title.isEmpty()) listOf("a freight is titled") else emptyList()
 
-fun <CodeType> codes(value: Hold<CodeType>): List<String> =
+fun <CodeType> codes(value: HoldDraft<CodeType>): List<String> =
     if (value.codes.isEmpty()) listOf("a hold has a code") else emptyList()
 
 fun spare(value: List<String>): List<String> =
@@ -60,7 +60,7 @@ fun pair(value: %TUPLE%): List<String> =
 fun entries(value: Map<UInt, String>): List<String> =
     if (value.isEmpty()) listOf("a ledger has an entry") else emptyList()
 
-fun ruled(value: Plain): List<String> =
+fun ruled(value: PlainDraft): List<String> =
     if (value.size == 0u) listOf("a plain is sized") else emptyList()
 
 fun report(name: String, violations: List<String>) {
@@ -107,7 +107,7 @@ fn a_check_named_after_a_member_runs_in_kotlin_as_it_runs_in_rust() {
         match row.kind {
             Kind::Validate => writeln!(
                 main,
-                "    report({}, Json.decodeFromString({}, {payload}).validate())",
+                "    report({}, Json.decodeFromString({}, {payload}).validationIssues())",
                 kotlin_string(row.name),
                 unjudged(row.read_as)
             ),

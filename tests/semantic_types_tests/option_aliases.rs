@@ -229,19 +229,19 @@ fn kotlin_writes_one_nullable_mark_over_an_alias_of_an_option() {
         ),
         (
             handlead_kotlin::kotlin_definition(),
-            "data class Handlead(val kept: PlummetType = null, val listed: List<PlummetType>)",
+            "data class HandleadDraft(val kept: PlummetType = null, val listed: List<PlummetType>)",
         ),
         (
             shoaled_kotlin::kotlin_definition(),
-            "data class Shoaled(val kept: PlummetType = null, val marked: List<PlummetType>)",
+            "data class ShoaledDraft(val kept: PlummetType = null, val marked: List<PlummetType>)",
         ),
         (
             lineman_kotlin::kotlin_definition(),
-            "data class Lineman(val kept: PlummetType)",
+            "data class LinemanDraft(val kept: PlummetType)",
         ),
         (
             chanced_kotlin::kotlin_definition(),
-            "data class Chanced(val kept: String? = null, val listed: List<String?>)",
+            "data class ChancedDraft(val kept: String? = null, val listed: List<String?>)",
         ),
     ] {
         assert!(

@@ -36,7 +36,7 @@ List<String> withoutDuplicates(List<String> value) {
   return const [];
 }
 
-List<String> withinParcel(Parcel value) => [
+List<String> withinParcel(ParcelDraft value) => [
       for (final (index, code) in value.fragile_item_codes.indexed)
         if (!value.item_code_list.contains(code)) "'fragileItemCodes.$index': $code is outside of itemCodeList",
     ];
@@ -61,19 +61,19 @@ pub const SHAPE_FUNCTIONS: &str = r#"
 List<String> upperCase(Code value) =>
     value.value.toUpperCase() == value.value ? const [] : const ['a code is upper case'];
 
-List<String> routed(Freight value) =>
+List<String> routed(FreightDraft value) =>
     value is FreightHeld ? const ['a held freight has no route'] : const [];
 
 List<String> rated(Rating value) =>
     value == Rating.unrated ? const ['a parcel is rated'] : const [];
 
-List<String> withACode<CodeType>(Crate<CodeType> value) =>
+List<String> withACode<CodeType>(CrateDraft<CodeType> value) =>
     value.codes.isEmpty ? const ["'codes': a crate holds at least one code"] : const [];
 
 List<String> withEntries<IdType>(Casket<IdType> value) =>
     value.entries.isEmpty ? const ["'entries': a casket holds at least one entry"] : const [];
 
-List<String> takingParcels(ClosedDock value) => const ['a closed dock takes no parcel'];
+List<String> takingParcels(ClosedDockDraft value) => const ['a closed dock takes no parcel'];
 
 List<String> shortList(List<String> value) =>
     value.length > 2 ? ["'2': ${value[2]} is one code too many"] : const [];
@@ -630,7 +630,7 @@ fn driver(cases: &[Case]) -> String {
     for held in cases {
         writeln!(
             written,
-            "  report('{}', ({}).validate());",
+            "  report('{}', ({}).validationIssues());",
             held.name, held.built
         )
         .unwrap();
@@ -857,11 +857,13 @@ fn a_check_with_no_dart_function_does_not_compile() {
     };
     assert!(!built, "{said}");
     assert!(
-        said.contains("Error: The method 'withinParcel' isn't defined for the type 'Parcel'."),
+        said.contains("Error: The method 'withinParcel' isn't defined for the type 'ParcelDraft'."),
         "{said}"
     );
     assert!(
-        said.contains("Error: The method 'withoutDuplicates' isn't defined for the type 'Parcel'."),
+        said.contains(
+            "Error: The method 'withoutDuplicates' isn't defined for the type 'ParcelDraft'."
+        ),
         "{said}"
     );
 }
@@ -1634,7 +1636,7 @@ fn a_field_named_validate_builds_and_keeps_its_key() {
     let audit = AuditDraft { validate: true };
     let entry = format!(
         "void main() {{\n  final audit = {};\n  print(jsonEncode(audit.toJson()));\n  \
-         print(audit.validate());\n}}\n",
+         print(audit.validationIssues());\n}}\n",
         reading("Audit.fromJson(@)", &audit)
     );
     let Some(wrote) = ran(
@@ -1668,13 +1670,14 @@ pub fn from_until<'text>(text: &'text str, opens: &str, closes: &str) -> &'text 
     rest.split_once(closes).unwrap().0
 }
 
-/// What `definition` writes from its `validate()` to the end of its class.
+/// What `definition` writes from its `validationIssues()` to the `validate()` of its draft.
 fn validate_of(definition: &str) -> &str {
     let rest = definition
-        .find("List<String> validate()")
+        .find("List<String> validationIssues()")
         .and_then(|start| definition.get(start..))
         .unwrap();
-    rest.strip_suffix(" }").unwrap()
+    let (listed, _) = rest.split_once(" validate() { final found").unwrap();
+    listed.rsplit_once(' ').unwrap().0
 }
 
 /// The README's section on the Dart `validate()`, held to what is declared here, what is emitted
@@ -1705,10 +1708,17 @@ fn the_readme_shows_what_is_declared_emitted_and_printed() {
             );
         }
     }
+    let parcel = parcel_dart::dart_definition();
+    let validate = from_until(&parcel, "Parcel validate() {", " } class Parcel {");
+    assert!(
+        squeezed.contains(validate),
+        "the README does not show: {validate}"
+    );
     assert!(section.contains(CHECKS.trim()), "{section}");
     assert!(section.contains(TABLE), "{section}");
     assert!(
-        section.contains("Error: The method 'withinParcel' isn't defined for the type 'Parcel'."),
+        section
+            .contains("Error: The method 'withinParcel' isn't defined for the type 'ParcelDraft'."),
         "{section}"
     );
 }

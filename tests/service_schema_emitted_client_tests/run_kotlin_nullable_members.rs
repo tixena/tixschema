@@ -40,7 +40,7 @@ fn an_absent_key_of_a_nullable_member_is_read_in_kotlin_as_serde_reads_it() {
         );
     }
     main.push_str(
-        "    println(\"written: ${Json.encodeToString(serializer<Berth>(), Berth())}\")\n}\n",
+        "    println(\"written: ${Json.encodeToString(serializer<Berth>(), BerthDraft().validate())}\")\n}\n",
     );
     let source = [
         KOTLIN_IMPORTS.to_owned(),

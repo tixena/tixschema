@@ -200,7 +200,7 @@ void main() async {
   }
   final rung = <Object?>[];
   for (final text in tolls) {
-    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBell(weight: 3))));
+    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBellDraft(weight: 3).validate())));
   }
   print(jsonEncode(<String, dynamic>{'served': served, 'struck': strikes, 'read': read, 'tolled': rung}));
 }
@@ -267,7 +267,7 @@ fun main() = runBlocking {
     }
     val whole = Json.decodeFromString(serializer<CarillonChime>(), WHOLE)
     val read = REPLIES.map { told(CarillonMcpServiceMcpClient(Canned(it)).strike(whole)) }
-    val rung = TOLLS.map { tolled(CarillonMcpServiceMcpClient(Canned(it)).toll(CarillonBell(3u))) }
+    val rung = TOLLS.map { tolled(CarillonMcpServiceMcpClient(Canned(it)).toll(CarillonBellDraft(3u).validate())) }
     println(buildJsonObject {
         put("served", JsonArray(served))
         put("struck", JsonArray(strikes))
@@ -328,7 +328,7 @@ for text in replies {
 }
 var rung: [String] = []
 for text in tolls {
-  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(CarillonBell(weight: 3))))
+  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(try CarillonBellDraft(weight: 3).validate())))
 }
 print("{\"read\":[" + read.joined(separator: ",") + "],\"tolled\":[" + rung.joined(separator: ",") + "]}")
 "#;

@@ -122,22 +122,22 @@ class _KeyedRecorder implements KeyedPathClientServiceHttpTransport {
 void main() async {
   final recorder = _KeyedRecorder();
   final client = KeyedPathClientServiceHttpClient(recorder);
-  await client.besideFlatten(KeyedBeside(document_id: 'd1', extra: KeyedExtra(title: 't')));
+  await client.besideFlatten(KeyedBesideDraft(document_id: 'd1', extra: KeyedExtraDraft(title: 't').validate()).validate());
   await client.keyedGenerated(KeyedGeneratedRequest(document_id: 'd1', title: 't'));
   await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ['x', 'y'], title: 't'));
   await client.keyedGenList(KeyedGenListRequest(pages: [1, 2, 3], title: 't'));
-  await client.labelled(KeyedLabelled(labels: ['a b', 'c/d'], title: 't'));
-  await client.listed(KeyedListed(pages: [1, 2, 3], title: 't'));
-  await client.ownKey(KeyedOwn(document_id: 'd1', title: 't'));
-  await client.paged(KeyedPaged(page_size: 7, title: 't'));
-  await client.pinned(KeyedPinned(pinned: true, title: 't'));
-  await client.plain(KeyedPlain(document_id: 'd1', title: 't'));
-  await client.quotedKey(KeyedQuoted(document_id: 'd1', title: 't'));
-  await client.renamed(KeyedRenamed(document_id: 'd1', title: 't'));
-  await client.tallied(KeyedTally(tally: -9007199254740993, title: 't'));
-  await client.twoPlaceholders(KeyedRenamed(document_id: 'd1', title: 't'));
+  await client.labelled(KeyedLabelledDraft(labels: ['a b', 'c/d'], title: 't').validate());
+  await client.listed(KeyedListedDraft(pages: [1, 2, 3], title: 't').validate());
+  await client.ownKey(KeyedOwnDraft(document_id: 'd1', title: 't').validate());
+  await client.paged(KeyedPagedDraft(page_size: 7, title: 't').validate());
+  await client.pinned(KeyedPinnedDraft(pinned: true, title: 't').validate());
+  await client.plain(KeyedPlainDraft(document_id: 'd1', title: 't').validate());
+  await client.quotedKey(KeyedQuotedDraft(document_id: 'd1', title: 't').validate());
+  await client.renamed(KeyedRenamedDraft(document_id: 'd1', title: 't').validate());
+  await client.tallied(KeyedTallyDraft(tally: -9007199254740993, title: 't').validate());
+  await client.twoPlaceholders(KeyedRenamedDraft(document_id: 'd1', title: 't').validate());
   await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ['a,b', 'c'], title: 't'));
-  await client.labelled(KeyedLabelled(labels: ['a,b', 'c'], title: 't'));
+  await client.labelled(KeyedLabelledDraft(labels: ['a,b', 'c'], title: 't').validate());
   print(jsonEncode(recorder.sent));
 }
 ";
@@ -156,22 +156,22 @@ class KeyedRecorder : KeyedPathClientServiceHttpTransport {
 fun main() = runBlocking {
     val transport = KeyedRecorder()
     val client = KeyedPathClientServiceHttpClient(transport)
-    client.besideFlatten(KeyedBeside(documentId = "d1", extra = KeyedExtra(title = "t")))
+    client.besideFlatten(KeyedBesideDraft(documentId = "d1", extra = KeyedExtraDraft(title = "t").validate()).validate())
     client.keyedGenerated(KeyedGeneratedRequest(documentId = "d1", title = "t"))
     client.keyedGenLabelled(KeyedGenLabelledRequest(labels = listOf("x", "y"), title = "t"))
     client.keyedGenList(KeyedGenListRequest(pages = listOf(1u, 2u, 3u), title = "t"))
-    client.labelled(KeyedLabelled(labels = listOf("a b", "c/d"), title = "t"))
-    client.listed(KeyedListed(pages = listOf(1u, 2u, 3u), title = "t"))
-    client.ownKey(KeyedOwn(documentId = "d1", title = "t"))
-    client.paged(KeyedPaged(pageSize = 7u, title = "t"))
-    client.pinned(KeyedPinned(pinned = true, title = "t"))
-    client.plain(KeyedPlain(documentId = "d1", title = "t"))
-    client.quotedKey(KeyedQuoted(documentId = "d1", title = "t"))
-    client.renamed(KeyedRenamed(documentId = "d1", title = "t"))
-    client.tallied(KeyedTally(tally = -9007199254740993L, title = "t"))
-    client.twoPlaceholders(KeyedRenamed(documentId = "d1", title = "t"))
+    client.labelled(KeyedLabelledDraft(labels = listOf("a b", "c/d"), title = "t").validate())
+    client.listed(KeyedListedDraft(pages = listOf(1u, 2u, 3u), title = "t").validate())
+    client.ownKey(KeyedOwnDraft(documentId = "d1", title = "t").validate())
+    client.paged(KeyedPagedDraft(pageSize = 7u, title = "t").validate())
+    client.pinned(KeyedPinnedDraft(pinned = true, title = "t").validate())
+    client.plain(KeyedPlainDraft(documentId = "d1", title = "t").validate())
+    client.quotedKey(KeyedQuotedDraft(documentId = "d1", title = "t").validate())
+    client.renamed(KeyedRenamedDraft(documentId = "d1", title = "t").validate())
+    client.tallied(KeyedTallyDraft(tally = -9007199254740993L, title = "t").validate())
+    client.twoPlaceholders(KeyedRenamedDraft(documentId = "d1", title = "t").validate())
     client.keyedGenLabelled(KeyedGenLabelledRequest(labels = listOf("a,b", "c"), title = "t"))
-    client.labelled(KeyedLabelled(labels = listOf("a,b", "c"), title = "t"))
+    client.labelled(KeyedLabelledDraft(labels = listOf("a,b", "c"), title = "t").validate())
     val report = buildJsonArray {
         for (request in transport.sent) {
             add(buildJsonObject {
@@ -222,22 +222,22 @@ actor KeyedRecorder: KeyedPathClientServiceHttpTransport {
 
 let recorder = KeyedRecorder()
 let client = KeyedPathClientServiceHttpClient(transport: recorder)
-_ = await client.besideFlatten(KeyedBeside(documentId: "d1", extra: KeyedExtra(title: "t")))
+_ = await client.besideFlatten(try KeyedBesideDraft(documentId: "d1", extra: try KeyedExtraDraft(title: "t").validate()).validate())
 _ = await client.keyedGenerated(KeyedGeneratedRequest(documentId: "d1", title: "t"))
 _ = await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ["x", "y"], title: "t"))
 _ = await client.keyedGenList(KeyedGenListRequest(pages: [1, 2, 3], title: "t"))
-_ = await client.labelled(KeyedLabelled(labels: ["a b", "c/d"], title: "t"))
-_ = await client.listed(KeyedListed(pages: [1, 2, 3], title: "t"))
-_ = await client.ownKey(KeyedOwn(documentId: "d1", title: "t"))
-_ = await client.paged(KeyedPaged(pageSize: 7, title: "t"))
-_ = await client.pinned(KeyedPinned(pinned: true, title: "t"))
-_ = await client.plain(KeyedPlain(documentId: "d1", title: "t"))
-_ = await client.quotedKey(KeyedQuoted(documentId: "d1", title: "t"))
-_ = await client.renamed(KeyedRenamed(documentId: "d1", title: "t"))
-_ = await client.tallied(KeyedTally(tally: -9007199254740993, title: "t"))
-_ = await client.twoPlaceholders(KeyedRenamed(documentId: "d1", title: "t"))
+_ = await client.labelled(try KeyedLabelledDraft(labels: ["a b", "c/d"], title: "t").validate())
+_ = await client.listed(try KeyedListedDraft(pages: [1, 2, 3], title: "t").validate())
+_ = await client.ownKey(try KeyedOwnDraft(documentId: "d1", title: "t").validate())
+_ = await client.paged(try KeyedPagedDraft(pageSize: 7, title: "t").validate())
+_ = await client.pinned(try KeyedPinnedDraft(pinned: true, title: "t").validate())
+_ = await client.plain(try KeyedPlainDraft(documentId: "d1", title: "t").validate())
+_ = await client.quotedKey(try KeyedQuotedDraft(documentId: "d1", title: "t").validate())
+_ = await client.renamed(try KeyedRenamedDraft(documentId: "d1", title: "t").validate())
+_ = await client.tallied(try KeyedTallyDraft(tally: -9007199254740993, title: "t").validate())
+_ = await client.twoPlaceholders(try KeyedRenamedDraft(documentId: "d1", title: "t").validate())
 _ = await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ["a,b", "c"], title: "t"))
-_ = await client.labelled(KeyedLabelled(labels: ["a,b", "c"], title: "t"))
+_ = await client.labelled(try KeyedLabelledDraft(labels: ["a,b", "c"], title: "t").validate())
 print(String(data: try! JSONEncoder().encode(await recorder.sent), encoding: .utf8)!)
 "##;
 

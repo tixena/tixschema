@@ -81,7 +81,7 @@ final handlers = AskingServiceHandlers<void>(
   },
   importFromDrive: (ctx, req) async {
     reached.add(<Object?>['import-from-drive', req]);
-    if (req == 'connected') return AskingLinked(document_id: 'doc-$req');
+    if (req == 'connected') return AskingLinkedDraft(document_id: 'doc-$req').validate();
     throw const AskingLinkErrorNeedsConnection(
       message: 'Connect your Google Drive so this server can import the file.',
       url: 'https://mcp.example.com/connect/drive?request=7f3a',
@@ -176,12 +176,12 @@ void main() async {
   final calls = <String, Future<Object?> Function()>{
     'declared': () async => deleted(await client.deleteDocument(const DeleteDocumentRequest(document_id: 'doc-1'))),
     'confirmed': () async => deleted(await client.deleteDocument(
-        const DeleteDocumentRequest(document_id: 'doc-1', confirmation: AskingConfirmation(confirm: true)))),
+        DeleteDocumentRequest(document_id: 'doc-1', confirmation: AskingConfirmationDraft(confirm: true).validate()))),
     'image': () async => previewed(await previewer.documentPreview('doc-1')),
     'audio': () async => previewed(await previewer.documentPreview('voice')),
     'plain': () async => previewed(await previewer.documentPreview('plain')),
     'missing': () async => previewed(await previewer.documentPreview('nothing')),
-    'report': () async => reported(await client.buildReport(const AskingReportRequest(title: 'Q3'))),
+    'report': () async => reported(await client.buildReport(AskingReportRequestDraft(title: 'Q3').validate())),
     'link': () async => imported(await client.importFromDrive('1A2b3C')),
     'linked': () async => imported(await client.importFromDrive('connected')),
   };

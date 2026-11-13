@@ -479,10 +479,10 @@ fn test_plain_enum_wire_values_match_what_serde_writes() {
 #[test]
 fn test_internally_tagged_enum_is_a_sealed_hierarchy() {
     let dart = stock_event_dart::dart_definition();
-    assert!(dart.contains("sealed class StockEvent {"));
-    assert!(dart.contains("class StockEventReceived extends StockEvent {"));
-    assert!(dart.contains("class StockEventShipped extends StockEvent {"));
-    assert!(dart.contains("class StockEventReset extends StockEvent {"));
+    assert!(dart.contains("sealed class StockEventDraft {"));
+    assert!(dart.contains("class StockEventReceived extends StockEventDraft {"));
+    assert!(dart.contains("class StockEventShipped extends StockEventDraft {"));
+    assert!(dart.contains("class StockEventReset extends StockEventDraft {"));
 }
 
 #[test]
@@ -531,7 +531,7 @@ fn test_internally_tagged_wire_shape_matches_serde() {
 #[cfg(feature = "serde")]
 fn test_adjacently_tagged_tuple_single_writes_tag_and_content() {
     let dart = dynamic_value_dart::dart_definition();
-    assert!(dart.contains("sealed class DynamicValue {"));
+    assert!(dart.contains("sealed class DynamicValueDraft {"));
     assert!(
         dart.contains("{ 'type': 'Number', 'value': value }"),
         "adjacent tagging writes tag and content side by side. Got: {dart}"
@@ -625,7 +625,7 @@ fn test_externally_tagged_wire_shape_matches_serde() {
 #[cfg(feature = "serde")]
 fn test_untagged_enum_tries_each_variant_in_turn() {
     let dart = received_at_dart::dart_definition();
-    assert!(dart.contains("sealed class ReceivedAt {"));
+    assert!(dart.contains("sealed class ReceivedAtDraft {"));
     assert!(dart.contains("try { return ReceivedAtEpoch("));
     assert!(dart.contains("try { return ReceivedAtIso("));
     assert!(dart.contains("throw FormatException('No variant of ReceivedAt matched');"));
@@ -701,9 +701,9 @@ fn test_generic_struct_codec_threads_converter_functions() {
 #[cfg(feature = "serde")]
 fn test_generic_tagged_enum_threads_converters_through_the_whole_hierarchy() {
     let dart = either_dart::dart_definition();
-    assert!(dart.contains("sealed class Either<IdType> {"));
-    assert!(dart.contains("class EitherLeft<IdType> extends Either<IdType> {"));
-    assert!(dart.contains("class EitherRight<IdType> extends Either<IdType> {"));
+    assert!(dart.contains("sealed class EitherDraft<IdType> {"));
+    assert!(dart.contains("class EitherLeft<IdType> extends EitherDraft<IdType> {"));
+    assert!(dart.contains("class EitherRight<IdType> extends EitherDraft<IdType> {"));
     assert!(dart.contains(
         "factory Either.fromJson(Map<String, dynamic> json, IdType Function(dynamic) idTypeFromJson)"
     ));
@@ -827,8 +827,8 @@ fn test_enum_keyed_map_decodes_and_encodes_through_the_enum_itself() {
 fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
     let dart = stock_audit_dart::dart_definition();
     assert!(
-        dart.contains("const StockAudit();"),
-        "Dart's named-parameter group has to name at least one parameter: `const StockAudit({{}});` \
+        dart.contains("const StockAuditDraft();"),
+        "Dart's named-parameter group has to name at least one parameter: `const StockAuditDraft({{}});` \
          is not an empty parameter list but a parse error, `missing_identifier` (\"Expected an \
          identifier\"). Got: {dart}"
     );
@@ -908,24 +908,34 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
 fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(
         reserved_members_dart::dart_definition(),
-        "class ReservedMembers { const ReservedMembers({required this.class_,required \
+        "class ReservedMembersDraft { const ReservedMembersDraft({required this.class_,required \
          this.in_,required this.type,}); final String class_;final String in_;final String type; \
-         factory ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
-         ReservedMembers.fromJsonUnjudged(json); final violations = read.validate(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> json) { for (final key in \
+         factory ReservedMembersDraft.fromJson(Map<String, dynamic> json) { for (final key in \
          json.keys) { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
          FormatException('Unknown key of a ReservedMembers: $key', <Object>[key]); } return \
-         ReservedMembers(class_: _readAt(json, 'class', () => json['class'] as String),in_: \
-         _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, 'type', () => \
-         json['type'] as String),); } static Read _readAt<Read>(Map<String, dynamic>? object, \
-         Object key, Read Function() read) { try { return read(); } catch (refused) { if (object \
-         != null && !object.containsKey(key)) throw FormatException('missing field `$key`', \
-         <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
-         <Object>[key]); if (refused is FormatException) { final at = refused.source; throw \
-         FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); } \
-         rethrow; } } Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': type, \
-         }; List<String> validate() => const []; }"
+         ReservedMembersDraft(class_: _readAt(json, 'class', () => json['class'] as \
+         String),in_: _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, \
+         'type', () => json['type'] as String),); } static Read _readAt<Read>(Map<String, \
+         dynamic>? object, Object key, Read Function() read) { try { return read(); } catch \
+         (refused) { if (object != null && !object.containsKey(key)) throw \
+         FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
+         throw FormatException('$refused', <Object>[key]); if (refused is FormatException) { \
+         final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
+         is List<Object>) ...at]); } rethrow; } } Map<String, dynamic> toJson() => { 'class': \
+         class_,'in': in_,'type': type, }; List<String> validationIssues() => const []; \
+         ReservedMembers validate() { final found = validationIssues(); if (found.isNotEmpty) \
+         throw FormatException(found.join('; ')); return ReservedMembers._(this); } } class \
+         ReservedMembers { const ReservedMembers._(this._draft); final ReservedMembersDraft \
+         _draft; String get class_ => _draft.class_; String get in_ => _draft.in_; String get \
+         type => _draft.type; ReservedMembersDraft toDraft() => _draft; factory \
+         ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
+         ReservedMembersDraft.fromJson(json); final violations = read.validationIssues(); if \
+         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
+         ReservedMembers._(read); } factory ReservedMembers.fromJsonUnjudged(Map<String, \
+         dynamic> json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); Map<String, \
+         dynamic> toJson() => _draft.toJson(); List<String> validationIssues() => \
+         _draft.validationIssues(); static Object $thrown(Object thrown) => thrown is \
+         ReservedMembersDraft ? thrown.validate() : thrown; }"
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),
@@ -933,8 +943,8 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
             "enum ReservedMember {{ default_('Default'), in_('In'), other('Other'); const \
              ReservedMember(this.wireValue); final String wireValue; static ReservedMember \
              fromJson(dynamic json) {{ {} }} static ReservedMember fromJsonUnjudged(dynamic json) \
-             => fromJson(json); String toJson() => wireValue; List<String> validate() => const []; \
-             }}",
+             => fromJson(json); String toJson() => wireValue; List<String> validationIssues() => const []; \
+             static Object $thrown(Object thrown) => thrown; }}",
             plain_enum_read(
                 "ReservedMember",
                 "json",

@@ -23,11 +23,11 @@ fn a_map_a_type_argument_holds_is_held_by_the_wrapper_written_for_it() {
     holds(
         &haversack_swift::swift_definition(),
         &[
-            "public let byCurrent: Rucksack<HaversackByCurrentArgument0KeyedMap>; ",
-            "public let byFlag: Rucksack<HaversackByFlagArgument0KeyedMap>; ",
-            "public let byNumber: Rucksack<HaversackByNumberArgument0KeyedMap>; ",
-            "public let listed: Rucksack<[HaversackListedArgument0KeyedMap]>; ",
-            "public let maybe: Rucksack<HaversackMaybeArgument0KeyedMap?>; ",
+            "public var byCurrent: Rucksack<HaversackByCurrentArgument0KeyedMap>; ",
+            "public var byFlag: Rucksack<HaversackByFlagArgument0KeyedMap>; ",
+            "public var byNumber: Rucksack<HaversackByNumberArgument0KeyedMap>; ",
+            "public var listed: Rucksack<[HaversackListedArgument0KeyedMap]>; ",
+            "public var maybe: Rucksack<HaversackMaybeArgument0KeyedMap?>; ",
             "public struct HaversackByNumberArgument0KeyedMap: Codable, Sendable { \
              public var storage: [UInt32: String]; ",
             "public init(storage: [UInt32: String]) { self.storage = storage }; ",
@@ -36,8 +36,8 @@ fn a_map_a_type_argument_holds_is_held_by_the_wrapper_written_for_it() {
     holds(
         &stowed_haversack_swift::swift_definition(),
         &[
-            "public let byNumber: Rucksack<StowedHaversackByNumberArgument0KeyedMap<Stowed>>; ",
-            "public let held: Stowed; ",
+            "public var byNumber: Rucksack<StowedHaversackByNumberArgument0KeyedMap<Stowed>>; ",
+            "public var held: Stowed; ",
         ],
     );
 }
@@ -45,7 +45,7 @@ fn a_map_a_type_argument_holds_is_held_by_the_wrapper_written_for_it() {
 #[test]
 fn a_map_keyed_natively_keeps_its_text_as_a_type_argument() {
     let swift = haversack_swift::swift_definition();
-    holds(&swift, &["public let byName: Rucksack<[String: String]>; "]);
+    holds(&swift, &["public var byName: Rucksack<[String: String]>; "]);
     assert!(!swift.contains("ByNameArgument0KeyedMap"), "{swift}");
 }
 
@@ -98,20 +98,20 @@ fn a_field_typed_with_an_alias_holds_the_alias() {
     holds(
         &pocketing_swift::swift_definition(),
         &[
-            "public let beaconing: BeaconingType; ",
-            "public let sequencing: SequencingType; ",
-            "public let tabulation: TabulationType<String>; ",
+            "public var beaconing: BeaconingType; ",
+            "public var sequencing: SequencingType; ",
+            "public var tabulation: TabulationType<String>; ",
         ],
     );
     holds(
         &stowed_pocketing_swift::swift_definition(),
-        &["public let tabulation: TabulationType<Stowed>; "],
+        &["public var tabulation: TabulationType<Stowed>; "],
     );
     holds(
         &plumbline_swift::swift_definition(),
         &[
-            "public let argument: Rucksack<PlumblineArgumentArgument0KeyedMap>; ",
-            "public let sounded: SoundingsType; ",
+            "public var argument: Rucksack<PlumblineArgumentArgument0KeyedMap>; ",
+            "public var sounded: SoundingsType; ",
         ],
     );
 }

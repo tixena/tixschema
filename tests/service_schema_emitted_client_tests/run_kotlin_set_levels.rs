@@ -54,7 +54,7 @@ fn a_set_is_one_list_level_in_the_kotlin_types() {
         .unwrap();
     let _ = writeln!(
         main,
-        "    println(Shelf(listOf(Entry(\"a\")), mapOf(), null, listOf(), {tuple}(listOf(), 1.toUByte())).validate())\n}}",
+        "    println(ShelfDraft(listOf(Entry.checked(EntryDraft(\"a\"))), mapOf(), null, listOf(), {tuple}(listOf(), 1.toUByte())).validationIssues())\n}}",
     );
     let mut parts = vec![
         KOTLIN_IMPORTS.to_owned(),

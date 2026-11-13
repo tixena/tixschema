@@ -47,7 +47,7 @@ void told(String at, Object Function() read) {
   String printed;
   try {
     final dynamic value = read();
-    printed = 'read ${value.runtimeType} ${jsonEncode(value.toJson())}';
+    printed = 'read ${value.toDraft().runtimeType} ${jsonEncode(value.toJson())}';
   } catch (_) {
     printed = 'refused';
   }
@@ -61,7 +61,8 @@ const SWIFT_TOLD: &str = r#"
 func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
   do {
     let read = try JSONDecoder().decode(type, from: Data(payload.utf8))
-    let taken = Mirror(reflecting: read).children.first?.label ?? "\(read)"
+    let draft = Mirror(reflecting: read).children.first { $0.label == "draft" }?.value ?? read
+    let taken = Mirror(reflecting: draft).children.first?.label ?? "\(draft)"
     print("\(at): read \(taken) \(String(data: try JSONEncoder().encode(read), encoding: .utf8)!)")
   } catch {
     print("\(at): refused")
@@ -75,7 +76,7 @@ const KOTLIN_TOLD: &str = r#"
 fun <T : Any> told(at: Int, serializer: KSerializer<T>, payload: String) {
     val told = try {
         val read = Json.decodeFromString(serializer, payload)
-        "read " + read::class.simpleName + " " + Json.encodeToString(serializer, read)
+        "read " + (read.javaClass.methods.firstOrNull { it.name == "getDraft" }?.invoke(read) ?: read)::class.simpleName + " " + Json.encodeToString(serializer, read)
     } catch (refusal: Exception) {
         if (refusal is SerializationException || refusal is IllegalArgumentException) "refused"
         else throw refusal
@@ -292,7 +293,7 @@ fn the_swift_read_of_a_variant_over_an_option_takes_the_nil_it_reads() {
             kedged_swift::swift_definition(),
             [
                 "do { let value = try SwiftSchemaFit<UInt32>?(from: decoder)?.value; if \
-                 Kedged.swiftSchemaBoundAbove(value).isEmpty { self = .above(value); return } } \
+                 KedgedDraft.swiftSchemaBoundAbove(value).isEmpty { self = .above(value); return } } \
                  catch {}; ",
                 "if let value = try? String(from: decoder) { self = .text(value); return }; ",
             ],
@@ -300,8 +301,8 @@ fn the_swift_read_of_a_variant_over_an_option_takes_the_nil_it_reads() {
         (
             drogued_swift::swift_definition(),
             [
-                "do { let value = try Drogued.swiftSchemaReadHeld(decoder, taken); self = .held(value); return } catch {}; ",
-                "do { let value = try Drogued.swiftSchemaReadListed(decoder); self = \
+                "do { let value = try DroguedDraft.swiftSchemaReadHeld(decoder, taken); self = .held(value); return } catch {}; ",
+                "do { let value = try DroguedDraft.swiftSchemaReadListed(decoder); self = \
                  .listed(value); return } catch {}; ",
             ],
         ),

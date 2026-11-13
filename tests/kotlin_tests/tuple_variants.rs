@@ -218,7 +218,7 @@ fn the_slots_under_a_content_key_are_written_and_read_by_the_wrapper_declared() 
     let wrapper = the_one_wrapper(&racking, "RackingSplit");
     assert!(
         racking.contains(&format!(
-            "@Serializable data class RackingSplit(val value: {wrapper}) : Racking"
+            "@Serializable data class RackingSplit(val value: {wrapper}) : RackingDraft"
         )),
         "got: {racking}"
     );
@@ -247,7 +247,7 @@ fn the_slots_under_the_variants_name_are_written_and_read_by_the_wrapper_declare
     let wrapper = the_one_wrapper(&stacking, "StackingSplit");
     assert!(
         stacking.contains(&format!(
-            "@Serializable data class StackingSplit(val value: {wrapper}) : Stacking"
+            "@Serializable data class StackingSplit(val value: {wrapper}) : StackingDraft"
         )),
         "got: {stacking}"
     );
@@ -340,7 +340,7 @@ fn a_tuple_read_as_its_default_is_declared_and_read_by_one_wrapper() {
     let [wrapper] = declared_wrappers(&strapping).try_into().unwrap();
     assert!(
         strapping.contains(&format!(
-            "data class Strapping(val pair: {wrapper} = \
+            "data class StrappingDraft(val pair: {wrapper} = \
              Json.decodeFromString(serializer<{wrapper}>(), \"[0,0]\"))"
         )),
         "got: {strapping}"
@@ -375,7 +375,7 @@ fn a_tuple_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_one_wrapper() {
     let palleting = super::tests::renumbered(&palleting_kotlin::kotlin_definition());
     let [wrapper] = declared_wrappers(&palleting).try_into().unwrap();
     for held in [
-        format!("data class Palleting(val slot0: {wrapper}, val slot1: UByte)"),
+        format!("data class PalletingDraft(val slot0: {wrapper}, val slot1: UByte)"),
         format!("add(output.json.encodeToJsonElement(serializer<{wrapper}>(), value.slot0))"),
         format!(
             "kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), array[0], \"0\", \
@@ -393,7 +393,7 @@ fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
     let crating = super::tests::renumbered(&crating_kotlin::kotlin_definition());
     let [inner, outer] = declared_wrappers(&crating).try_into().unwrap();
     for held in [
-        format!("data class Crating(val pair: {outer})"),
+        format!("data class CratingDraft(val pair: {outer})"),
         format!("data class {outer}(val slot0: {inner}, val slot1: UByte)"),
         format!("add(output.json.encodeToJsonElement(serializer<{inner}>(), value.slot0))"),
         format!("kotlinSchemaDecoded(input.json, serializer<{inner}>(), array[0], \"0\", \"[0]\")"),
@@ -432,7 +432,7 @@ fn a_tuple_holding_a_model_read_as_its_default_is_declared_and_read_by_one_wrapp
     let default = r#""[{\"code\":\"\"},0]""#;
     assert!(
         wrapping.contains(&format!(
-            "data class Wrapping(val pair: {wrapper} = \
+            "data class WrappingDraft(val pair: {wrapper} = \
              Json.decodeFromString(serializer<{wrapper}>(), {default}))"
         )),
         "got: {wrapping}"
@@ -447,7 +447,7 @@ fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one
     let banding = super::tests::renumbered(&banding_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&banding);
     for held in [
-        format!("data class Banding(val labelling: Labelling, val pair: {wrapper})"),
+        format!("data class BandingDraft(val labelling: Labelling, val pair: {wrapper})"),
         format!(
             "put(\"pair\", output.json.encodeToJsonElement(serializer<{wrapper}>(), value.pair))"
         ),
@@ -491,7 +491,7 @@ fn a_tuple_holding_a_model_in_a_slot_of_a_tuple_struct_is_declared_and_read_by_o
     let slotting = super::tests::renumbered(&slotting_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&slotting);
     for held in [
-        format!("data class Slotting(val slot0: {wrapper}, val slot1: UByte)"),
+        format!("data class SlottingDraft(val slot0: {wrapper}, val slot1: UByte)"),
         format!("add(output.json.encodeToJsonElement(serializer<{wrapper}>(), value.slot0))"),
         format!(
             "kotlinSchemaDecoded(input.json, serializer<{wrapper}>(), array[0], \"0\", \
@@ -511,7 +511,7 @@ fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_declared_and_read_by_one_wr
     let [inner, outer] = declared_wrappers(&grading).try_into().unwrap();
     reads_the_model_unjudged(&grading, &inner);
     assert!(
-        grading.contains(&format!("data class Grading(val pair: {outer})")),
+        grading.contains(&format!("data class GradingDraft(val pair: {outer})")),
         "got: {grading}"
     );
     let opens = format!("data class {outer}(val slot0: ");
@@ -544,7 +544,7 @@ fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_w
     let wrapper = the_walked_wrapper(&spooling);
     for held in [
         format!(
-            "data class Spooling(val labelling: Labelling, val maybe: {wrapper}? = null, \
+            "data class SpoolingDraft(val labelling: Labelling, val maybe: {wrapper}? = null, \
              val pairs: List<{wrapper}>)"
         ),
         format!(
@@ -578,7 +578,7 @@ fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrappe
     let [inner, outer] = declared_wrappers(&coiling).try_into().unwrap();
     reads_the_model_unjudged(&coiling, &inner);
     for held in [
-        format!("data class Coiling(val pair: {outer})"),
+        format!("data class CoilingDraft(val pair: {outer})"),
         format!("data class {outer}(val slot0: Map<String, {inner}>, val slot1: UByte)"),
     ] {
         assert!(coiling.contains(&held), "no `{held}` in: {coiling}");
@@ -601,7 +601,8 @@ fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrappe
 fn a_map_of_tuples_holding_a_model_under_its_own_key_is_declared_by_one_wrapper() {
     let lashing = super::tests::renumbered(&lashing_kotlin::kotlin_definition());
     let wrapper = the_walked_wrapper(&lashing);
-    let held = format!("data class Lashing(val dock: String, val extra: Map<String, {wrapper}>)");
+    let held =
+        format!("data class LashingDraft(val dock: String, val extra: Map<String, {wrapper}>)");
     assert!(lashing.contains(&held), "no `{held}` in: {lashing}");
 }
 
@@ -614,7 +615,7 @@ fn a_preprocessed_map_of_tuples_holding_a_model_is_declared_and_read_by_one_wrap
     let wrapper = the_walked_wrapper(&heaping);
     for held in [
         format!(
-            "data class Heaping(@Serializable(with = HeapingCountsPreprocess::class) val counts: \
+            "data class HeapingDraft(@Serializable(with = HeapingCountsPreprocess::class) val counts: \
              Map<String, {wrapper}>)"
         ),
         format!(

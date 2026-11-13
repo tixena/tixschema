@@ -41,7 +41,7 @@ final handlers = JobServiceHandlers<void>(
       case '7f3a':
         return McpTaskWorking<ExportReport>(task(req));
       case 'done':
-        return McpTaskCompleted<ExportReport>(task(req, '2026-11-01T20:04:10Z'), const ExportReport(files: 3));
+        return McpTaskCompleted<ExportReport>(task(req, '2026-11-01T20:04:10Z'), ExportReportDraft(files: 3).validate());
       case 'needs':
         return McpTaskInputRequired<ExportReport>(task(req), <String, dynamic>{
           'overwrite': <String, dynamic>{
@@ -165,7 +165,7 @@ void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   final client = JobServiceMcpClient(Canned());
   final calls = <String, Future<Object?> Function()>{
-    'started': () async => started(await client.startExport(const ExportRequest(folder: 'reports'))),
+    'started': () async => started(await client.startExport(ExportRequestDraft(folder: 'reports').validate())),
     'working': () async => status(await client.exportStatus('7f3a')),
     'completed': () async => status(await client.exportStatus('done')),
     'waiting': () async => status(await client.exportStatus('needs')),

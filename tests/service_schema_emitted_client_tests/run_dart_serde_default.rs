@@ -125,7 +125,7 @@ fn a_default_with_no_json_keeps_its_key_required() {
     let marina = marina_dart::dart_definition();
     assert!(
         marina.contains(
-            "Marina(dock: _readAt(json, 'dock', () => json['dock'] as String),label: _readAt(json, \
+            "MarinaDraft(dock: _readAt(json, 'dock', () => json['dock'] as String),label: _readAt(json, \
              'label', () => json['label'] as String),)"
         ),
         "{marina}"
@@ -133,7 +133,7 @@ fn a_default_with_no_json_keeps_its_key_required() {
     let harbour = harbour_dart::dart_definition();
     assert!(
         harbour.contains(
-            "Harbour(berths: _readAt(json, 'berths', () => (json['berths'] as \
+            "HarbourDraft(berths: _readAt(json, 'berths', () => (json['berths'] as \
              List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              mooredFromJson(e.$2))).toList()),flagship: _readAt(json, 'flagship', () => \
              mooredFromJson(json['flagship'])),slips: _readAt(json, 'slips', () => (json['slips'] \
@@ -151,7 +151,7 @@ fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
     let basin = basin_dart::dart_definition();
     assert!(
         basin.contains(
-            "Basin(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] as \
+            "BasinDraft(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] as \
              String) : (jsonDecode('\"\"') as String),moored: json.containsKey('moored') ? \
              _readAt(json, 'moored', () => (json['moored'] as List<dynamic>).indexed.map((e) => \
              _readAt(null, e.$1, () => mooredFromJson(e.$2))).toList()) : ((jsonDecode('[]') as \

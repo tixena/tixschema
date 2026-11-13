@@ -572,7 +572,7 @@ fn validate_walks_the_models_a_map_holds_in_each_position() {
         &[
             "for (key, held) in slot0.sorted(by: { $0.key < $1.key }) { errors += \
              held.validate().map { CubbySatchelsTuple.swiftSchemaUnder(\"0.\\(key)\", $0) } }; ",
-            "errors += satchels.validate().map { Cubby.swiftSchemaUnder(\"satchels\", $0) }; ",
+            "errors += satchels.validate().map { CubbyDraft.swiftSchemaUnder(\"satchels\", $0) }; ",
         ],
     );
     holds(
@@ -582,9 +582,9 @@ fn validate_walks_the_models_a_map_holds_in_each_position() {
         &[
             "case .bagged(let payload): for (key, held) in payload.sorted(by: { $0.key < $1.key }) \
              { errors += held.validate().map { \
-             Drawer.swiftSchemaUnder(\"Bagged.\\(key)\", $0) } }; ",
+             DrawerDraft.swiftSchemaUnder(\"Bagged.\\(key)\", $0) } }; ",
             "case .packed(let payload): errors += payload.validate().map { \
-             Drawer.swiftSchemaUnder(\"Packed\", $0) }; ",
+             DrawerDraft.swiftSchemaUnder(\"Packed\", $0) }; ",
         ],
     );
     holds(
@@ -594,7 +594,7 @@ fn validate_walks_the_models_a_map_holds_in_each_position() {
         &[
             "case .sealed(let payload): for (key, held) in payload.sorted(by: { \
            $0.key.rawValue < $1.key.rawValue }) { errors += held.validate().map { \
-           UntaggedDrawer.swiftSchemaUnder(\"\\(key.rawValue)\", $0) } }; ",
+           UntaggedDrawerDraft.swiftSchemaUnder(\"\\(key.rawValue)\", $0) } }; ",
         ],
     );
 }

@@ -177,6 +177,9 @@ pub(super) struct Written<'named> {
     pub beside: &'named str,
     /// The keys the type refuses a key beside, where its read refuses one.
     pub closed: Option<Vec<String>>,
+    /// Whether the type is a draft, whose own read only the generated file reaches and whose
+    /// judged read lists `validationIssues()`.
+    pub draft: bool,
     /// The name the type is declared under.
     pub named: &'named str,
     /// The functions the type names on itself, in the order written.

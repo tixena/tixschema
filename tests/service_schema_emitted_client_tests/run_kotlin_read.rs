@@ -42,7 +42,7 @@ fun withoutDuplicates(value: List<String>): List<String> {
     return emptyList()
 }
 
-fun withinParcel(value: Parcel): List<String> =
+fun withinParcel(value: ParcelDraft): List<String> =
     value.fragileItemCodes.withIndex()
         .filter { it.value !in value.itemCodeList }
         .map { "'fragileItemCodes.${it.index}': ${it.value} is outside of itemCodeList" }
@@ -59,7 +59,8 @@ fun rated(value: Rating): List<String> =
 const TOLD: &str = r#"
 fun told(name: String, read: () -> Any) {
     try {
-        println("$name: read ${read()::class.simpleName}")
+        val read = read()
+        println("$name: read ${(read.javaClass.methods.firstOrNull { it.name == "getDraft" }?.invoke(read) ?: read)::class.simpleName?.removeSuffix("Draft")}")
     } catch (refused: SerializationException) {
         println("$name: refused")
         (refused.message ?: "").split("; ").forEach { println("    $it") }
@@ -175,11 +176,11 @@ fun made(answered: LoadingClientServiceLoadResult): JsonElement = when (answered
 }
 
 suspend fun overHttp(body: String): JsonElement =
-    made(LoadingClientServiceHttpClient(Answering(body)).load(LoadRequest("north")))
+    made(LoadingClientServiceHttpClient(Answering(body)).load(LoadRequestDraft("north").validate()))
 
 suspend fun overTheSocket(reply: String): JsonElement {
     val transport = LoadingClientServiceWsTransport(Replying(reply), LoadingClientServiceWsOptions(heartbeat = null))
-    val answered = made(LoadingClientServiceWsClient(transport).load(LoadRequest("north")))
+    val answered = made(LoadingClientServiceWsClient(transport).load(LoadRequestDraft("north").validate()))
     transport.close()
     return answered
 }
@@ -1202,7 +1203,7 @@ fn the_readme_shows_what_the_runs_answer() {
         "with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList`",
         "`undeserializable-payload` from the `http_rest` client, and `failed-validation` from \
          the `ws_rpc` one",
-        "Json.decodeFromString(ParcelUnjudged, payload)",
+        "Json.decodeFromString<ParcelDraft>(payload)",
     ] {
         assert!(readme.contains(shown), "not in the README: {shown}");
     }

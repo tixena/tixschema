@@ -42,7 +42,7 @@ fn each_limit_holds_in_kotlin_as_it_is_written() {
     for (name, read_as, json) in ROWS {
         let _ = writeln!(
             main,
-            "    report(\"{name}\", Json.decodeFromString({read_as}Unjudged, \"\"\"{json}\"\"\").validate()) {{ Json.decodeFromString(serializer<{read_as}>(), \"\"\"{json}\"\"\") }}"
+            "    report(\"{name}\", Json.decodeFromString({read_as}Unjudged, \"\"\"{json}\"\"\").validationIssues()) {{ Json.decodeFromString(serializer<{read_as}>(), \"\"\"{json}\"\"\") }}"
         );
     }
     main.push_str("}\n");

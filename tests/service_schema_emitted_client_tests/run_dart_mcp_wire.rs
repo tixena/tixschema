@@ -50,7 +50,7 @@ Object? messagesOf(ShelfWireServiceReviewShelfResult result) => switch (result) 
 
 void main() async {
   final overHttp = ShelfWireServiceHttpClient(Canned());
-  final httpDescribed = blocksOf(await overHttp.describeShelf(ShelfWireRequest(shelf: 'history')));
+  final httpDescribed = blocksOf(await overHttp.describeShelf(ShelfWireRequestDraft(shelf: 'history').validate()));
   final httpReviewed = messagesOf(await overHttp.reviewShelf('history'));
   final httpListed = pageOf(await overHttp.listShelves(null));
 
@@ -70,7 +70,7 @@ void main() async {
     heartbeat: ShelfWireServiceWsHeartbeat.off(),
   );
   final overWs = ShelfWireServiceWsClient(transport);
-  final wsDescribed = blocksOf(await overWs.describeShelf(ShelfWireRequest(shelf: 'history')));
+  final wsDescribed = blocksOf(await overWs.describeShelf(ShelfWireRequestDraft(shelf: 'history').validate()));
   final wsReviewed = messagesOf(await overWs.reviewShelf('history'));
   final wsListed = pageOf(await overWs.listShelves(null));
   transport.close();

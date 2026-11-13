@@ -66,7 +66,7 @@ fn a_char_and_a_date_are_read_and_written_through_the_functions_of_their_form() 
             "let key = try Self.swiftSchemaReadChar(wireKey, \
              codingPath: container.codingPath + [codingKey]); "
                 .to_owned(),
-            "extension Chronometer { private static func swiftSchemaQuoted(".to_owned(),
+            "extension ChronometerDraft { private static func swiftSchemaQuoted(".to_owned(),
             reader("Date", &matching("text", DATE), "a date"),
             writer(
                 "Date",

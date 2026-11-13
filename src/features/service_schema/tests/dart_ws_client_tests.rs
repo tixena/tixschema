@@ -449,8 +449,11 @@ fn a_reply_dispatch_arm_answers_a_reply_frame_on_every_outcome() {
     let reply_arm = body_from(&written, "case 'list-transactions':");
     assert!(
         reply_arm.contains("decoded = ListTransactionsRequest.fromJson(frame['payload']);")
-            && reply_arm
-                .contains("final answered = await handlers.listTransactions(ctx, decoded);")
+            && reply_arm.contains(
+                "final answered = await (() async { try { return await \
+                 handlers.listTransactions(ctx, decoded); } catch (thrown, trace) { \
+                 Error.throwWithStackTrace(ListError.$thrown(thrown), trace); } })();",
+            )
             && reply_arm.contains("'ok': true,")
             && reply_arm.contains("'value': _ledgerWsWritten((answered).toJson()),")
             && reply_arm.contains("} on ListError catch (declared) {")

@@ -184,7 +184,7 @@ A field's check is written on the schema of the value the Rust function takes: a
 
 **In a serde read** of a type that derives `Deserialize`. The read runs `validate()` on the value it read, checks included, and [refuses the payload](validation.md#a-read-refuses-what-validate-refuses) with what it answers. The hook an `#[serde(untagged)]` member is read through runs no check: a check chooses no variant.
 
-**In the Dart `validate()`** every emitted Dart type has, under the name as written. See [`validate()` in Dart](dart.md#validate-in-dart).
+**In the Dart `validationIssues()`** every emitted Dart type has, under the name as written, on the draft. See [`validate()` in Dart](dart.md#validate-in-dart).
 
 **In the `validate()` of the Kotlin client.** Every Kotlin type carries one, which runs the bounds and calls each check under the name written, and the serializer of the type calls it on the value it read. See [`validate()` in the Kotlin client](kotlin.md#validate-in-the-kotlin-client) and [The read in the Kotlin client](kotlin.md#the-read-in-the-kotlin-client).
 

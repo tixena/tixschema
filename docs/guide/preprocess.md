@@ -239,12 +239,12 @@ What resolves the error is a function `without_fragile` in scope where `Parcel` 
 
 #### A `preprocess` in the Dart client
 
-With the `dart` feature, `fromJsonUnjudged` of every type `dart_definition()` writes calls the functions the type and its members name, each under the name the attribute writes. [`fromJson` is that read followed by `validate()`](dart.md#the-dart-read-refuses-what-validate-refuses), so both reads correct the payload, in [the order of a Rust read](#the-order-of-one-read): the type's functions, each member's as it is read, the value, then `validate()`. The parcel of the example is read by:
+With the `dart` feature, the read of every type `dart_definition()` writes, `fromJson` of its draft, calls the functions the type and its members name, each under the name the attribute writes. [`fromJson` and `fromJsonUnjudged` of the valid type are that read](dart.md#the-dart-read-refuses-what-validate-refuses), the first followed by `validationIssues()`, so both reads correct the payload, in [the order of a Rust read](#the-order-of-one-read): the type's functions, each member's as it is read, the value, then `validationIssues()`. The parcel of the example is read by:
 
 ```dart
-factory Parcel.fromJsonUnjudged(dynamic payload) {
+factory ParcelDraft.fromJson(dynamic payload) {
   final json = withoutFragile(payload) as Map<String, dynamic>;
-  return Parcel(
+  return ParcelDraft(
     label: _readAt(json, 'label', () => (json.containsKey('label') ? trimmed(json['label']) : null) as String),
     item_code_list: _readAt(json, 'itemCodeList', () => (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as String)).toList()),
     fragile_item_codes: _readAt(json, 'fragileItemCodes', () => (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as String)).toList()),
@@ -279,7 +279,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 - **The payload is what `jsonDecode` holds**: a `Map<String, dynamic>`, a `List<dynamic>`, a `String`, a number, a `bool` or `null`. A function answers `dynamic`, and the read casts what it answers.
 - **A field's function is called where the payload holds the key**, a `null` it holds included. A key the payload does not hold calls no function and is read as it was: `{"itemCodeList":["x"],"fragileItemCodes":["x"]}` is refused with ``missing field `label` ``, as the Rust read answers it. A key under `#[serde(default)]` that the payload does not hold is read as its default, and no function is called for it. A slot's function is called with what its position holds.
 - **Several functions run in the order written**, each over the answer of the one before: `preprocess = ["unwrapped", "withoutFragile"]` calls `withoutFragile(unwrapped(payload))`. One read calls each function once.
-- **A type's function is handed the payload as it arrives**, of any kind, as the Rust read hands it. A type that names one takes `dynamic` in both reads, `factory Sticker.fromJson(dynamic json)` and `factory Sticker.fromJsonUnjudged(dynamic payload)`, and the cast after the functions refuses an answer of the wrong kind. A type that names none keeps the payload its read types.
+- **A type's function is handed the payload as it arrives**, of any kind, as the Rust read hands it. A type that names one takes `dynamic` in its reads, `factory Sticker.fromJson(dynamic json)` on the valid type and `factory StickerDraft.fromJson(dynamic payload)` on its draft, and the cast after the functions refuses an answer of the wrong kind. A type that names none keeps the payload its read types.
 - **A type that holds another reads it through that type's own read**, so it is corrected wherever it is held: in a field, an optional, a list, a map's value, a variant and a `#[serde(flatten)]` member. A holder that names no function and flattens no member is written as it was.
 - **A flattened member is read from the entries the members beside it and the members flattened ahead of it do not take**, as serde hands them: `Tagged.fromJsonUnjudged(({...json}..remove('dock')))`. A function it names, and a function of the type it holds, is handed those keys. Under a tag key, a type flattened into a variant, the function of a variant's one slot and the type that slot holds are handed the object without the tag as well, as serde hands them.
 - **A flattened `Option` of any type but a map is read from what its functions answer as the Zod schema of its holder reads it**, where serde parts from Zod: where the type does not read the answer, `null` among it, the member is `null` where the object its functions are handed holds none of its struct's keys, or no key at all for a type whose keys are not known, an enum among them, and the payload is refused where it holds one, with the error of that read, as [the Dart read](dart.md#the-dart-read-refuses-what-validate-refuses) states. serde refuses an answer its type does not read, and reads `null` as `None`. A struct that flattens such a member is marked `nonstrict` ([Order and strictness of flattened members](flatten.md#order-and-strictness-of-flattened-members)), and beside a `nonstrict` holder the member is `null` exactly where its functions answer `null`, and is read from any other answer, so the Dart read answers each payload as serde does: `#[model_schema(nonstrict)] struct Reeved { note: String, #[model_schema_prop(preprocess = ["asGiven"])] #[serde(flatten, default, skip_serializing_if = "Option::is_none")] tholepin: Option<Tholepin> }` over a `Tholepin` that reads `label` refuses `{"note":"n"}` and `{"label":5,"note":"n"}`, and under a function that answers `null` reads `{"label":"north","note":"n"}` with `tholepin` `null`.
@@ -348,11 +348,11 @@ private init(swiftSchemaCorrected decoder: Decoder) throws {
   self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label])
 }
 
-public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
+fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
   self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath).value
 }
 
-public init(swiftSchemaUnjudged decoder: Decoder) throws {
+fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {
   try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: [])
 }
 ```

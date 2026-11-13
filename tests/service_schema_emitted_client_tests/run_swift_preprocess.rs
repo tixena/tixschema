@@ -141,7 +141,7 @@ func withItsSeen(_ payload: Any) -> Any {
   return members
 }
 
-func withinLimit(_ value: Weighed) -> [String] {
+func withinLimit(_ value: WeighedDraft) -> [String] {
   value.grams > 1000 ? ["'grams': \(value.grams) is over the limit of 1000"] : []
 }
 "#;
@@ -274,23 +274,23 @@ attempt("a flattened type in a flattened holder", Quayside.self, #"{"berth":"b",
 attempt("two flattened types with functions of their own", Duplexed.self, #"{"dock":"north","mark":"m","tag":"t"}"#) { "\($0.spotted.seen) \($0.tagged.keys)" }
 attempt("a flattened member's own function", Docked.self, #"{"dock":"north","tag":"t"}"#) { "\($0.listing.keys)" }
 attempt("a variant under a tag", Stowed.self, #"{"kind":"Held","tag":"t"}"#) {
-  if case .held(let inner) = $0 { return "\(inner.keys)" }
+  if case .held(let inner) = $0.draft { return "\(inner.keys)" }
   return ""
 }
 attempt("a slot's own function, under a tag", Marked.self, #"{"kind":"Held","tag":"t"}"#) {
-  if case .held(let inner) = $0 { return "\(inner.keys)" }
+  if case .held(let inner) = $0.draft { return "\(inner.keys)" }
   return ""
 }
 attempt("a variant under a tag that flattens", Boxed.self, #"{"kind":"Held","dock":"north","tag":"t"}"#) {
-  if case .held(let inner) = $0 { return "\(inner.tagged.keys) at \(inner.dock)" }
+  if case .held(let inner) = $0.draft { return "\(inner.tagged.keys) at \(inner.dock)" }
   return ""
 }
 attempt("a flattened choice that holds the type", Chosen.self, #"{"choice_dock":"north","tag":"t"}"#) {
-  if case .tagged(let inner) = $0.taken { return "\(inner.keys)" }
+  if case .tagged(let inner) = $0.taken.draft { return "\(inner.keys)" }
   return ""
 }
 attempt("a flattened enum under a tag that holds the type", Lodged.self, #"{"dock":"north","kind":"Held","tag":"t"}"#) {
-  if case .held(let inner) = $0.stowed { return "\(inner.keys)" }
+  if case .held(let inner) = $0.stowed.draft { return "\(inner.keys)" }
   return ""
 }
 attempt("a flattened brand over the type", Strapped.self, #"{"dock":"north","tag":"t"}"#) { "\($0.banded.value.keys)" }
@@ -1118,7 +1118,7 @@ fn the_ws_client_reads_a_reply_through_its_functions() {
     assert_eq!(
         poll_once(ShippingBackEnd.shipped(&(), "A".to_owned()))
             .unwrap()
-            .map(|parcel| parcel.label),
+            .map(|parcel| parcel.label.clone()),
         Ok("A".to_owned())
     );
     let Some(swift) = answered_by(ShippingClientServiceSchema::swift_ws_client(), WS_DRIVER) else {
@@ -1140,8 +1140,8 @@ fn the_parcel_of_the_documents_is_written_with_its_two_functions() {
     );
     for written in [
         concat!(
-            "private struct SwiftSchemaRead: Decodable { let value: Parcel; ",
-            "init(from decoder: Decoder) throws { value = try Parcel(swiftSchemaCorrected: decoder) } }; ",
+            "private struct SwiftSchemaRead: Decodable { let value: ParcelDraft; ",
+            "init(from decoder: Decoder) throws { value = try ParcelDraft(swiftSchemaCorrected: decoder) } }; ",
             "private init(swiftSchemaCorrected decoder: Decoder) throws { ",
             "let container = try decoder.container(keyedBy: CodingKeys.self); ",
             "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
@@ -1151,11 +1151,11 @@ fn the_parcel_of_the_documents_is_written_with_its_two_functions() {
             "at: container.codingPath + [CodingKeys.label]) }; ",
         ),
         concat!(
-            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
             "self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, ",
             "from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), ",
             "at: decoder.codingPath).value }; ",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws { ",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ",
             "try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
             "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
         ),
@@ -1173,7 +1173,7 @@ fn the_one_slot_of_a_struct_calls_its_function_on_the_structs_own_payload() {
     assert_eq!(serde_json::from_str::<Lone>(r#""  A  ""#).unwrap().0, "A");
     let swift = lone_swift::swift_definition();
     let written = concat!(
-        "public init(swiftSchemaUnjudged decoder: Decoder) throws { ",
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ",
         "let valuePayload = try SwiftSchemaPayload(from: decoder).value; ",
         "self.value = try SwiftSchemaPayload.read(String.self, from: trimmed(valuePayload), ",
         "at: decoder.codingPath) }; ",

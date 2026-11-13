@@ -205,7 +205,7 @@ mod on_a_mobile_surface {
         let definition = raw_mobile_swift::swift_definition();
         assert!(!definition.contains("r#"), "got: {definition}");
         assert!(
-            definition.contains("public let type: String;"),
+            definition.contains("public var type: String;"),
             "got: {definition}"
         );
         assert!(definition.contains("case match;"), "got: {definition}");
@@ -216,7 +216,7 @@ mod on_a_mobile_surface {
     fn kotlin_names_the_member_without_the_prefix() {
         let definition = raw_mobile_kotlin::kotlin_definition();
         assert!(
-            definition.contains("data class RawMobile(val match: String, val type: String)"),
+            definition.contains("data class RawMobileDraft(val match: String, val type: String)"),
             "got: {definition}"
         );
     }

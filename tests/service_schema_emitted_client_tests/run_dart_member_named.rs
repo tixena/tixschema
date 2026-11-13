@@ -17,7 +17,7 @@ List<String> rated(Rating value) =>
 
 dynamic unrated(dynamic payload) => payload is String ? payload.trim() : payload;
 
-List<String> label(Parcel value) => value.label.isEmpty ? const ['a parcel is labelled'] : const [];
+List<String> label(ParcelDraft value) => value.label.isEmpty ? const ['a parcel is labelled'] : const [];
 
 List<String> code(String value) => value == 'dup' ? const ['a code is not dup'] : const [];
 
@@ -26,16 +26,16 @@ dynamic note(dynamic payload) =>
 
 dynamic seal(dynamic payload) => payload is String ? payload.trim() : payload;
 
-List<String> validate(Gauge value) => value.size > 9 ? const ['a gauge is at most 9'] : const [];
+List<String> validate(GaugeDraft value) => value.size > 9 ? const ['a gauge is at most 9'] : const [];
 
 List<String> value(Stamp value) => value.value.isEmpty ? const ['a stamp is not empty'] : const [];
 
-List<String> tag(Crate value) => value.tag == 'x' ? const ['a crate is not x'] : const [];
+List<String> tag(CrateDraft value) => value.tag == 'x' ? const ['a crate is not x'] : const [];
 
-List<String> title(Freight value) =>
+List<String> title(FreightDraft value) =>
     value is FreightHeld && value.title.isEmpty ? const ['a freight is titled'] : const [];
 
-List<String> codes<CodeType>(Hold<CodeType> value) =>
+List<String> codes<CodeType>(HoldDraft<CodeType> value) =>
     value.codes.isEmpty ? const ['a hold has a code'] : const [];
 
 List<String> spare(List<String> value) =>
@@ -47,7 +47,7 @@ List<String> pair((String, int) value) =>
 List<String> entries(Map<int, String> value) =>
     value.isEmpty ? const ['a ledger has an entry'] : const [];
 
-List<String> ruled(Plain value) => value.size == 0 ? const ['a plain is sized'] : const [];
+List<String> ruled(PlainDraft value) => value.size == 0 ? const ['a plain is sized'] : const [];
 
 void report(String name, List<String> violations) {
   if (violations.isEmpty) {
@@ -83,7 +83,7 @@ fn source() -> String {
         match row.kind {
             Kind::Validate => writeln!(
                 main,
-                "  report('{}', {}.fromJsonUnjudged({payload}{}).validate());",
+                "  report('{}', {}.fromJsonUnjudged({payload}{}).validationIssues());",
                 row.name,
                 row.read_as,
                 if row.read_as.contains('<') {

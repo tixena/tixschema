@@ -26,7 +26,7 @@ struct QuotaRecorder: QuotaClientServiceHttpTransport {
 
 for quota in QUOTAS {
   let client = QuotaClientServiceHttpClient(transport: QuotaRecorder(quota: quota))
-  switch await client.ask(QuotaAsk(label: "a")) {
+  switch await client.ask(try QuotaAskDraft(label: "a").validate()) {
   case .success(let answered): print("\(quota): read \(answered.1.value)")
   case .failure(.fault(let fault)): print("\(quota): fault \(fault.kind.rawValue)")
   case .failure(.declared): print("\(quota): declared")
@@ -43,7 +43,7 @@ class QuotaRecorder(private val quota: String) : QuotaClientServiceHttpTransport
 
 fun main() = runBlocking {
     for (quota in QUOTAS) {
-        val answered = QuotaClientServiceHttpClient(QuotaRecorder(quota)).ask(QuotaAsk(label = "a"))
+        val answered = QuotaClientServiceHttpClient(QuotaRecorder(quota)).ask(QuotaAskDraft(label = "a").validate())
         val said = when (answered) {
             is QuotaClientServiceAskResult.Ok -> "read ${answered.value.headerOut0.value}"
             is QuotaClientServiceAskResult.Fault -> "fault"
