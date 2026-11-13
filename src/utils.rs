@@ -696,6 +696,9 @@ thread_local! {
     static WIRE_SCALAR_KINDS: RefCell<HashMap<String, WireScalarKind>> = RefCell::new(HashMap::new());
     /// The names of enums declared `#[serde(untagged)]`.
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The names of items whose draft admits `null`, so that their valid type keeps it.
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    static NULL_ADMITTING: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The names of brands and aliases serde writes as a number or a `bool`, which the `bson`
     /// library refuses as a document key.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -1940,6 +1943,21 @@ pub fn record_bson_refused_holder(rust_ident: &str, described: &str) {
 /// the item asking.
 pub fn bson_refused_holder(rust_ident: &str) -> Option<String> {
     BSON_REFUSED_HOLDERS.with(|names| names.borrow().get(rust_ident).cloned())
+}
+
+/// Records that the draft of `rust_ident` admits `null`.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+pub fn record_null_admitting(rust_ident: &str) {
+    NULL_ADMITTING.with(|names| {
+        names.borrow_mut().insert(rust_ident.to_owned());
+    });
+}
+
+/// Whether [`record_null_admitting`] has seen `rust_ident`. `false` for a type declared below the
+/// item asking.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+pub fn admits_null_recorded(rust_ident: &str) -> bool {
+    NULL_ADMITTING.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records that `rust_ident` names an enum declared `#[serde(untagged)]`.

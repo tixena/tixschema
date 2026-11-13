@@ -268,6 +268,8 @@ use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
 #[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::utils::record_ts_union_members;
 
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use crate::utils::record_null_admitting;
 use crate::utils::register_alias_info;
 use crate::utils::{
     bson_refused_holder, forwarded_key_maps, forwarded_key_parameter, is_recorded_bson_refused_key,
@@ -9994,7 +9996,20 @@ fn tuple_struct_writes_an_inexact_key(shape: &TupleStructShape) -> bool {
 /// draft admits `null`.
 #[cfg(any(feature = "typescript", feature = "zod"))]
 fn tuple_struct_admits_null(shape: &TupleStructShape) -> bool {
-    matches!(shape, TupleStructShape::BareValue(slot) if slot.stands_for_an_option())
+    matches!(shape, TupleStructShape::BareValue(slot) if slot.admits_null())
+}
+
+/// Whether a variant of an untagged enum that serde writes as its one slot's value alone writes
+/// `null`, so that the enum's draft admits it.
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+fn untagged_enum_admits_null(item_enum: &syn::ItemEnum) -> bool {
+    item_enum.variants.iter().any(|variant| {
+        variant_on_the_wire(variant)
+            && variant_wire_kind(variant) == VariantKind::TupleSingle
+            && variant.fields.iter().next().is_some_and(|slot| {
+                with_as_number(get_field_def("_slot", &slot.ty, ""), &slot.attrs).admits_null()
+            })
+    })
 }
 
 /// Builds the `ts_definition()` method for a tuple struct's schema module, under the note of a map
@@ -10086,6 +10101,10 @@ fn tuple_struct_schema_impl_items(
             &slots.shape,
             args,
         ));
+    }
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    if tuple_struct_admits_null(&slots.shape) {
+        record_null_admitting(&item_struct.ident.to_string());
     }
     #[cfg(feature = "typescript")]
     items.push(build_tuple_struct_ts_definition_method(
@@ -12785,6 +12804,7 @@ fn tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
+        false,
     )
 }
 
@@ -12811,6 +12831,7 @@ fn externally_tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
+        false,
     )
 }
 
@@ -15768,6 +15789,7 @@ fn build_untagged_schema_impl_items(
     // read by different surfaces, and the JSON one reads the parameters beside the attribute.
     item_enum: &syn::ItemEnum,
     item_name: &str,
+    admits_null: bool,
     args: &ModelSchemaArgs,
     ts_parts: &[String],
     zod: (&str, &str),
@@ -15778,6 +15800,8 @@ fn build_untagged_schema_impl_items(
     let (zod_union, zod_members) = zod;
     #[cfg(not(feature = "zod"))]
     let _: &_ = &(zod_union, zod_members);
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
+    let _: &_ = &admits_null;
 
     #[cfg(feature = "typescript")]
     let type_code = ts_parts.join(" | ");
@@ -15799,6 +15823,7 @@ fn build_untagged_schema_impl_items(
         &ts_generic_params(&item_enum.generics),
         &type_code,
         &variant_reader,
+        admits_null,
     );
 
     #[cfg(feature = "zod")]
@@ -15809,6 +15834,7 @@ fn build_untagged_schema_impl_items(
         &type_parameters_in_scope(&item_enum.generics),
         args,
         schema_code,
+        admits_null,
     );
 
     let mut items = Vec::new();
@@ -15940,10 +15966,19 @@ fn process_untagged_enum(
         &union_candidates,
     );
     let decode_with = enum_decode_with(&item_enum, args);
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    let admits_null = untagged_enum_admits_null(&item_enum);
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    if admits_null {
+        record_null_admitting(&name.to_string());
+    }
+    #[cfg(not(any(feature = "typescript", feature = "zod")))]
+    let admits_null = false;
 
     let schema_impl_items = build_untagged_schema_impl_items(
         &item_enum,
         item_name,
+        admits_null,
         args,
         &ts_parts,
         (&zod_text.0, &zod_text.1),
@@ -23987,11 +24022,12 @@ fn generate_discriminated_enum_ts_definition_method(
     ts_generics: &str,
     type_code: &str,
     variant_reader: &str,
+    admits_null: bool,
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, admits_null);
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
         let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 
@@ -24032,6 +24068,7 @@ fn generate_discriminated_enum_zod_schema_method(
         parameters,
         args,
         schema_code,
+        false,
     )
 }
 
@@ -24045,6 +24082,7 @@ fn generate_enum_zod_schema_method_after(
     parameters: &[String],
     args: &ModelSchemaArgs,
     schema_code: &str,
+    admits_null: bool,
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "zod")]
     {
@@ -24068,7 +24106,11 @@ fn generate_enum_zod_schema_method_after(
                 republished: false,
                 drafted: valid_type::has_draft(),
                 frozen: valid_type::freezes(),
-                admits: DraftAdmits::Nothing,
+                admits: if admits_null {
+                    DraftAdmits::Null
+                } else {
+                    DraftAdmits::Nothing
+                },
             },
             inside,
             schema_code,

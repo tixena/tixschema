@@ -22,6 +22,8 @@ use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::features::model_schema_prop::{FunctionName, limit_number, limit_text};
 #[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
 use crate::utils::NumberKey;
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use crate::utils::admits_null_recorded;
 #[cfg(any(
     feature = "zod",
     feature = "dart",
@@ -683,6 +685,16 @@ impl PartialEq for FieldDef {
 }
 
 impl FieldDef {
+    /// Whether the TypeScript form of this field's own value admits `null`: an `Option`, an alias of
+    /// one, `()`, or a model whose own draft does.
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    pub fn admits_null(&self) -> bool {
+        self.stands_for_an_option()
+            || (self.array_depth == 0
+                && (matches!(&self.field_type, FieldDefType::Tuple(elements) if elements.is_empty())
+                    || matches!(&self.field_type, FieldDefType::SiblingType(name, _) if admits_null_recorded(name))))
+    }
+
     /// The enclosing item's own type parameter this field reaches *below* its own position — the
     /// `T` a `Later<T>` hands to the type it names, and the same `T` inside a tuple or a map.
     pub fn argument_parameter_name(&self) -> Option<&str> {
