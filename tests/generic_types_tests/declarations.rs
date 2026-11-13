@@ -6497,6 +6497,144 @@ fn type_check_an_untagged_variant_over_an_option_holds_null() {
     );
 }
 
+/// The valid type of an untagged enum with a variant that admits `null`, and of a newtype over one,
+/// admits what the schema parses to, `null` included, and is still the type only a parse returns
+/// for any other value; an untagged enum with no such variant keeps the plain form.
+#[test]
+fn type_check_the_valid_type_of_an_untagged_enum_with_a_null_variant_admits_null() {
+    let source = [
+        PREAMBLE.to_owned(),
+        null_models::Fathom::ts_definition(),
+        null_models::Fathom::zod_schema(),
+        null_models::Reading::ts_definition(),
+        null_models::Reading::zod_schema(),
+        null_models::Nested::ts_definition(),
+        null_models::Nested::zod_schema(),
+        null_models::Wrapped::ts_definition(),
+        null_models::Wrapped::zod_schema(),
+        null_models::Plainer::ts_definition(),
+        null_models::Plainer::zod_schema(),
+    ]
+    .join("\n\n");
+    for (name, plain) in [
+        ("Reading", false),
+        ("Nested", false),
+        ("Wrapped", false),
+        ("Plainer", true),
+    ] {
+        let text = source.as_str();
+        let nullable = format!(
+            "export type {name} = (Readonly<NonNullable<{name}Draft>> & $brand<\"{name}\">) | null;"
+        );
+        let unbranded = format!("export type {name} = Readonly<{name}Draft> & $brand<\"{name}\">;");
+        assert_eq!(
+            text.contains(&nullable),
+            !plain,
+            "{name} keeps `null` in its valid type otherwise:\n{text}"
+        );
+        assert_eq!(
+            text.contains(&unbranded),
+            plain,
+            "{name} is the plain valid type otherwise:\n{text}"
+        );
+    }
+    let Some(at) = built_from("valid-untagged-null", &source) else {
+        return;
+    };
+    let accepted = "import { Nested$Schema, Plainer$Schema, Reading$Schema, Wrapped$Schema } from \
+         \"./lib/index.js\";\nimport type { Nested, Plainer, PlainerDraft, Reading, \
+         ReadingDraft, Wrapped } from \"./lib/index.js\";\n\
+         export const readNull: Reading = Reading$Schema.parse(null);\n\
+         export const readNumber: Reading = Reading$Schema.parse(4);\n\
+         export const readText: Reading = Reading$Schema.parse(\"a\");\n\
+         export const readDraftNull: ReadingDraft = readNull;\n\
+         export const readDraftNumber: ReadingDraft = readNumber;\n\
+         export const nestedNull: Nested = Nested$Schema.parse(null);\n\
+         export const nestedFlag: Nested = Nested$Schema.parse(true);\n\
+                  export const wrappedNull: Wrapped = Wrapped$Schema.parse(null);\n\
+         export const wrappedNumber: Wrapped = Wrapped$Schema.parse(4);\n\
+                  export const plainNumber: Plainer = Plainer$Schema.parse(4);\n\
+         export const plainDraft: PlainerDraft = plainNumber;\n";
+    fs::write(at.join("tsconfig.consumer.json"), CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("consumer.ts"), accepted).unwrap();
+    let (typed, said) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    assert!(
+        typed,
+        "TypeScript refuses a value the schema parses to:\n{said}"
+    );
+    for (refused, why) in [
+        ("Reading", "a number built by hand as a reading"),
+        ("Nested", "a flag built by hand as a nested reading"),
+        ("Wrapped", "a number built by hand as a wrapped reading"),
+        ("Plainer", "a number built by hand as a plain value"),
+    ] {
+        let value = if refused == "Nested" { "true" } else { "4" };
+        let attempt = format!(
+            "import type {{ {refused} }} from \"./lib/index.js\";\nexport const built: {refused} = {value};\n"
+        );
+        fs::write(at.join("consumer.ts"), &attempt).unwrap();
+        let (taken, answer) = compiled(&at, "tsconfig.consumer.json").unwrap();
+        assert!(!taken, "TypeScript takes {why} as a valid value:\n{answer}");
+        assert!(
+            answer.contains("TS2322"),
+            "{why} is refused otherwise:\n{answer}"
+        );
+    }
+    let attempt =
+        "import type { Plainer } from \"./lib/index.js\";\nexport const built: Plainer = null;\n";
+    fs::write(at.join("consumer.ts"), attempt).unwrap();
+    let (taken, answer) = compiled(&at, "tsconfig.consumer.json").unwrap();
+    assert!(
+        !taken,
+        "TypeScript takes `null` as a plain valid value:\n{answer}"
+    );
+    fs::remove_dir_all(&at).unwrap();
+}
+
+/// The valid schema of each untagged enum with a `null` variant answers every payload its draft
+/// schema refuses with the draft schema's own issues, and reads `null` as `null`.
+#[test]
+fn type_check_the_valid_schema_of_an_untagged_enum_with_a_null_variant_refuses_as_its_draft() {
+    let source = [
+        PREAMBLE.to_owned(),
+        null_models::Fathom::ts_definition(),
+        null_models::Fathom::zod_schema(),
+        null_models::Reading::ts_definition(),
+        null_models::Reading::zod_schema(),
+        null_models::Nested::ts_definition(),
+        null_models::Nested::zod_schema(),
+        null_models::Wrapped::ts_definition(),
+        null_models::Wrapped::zod_schema(),
+    ]
+    .join("\n\n");
+    let driver = r#"import * as lib from "./lib/index.js";
+
+for (const name of ["Reading", "Nested", "Wrapped"]) {
+  for (const payload of [[1], {}, -1, 1.5, [null], []]) {
+    const valid = lib[name + "$Schema"].safeParse(payload);
+    const draft = lib[name + "Draft$Schema"].safeParse(payload);
+    console.log(name, valid.success, JSON.stringify(valid.error?.issues) === JSON.stringify(draft.error?.issues));
+  }
+  console.log(name, lib[name + "$Schema"].parse(null) === null);
+}
+"#;
+    let Some((printed, failed)) = loaded_from("valid-untagged-refusals", &source, driver) else {
+        return;
+    };
+    let mut expected = String::new();
+    for name in ["Reading", "Nested", "Wrapped"] {
+        for _ in 0_u8..6_u8 {
+            let _ = writeln!(expected, "{name} false true");
+        }
+        let _ = writeln!(expected, "{name} true");
+    }
+    assert_eq!(
+        printed,
+        expected.trim(),
+        "a valid schema answers otherwise than its draft:\n{failed}"
+    );
+}
+
 /// Every enum told apart by a `literal` on one shared key, and every enum that looks like one,
 /// compiles under `tsc --strict`, and the Zod schema of each reads and refuses each payload as
 /// serde does, flattened beside other sources and held as a member.

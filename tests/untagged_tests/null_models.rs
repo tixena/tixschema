@@ -126,6 +126,38 @@ pub enum Plumb {
     Flag(bool),
 }
 
+/// A newtype variant over an `Option` of a text, beside a number.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Reading {
+    Absent(Option<String>),
+    Number(u32),
+}
+
+/// A variant over an untagged enum whose own variant admits `null`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Nested {
+    Flag(bool),
+    Inside(Reading),
+}
+
+/// A newtype over an untagged enum whose variant admits `null`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Wrapped(pub Reading);
+
+/// An untagged enum no variant of which admits `null`.
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Plainer {
+    Number(u32),
+    Text(String),
+}
+
 /// What serde answers of `json` read as the enum `read_as` names: `read`, the variant it takes and
 /// the payload it writes back, or `refused`.
 pub fn serde_told(read_as: &str, json: &str) -> String {
@@ -133,6 +165,10 @@ pub fn serde_told(read_as: &str, json: &str) -> String {
         "Fathom" => told::<Fathom>(json),
         "Kedged" => told::<Kedged>(json),
         "Drogued" => told::<Drogued>(json),
+        "Nested" => told::<Nested>(json),
+        "Plainer" => told::<Plainer>(json),
+        "Reading" => told::<Reading>(json),
+        "Wrapped" => told::<Wrapped>(json),
         _ => told::<Plumb>(json),
     }
 }
