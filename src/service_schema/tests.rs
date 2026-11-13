@@ -4178,11 +4178,12 @@ fn a_streamed_operations_expansion_names_no_runtime_crate() {
 }
 
 #[test]
-fn the_non_exhaustive_flag_seals_the_four_generated_types_and_the_servers_context_and_stop() {
+fn the_non_exhaustive_flag_seals_the_five_generated_types_and_the_servers_context_and_stop() {
     let emitted = expansion_over_amqp_rpc_non_exhaustive(INVOICE_SERVICE).to_string();
     for sealed in [
         "# [non_exhaustive] pub enum BillingServiceFaultKind",
         "# [non_exhaustive] pub enum CallError",
+        "# [non_exhaustive] pub enum Operation",
         "# [non_exhaustive] pub struct VoidInvoiceRequest",
         "# [non_exhaustive] pub struct BillingServiceSchema",
         "# [non_exhaustive] pub struct Context",
@@ -4195,8 +4196,8 @@ fn the_non_exhaustive_flag_seals_the_four_generated_types_and_the_servers_contex
     }
     assert_eq!(
         emitted.matches("# [non_exhaustive]").count(),
-        6,
-        "exactly the four generated types and the server's two should be sealed, and nothing \
+        7,
+        "exactly the five generated types and the server's two should be sealed, and nothing \
          else. Got: {emitted}"
     );
 }

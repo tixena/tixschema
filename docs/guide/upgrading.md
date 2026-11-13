@@ -1,6 +1,6 @@
 #### What an upgrade asks of your crate
 
-Two hundred and twenty-five rules meet a crate that upgrades. Each is stated with what a build or a read answers:
+Two hundred and twenty-six rules meet a crate that upgrades. Each is stated with what a build or a read answers:
 
 
 
@@ -243,3 +243,4 @@ Two hundred and twenty-five rules meet a crate that upgrades. Each is stated wit
 - **Without tixschema's `serde` feature, TypeScript and Zod write each member in camelCase**, where TypeScript wrote it as Rust names it: `pub user_id: String` is `userId: string` where it was `user_id: string`. No `#[serde(...)]` attribute is read in that build, so `#[serde(rename = "mail")] pub email_address: String` is `emailAddress`, where serde writes `mail`. Turn the feature on, as the default `web` set does, for the names serde writes. See [Serde Attribute Support](serde-attributes.md#serde-attribute-support).
 - **A brand needs tixschema's `serde` feature.** Without it `#[serde(transparent)]` is not read, so `pub struct UserId(String);` under it is `export type UserId = string;`, where it was `string & { readonly [__brand_UserId]: true }`, and its Zod schema is `z.string()`. A `pattern`, `minLength` or `maxLength` on the struct stops the build: ``error: model_schema: type `Username`: `minLength` is supported only on a branded newtype: a `#[serde(transparent)]` struct serde writes as the value of one field. A branded newtype is read with tixschema's `serde` feature, which this build has off. On a field, write it in `#[model_schema_prop(...)]`.`` See [Branded Newtypes](generics-and-brands.md#branded-newtypes).
 - **A crate that invokes a service's dispatcher, client or server macro lists `serde_path_to_error`**: the readers each of them emits name the path of a value serde refuses through it. Without it the build stops at each macro the crate invokes, ``error[E0433]: cannot find `serde_path_to_error` in the list of imported crates``. Add `serde_path_to_error = "0.1"` to its `[dependencies]`. See [The `amqp_rpc` walkthrough](services.md#the-amqp_rpc-walkthrough).
+- **A plain enum has `wire_name` on its draft**, so an `impl` of yours that declares `wire_name` on an enum whose variants are all unit variants stops the build with ``error[E0592]: duplicate definitions with name `wire_name` ``. Delete your own and call the generated one, which answers what serde writes for the value. See [Plain Enums](enums.md#plain-enums).

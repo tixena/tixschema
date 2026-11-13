@@ -70,7 +70,7 @@ error[E0425]: cannot find type `BalanceError` in this scope
 One consequence is worth knowing before it costs anyone an afternoon: rustdoc wraps a doctest with
 no explicit `fn main` in one, so a doctest that declares a service writes `fn main() {}` of its own.
 
-**`#[service_schema(non_exhaustive)]` marks every type the service generates `#[non_exhaustive]`:** the fault kind, `CallError`, the messages the macro writes, the `{Service}Schema` struct, with `mcp` the `McpTask`, `McpTaskState`, `McpContent`, `McpResourceContents`, `McpRole` and `McpPromptMessage` types, with `amqp_rpc` the server's `Context` and `Stopped`, with `ws_rpc` the `Frame` of each macro, and with `http_rest` the dispatcher's `DefaultFaultHandler`. A type you declare yourself keeps your own attributes. Another crate that matches on one of them needs a wildcard arm. The crate that placed the macro still writes `DefaultFaultHandler` and `Context { logger }` itself; another crate builds them with `DefaultFaultHandler::new()` or `DefaultFaultHandler::default()`, and with `Context::new(logger)`. The flag is bare: `non_exhaustive = true` is refused.
+**`#[service_schema(non_exhaustive)]` marks every type the service generates `#[non_exhaustive]`:** the fault kind, `CallError`, `Operation`, the messages the macro writes, the `{Service}Schema` struct, with `mcp` the `McpTask`, `McpTaskState`, `McpContent`, `McpResourceContents`, `McpRole` and `McpPromptMessage` types, with `amqp_rpc` the server's `Context` and `Stopped`, with `ws_rpc` the `Frame` of each macro, and with `http_rest` the dispatcher's `DefaultFaultHandler`. A type you declare yourself keeps your own attributes. Another crate that matches on one of them needs a wildcard arm. The crate that placed the macro still writes `DefaultFaultHandler` and `Context { logger }` itself; another crate builds them with `DefaultFaultHandler::new()` or `DefaultFaultHandler::default()`, and with `Context::new(logger)`. The flag is bare: `non_exhaustive = true` is refused.
 
 #### The Shape of a Service
 
@@ -230,6 +230,15 @@ async fn can_generate(
 It exists for one reason: services already ship wire names nobody would derive from the method. An operation a caller knows as `canGenerate` may dispatch today as `billing-generation-request`, the two sharing no substring, so without the override no such service could adopt this construct without changing bytes. A greenfield operation writes no attribute at all. The override replaces the derived name rather than adding a second one -- after it, nothing answers to `can-generate`.
 
 The TypeScript client and dispatcher carry a wire name, a path, a part name and a header name exactly as declared, whatever they hold: each is written into the generated code as an escaped string literal, so `message = "le$vy'it\"q\\x"` with `path = "/le$vy'it\"q\\x/{label}"`, and a multipart operation's `part("fi$le'x\"q\\" = attachment)`, compile under `tsc --strict`, and the client sends the path `/le$vy'it"q\x/a` and the part `fi$le'x"q\`, which the Rust dispatcher reads.
+
+```rust
+use template_service_schema::{OPERATIONS, Operation};
+
+let counters = OperationCounters::new(PREFIX, OPERATIONS);
+counters.settle(Operation::DeleteCombinedTemplate.name());
+```
+
+A renamed or removed operation stops the build at each `Operation` variant written by hand, where a name written as a string went stale unseen.
 
 #### Service Errors
 
@@ -425,6 +434,7 @@ On the Rust side, beside the trait, in a module named for the service (`billing_
 - `ServiceFaultIssue` -- one problem a fault lists, declared as `<Service>FaultIssue` and published under that name on every surface, its Swift and Kotlin inside the definitions of the fault's fields. `ServiceFault::issues()` answers the list, empty for a fault of one problem, `with_issues` attaches one, and `ServiceFaultIssue::new(field, detail)` builds an entry.
 - `CallError<E>` -- `Operation(E)` or `Fault(ServiceFault)`.
 - `<Operation>Message`, `unjudged_<operation>` and `validated_<operation>` -- the name each operation's message is republished under, the read of that message alone, which a dispatcher reads a request with, and the validator that message runs. Which of the two answers a check gives depends on the message's concrete type, so both halves of a service ask this one function rather than answering for themselves, from wherever they were expanded.
+- `Operation` and `OPERATIONS` -- every operation of the service, whatever its `transports` holds. `Operation` is an enum with one variant per operation, the method's name in UpperCamelCase (`r#in` is `In`), in declaration order, and `Operation::name()` is a `const fn` answering the wire name: the `message = "..."` value, or the method in kebab-case. `OPERATIONS` is a `&'static [&'static str]` of the same names in the same order. One-way, streamed, prompt and resource operations are listed. An MCP tool's own name, which can differ, stays in `MCP_NAMES`.
 - `Answered<T, E>` -- the envelope a request-and-reply operation answers in, written by a dispatcher and read back by a client.
 - `VoidInvoiceRequest` and `SweepRequest` -- the messages declared for the operations that named none, each an ordinary `#[model_schema()]` type.
 

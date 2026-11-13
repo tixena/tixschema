@@ -196,6 +196,7 @@ pub fn emit(
     let prompt_types = prompting.then(|| prompt_types(non_exhaustive));
     let task_types = (asked.contains(&Transport::Mcp) && super::mcp_tools::has_tasks(service))
         .then(|| task_types(non_exhaustive));
+    let operations = operation_names(service, non_exhaustive);
     quote! {
         #[doc = #module_doc]
         pub mod #module {
@@ -218,7 +219,66 @@ pub fn emit(
             #content_types
             #prompt_types
             #task_types
+            #operations
         }
+    }
+}
+
+/// `Operation` and `OPERATIONS`, both written from each operation's wire name in one pass.
+fn operation_names(service: &ServiceDef, non_exhaustive: bool) -> TokenStream {
+    let variants: Vec<Ident> = service
+        .operations
+        .iter()
+        .map(|operation| {
+            format_ident!(
+                "{}",
+                RenameRule::PascalCase.apply_to_field(&written(&operation.ident))
+            )
+        })
+        .collect();
+    let names: Vec<&str> = service
+        .operations
+        .iter()
+        .map(|operation| operation.wire_name.as_str())
+        .collect();
+    if variants.is_empty() {
+        return quote! {
+            /// A service that declares no operation has no value to name one by.
+            #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+            pub struct Operation(::core::convert::Infallible);
+
+            impl Operation {
+                /// The name the dispatchers match on.
+                pub const fn name(self) -> &'static str {
+                    match self.0 {}
+                }
+            }
+
+            /// Every operation's name, in declaration order.
+            pub const OPERATIONS: &'static [&'static str] = &[];
+        };
+    }
+    let sealed = exhaustiveness(non_exhaustive);
+    quote! {
+        /// Every operation of the service, in declaration order.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        #sealed
+        pub enum Operation {
+            #(#variants),*
+        }
+
+        impl Operation {
+            /// The name the dispatchers match on: the `message = "..."` value, or the method in
+            /// kebab-case.
+            pub const fn name(self) -> &'static str {
+                match self {
+                    #(Self::#variants => #names),*
+                }
+            }
+        }
+
+        /// Every operation's name, in declaration order: `Operation::name` of each variant.
+        pub const OPERATIONS: &'static [&'static str] = &[#(#names),*];
     }
 }
 
