@@ -31,6 +31,7 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      kotlinSchemaKinded(serializer, element, at).toString()) }; ";
 
 /// What a type with no rule answers.
+#[cfg(feature = "serde")]
 const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
      List<String> = validate()";
 
@@ -173,8 +174,8 @@ pub fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
          {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
-         validationIssues(): List<String> = draft.validationIssues(); companion object {{ internal \
-         fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
+         validationIssues(): List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): \
+         {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
     )
 }
 
@@ -651,7 +652,6 @@ fn seal(text: &str) -> Seal {
 
 /// The plain enum `named`: its draft, declared with `members` and read by `{Type}DraftUnjudged`
 /// over `variants` and `correction`, then the valid class over it with its two serializers.
-#[cfg(feature = "serde")]
 pub fn paired_plain_enum(
     named: &str,
     members: &str,

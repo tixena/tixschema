@@ -253,8 +253,9 @@ mod on_a_mobile_surface {
                  + element.jsonObject) }} @ConsistentCopyVisibility @Serializable(with = \
                  TaggedMobileSerializer::class) data class TaggedMobile private constructor(val \
                  draft: TaggedMobileDraft) {{ val name: String get() = draft.name; fun \
-                 validationIssues(): List<String> = draft.validationIssues(); companion object {{ \
-                 internal fun checked(draft: TaggedMobileDraft): TaggedMobile = \
+                 validationIssues(): List<String> = draft.validationIssues(); fun \
+                 kotlinSchemaChecked(): TaggedMobileDraft = draft; companion object {{ internal fun \
+                 checked(draft: TaggedMobileDraft): TaggedMobile = \
                  TaggedMobile(draft) }} }} @OptIn(ExperimentalSerializationApi::class) private \
                  object TaggedMobileUnjudged : KSerializer<TaggedMobile> {{ override val \
                  descriptor: SerialDescriptor = TaggedMobileDraftUnjudged.descriptor; override fun \

@@ -15,12 +15,14 @@ use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
 use super::read::paired_plain_enum;
 #[cfg(feature = "serde")]
+use super::read::valid_class;
+#[cfg(feature = "serde")]
 use super::read::{
     DECODED, brand_companion, brand_serializers, kept_inline, mapped, mapped_over_a_brand,
 };
 use super::read::{
     NO_ISSUES, drafted_serializers, judged_valid, judged_valid_over, kept_draft, to_valid,
-    valid_class, valid_class_over, valid_unjudged, valid_unjudged_over,
+    valid_class_over, valid_unjudged, valid_unjudged_over,
 };
 #[cfg(feature = "serde")]
 use super::tests::{
@@ -32,6 +34,7 @@ use super::tests::{
 };
 
 /// What a type with no rule answers.
+#[cfg(feature = "serde")]
 const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
      List<String> = validate()";
 

@@ -40,8 +40,11 @@ section is the consumer's view; this is what a change has to keep.
   `held.validationIssues(...)` whatever the held type is and wherever it is declared: a valid class
   forwards it, a brand and a model a service writes answer it beside their `validate()`,
   and a type the emitter has not written answers the `Any?.validationIssues()` fallback. A check a
-  member names is called with the member's `draft` where the member is such a model
-  (`validate::drafted`, noted by `note_model`), as Rust's coerces `&Valid` to `&Draft`. A member
+  member names is called on a member typed with a named type as `member.kotlinSchemaChecked()`
+  (`Rules::check_statements`), as Rust's coerces `&Valid` to `&Draft`. The valid class declares
+  `fun kotlinSchemaChecked(): {Name}Draft = draft`; any other type answers the `private fun <T>
+  T.kotlinSchemaChecked(): T = this` the holder carries, which a member is found ahead of. No
+  registry is read, so the call is the same whatever the declaration order and crate. A member
   named `draft` is `draft_` (`kotlin_property_name`), with its wire key unchanged.
 
 - **The emitter reads what the web surfaces read.** `kotlin_schema_dispatch` takes `KotlinArgs`,
