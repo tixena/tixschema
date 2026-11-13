@@ -4,7 +4,7 @@ The draft and the valid type, `validationIssues()`, the read and `preprocess` on
 
 #### The draft and the valid type
 
-A struct, a tuple struct, a unit struct and an enum that is no plain enum are two classes
+A struct, a tuple struct, a unit struct and every enum, a plain enum included, are two classes
 (`struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens` write the pair). The class the
 emitter wrote before is the draft, named `{Name}Draft` (`draft_name`): its constructor, its fields,
 its one read, `toJson` and `validationIssues()` are the class as it was, and `validate_method` adds
@@ -23,8 +23,8 @@ with a parameter (`GenericCodec::to_json_args`), and `validationIssues()`.
   is `read_pair`, the pair a type without a draft keeps.
 - **A holder calls `validationIssues()` on everything it holds.** `held_at` writes
   `expr.validationIssues()` for a model, a brand, an alias and a plain enum alike, so a type
-  declared below its holder, or in another crate, is held without being known. A brand, an alias
-  and a plain enum have no draft and list their messages under that name. `validate()` is the
+  declared below its holder, or in another crate, is held without being known. A brand and an alias
+  have no draft and list their messages under that name. `validate()` is the
   draft's alone.
 - **A holder reads a held model through `{Name}.fromJsonUnjudged`**, public on the valid type, which
   builds the valid type with no check; the holder judges the whole value once, so each answer is
@@ -115,7 +115,7 @@ Dart" section is the consumer's view; this is what a change has to keep.
   target's `validationIssues()` where the target is a declared type written as itself.
 - **A sealed enum** declares `List<String> validationIssues();` on its base (`VALIDATE_DECLARED`), and
   `variant_validate` writes each variant's override, the enum's checks last, each handed `this`.
-  A plain enum runs its checks.
+  A plain enum draft runs its checks, each handed `this`, the draft.
 - **`toJson` is untouched.** `validationIssues()` is the last member of each draft class but its
   helpers and `validate()`, after its codec. `the_codec_of_each_type_is_the_text_it_was` in
   `tests/dart_tests/validate.rs` holds every piece of the emitted text but each
@@ -139,7 +139,7 @@ consumer's view; this is what a change has to keep.
   `unjudged_read` writes, with no judgement. `valid_class` writes the valid type's `fromJson` over
   it, and `fromJsonUnjudged`. `read_pair` writes `fromJson` over `fromJsonUnjudged` for what has no
   draft: a brand, an alias and a type a service writes. `judged_body` writes the judgement, which the
-  static `fromJson` of a plain enum takes too. A generic type takes its converters in each read.
+  static `fromJson` of a plain enum draft takes too. A generic type takes its converters in each read.
 - **A brand is sealed.** `struct_dart_tokens` hands `value_wrapper_tokens` `Held::Brand` for a
   brand alone: the class writes `const X._(this.value)`, the only constructor, and `factory X.of(value)`
   (`judged_body` over `X._(value)`, so it throws the `FormatException` `fromJson` throws, the messages
@@ -270,8 +270,12 @@ consumer's view; this is what a change has to keep.
   bound alone. So a brand's bound chooses a variant whether the brand is declared above the
   enum, below it or in another file, and nothing a check or a model reports does. A variant
   with nothing to ask keeps `try { return ...; } catch (_) {}`.
-- **A plain enum** keeps its `fromJson` as it was where it names no check, and judges where it
-  names one. Both carry `fromJsonUnjudged`, the name a holder reads every declared type by.
+- **A plain enum** is `plain_enum_dart_source`: the enhanced enum `{Name}Draft`, whose static
+  `fromJson` is the unjudged read and which declares `validationIssues()` and `validate_method`, and
+  the `valid_class` `{Name}` with `Pair::by_draft`, which adds `operator ==` and `hashCode` over the
+  draft. `{Name}.fromJson` judges through `judged_body_returning`, and `{Name}.fromJsonUnjudged`, the
+  name a holder reads every declared type by, runs no check. A map key reads through
+  `{Name}.fromJson` and writes through `toJson`.
 - **`validate()` stays the last member of a class**: `validateBound()` and `_bounds()` are
   written ahead of it.
 - **A member serde never writes is read and has no entry in `toJson`.** `DartField::never_written`
@@ -501,8 +505,7 @@ resort; this is what a change has to keep.
   what they answer as `json`, cast as the read types it (`final json = withoutFragile(payload)
   as Map<String, dynamic>;`), and a read of no member holds it under no name. `read_pair` and
   `valid_class` write `fromJson` as it was: it calls no function. A sealed enum calls them in its base alone
-  (`Corrects::of_a_variant`), and a plain enum that names one and no check delegates `fromJson`
-  to `fromJsonUnjudged`.
+  (`Corrects::of_a_variant`), and the draft of a plain enum calls them in its one `fromJson`.
 - **A member's functions are called by `member_decode`**, around the payload its own read is
   written over: `constructor_arguments` for a named member, the tuple arm of `dart_decode_at` for
   a slot, and the arm of a variant that holds one value. `corrected` folds the calls, the first

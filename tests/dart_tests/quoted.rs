@@ -141,8 +141,8 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
     holds_each(
         &excised_dart::dart_definition(),
         &[
-            r"enum Excised { high('hi\'gh'), low('lo\$w');",
-            r#"'hi\'gh' || 'to"p' => Excised.high,'lo\$w' => Excised.low,"#,
+            r"enum ExcisedDraft { high('hi\'gh'), low('lo\$w');",
+            r#"'hi\'gh' || 'to"p' => ExcisedDraft.high,'lo\$w' => ExcisedDraft.low,"#,
         ],
     );
 }
