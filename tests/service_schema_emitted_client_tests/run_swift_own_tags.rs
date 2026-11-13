@@ -179,7 +179,7 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             flag_swift::swift_definition(),
             format!(
-                "public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
                  decoder.container(keyedBy: CodingKeys.self); self.label = try \
                  container.decode(String.self, forKey: .label) }};",
                 tag_held("Flag")
@@ -188,7 +188,7 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             gonfalon_swift::swift_definition(),
             format!(
-                "public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
                  decoder.container(keyedBy: CodingKeys.self); self.label = try \
                  container.decode(SwiftSchemaFit<Held>.self, forKey: .label).value }};",
                 tag_held("Gonfalon")
@@ -197,7 +197,7 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             semaphore_swift::swift_definition(),
             format!(
-                "public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let aliased = try \
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let aliased = try \
                  decoder.container(keyedBy: SwiftSchemaAnyKey.self);",
                 tag_held("Semaphore")
             ),
@@ -213,7 +213,7 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             pennant_swift::swift_definition(),
             format!(
-                "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
                  [String]) throws {{ {}let container = try \
                  decoder.container(keyedBy: CodingKeys.self);",
                 tag_held("Pennant")
@@ -222,7 +222,7 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             ensign_swift::swift_definition(),
             format!(
-                "public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
                  decoder.container(keyedBy: CodingKeys.self); self.label = try \
                  container.decode(String.self, forKey: .label) }};",
                 tag_held("Ensign")

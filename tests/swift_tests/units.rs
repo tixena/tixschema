@@ -57,8 +57,8 @@ fn unit_is_a_struct_read_from_null_and_written_as_null() {
     }
     assert!(
         units.contains(
-            "public let listed: [ProbeUnitsListedTuple]; public let nothing: ProbeNothing; public \
-             let paired: ProbeUnitsPairedTuple; public let unit: ProbeUnitsUnitTuple;"
+            "public var listed: [ProbeUnitsListedTuple]; public var nothing: ProbeNothing; public \
+             var paired: ProbeUnitsPairedTuple; public var unit: ProbeUnitsUnitTuple;"
         ),
         "the members are no longer declared as they were: {units}"
     );

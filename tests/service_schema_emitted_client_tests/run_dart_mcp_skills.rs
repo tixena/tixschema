@@ -32,7 +32,7 @@ final lessonHandlers = LessonServiceHandlers<void>(
     throw const BookErrorNotFound();
   },
   getLesson: (ctx, req) async {
-    if (req.book_id == 'lesson-1') return BookInfo(pages: 3);
+    if (req.book_id == 'lesson-1') return BookInfoDraft(pages: 3).validate();
     throw const BookErrorNotFound();
   },
 );

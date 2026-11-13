@@ -16,7 +16,7 @@ mod dart {
     const DRIVER: &str = "
 void told(int at, String payload) {
   try {
-    print('$at: ${Fastening.fromJson(jsonDecode(payload)).runtimeType}');
+    print('$at: ${Fastening.fromJson(jsonDecode(payload)).toDraft().runtimeType}');
   } on FormatException {
     print('$at: refused');
   }
@@ -131,7 +131,7 @@ mod swift {
     const DRIVER: &str = r#"
 func told(_ at: Int, _ payload: String) {
   do {
-    switch try JSONDecoder().decode(Fastening.self, from: Data(payload.utf8)) {
+    switch try JSONDecoder().decode(Fastening.self, from: Data(payload.utf8)).draft {
     case .anodized: print("\(at): Anodized")
     case .coded: print("\(at): Coded")
     case .listed: print("\(at): Listed")

@@ -513,7 +513,7 @@ A `#[model_schema()]` type of the crate's own named `IndexMap` or `IndexSet`, de
 | Rust | reads `{"a"}` |
 | JSON Schema | refuses it: the set's array writes `"uniqueItems": true` |
 | Zod | refuses it with `repeats an item: a set holds each item once`, at the path `["tags"]` |
-| Dart, Swift and Kotlin | `validate()` answers `'tags': repeats an item: a set holds each item once`, so the read refuses it |
+| Dart, Swift and Kotlin | `validate()` (`validationIssues()` in Dart) answers `'tags': repeats an item: a set holds each item once`, so the read refuses it |
 | TypeScript | `Array<string>`, as a list writes it |
 
 - **Two items are one where they write one JSON text.** Zod compares the items it parsed, an object's keys in the order its schema declares them. Dart compares the JSON its codec writes for each item, Swift the JSON `JSONEncoder` writes with sorted keys, and Kotlin the values themselves, the emitted types comparing by value. So two objects that write their members in another order are one item on every surface.

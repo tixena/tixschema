@@ -18,12 +18,12 @@ func tidied(_ payload: Any) -> Any {
   return payload
 }
 
-func allowed(_ value: Ruling) -> [String] {
+func allowed(_ value: RulingDraft) -> [String] {
   if case .denied = value { return ["a ruling is allowed"] }
   return []
 }
 
-func affirmed(_ value: Verdict) -> [String] {
+func affirmed(_ value: VerdictDraft) -> [String] {
   if case .overturned = value { return ["a verdict is upheld"] }
   return []
 }

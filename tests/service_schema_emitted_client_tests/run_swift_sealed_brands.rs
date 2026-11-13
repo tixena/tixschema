@@ -1,6 +1,7 @@
 //! A Swift brand is built through `init(validating:)` alone: `init(value:)` and the unjudged read
-//! are `fileprivate`, so a second file of the module cannot reach either, and a tuple struct that
-//! is no brand keeps its public `init(value:)`.
+//! are `fileprivate`, so a second file of the module cannot reach either. A tuple struct that is
+//! no brand has a draft, `TagDraft(value:)`, and the valid type has no initializer a second file
+//! reaches.
 
 #![cfg(feature = "swift")]
 
@@ -54,14 +55,14 @@ fn checked_beside(other: &str) -> Option<(bool, String)> {
     .map(|run| (run.succeeded, run.stderr))
 }
 
-/// A file of the module builds a brand through `init(validating:)` and a tuple struct through
-/// `init(value:)`.
+/// A file of the module builds a brand through `init(validating:)` and a tuple struct through its
+/// draft.
 #[test]
-fn a_second_file_builds_a_brand_through_validating_and_a_tuple_struct_through_value() {
+fn a_second_file_builds_a_brand_through_validating_and_a_tuple_struct_through_its_draft() {
     let Some((succeeded, said)) = checked_beside(
         "
 func buildBrand() throws -> LabelText { try LabelText(validating: \"Shipping\") }
-func buildTuple() -> Tag { Tag(value: \"x\") }
+func buildTuple() throws -> Tag { try TagDraft(value: \"x\").validate() }
 ",
     ) else {
         return;

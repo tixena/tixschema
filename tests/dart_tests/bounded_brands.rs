@@ -39,19 +39,19 @@ fn a_brand_over_a_string_measures_its_value_under_no_place() {
     assert_eq!(
         slug_dart::dart_definition(),
         "class Slug { const Slug._(this.value); final String value; factory Slug.of(String value) \
-         { final read = Slug._(value); final violations = read.validate(); if \
+         { final read = Slug._(value); final violations = read.validationIssues(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory Slug.fromJson(dynamic \
-         json) { final read = Slug.fromJsonUnjudged(json); final violations = read.validate(); \
+         json) { final read = Slug.fromJsonUnjudged(json); final violations = read.validationIssues(); \
          if (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory Slug.fromJsonUnjudged(dynamic json) => Slug._(json as String); dynamic toJson() \
          => value; List<String> validateBound() => [ if (value.runes.length < 2) \"too short: \
          minimum length is 2, got ${value.runes.length}\", if \
          (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match pattern '^[A-Z]+\\$'\", ]; \
-         List<String> validate() => [ \
+         List<String> validationIssues() => [ \
          if (value.runes.length < 2) \"too short: minimum length is 2, got \
          ${value.runes.length}\", if (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match \
-         pattern '^[A-Z]+\\$'\", ]; }"
+         pattern '^[A-Z]+\\$'\", ]; static Object $thrown(Object thrown) => thrown; }"
     );
 }
 
@@ -63,18 +63,18 @@ fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
         tag_dart::dart_definition(),
         "class Tag<IdType> { const Tag._(this.value); final IdType value; factory \
          Tag.of(IdType value) { final read = Tag<IdType>._(value); final violations = \
-         read.validate(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
+         read.validationIssues(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
          ')); return read; } factory \
          Tag.fromJson(dynamic json, IdType Function(dynamic) idTypeFromJson) { final read = \
-         Tag.fromJsonUnjudged(json, idTypeFromJson); final violations = read.validate(); if \
+         Tag.fromJsonUnjudged(json, idTypeFromJson); final violations = read.validationIssues(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
          factory Tag.fromJsonUnjudged(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
          Tag._(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
          idTypeToJson(value); List<String> validateBound() => [ if (value case final String \
          held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
-         ${held.runes.length}\", ]; List<String> validate() => [ if (value case final String \
+         ${held.runes.length}\", ]; List<String> validationIssues() => [ if (value case final String \
          held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
-         ${held.runes.length}\", ]; }"
+         ${held.runes.length}\", ]; static Object $thrown<IdType>(Object thrown) => thrown; }"
     );
 }
 
@@ -84,10 +84,10 @@ fn a_brand_over_a_list_counts_its_items() {
         batch_dart::dart_definition(),
         "class Batch { const Batch._(this.value); final List<String> value; factory \
          Batch.of(List<String> value) { final read = Batch._(value); final violations = \
-         read.validate(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
+         read.validationIssues(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
          ')); return read; } factory \
          Batch.fromJson(dynamic json) { final read = Batch.fromJsonUnjudged(json); final \
-         violations = read.validate(); if (violations.isNotEmpty) throw \
+         violations = read.validationIssues(); if (violations.isNotEmpty) throw \
          FormatException(violations.join('; ')); return read; } factory \
          Batch.fromJsonUnjudged(dynamic json) => Batch._((json as List<dynamic>).indexed.map((e) => \
          _readAt(null, e.$1, () => e.$2 as String)).toList()); static Read \
@@ -99,8 +99,8 @@ fn a_brand_over_a_list_counts_its_items() {
          List<Object>) ...at]); } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); \
          List<String> validateBound() => [ if (value.length < 1) \"too short: minimum length is \
          1, got ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
-         ${value.length}\", ]; List<String> validate() => [ if (value.length < 1) \"too short: \
+         ${value.length}\", ]; List<String> validationIssues() => [ if (value.length < 1) \"too short: \
          minimum length is 1, got ${value.length}\", if (value.length > 2) \"too long: maximum \
-         length is 2, got ${value.length}\", ]; }"
+         length is 2, got ${value.length}\", ]; static Object $thrown(Object thrown) => thrown; }"
     );
 }

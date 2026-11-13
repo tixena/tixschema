@@ -48,14 +48,14 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
              <Object>[json]); default: throw FormatException('Unknown Surging: ' + json); }"
                 .to_owned(),
             "switch (tag) { case 'Berth' || 'Pier': return \
-             _readAt(null, tag, () => SurgingBerth.fromJsonUnjudged(map[tag])); case 'Calm' || \
+             _readAt(null, tag, () => SurgingBerth.fromJson(map[tag])); case 'Calm' || \
              'Still' || 'Slack': return _readAt(null, tag, () => map[tag] == null ? SurgingCalm() \
              : throw FormatException('Surging: ' + tag + ' takes no value')); case 'Held' || \
              'Tied': return _readAt(null, tag, () => SurgingHeld(map[tag] as String)); default: \
              throw FormatException('Unknown Surging: ' + tag); }"
                 .to_owned(),
             format!(
-                "factory SurgingBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
+                "factory SurgingBerth.fromJson(Map<String, dynamic> json) {{ \
                  {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'label', 'name'}}.contains(key)) throw \
                  FormatException('Unknown key of a SurgingBerth: $key', <Object>[key]); }} return \
                  SurgingBerth(label: _readAt(named, 'label', () => named['label'] as String),); \
@@ -71,13 +71,13 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         &[
             "final tag = _readAt(json, 'kind', () => json['kind'] as String); switch (tag) { case \
              'Berth' || 'Pier': return _readFlattened(() => \
-             CareeningBerth.fromJsonUnjudged(json)); case 'Calm' || 'Still': return (() { for \
+             CareeningBerth.fromJson(json)); case 'Calm' || 'Still': return (() { for \
              (final key in json.keys) { if (!const <String>{'kind'}.contains(key)) throw \
              FormatException('Unknown key of a Careening: $key', <Object>[key]); } return \
              CareeningCalm(); })(); default:"
                 .to_owned(),
             format!(
-                "factory CareeningBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
+                "factory CareeningBerth.fromJson(Map<String, dynamic> json) {{ \
                  {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'kind', 'label', 'name'}}.contains(key)) throw \
                  FormatException('Unknown key of a CareeningBerth: $key', <Object>[key]); }} \
                  return CareeningBerth(label: _readAt(named, 'label', () => named['label'] as \
@@ -91,7 +91,7 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
         &scending_dart::dart_definition(),
         &[
             "switch (tag) { case 'Berth' || 'Pier': return _readAt(json, 'data', () => \
-             ScendingBerth.fromJsonUnjudged(json['data'])); case 'Calm' || 'Still': return \
+             ScendingBerth.fromJson(json['data'])); case 'Calm' || 'Still': return \
              json.containsKey('data') ? throw FormatException('Scending: ' + tag + ' takes no \
              value') : ScendingCalm(); case 'Held' || 'Tied': return _readAt(json, 'data', () => \
              ScendingHeld(json['data'] as String)); default:"
@@ -136,7 +136,8 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
             "enum Swell {{ ebb('Ebb'), flood('Flood'); const Swell(this.wireValue); final String \
              wireValue; static Swell fromJson(dynamic json) {{ {} }} static Swell \
              fromJsonUnjudged(dynamic json) => fromJson(json); String toJson() => wireValue; \
-             List<String> validate() => const []; }}",
+             List<String> validationIssues() => const []; static Object $thrown(Object thrown) => \
+             thrown; }}",
             plain_enum_read(
                 "Swell",
                 "json",
@@ -150,7 +151,8 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
             "enum Lulling {{ ebb('Ebb'), flood('Flood'); const Lulling(this.wireValue); final \
              String wireValue; static Lulling fromJson(dynamic json) => fromJsonUnjudged(json); \
              static Lulling fromJsonUnjudged(dynamic payload) {{ final json = unpadded(payload); \
-             {} }} String toJson() => wireValue; List<String> validate() => const []; }}",
+             {} }} String toJson() => wireValue; List<String> validationIssues() => const []; static Object $thrown(Object thrown) => \
+             thrown; }}",
             plain_enum_read(
                 "Lulling",
                 "json",
@@ -167,10 +169,10 @@ fn a_struct_reads_a_member_under_each_alias() {
     holds_each(
         &hawsing_dart::dart_definition(),
         &[format!(
-            "factory Hawsing.fromJsonUnjudged(Map<String, dynamic> json) {{ {HAWSING_NAMES} \
+            "factory HawsingDraft.fromJson(Map<String, dynamic> json) {{ {HAWSING_NAMES} \
              for (final key in named.keys) {{ if (!const <String>{{'label', 'name', 'title', 'note', 'remark'}}.contains(key)) throw \
              FormatException('Unknown key of a Hawsing: $key', <Object>[key]); }} return \
-             Hawsing(label: _readAt(named, 'label', () => named['label'] as String),note: \
+             HawsingDraft(label: _readAt(named, 'label', () => named['label'] as String),note: \
              _readAt(named, 'note', () => (named['note'] == null ? null : named['note'] as \
              String)),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'label': label,if (note \
              != null) 'note': (note == null ? null : note), }};"
@@ -179,10 +181,10 @@ fn a_struct_reads_a_member_under_each_alias() {
     holds_each(
         &gybing_dart::dart_definition(),
         &[format!(
-            "factory Gybing.fromJsonUnjudged(Map<String, dynamic> json, LabelType \
+            "factory GybingDraft.fromJson(Map<String, dynamic> json, LabelType \
              Function(dynamic) labelTypeFromJson) {{ {HAWSING_NAMES} for (final key in named.keys) {{ if (!const <String>{{'label', 'name', 'title', 'note', 'remark'}}.contains(key)) throw \
              FormatException('Unknown key of a Gybing: $key', <Object>[key]); }} return \
-             Gybing(label: _readAt(named, 'label', () => labelTypeFromJson(named['label'])),note: \
+             GybingDraft(label: _readAt(named, 'label', () => labelTypeFromJson(named['label'])),note: \
              _readAt(named, 'note', () => (named['note'] == null ? null : named['note'] as \
              String)),); }}"
         )],
@@ -197,8 +199,8 @@ fn a_member_flattened_beside_an_alias_is_handed_the_keys_serde_hands_it() {
     holds_each(
         &fairleading_dart::dart_definition(),
         &[format!(
-            "factory Fairleading.fromJsonUnjudged(Map<String, dynamic> json) {{ {NAME_AS_LABEL} \
-             return Fairleading(label: _readAt(named, 'label', () => named['label'] as \
+            "factory FairleadingDraft.fromJson(Map<String, dynamic> json) {{ {NAME_AS_LABEL} \
+             return FairleadingDraft(label: _readAt(named, 'label', () => named['label'] as \
              String),tally: _readFlattened(() => \
              Pennon.fromJsonUnjudged(withItsKeys(({{...named}}..remove('label'))))),); }}"
         )],
@@ -206,7 +208,7 @@ fn a_member_flattened_beside_an_alias_is_handed_the_keys_serde_hands_it() {
     holds_each(
         &fothering_dart::dart_definition(),
         &[
-            "Fothering(hawsing: _readFlattened(() => Hawsing.fromJsonUnjudged((switch (json) { \
+            "FotheringDraft(hawsing: _readFlattened(() => Hawsing.fromJsonUnjudged((switch (json) { \
            final whole => { for (final key in const ['label', 'name', 'title', 'note', 'remark']) \
            if (whole.containsKey(key)) key: whole[key] } }))),tally: _readFlattened(() => \
            Pennon.fromJsonUnjudged(withItsKeys(({...json}..remove('label')..remove('name')\
@@ -223,7 +225,7 @@ fn an_untagged_enum_reads_a_member_under_its_alias() {
     holds_each(
         &veering_dart::dart_definition(),
         &[format!(
-            "factory VeeringBerth.fromJsonUnjudged(Map<String, dynamic> json) {{ \
+            "factory VeeringBerth.fromJson(Map<String, dynamic> json) {{ \
              {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'label', 'name'}}.contains(key)) throw \
              FormatException('Unknown key of a VeeringBerth: $key', <Object>[key]); }} return \
              VeeringBerth(label: _readAt(named, 'label', () => named['label'] as String),); }}"

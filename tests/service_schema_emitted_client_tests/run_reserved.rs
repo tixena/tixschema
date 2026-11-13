@@ -62,7 +62,7 @@ void main() async {
   final client = LookupClientServiceHttpClient(recorder);
   await client.import(ImportRequest(class_: 'k', object: 'o', default_: 'd', var_: 'v'));
   await client.for_(ForRequest(in_: 'i', final_: 'f'), 't', 'n');
-  await client.object(LookupThing(class_: 'c', var_: 'w'));
+  await client.object(LookupThingDraft(class_: 'c', var_: 'w').validate());
   await client.shadow(ShadowRequest(message: 'm', sending: 's'), 'b', 'p', 't');
   print(jsonEncode(recorder.sent));
 }
@@ -176,7 +176,7 @@ let recorder = LookupRecorder()
 let client = LookupClientServiceHttpClient(transport: recorder)
 _ = await client.`import`(ImportRequest(`class`: "k", object: "o", `default`: "d", `var`: "v"))
 _ = await client.`for`(ForRequest(`in`: "i", final: "f"), type: "t", `default`: "n")
-_ = await client.object(LookupThing(`class`: "c", `var`: "w"))
+_ = await client.object(try LookupThingDraft(`class`: "c", `var`: "w").validate())
 _ = await client.shadow(ShadowRequest(message: "m", sending: "s"), body: "b", path: "p", status: "t")
 let sent = await recorder.sent
 print(String(data: try! JSONEncoder().encode(sent), encoding: .utf8)!)

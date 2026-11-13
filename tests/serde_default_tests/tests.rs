@@ -498,23 +498,31 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
     assert_eq!(
         super::models::gangway_dart::dart_definition(),
         format!(
-            "class Gangway {{ const Gangway({{required this.label,required this.width,}}); final \
-             String label;final int width; factory Gangway.fromJson(Map<String, dynamic> json) {{ \
-             final read = Gangway.fromJsonUnjudged(json); final violations = read.validate(); if \
-             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
-             }} factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in \
-             json.keys) {{ if (!const <String>{{'label', 'width'}}.contains(key)) throw \
-             FormatException('Unknown key of a Gangway: $key', <Object>[key]); }} return \
-             Gangway(label: _readAt(json, 'label', () => json['label'] as String),width: \
-             _readAt(json, 'width', () => {WIDTH_READ}),); }} static Read \
-             _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) {{ try \
-             {{ return read(); }} catch (refused) {{ if (object != null && \
-             !object.containsKey(key)) throw FormatException('missing field `$key`', \
+            "class GangwayDraft {{ const GangwayDraft({{required this.label,required this.width,}}); \
+             final String label;final int width; factory GangwayDraft.fromJson(Map<String, \
+             dynamic> json) {{ for (final key in json.keys) {{ if (!const <String>{{'label', \
+             'width'}}.contains(key)) throw FormatException('Unknown key of a Gangway: $key', \
+             <Object>[key]); }} return GangwayDraft(label: _readAt(json, 'label', () => \
+             json['label'] as String),width: _readAt(json, 'width', () => {WIDTH_READ}),); }} \
+             static Read _readAt<Read>(Map<String, dynamic>? object, Object key, Read \
+             Function() read) {{ try {{ return read(); }} catch (refused) {{ if (object != null \
+             && !object.containsKey(key)) throw FormatException('missing field `$key`', \
              <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
              <Object>[key]); if (refused is FormatException) {{ final at = refused.source; throw \
              FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); }} \
              rethrow; }} }} Map<String, dynamic> toJson() => {{ 'label': label,'width': \
-             {WIDTH_WRITTEN}, }}; List<String> validate() => const []; }}"
+             {WIDTH_WRITTEN}, }}; List<String> validationIssues() => const []; Gangway \
+             validate() {{ final found = validationIssues(); if (found.isNotEmpty) throw \
+             FormatException(found.join('; ')); return Gangway._(this); }} }} class Gangway {{ \
+             const Gangway._(this._draft); final GangwayDraft _draft; String get label => \
+             _draft.label; int get width => _draft.width; GangwayDraft toDraft() => _draft; \
+             factory Gangway.fromJson(Map<String, dynamic> json) {{ final read = \
+             GangwayDraft.fromJson(json); final violations = read.validationIssues(); if \
+             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
+             Gangway._(read); }} factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) => \
+             Gangway._(GangwayDraft.fromJson(json)); Map<String, dynamic> toJson() => \
+             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static \
+             Object $thrown(Object thrown) => thrown is GangwayDraft ? thrown.validate() : thrown; }}"
         )
     );
 }
@@ -523,16 +531,18 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
 #[test]
 fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
     use crate::swift_fitted::FITTED;
+    use crate::swift_valid;
 
     assert_eq!(
-        super::models::gangway_swift::swift_definition(),
+        swift_valid::draft_of(&super::models::gangway_swift::swift_definition()),
         format!(
-            "{}{FITTED}; {}",
-            "public struct Gangway: Codable, Sendable { public let label: String; public let width: UInt32; enum CodingKeys: String, CodingKey { case label; case width;  }; public init(label: String, width: UInt32) { self.label = label; self.width = width;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; ",
-            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+            "{}{FITTED}; {}{} }};",
+            "public struct GangwayDraft: Codable, Sendable { public var label: String; public var width: UInt32; enum CodingKeys: String, CodingKey { case label; case width;  }; public init(label: String, width: UInt32) { self.label = label; self.width = width;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; ",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
              throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.label \
              = try container.decode(String.self, forKey: .label); self.width = try \
-             container.decode(SwiftSchemaFit<UInt32>.self, forKey: .width).value }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"label\", \"width\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } }; "
+             container.decode(SwiftSchemaFit<UInt32>.self, forKey: .width).value }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"label\", \"width\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; ",
+            swift_valid::validating("Gangway")
         )
     );
 }

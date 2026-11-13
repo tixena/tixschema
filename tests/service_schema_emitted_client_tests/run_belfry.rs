@@ -187,11 +187,11 @@ void main() async {
   final handlers = BelfryServiceHandlers<void>(
     ringBell: (ctx, req) async {
       rung += 1;
-      return BellPeal(strokes: rung);
+      return BellPealDraft(strokes: rung).validate();
     },
     tollBell: (ctx, req) async {
       rung += 1;
-      return BellPeal(strokes: req.strokes * req.rope.length);
+      return BellPealDraft(strokes: req.strokes * req.rope.length).validate();
     },
   );
   final told = <Map<String, dynamic>>[];

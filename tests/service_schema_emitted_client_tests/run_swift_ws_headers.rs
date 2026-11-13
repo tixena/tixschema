@@ -305,7 +305,7 @@ func describe(
     )
   case .failure(.declared(let error)):
     let code: String
-    switch error.0 {{ case .refused: code = "refused" }}
+    switch error.0.draft {{ case .refused: code = "refused" }}
     return StampReport(
       ok: false, label: nil, etag: nil, ageIsNil: nil,
       errorCode: code, reasonIsNil: error.1 == nil, faultKind: nil

@@ -25,6 +25,12 @@ mod tests;
 #[path = "support/swift_fitted.rs"]
 mod swift_fitted;
 
+/// The pair of structs the Swift emitter writes for a model type.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_valid.rs"]
+mod swift_valid;
+
 #[cfg(test)]
 #[path = "serde_default_tests/variants.rs"]
 mod variants;

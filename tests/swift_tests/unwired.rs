@@ -10,7 +10,7 @@ fn no_swift_type_declares_a_member_serde_neither_writes_nor_reads() {
     assert_serde_neither_writes_nor_reads();
     let ballast = ballast_swift::swift_definition();
     assert!(
-        ballast.contains("public let note: String;"),
+        ballast.contains("public var note: String;"),
         "got: {ballast}"
     );
     let load = ballast_load_swift::swift_definition();

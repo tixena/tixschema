@@ -344,14 +344,14 @@ fn every_type_position_names_the_helper_at_its_parameters() {
     holds(
         &stack_swift::swift_definition(),
         &[
-            "public struct Stack<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public let byCask: [UInt32: Cask<Stowed>]; public let byCount: [UInt32: UInt8]; \
-             public let byNumber: [UInt32: Stowed]; \
-             public let cask: Cask<StackCaskArgument0Tuple<Stowed>>; \
-             public let listed: [[UInt32: Stowed]]; public let marks: StackMarksTuple; \
-             public let numberedPair: StackNumberedPairTuple<Stowed>; \
-             public let pair: StackPairTuple<Stowed>; \
-             public let pairedByNumber: [UInt32: StackPairedByNumberValueTuple<Stowed>]; ",
+            "public struct StackDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var byCask: [UInt32: Cask<Stowed>]; public var byCount: [UInt32: UInt8]; \
+             public var byNumber: [UInt32: Stowed]; \
+             public var cask: Cask<StackCaskArgument0Tuple<Stowed>>; \
+             public var listed: [[UInt32: Stowed]]; public var marks: StackMarksTuple; \
+             public var numberedPair: StackNumberedPairTuple<Stowed>; \
+             public var pair: StackPairTuple<Stowed>; \
+             public var pairedByNumber: [UInt32: StackPairedByNumberValueTuple<Stowed>]; ",
             "self.byCask = try StackByCaskKeyedMap<Stowed>(swiftSchemaUnjudged: \
              container.superDecoder(forKey: .byCask)).storage; ",
             "let wireByNumber = try container.decode(StackByNumberKeyedMap<Stowed>.self, \
@@ -430,7 +430,7 @@ fn the_key_of_a_map_reaches_the_parameter() {
         &[
             "public struct RankedByStowedKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
              public var storage: [String: UInt32]; ",
-            "public let byStowed: [String: UInt32]; ",
+            "public var byStowed: [String: UInt32]; ",
             "let wireByStowed = try container.decode(RankedByStowedKeyedMap<Stowed>.self, \
              forKey: .byStowed); ",
             "let wireByStowed = RankedByStowedKeyedMap<Stowed>(storage: self.byStowed); ",
@@ -448,10 +448,10 @@ fn the_tuple_of_a_tuple_struct_declares_the_parameter_its_slots_reach() {
             "public struct TallyTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: TallyTupleSlot0Tuple<Stowed>; let slot1: UInt32; ",
             "slot0 = try container.decode(TallyTupleSlot0Tuple<Stowed>.self); ",
-            "public struct Tally<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public let value: TallyTuple<Stowed>; \
+            "public struct TallyDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var value: TallyTuple<Stowed>; \
              public init(value: TallyTuple<Stowed>) { self.value = value }; \
-             public init(swiftSchemaUnjudged decoder: Decoder) throws { \
+             fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { \
              self.value = try TallyTuple<Stowed>(swiftSchemaUnjudged: decoder) }; ",
         ],
     );
@@ -462,7 +462,7 @@ fn the_tuple_of_a_tuple_struct_declares_the_parameter_its_slots_reach() {
              Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct RegisterTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: [UInt32: Stowed]; let slot1: UInt8; ",
-            "public let value: RegisterTuple<Stowed>; ",
+            "public var value: RegisterTuple<Stowed>; ",
         ],
     );
 }
@@ -516,7 +516,7 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_under_no_tag_attribu
              Codable, Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct SplitStackedPayloadPairTuple<Stowed: Codable & Sendable>: Codable, \
              Sendable { let slot0: Stowed; let slot1: UInt32; ",
-            "public enum Split<Stowed: Codable & Sendable>: Codable, Sendable { \
+            "public enum SplitDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
              case halves(SplitHalvesTuple<Stowed>); case keyed(SplitKeyedTuple<Stowed>); \
              case numbered([UInt32: Stowed]); case paired(SplitPairedValueTuple<Stowed>); \
              case stacked(SplitStackedPayload<Stowed>); ",

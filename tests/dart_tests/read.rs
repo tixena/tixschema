@@ -20,7 +20,7 @@ const HELD_BOUND: &str = "static List<String> _heldBound(Object held) { try { re
      dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const []; } }";
 
 /// What a judged read does with the value its unjudged read answered.
-const JUDGED: &str = "final violations = read.validate(); if (violations.isNotEmpty) throw \
+const JUDGED: &str = "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
      FormatException(violations.join('; ')); return read; }";
 
 /// A model with a bound.
@@ -112,6 +112,11 @@ fn pair(named: &str, parameters: &str, arguments: &str) -> String {
     )
 }
 
+/// The one read of a draft, whose name is `named`, taking `parameters`.
+fn draft(named: &str, parameters: &str) -> String {
+    format!("factory {named}.fromJson({parameters}) ")
+}
+
 /// The pair of a brand, which has the factory `of` besides.
 fn sealed_pair(named: &str, parameters: &str, arguments: &str) -> String {
     format!(
@@ -183,29 +188,29 @@ fn a_class_reads_unjudged_then_refuses_what_validate_answers() {
     assert_written(
         &parcel,
         &format!(
-            "{}{{ {}return Parcel(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
+            "{}{{ {}return ParcelDraft(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
              (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
              () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
              (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
              String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
-            pair("Parcel", "Map<String, dynamic> json", "json"),
+            draft("ParcelDraft", "Map<String, dynamic> json"),
             refusing("Parcel", &["fragileItemCodes", "itemCodeList", "label"])
         ),
     );
     assert_written(
         &depot_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Depot(name: _readAt(json, 'name', () => json['name'] as String),); }}",
-            pair("Depot", "Map<String, dynamic> json", "json"),
+            "{}{{ {}return DepotDraft(name: _readAt(json, 'name', () => json['name'] as String),); }}",
+            draft("DepotDraft", "Map<String, dynamic> json"),
             refusing("Depot", &["name"])
         ),
     );
     assert_written(
         &closed_dock_dart::dart_definition(),
         &format!(
-            "{}{{ {}return ClosedDock(); }}",
-            pair("ClosedDock", "Map<String, dynamic> json", "json"),
+            "{}{{ {}return ClosedDockDraft(); }}",
+            draft("ClosedDockDraft", "Map<String, dynamic> json"),
             refusing("ClosedDock", &[])
         ),
     );
@@ -218,7 +223,7 @@ fn a_holder_reads_what_it_names_unjudged() {
     assert_written(
         &manifest_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Manifest(first_parcel: _readAt(json, 'firstParcel', () => \
+            "{}{{ {}return ManifestDraft(first_parcel: _readAt(json, 'firstParcel', () => \
              Parcel.fromJsonUnjudged(json['firstParcel'])),parcel_list: _readAt(json, \
              'parcelList', () => (json['parcelList'] as List<dynamic>).indexed.map((e) => \
              _readAt(null, e.$1, () => Parcel.fromJsonUnjudged(e.$2))).toList()),parcels_by_dock: \
@@ -228,7 +233,7 @@ fn a_holder_reads_what_it_names_unjudged() {
              Parcel.fromJsonUnjudged(e.value)))))),spare_parcel: _readAt(json, 'spareParcel', () \
              => (json['spareParcel'] == null ? null : \
              Parcel.fromJsonUnjudged(json['spareParcel']))),); }}",
-            pair("Manifest", "Map<String, dynamic> json", "json"),
+            draft("ManifestDraft", "Map<String, dynamic> json"),
             refusing(
                 "Manifest",
                 &["firstParcel", "parcelList", "parcelsByDock", "spareParcel"]
@@ -245,11 +250,11 @@ fn a_value_validate_does_not_reach_judges_itself() {
     assert_written(
         &crate_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Crate(codes: _readAt(json, 'codes', () => (json['codes'] as \
+            "{}{{ {}return CrateDraft(codes: _readAt(json, 'codes', () => (json['codes'] as \
              List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              codeTypeFromJson(e.$2))).toList()),label: _readAt(json, 'label', () => json['label'] \
              as String),); }}",
-            pair("Crate", converters, "json, codeTypeFromJson"),
+            draft("CrateDraft", converters),
             refusing("Crate", &["codes", "label"])
         ),
     );
@@ -319,27 +324,27 @@ fn a_tuple_struct_reads_each_slot_as_a_member() {
     assert_written(
         &pair_dart::dart_definition(),
         &format!(
-            "{}=> Pair(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
+            "{}=> PairDraft(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
              (_readAt(null, 0, () => tuple[0] as String), {second}), final tuple => throw \
              FormatException('invalid length ${{tuple.length}}, expected 2') }});",
-            pair("Pair", "dynamic json", "json"),
+            draft("PairDraft", "dynamic json"),
         ),
     );
     assert_written(
         &lot_dart::dart_definition(),
         &format!(
-            "{}=> Lot(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
+            "{}=> LotDraft(switch (json as List<dynamic>) {{ final tuple when tuple.length == 2 => \
              (_readAt(null, 0, () => tuple[0] as String), _readAt(null, 1, () => \
              Item.fromJsonUnjudged(tuple[1]))), final tuple => throw FormatException('invalid \
              length ${{tuple.length}}, expected 2') }});",
-            pair("Lot", "dynamic json", "json")
+            draft("LotDraft", "dynamic json")
         ),
     );
     assert_written(
         &sleeve_dart::dart_definition(),
         &format!(
-            "{}=> Sleeve(json as String); dynamic toJson() => value;",
-            pair("Sleeve", "dynamic json", "json")
+            "{}=> SleeveDraft(json as String); dynamic toJson() => value;",
+            draft("SleeveDraft", "dynamic json")
         ),
     );
 }
@@ -361,13 +366,13 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
              FreightBoxed(Parcel.fromJsonUnjudged(map['Boxed']))); case 'Held': return \
              _readAt(null, tag, () => map[tag] == null ? FreightHeld() : throw \
              FormatException('Freight: ' + tag + ' takes no value')); case 'Loose': return \
-             _readAt(null, tag, () => FreightLoose.fromJsonUnjudged(map['Loose'])); case 'Split': \
+             _readAt(null, tag, () => FreightLoose.fromJson(map['Loose'])); case 'Split': \
              return _readAt(null, tag, () => FreightSplit(switch (map['Split'] as List<dynamic>) \
              {{ final tuple when tuple.length == 2 => (_readAt(null, 0, () => tuple[0] as \
              String), {second}), final tuple => throw FormatException('invalid length \
              ${{tuple.length}}, expected 2') }})); default: throw FormatException('Unknown \
              Freight: ' + tag); }} }} {READ_AT} dynamic toJson();",
-            pair("Freight", "dynamic json", "json"),
+            draft("FreightDraft", "dynamic json"),
         ),
     );
     assert_written(
@@ -376,7 +381,7 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
             "{}{{ {}return FreightLoose(freight_label: _readAt(json, 'freightLabel', () => \
              json['freightLabel'] as String),); }} {READ_AT} @override \
              dynamic toJson() =>",
-            pair("FreightLoose", "Map<String, dynamic> json", "json"),
+            draft("FreightLoose", "Map<String, dynamic> json"),
             refusing("FreightLoose", &["freightLabel"])
         ),
     );
@@ -387,8 +392,8 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
             "{}{{ {}final tag = _readAt(json, 'kind', () => json['kind'] as String); switch (tag) \
              {{ case 'Boxed': return _readAt(json, 'held', () => HaulBoxed(json['held'] as \
              String)); case 'Loose': return _readAt(json, 'held', () => \
-             HaulLoose.fromJsonUnjudged(json['held']));",
-            pair("Haul", "Map<String, dynamic> json", "json"),
+             HaulLoose.fromJson(json['held']));",
+            draft("HaulDraft", "Map<String, dynamic> json"),
             refusing("Haul", &["kind", "held"])
         ),
     );
@@ -399,8 +404,8 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
             "{}{{ final tag = _readAt(json, 'kind', () => json['kind'] as String); switch (tag) \
              {{ case 'Boxed': return \
              LiftBoxed(Parcel.fromJsonUnjudged(({{...json}}..remove('kind')))); case 'Loose': \
-             return _readFlattened(() => LiftLoose.fromJsonUnjudged(json)); default:",
-            pair("Lift", "Map<String, dynamic> json", "json")
+             return _readFlattened(() => LiftLoose.fromJson(json)); default:",
+            draft("LiftDraft", "Map<String, dynamic> json")
         ),
     );
     assert_written(
@@ -408,7 +413,7 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
         &format!(
             "{}{{ {}return LiftLoose(lift_label: _readAt(json, 'liftLabel', () => \
              json['liftLabel'] as String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
-            pair("LiftLoose", "Map<String, dynamic> json", "json"),
+            draft("LiftLoose", "Map<String, dynamic> json"),
             refusing("LiftLoose", &["kind", "liftLabel"])
         ),
     );
@@ -422,12 +427,12 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
     assert_written(
         &reference,
         &format!(
-            "{}{{ try {{ final read = ReferenceNamed.fromJsonUnjudged(json as Map<String, \
+            "{}{{ try {{ final read = ReferenceNamed.fromJson(json as Map<String, \
              dynamic>); if (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final \
              read = ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; }} \
              catch (_) {{}} throw FormatException('No variant of Reference matched'); }} dynamic \
              toJson();",
-            pair("Reference", "dynamic json", "json"),
+            draft("ReferenceDraft", "dynamic json"),
             numbered = u32_held("json as int")
         ),
     );
@@ -435,13 +440,13 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         &reference,
         "Map<String, dynamic> toJson() => { 'name': name, }; List<String> _bounds() => [ if \
          (name.runes.length < 1) \"too short: minimum length is 1, got ${name.runes.length}\", \
-         ]; @override List<String> validate() =>",
+         ]; @override List<String> validationIssues() =>",
     );
     assert_written(
         &reference,
         &format!(
             "@override dynamic toJson() => {}; List<String> _bounds() => [ if (value < 1) \"too \
-             small: minimum is 1, got ${{value}}\", ]; @override List<String> validate() =>",
+             small: minimum is 1, got ${{value}}\", ]; @override List<String> validationIssues() =>",
             u32_held("value")
         ),
     );
@@ -464,19 +469,19 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
         &shelfmark,
         &format!(
             "List<String> _bounds() => [ ..._heldBound(value), ]; {HELD_BOUND} @override \
-             List<String> validate() =>"
+             List<String> validationIssues() =>"
         ),
     );
     assert_written(
         &shelfmark,
         &format!(
             "List<String> _bounds() => [ for (final held in value) ..._heldBound(held), ]; \
-             {HELD_BOUND} @override List<String> validate() =>"
+             {HELD_BOUND} @override List<String> validationIssues() =>"
         ),
     );
     assert!(
         shelfmark.ends_with(
-            "@override dynamic toJson() => value; @override List<String> validate() => const []; }"
+            "@override dynamic toJson() => value; @override List<String> validationIssues() => const []; }"
         ),
         "got: {shelfmark}"
     );

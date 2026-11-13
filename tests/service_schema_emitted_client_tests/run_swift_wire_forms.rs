@@ -62,7 +62,7 @@ pub fn swift_value(held_by: &str, json: &str) -> String {
             let mut letters = text.chars();
             let first = letters.next().map(|letter| letter.to_ascii_lowercase());
             format!(
-                "ConveyedSlot.{}{}",
+                "ConveyedSlot(draft: ConveyedSlotDraft.{}{})",
                 first.unwrap_or_default(),
                 letters.as_str()
             )
@@ -73,14 +73,17 @@ pub fn swift_value(held_by: &str, json: &str) -> String {
 /// The model of `row` holding its value as it was handed.
 fn swift_handed(row: &WireFormRow) -> String {
     let value = swift_value(row.held_by, row.handed);
-    constructed(
+    let built = constructed(
         row.held_by,
         "NAME: ",
         &|key| format!("[{key}: true]"),
         &|listed| format!("[{listed}]"),
         &value,
         &value,
-    )
+    );
+    let held = row.held_by;
+    let arguments = built.strip_prefix(&format!("{held}(")).unwrap();
+    format!("{held}(draft: {held}Draft({arguments})")
 }
 
 /// Every value handed as the table's Swift column states, and every payload any client sends read

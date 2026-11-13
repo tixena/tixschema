@@ -79,7 +79,7 @@ fn a_struct_flattened_bare_writes_what_it_wrote() {
 fn a_flattened_option_of_an_enum_writes_a_unit_variant_as_its_name_over_null() {
     assert_written(
         &easing_swift::swift_definition(),
-        "if let held = self.thimble { switch held { case .calm: var entry = \
+        "if let held = self.thimble { switch held.draft { case .calm: var entry = \
          encoder.container(keyedBy: SwiftSchemaAnyKey.self); try entry.encodeNil(forKey: \
          SwiftSchemaAnyKey(stringValue: \"Calm\")!); default: try held.encode(to: encoder) } }",
     );
@@ -107,7 +107,7 @@ fn a_flattened_option_reads_nil_where_none_of_its_types_keys_is_there() {
     let flaking = flaking_swift::swift_definition();
     assert_written(
         &flaking,
-        "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
          [String]) throws { do { if try decoder.container(keyedBy: \
          SwiftSchemaAnyKey.self).allKeys.contains(where: { \
          [\"label\"].contains($0.stringValue) }) { self.tabling = try \
@@ -140,7 +140,7 @@ fn a_flattened_option_reads_nil_where_none_of_its_types_keys_is_there() {
     );
     assert_written(
         &painter_swift::swift_definition(),
-        "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
          [String]) throws { do { if try decoder.container(keyedBy: \
          SwiftSchemaAnyKey.self).allKeys.contains(where: { [\"label\", \
          \"turns\"].contains($0.stringValue) }) { self.gasket = try \
@@ -156,7 +156,7 @@ fn a_flattened_option_reads_nil_where_none_of_its_types_keys_is_there() {
 fn a_flattened_option_reads_a_walked_model_where_one_of_its_keys_is_there() {
     assert_written(
         &kinking_swift::swift_definition(),
-        "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
          [String]) throws { do { if try decoder.container(keyedBy: \
          SwiftSchemaAnyKey.self).allKeys.contains(where: { \
          [\"label\"].contains($0.stringValue) }) { self.plaiting = try \
@@ -177,14 +177,14 @@ fn a_flattened_option_reads_a_walked_model_where_one_of_its_keys_is_there() {
 fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_throws() {
     assert_written(
         &fidding_swift::swift_definition(),
-        "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
          [String]) throws { do { self.crowning = try Crowning(swiftSchemaUnjudged: decoder, \
          swiftSchemaWithout: taken) } catch { self.crowning = nil } }",
     );
     let ratline = ratline_swift::swift_definition();
     assert_written(
         &ratline,
-        "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
          throws { do { self.nippering = try Nippering(swiftSchemaUnjudged: decoder) } catch { \
          self.nippering = nil } }",
     );
@@ -264,10 +264,10 @@ fn a_struct_flattened_bare_reads_the_whole_object() {
         "self.note = try container.decode(String.self, forKey: .note); do { self.tabling = \
          try Tabling(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"note\"]) \
          } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, \
-         at: decoder.codingPath) } }; public init(swiftSchemaUnjudged decoder: Decoder) \
+         at: decoder.codingPath) } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) \
          throws { try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; \
          public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: \
-         decoder); let violations = validate(); if !violations.isEmpty { throw \
+         decoder); let violations = validationIssues(); if !violations.isEmpty { throw \
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
          debugDescription: violations.joined(separator: \"; \"))) } }; public func \
          encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: \

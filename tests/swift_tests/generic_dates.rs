@@ -275,7 +275,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
 #[test]
 fn a_type_that_declares_no_parameter_keeps_the_formatter_it_stores() {
     let swift = sighting_swift::swift_definition();
-    holds(&swift, &[helpers("Sighting", STORED)]);
+    holds(&swift, &[helpers("SightingDraft", STORED)]);
     assert!(!swift.contains("static var"), "got: {swift}");
 }
 
@@ -284,8 +284,8 @@ fn a_struct_that_declares_a_parameter_computes_its_formatter() {
     holds(
         &voyage_swift::swift_definition(),
         &[
-            "public struct Voyage<Stowed: Codable & Sendable>: Codable, Sendable { ".to_owned(),
-            helpers("Voyage", COMPUTED),
+            "public struct VoyageDraft<Stowed: Codable & Sendable>: Codable, Sendable { ".to_owned(),
+            helpers("VoyageDraft", COMPUTED),
             "self.atMillis = try container.decode(SwiftSchemaFit<Int64>.self, forKey: .atMillis).value; ".to_owned(),
             "private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String { \
              swiftSchemaIso8601Formatter.string(from: date)\

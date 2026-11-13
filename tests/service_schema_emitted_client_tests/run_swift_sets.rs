@@ -64,7 +64,7 @@ fn a_set_that_repeats_an_item_is_refused_by_the_swift_read() {
         wallet_swift::swift_definition(),
         HARNESS.to_owned(),
         calls.join("\n"),
-        "print(Ticket(tags: [\"a\", \"a\"]).validate())".to_owned(),
+        "print(TicketDraft(tags: [\"a\", \"a\"]).validationIssues())".to_owned(),
     ]
     .join("\n\n");
     let Some(run) = judged(

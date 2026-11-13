@@ -200,7 +200,7 @@ void main() async {
   }
   final rung = <Object?>[];
   for (final text in tolls) {
-    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBell(weight: 3))));
+    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBellDraft(weight: 3).validate())));
   }
   print(jsonEncode(<String, dynamic>{'served': served, 'struck': strikes, 'read': read, 'tolled': rung}));
 }
@@ -328,7 +328,7 @@ for text in replies {
 }
 var rung: [String] = []
 for text in tolls {
-  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(CarillonBell(weight: 3))))
+  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(try CarillonBellDraft(weight: 3).validate())))
 }
 print("{\"read\":[" + read.joined(separator: ",") + "],\"tolled\":[" + rung.joined(separator: ",") + "]}")
 "#;

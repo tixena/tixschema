@@ -29,6 +29,11 @@ fn emitted(item: &Item) -> String {
 
 /// The Swift source the emitter answers for `item`, written with `minLength` where one is given.
 fn emitted_with(item: &Item, min_length: Option<usize>) -> String {
+    emitted_as(item, min_length, true)
+}
+
+/// [`emitted_with`] for a type that has a draft where `undrafted` is false.
+fn emitted_as(item: &Item, min_length: Option<usize>, undrafted: bool) -> String {
     swift_schema_dispatch(
         item,
         &SwiftTypeArgs {
@@ -41,6 +46,7 @@ fn emitted_with(item: &Item, min_length: Option<usize>) -> String {
             pattern: None,
             preprocess: &[],
             type_name: "Probe",
+            undrafted,
         },
     )
     .to_string()
@@ -284,18 +290,18 @@ fn the_readme_shows_the_reads_of_the_documents_parcel() {
             pub fragile_item_codes: Vec<String>,
         }
     };
-    let written = emitted(&parcel);
+    let written = emitted_as(&parcel, None, false);
     let readme = include_str!("../../../../docs/guide/swift.md");
     for shown in [
         "public init(label: String, itemCodeList: [String], fragileItemCodes: [String])",
-        "public init(swiftSchemaUnjudged decoder: Decoder) throws {",
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {",
         "let container = try decoder.container(keyedBy: CodingKeys.self)",
         "self.label = try container.decode(String.self, forKey: .label)",
         "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)",
         "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes)",
         "public init(from decoder: Decoder) throws {",
         "try self.init(swiftSchemaUnjudged: decoder)",
-        "let violations = validate()",
+        "let violations = validationIssues()",
         "if !violations.isEmpty {",
         concat!(
             "throw DecodingError.dataCorrupted(DecodingError.Context(",

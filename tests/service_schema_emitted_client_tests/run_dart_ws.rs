@@ -223,7 +223,7 @@ void main() async {
       shelve: (ctx, req) async {
         shelvedIds.add(req);
       },
-      stacks: (ctx, req) async => <Shelf>[Shelf(title: req.prefix)],
+      stacks: (ctx, req) async => <Shelf>[ShelfDraft(title: req.prefix).validate()],
       tally: (ctx, req) async {
         if (req.deep) throw ShelfError.missing;
         return 7;

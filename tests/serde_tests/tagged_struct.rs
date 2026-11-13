@@ -177,11 +177,11 @@ mod on_a_mobile_surface {
         );
         assert!(
             definition.contains(
-                "factory TaggedMobile.fromJsonUnjudged(Map<String, dynamic> json) { if \
+                "factory TaggedMobileDraft.fromJson(Map<String, dynamic> json) { if \
                  (!json.containsKey('kind')) throw FormatException('missing field `kind`'); if \
                  (json['kind'] != 'TaggedMobile') throw FormatException('expected tag \
                  \"TaggedMobile\", found ' + jsonEncode(json['kind'])); return \
-                 TaggedMobile(name: _readAt(json, 'name', () => json['name'] as String),); }"
+                 TaggedMobileDraft(name: _readAt(json, 'name', () => json['name'] as String),); }"
             ),
             "got: {definition}"
         );
@@ -194,7 +194,7 @@ mod on_a_mobile_surface {
         for written in [
             "private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" };",
             "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); try tagged.encode(\"TaggedMobile\", forKey: .swiftSchemaTag);",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws { let tagged = try \
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { let tagged = try \
              decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); guard \
              tagged.contains(.swiftSchemaTag) else { throw \
              DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \

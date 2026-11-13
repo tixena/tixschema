@@ -80,21 +80,21 @@ fn a_map_is_keyed_by_the_brand_and_by_the_type_an_alias_names() {
     holds(
         &taskforce_swift::swift_definition(),
         &[
-            "public let berthing: [Berthing: UInt8]; ",
-            "public let burgee: [Burgee: UInt8]; ",
-            "public let callsign: [Callsign: UInt8]; ",
-            "public let greeting: [String: UInt8]; ",
-            "public let hailer: [Callsign: UInt8]; ",
-            "public let hull: [UInt32: UInt8]; ",
-            "public let lanyard: [Lanyard: UInt8]; ",
-            "public let signal: [Signal: UInt8]; ",
+            "public var berthing: [Berthing: UInt8]; ",
+            "public var burgee: [Burgee: UInt8]; ",
+            "public var callsign: [Callsign: UInt8]; ",
+            "public var greeting: [String: UInt8]; ",
+            "public var hailer: [Callsign: UInt8]; ",
+            "public var hull: [UInt32: UInt8]; ",
+            "public var lanyard: [Lanyard: UInt8]; ",
+            "public var signal: [Signal: UInt8]; ",
         ],
     );
     holds(
         &stowed_taskforce_swift::swift_definition(),
         &[
-            "public let hull: [UInt32: Stowed]; ",
-            "public let callsign: [Callsign: Stowed]; ",
+            "public var hull: [UInt32: Stowed]; ",
+            "public var callsign: [Callsign: Stowed]; ",
         ],
     );
     assert!(!taskforce_swift::swift_definition().contains("HullType"));
@@ -132,7 +132,7 @@ fn a_key_an_alias_names_is_read_as_the_type_it_names() {
             "public struct TaskforceHullKeyedMap: Codable, Sendable { \
              public var storage: [UInt32: UInt8]; ",
             "guard let key = UInt32(number) else {",
-            "public let greeting: [String: UInt8]; ",
+            "public var greeting: [String: UInt8]; ",
         ],
     );
     assert!(!swift.contains("TaskforceGreetingKeyedMap"), "{swift}");
@@ -236,7 +236,7 @@ fn a_wrapper_judges_the_brand_a_brand_key_holds_and_the_walk_the_key_itself() {
              key.value.validate(); if !violations.isEmpty { throw \
              DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \
              violations.joined(separator: \"; \")) } }; result[key] = ",
-            "errors += key.validate().map { Topmast.swiftSchemaUnder(\"gaffs.\\(key.value.value)\", $0) }",
+            "errors += key.validate().map { TopmastDraft.swiftSchemaUnder(\"gaffs.\\(key.value.value)\", $0) }",
         ],
     );
     assert!(

@@ -25,7 +25,7 @@ func asGiven(_ payload: Any) -> Any {
   payload
 }
 
-func aSpan(_ value: Span) -> [String] {
+func aSpan(_ value: SpanDraft) -> [String] {
   switch value {
   case .hours(let held) where held.hours == 0: return ["'hours': a span is not empty"]
   case .days(let held) where held.days == "9": return ["'days': a span is under nine days"]

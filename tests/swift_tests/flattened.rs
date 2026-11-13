@@ -21,10 +21,16 @@ use super::flattened_models::{
 };
 
 /// The read a holder that takes no keys the types around it took reads with.
-const ALONE: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws";
+const ALONE: &str = "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws";
 
 /// The read a holder takes the keys the types around it took with.
-const TAKING: &str =
+const TAKING: &str = "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
+
+/// The read a struct written for a variant's members reads alone with.
+const PAYLOAD_ALONE: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws";
+
+/// The read a struct written for a variant's members takes the keys the types around it took with.
+const PAYLOAD_TAKING: &str =
     "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
 
 /// The statements that read `Careen` unjudged from the entry found, a unit variant over `null`
@@ -126,7 +132,7 @@ fn a_map_alone_is_read_without_the_keys_the_types_around_its_holder_took() {
             "try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry).value",
         ),
     );
-    assert_written(&clewing, &format!("{TAKING} {{ do {{ let keyed = "));
+    assert_written(&clewing, &format!("{PAYLOAD_TAKING} {{ do {{ let keyed = "));
     assert_written(
         &clewing,
         "public func encode(to encoder: Encoder) throws { try self.rest.encode(to: encoder) }",
@@ -310,6 +316,8 @@ fn a_member_after_a_flattened_struct_is_read_without_the_keys_the_struct_took() 
     assert_written(
         &gripping,
         &closed(
+            TAKING,
+            ALONE,
             &["label", "mark", "note"],
             &format!(
                 "let container = try decoder.container(keyedBy: CodingKeys.self); {flag}{}; {note}",
@@ -372,6 +380,8 @@ fn a_struct_of_flattened_structs_alone_declares_no_container_of_its_keys() {
     assert_written(
         &seaming,
         &closed(
+            TAKING,
+            ALONE,
             &["label", "mark"],
             &format!(
                 "{}; {}",
@@ -448,6 +458,8 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
     assert_written(
         &pointing,
         &closed(
+            PAYLOAD_TAKING,
+            PAYLOAD_ALONE,
             &["mark"],
             &flat(
                 "self.notch = try Notch(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)",
@@ -457,7 +469,7 @@ fn what_a_variant_under_a_tag_alone_holds_is_read_from_the_whole_object() {
     assert_written(
         &pointing,
         &format!(
-            "{TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
+            "{PAYLOAD_TAKING} {{ let container = try decoder.container(keyedBy: CodingKeys.self); {}",
             pennant("flag")
         ),
     );
@@ -531,7 +543,7 @@ fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
 /// variant as an entry of its name over `null`.
 fn careen_written(held: &str) -> String {
     format!(
-        "switch {held} {{ case .calm: var entry = encoder.container(keyedBy: \
+        "switch {held}.draft {{ case .calm: var entry = encoder.container(keyedBy: \
          SwiftSchemaAnyKey.self); try entry.encodeNil(forKey: SwiftSchemaAnyKey(stringValue: \
          \"Calm\")!); default: try {held}.encode(to: encoder) }}"
     )
@@ -587,10 +599,10 @@ fn a_flattened_enum_writes_its_unit_variant_as_its_name_over_null() {
 
 /// The two reads of a struct that refuses a key beside `keys`: the one that takes the keys the types
 /// around it took and reads `body`, and the one alone that refuses any other key first.
-fn closed(keys: &[&str], body: &str) -> String {
+fn closed(taking: &str, alone: &str, keys: &[&str], body: &str) -> String {
     let listed: Vec<String> = keys.iter().map(|key| format!("\"{key}\"")).collect();
     format!(
-        "{TAKING} {{ {body} }}; {ALONE} {{ if !(decoder.codingPath.isEmpty && \
+        "{taking} {{ {body} }}; {alone} {{ if !(decoder.codingPath.isEmpty && \
          decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) {{ for \
          unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
          ![{}].contains(unknown.stringValue) {{ throw \

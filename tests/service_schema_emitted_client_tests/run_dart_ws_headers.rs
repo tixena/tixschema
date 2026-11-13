@@ -146,8 +146,11 @@ void main() async {
         if (label == 'refuse') {
           throw (StampErrorRefused(), trace == null ? null : 'refused at $trace');
         }
+        if (label == 'refuse-validated') {
+          throw (StampErrorRefused().validate(), trace == null ? null : 'refused at $trace');
+        }
         return (
-          StampReceipt(label: label, tenant: tenant),
+          StampReceiptDraft(label: label, tenant: tenant).validate(),
           'etag-$tenant',
           trace == null ? null : trace + 1,
         );
@@ -480,4 +483,52 @@ void main() async {
         written["probe"],
         serde_json::from_str::<Value>(&ping_frame()).unwrap()
     );
+}
+
+#[test]
+fn a_thrown_draft_of_the_declared_error_is_answered_as_the_valid_error_is() {
+    let request = |id: &str, label: &str| {
+        json!({
+            "kind": "request",
+            "id": id,
+            "service": "StampClientService",
+            "operation": "stamp",
+            "payload": label,
+            "headers": { "x-tenant": "acme", "x-trace": 3_u8 },
+        })
+        .to_string()
+    };
+    let frames = vec![request("1", "refuse"), request("2", "refuse-validated")];
+    let Some(answered) = run(
+        "dart-ws-headers-draft",
+        &format!(
+            "const FRAMES = {};\nconst EXPECTED_REPLIES = 2;",
+            Value::from(frames)
+        ),
+        &ANSWERS_FRAMES_DRIVER.replace("faults.length == 2", "faults.isEmpty"),
+    ) else {
+        return;
+    };
+    let written: Vec<Value> = answered["written"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|reply| parsed(reply.as_str().unwrap()))
+        .collect();
+    let by_id = |id: &str| {
+        let mut reply = written
+            .iter()
+            .find(|reply| reply["id"] == id)
+            .unwrap()
+            .clone();
+        reply.as_object_mut().unwrap().remove("id");
+        reply
+    };
+    assert_eq!(by_id("1"), by_id("2"));
+    assert_eq!(
+        by_id("1")["ok"],
+        false,
+        "the declared error is answered. Got: {answered}"
+    );
+    assert_eq!(answered["faults"], json!([]));
 }
