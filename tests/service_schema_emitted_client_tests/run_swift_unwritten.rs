@@ -145,7 +145,7 @@ fn variants_main() -> String {
             format!(
                 "let read{name} = try! JSONDecoder().decode({name}.self, from: \
                  Data(#\"{payload}\"#.utf8))\n\
-                 guard case .furled(let furled{name}) = read{name} else {{ fatalError(\"{name} \
+                 guard case .furled(let furled{name}) = read{name}.draft else {{ fatalError(\"{name} \
                  read another variant\") }}\n\
                  print(\"{name}: read \\(furled{name}.spare.map {{ \"\\($0)\" }} ?? \"nil\"), \
                  written \\(written(read{name}))\")"

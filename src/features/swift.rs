@@ -133,6 +133,19 @@ struct OwnRead<'own> {
     around: bool,
     closed: Option<Vec<String>>,
     corrects: &'own [FunctionName],
+    /// The valid type, at its parameters, where the struct is the draft of one.
+    valid: Option<&'own str>,
+}
+
+/// What a valid struct declares beyond what every one does.
+#[derive(Default)]
+struct ValidForm<'form> {
+    /// The conformances written after `Codable, Sendable`, each led by a comma.
+    conformances: &'form str,
+    /// The type of the value of a struct of one slot, which a map keyed by it builds it from.
+    keyed: Option<&'form str>,
+    /// Whether the draft is a plain enum, whose raw value a map keyed by the type builds it from.
+    raw: bool,
 }
 
 /// Whether a member is a stored property of its struct or sits in a box.
@@ -193,11 +206,15 @@ pub struct SwiftTypeArgs<'args> {
     pub preprocess: &'args [FunctionName],
     /// The Rust name of the item, which a member written `Self` is named as.
     pub type_name: &'args str,
+    /// Whether the item is a type a service writes for itself, which has no draft.
+    pub undrafted: bool,
 }
 
 /// What every tagging of an enum is written from.
 struct EnumShape<'item> {
     args: &'item SwiftTypeArgs<'item>,
+    /// The name the enum is declared under: its draft's where it has one.
+    declared: &'item str,
     /// The defaults of the members of the enum's variants.
     defaults: &'item SerdeDefaults,
     export_name: &'item str,
@@ -206,6 +223,8 @@ struct EnumShape<'item> {
     rust_ident: &'item str,
     tag_attrs: &'item EnumTagAttrs,
     type_parameters: &'item [String],
+    /// The valid type, at its parameters, where the enum is the draft of one.
+    valid: Option<&'item str>,
 }
 
 /// What a struct of one `value` wraps.
@@ -556,6 +575,8 @@ thread_local! {
 #[derive(Clone)]
 struct UnitEntry {
     case_name: String,
+    /// Whether the enum is the draft of a valid type, which a value of the enum is read through.
+    drafted: bool,
     name: String,
 }
 
@@ -590,7 +611,11 @@ fn unit_entries(item_enum: &ItemEnum, tag_attrs: &EnumTagAttrs) -> Vec<UnitEntry
         .filter(|variant| variant_wire_kind(variant) == VariantKind::Unit)
         .map(|variant| {
             let (case_name, name) = variant_names(variant, rule);
-            UnitEntry { case_name, name }
+            UnitEntry {
+                case_name,
+                drafted: false,
+                name,
+            }
         })
         .collect()
 }
@@ -890,11 +915,13 @@ pub fn swift_quoted(name: &str) -> String {
     format!("\"{}\"", swift_literal_text(name))
 }
 
-/// `name` as a property of an emitted struct: [`swift_member`], and a property named `validate`
-/// moved off the method every emitted type has. The key on the wire stays the one serde writes.
+/// `name` as a property of an emitted struct: [`swift_member`], and a property named `validate` or
+/// `validationIssues` moved off the methods an emitted type has, and one named `draft` off the
+/// valid type's own property. The key on the wire stays the one
+/// serde writes.
 fn swift_property(name: &str) -> String {
-    if name == "validate" {
-        "validate_".to_owned()
+    if matches!(name, "validate" | "validationIssues" | "draft") {
+        format!("{name}_")
     } else {
         swift_member(name)
     }
@@ -3080,7 +3107,12 @@ fn unit_entries_write(entries: &[UnitEntry], held: &str, written: &str) -> Strin
         .unwrap();
         cases
     });
-    format!("switch {held} {{ {cases}default: {whole} }}")
+    let through = if entries.iter().any(|entry| entry.drafted) {
+        ".draft"
+    } else {
+        ""
+    };
+    format!("switch {held}{through} {{ {cases}default: {whole} }}")
 }
 
 /// The per-struct static helpers a `DateTime` field's decode/encode calls into — a formatter with
@@ -3312,6 +3344,35 @@ fn swift_coding_keys(fields: &[SwiftField], extra: &[(String, String)]) -> Strin
     format!("enum CodingKeys: String, CodingKey {{ {cases} }};")
 }
 
+/// The properties of a struct over `fields`: `var` on a draft, which code changes, and `let` on any
+/// other struct, the member that holds an `Option` of its own type under `owner`'s wrapper.
+fn member_properties(fields: &[SwiftField], owner: &str, draft: bool) -> String {
+    fields.iter().fold(String::new(), |mut acc, field| {
+        let (kind, mutable) = if draft {
+            ("var", "var")
+        } else {
+            ("let", "private(set) var")
+        };
+        if field.held == Storage::Boxed {
+            write!(
+                acc,
+                "@{} public {mutable} {}: {}; ",
+                indirection_name(owner),
+                field.swift_name,
+                field.real_type
+            )
+        } else {
+            write!(
+                acc,
+                "public {kind} {}: {}; ",
+                field.swift_name, field.real_type
+            )
+        }
+        .unwrap();
+        acc
+    })
+}
+
 /// The body of a set of [`SwiftField`]s: properties, `CodingKeys`, the memberwise initializer,
 /// the reads, `encode(to:)` only where synthesis cannot reach, then `validate`, the method every
 /// emitted type has. `extra_coding_keys` lists cases with no matching field (an
@@ -3329,26 +3390,9 @@ fn struct_body_content(
         around,
         closed,
         corrects,
+        valid,
     } = read;
-    let props = fields.iter().fold(String::new(), |mut acc, field| {
-        if field.held == Storage::Boxed {
-            write!(
-                acc,
-                "@{} public private(set) var {}: {}; ",
-                indirection_name(owner),
-                field.swift_name,
-                field.real_type
-            )
-        } else {
-            write!(
-                acc,
-                "public let {}: {}; ",
-                field.swift_name, field.real_type
-            )
-        }
-        .unwrap();
-        acc
-    });
+    let props = member_properties(fields, owner, valid.is_some());
     let coding_keys = swift_coding_keys(fields, extra_coding_keys);
     // A struct's own tag has no property to synthesize a codec from, so the tag is encoded and
     // read under a key set of its own.
@@ -3379,6 +3423,7 @@ fn struct_body_content(
         &format!("{tag_held}{keyed}{aliased}{members}"),
         &preprocess::Written {
             beside: "",
+            draft: valid.is_some(),
             named: owner,
             own: corrects,
             sealed: false,
@@ -3778,14 +3823,11 @@ fn struct_declaration(
     rules: &[String],
     read: OwnRead<'_>,
 ) -> String {
-    let content = struct_body_content(
-        fields,
-        &[],
-        own_tag,
-        &validate::method(rules),
-        export_name,
-        read,
+    let validate = read.valid.map_or_else(
+        || validate::method(rules),
+        |valid| validate::draft_method(rules, valid),
     );
+    let content = struct_body_content(fields, &[], own_tag, &validate, export_name, read);
     let shapes: Vec<&SwiftFieldShape> = fields.iter().map(|field| &field.shape).collect();
     let mut helpers = leaf_helpers_for(export_name, generic_params, &shapes, None);
     if fields.iter().any(|field| field.held == Storage::Boxed) {
@@ -3796,6 +3838,53 @@ fn struct_declaration(
     )
 }
 
+/// The Swift tokens of a branded newtype: the sealed struct of its one value, under the bounds and
+/// the checks it names.
+fn brand_swift_tokens(
+    item_struct: &ItemStruct,
+    held: &Field,
+    args: &SwiftTypeArgs<'_>,
+    export_name: &str,
+) -> TokenStream {
+    let type_parameters = type_parameters_in_scope(&item_struct.generics);
+    let rust_ident = item_struct.ident.to_string();
+    let value_field = brand_value_field(held, &type_parameters, args);
+    let bounds = validate::brand_rules(export_name, &value_field, args);
+    let mut rules = validate::own_repeat_rules(
+        export_name,
+        &validate::Checked {
+            real_type: None,
+            access: "value".to_owned(),
+            def: &value_field,
+            step: None,
+        },
+    );
+    rules.extend(bounds.iter().cloned());
+    rules.extend(validate::own_checks(args.check));
+    let bare = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+        && !value_field.is_list()
+    {
+        type_parameters.iter().position(|named| named == parameter)
+    } else {
+        None
+    };
+    let tokens = value_wrapper_tokens(
+        &item_struct.ident,
+        &item_struct.generics,
+        args,
+        &value_field,
+        &Wrapped::Brand {
+            bounds,
+            length_member: validate::brand_length_member(&value_field),
+            text_member: validate::brand_text_member(&value_field),
+        },
+        &rules,
+        hashes_as_key(&item_struct.attrs, &value_field),
+    );
+    validate::note_bare(&rust_ident, bare);
+    tokens
+}
+
 /// The Swift tokens a named-field struct earns: a struct, plus a `typealias` under its own Rust
 /// ident when `name = "..."` moved its published name elsewhere.
 fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> TokenStream {
@@ -3803,41 +3892,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     let rust_ident = item_struct.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     if let Some(held) = brand_field(item_struct) {
-        let value_field = brand_value_field(held, &type_parameters, args);
-        let bounds = validate::brand_rules(&export_name, &value_field, args);
-        let mut rules = validate::own_repeat_rules(
-            &export_name,
-            &validate::Checked {
-                real_type: None,
-                access: "value".to_owned(),
-                def: &value_field,
-                step: None,
-            },
-        );
-        rules.extend(bounds.iter().cloned());
-        rules.extend(validate::own_checks(args.check));
-        let bare = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
-            && !value_field.is_list()
-        {
-            type_parameters.iter().position(|named| named == parameter)
-        } else {
-            None
-        };
-        let tokens = value_wrapper_tokens(
-            &item_struct.ident,
-            &item_struct.generics,
-            args,
-            &value_field,
-            &Wrapped::Brand {
-                bounds,
-                length_member: validate::brand_length_member(&value_field),
-                text_member: validate::brand_text_member(&value_field),
-            },
-            &rules,
-            hashes_as_key(&item_struct.attrs, &value_field),
-        );
-        validate::note_bare(&rust_ident, bare);
-        return tokens;
+        return brand_swift_tokens(item_struct, held, args, &export_name);
     }
     if matches!(item_struct.fields, Fields::Unnamed(_)) {
         return tuple_struct_swift_tokens(item_struct, args);
@@ -3864,13 +3919,16 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         &|field| defaults.at(None, field),
     );
     let own_tag = struct_tag(item_struct);
-    let mut rules = field_rules(&export_name, &fields);
+    let valid = held_at(&export_name, &generic_params);
+    let drafted = !args.undrafted;
+    let declared = declared_name(&export_name, args.undrafted);
+    let mut rules = field_rules(&declared, &fields);
     rules.extend(validate::own_checks(args.check));
     validate::note(&rust_ident, None, !rules.is_empty());
     let closed = closed_keys(&fields, own_tag.as_ref(), args.preprocess);
     preprocess::note_closed(&rust_ident, closed.as_deref());
-    let body = struct_declaration(
-        &export_name,
+    let declaration = struct_declaration(
+        &declared,
         &generic_params,
         &fields,
         own_tag.as_ref(),
@@ -3879,9 +3937,20 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
             around: false,
             closed,
             corrects: args.preprocess,
+            valid: drafted.then_some(valid.as_str()),
         },
     );
-    preprocess::note(&rust_ident, read::takes_keys(&body));
+    preprocess::note(&rust_ident, read::takes_keys(&declaration));
+    let body = if drafted {
+        with_valid_struct(
+            &declaration,
+            &export_name,
+            &generic_params,
+            &ValidForm::default(),
+        )
+    } else {
+        declaration
+    };
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let swift_source = if aux.is_empty() {
         format!("{body}{typealias}")
@@ -3897,6 +3966,75 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     )
 }
 
+/// The valid struct `export_name` that wraps the draft written as `body`: it is built only through
+/// the draft's `validate()` and the read, reads each member through the draft, and writes what the
+/// draft writes. A holder in the generated file reads and judges it through the forwards.
+fn with_valid_struct(
+    body: &str,
+    export_name: &str,
+    generic_params: &str,
+    form: &ValidForm<'_>,
+) -> String {
+    let draft = held_at(&format!("{export_name}Draft"), generic_params);
+    let conformances = form.conformances;
+    let built_from = if form.raw {
+        format!(
+            "fileprivate init?(rawValue: String) {{ guard let draft = {draft}(rawValue: rawValue) \
+             else {{ return nil }}; self.draft = draft }}; "
+        )
+    } else {
+        form.keyed.map_or_else(String::new, |value| {
+            format!("fileprivate init(value: {value}) {{ draft = {draft}(value: value) }}; ")
+        })
+    };
+    let taking = if read::takes_keys(body) {
+        format!(
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+             [String]) throws {{ draft = try {draft}(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken) }}; "
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "{body}\n\n@dynamicMemberLookup public struct {export_name}{generic_params}: Codable, Sendable{conformances} {{ \
+         public let draft: {draft}; \
+         fileprivate init(draft: {draft}) {{ self.draft = draft }}; {built_from}\
+         public subscript<SwiftSchemaHeld>(dynamicMember path: KeyPath<{draft}, SwiftSchemaHeld>) -> SwiftSchemaHeld {{ \
+         draft[keyPath: path] }}; \
+         public init(from decoder: Decoder) throws {{ draft = try {draft}(from: decoder) }}; \
+         fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
+         draft = try {draft}(swiftSchemaUnjudged: decoder) }}; {taking}\
+         public func encode(to encoder: Encoder) throws {{ try draft.encode(to: encoder) }}; \
+         fileprivate func validate() -> [String] {{ draft.validationIssues() }}; \
+         fileprivate func swiftSchemaValidateBound() -> [String] {{ \
+         draft.swiftSchemaValidateBound() }} }};"
+    )
+}
+
+/// The valid struct a struct of one `value` over the draft written as `body` has: `Hashable`
+/// where its draft is, and built from a value where a map keyed by a struct of one slot asks.
+fn wrapper_form<'form>(
+    wrapped: &Wrapped,
+    hashable: bool,
+    real_type: &'form str,
+) -> ValidForm<'form> {
+    ValidForm {
+        conformances: if hashable { ", Hashable" } else { "" },
+        keyed: matches!(wrapped, Wrapped::Slot).then_some(real_type),
+        raw: false,
+    }
+}
+
+/// The name a model type is declared under: its draft's, unless a service wrote the type.
+fn declared_name(export_name: &str, undrafted: bool) -> String {
+    if undrafted {
+        export_name.to_owned()
+    } else {
+        format!("{export_name}Draft")
+    }
+}
+
 /// The `FieldDef` of the field a brand is the value of, its type parameters already erased.
 fn brand_value_field(
     held: &Field,
@@ -3910,7 +4048,12 @@ fn brand_value_field(
 
 /// The `validate()` of the struct of one `value` named `rust_ident`, which records what its
 /// checks and bounds are for the types written below.
-fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> String {
+fn wrapper_validate(
+    rust_ident: &str,
+    wrapped: &Wrapped,
+    rules: &[String],
+    valid: Option<&str>,
+) -> String {
     let mut validate = validate::rules_method(rules);
     match wrapped {
         Wrapped::Brand {
@@ -3939,7 +4082,11 @@ fn wrapper_validate(rust_ident: &str, wrapped: &Wrapped, rules: &[String]) -> St
         }
         Wrapped::Slot | Wrapped::Tuple => {
             validate::note(rust_ident, None, !rules.is_empty());
-            write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
+            if let Some(draft_of) = valid {
+                validate = validate::draft_method(rules, draft_of);
+            } else {
+                write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
+            }
         }
     }
     validate
@@ -3975,6 +4122,36 @@ fn note_brand_key(
     hashable
 }
 
+/// The Swift type the one value of a wrapper is held as, and how it is read and written, with the
+/// types written for it joining `aux`.
+fn wrapper_shaped(
+    wrapped: &Wrapped,
+    value_field: &FieldDef,
+    export_name: &str,
+    aux: &mut Vec<String>,
+) -> (String, Shaped) {
+    if matches!(wrapped, Wrapped::Slot) {
+        return slot_resolve(value_field, export_name, aux);
+    }
+    let (real_type, shape) = match (wrapped, &value_field.field_type) {
+        // The slots of a tuple struct are read from an array, an empty one where there are
+        // none, which is not the `null` of `()`.
+        (Wrapped::Tuple, FieldDefType::Tuple(slots)) => {
+            let shape = tuple_shape(slots, export_name, aux);
+            (shape.real_leaf.clone(), shape)
+        }
+        _ => swift_resolve(value_field, export_name, aux),
+    };
+    (
+        real_type,
+        Shaped {
+            def: value_field.clone(),
+            hint: export_name.to_owned(),
+            shape,
+        },
+    )
+}
+
 /// The Swift tokens for a value that carries no shape of its own on the wire beyond one wrapped
 /// value: a branded newtype, or a non-branded tuple struct. Both publish a struct with one
 /// `public let value`, read from a single value and written by the value's own `encode(to:)`.
@@ -3989,10 +4166,21 @@ fn value_wrapper_tokens(
     hashes: bool,
 ) -> TokenStream {
     let sealed = !matches!(wrapped, Wrapped::Slot | Wrapped::Tuple);
+    let drafted = !sealed && !args.undrafted;
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
     register_swift_name(&rust_ident, &export_name);
-    let validate = wrapper_validate(&rust_ident, wrapped, rules);
+    let declared = declared_name(&export_name, !drafted);
+    let valid_at = held_at(
+        &export_name,
+        &bounded_generic_params(&type_parameters_in_scope(generics)),
+    );
+    let validate = wrapper_validate(
+        &rust_ident,
+        wrapped,
+        rules,
+        drafted.then_some(valid_at.as_str()),
+    );
     if !matches!(wrapped, Wrapped::Tuple) {
         note_value_entries(&rust_ident, value_field);
     }
@@ -4001,31 +4189,11 @@ fn value_wrapper_tokens(
     let generic_params = bounded_generic_params(&type_parameters);
     let hashable = note_brand_key(&rust_ident, wrapped, value_field, &generic_params, hashes);
     let mut aux = Vec::new();
-    let (real_type, shaped) = if matches!(wrapped, Wrapped::Slot) {
-        slot_resolve(value_field, &export_name, &mut aux)
-    } else {
-        let (real_type, shape) = match (wrapped, &value_field.field_type) {
-            // The slots of a tuple struct are read from an array, an empty one where there are
-            // none, which is not the `null` of `()`.
-            (Wrapped::Tuple, FieldDefType::Tuple(slots)) => {
-                let shape = tuple_shape(slots, &export_name, &mut aux);
-                (shape.real_leaf.clone(), shape)
-            }
-            _ => swift_resolve(value_field, &export_name, &mut aux),
-        };
-        (
-            real_type,
-            Shaped {
-                def: value_field.clone(),
-                hint: export_name.clone(),
-                shape,
-            },
-        )
-    };
+    let (real_type, shaped) = wrapper_shaped(wrapped, value_field, &export_name, &mut aux);
 
     let decode = wrapper_decode(&shaped, &real_type, &type_parameters);
     let encode = wrapper_write(&shaped);
-    let helpers = leaf_helpers_for(&export_name, &generic_params, &[&shaped.shape], None);
+    let helpers = leaf_helpers_for(&declared, &generic_params, &[&shaped.shape], None);
     let mut twins = Vec::new();
     let own_read = if matches!(wrapped, Wrapped::Slot) {
         lone_slot_read(&shaped, &real_type, &export_name, &decode, &mut twins)
@@ -4035,7 +4203,8 @@ fn value_wrapper_tokens(
     let reads = read::both(
         &own_read,
         &preprocess::Written {
-            named: &export_name,
+            draft: drafted,
+            named: &declared,
             own: args.preprocess,
             sealed,
             twins,
@@ -4060,13 +4229,20 @@ fn value_wrapper_tokens(
         "Codable, Sendable"
     };
     let init = value_init(sealed, &real_type);
-    let body = format!(
-        "public struct {export_name}{generic_params}: {conformances} {{ \
-         public let value: {real_type}; \
+    let property = if drafted { "var" } else { "let" };
+    let declaration = format!(
+        "public struct {declared}{generic_params}: {conformances} {{ \
+         public {property} value: {real_type}; \
          {init}\
          {reads}\
          public func encode(to encoder: Encoder) throws {{ {encode} }}; {validate} }}; {helpers}"
     );
+    let body = if drafted {
+        let form = wrapper_form(wrapped, hashable, &real_type);
+        with_valid_struct(&declaration, &export_name, &generic_params, &form)
+    } else {
+        declaration
+    };
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let swift_source = if aux.is_empty() {
         format!("{body}{typealias}")
@@ -4230,11 +4406,12 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         field_def
     };
     let export_name = compute_item_export_name(&item_struct.ident.to_string(), args.name_override);
+    let owner = declared_name(&export_name, args.undrafted);
     if let Some(only) = unnamed.unnamed.first()
         && unnamed.unnamed.len() == 1
     {
         let value_field = slot_def(only);
-        let mut rules = validate::lone_slot_rules(&export_name, &value_field);
+        let mut rules = validate::lone_slot_rules(&owner, &value_field);
         rules.extend(validate::own_checks(args.check));
         return value_wrapper_tokens(
             &item_struct.ident,
@@ -4252,7 +4429,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         .filter(|slot| !parse_serde_key_omission(&slot.attrs).absent_from_wire())
         .map(slot_def)
         .collect();
-    let mut rules = validate::tuple_struct_rules(&export_name, &slots);
+    let mut rules = validate::tuple_struct_rules(&owner, &slots);
     rules.extend(validate::own_checks(args.check));
     let tuple_field = FieldDef {
         absent_from_wire: false,
@@ -4439,6 +4616,7 @@ fn named_payload(
             around: shape.tag_attrs.tag_alone(),
             closed: keys.clone(),
             corrects: &[],
+            valid: None,
         },
     );
     let takes_keys = read::takes_keys(&declared);
@@ -4447,7 +4625,7 @@ fn named_payload(
         .iter()
         .flat_map(|field| {
             validate::bound_alone(
-                export_name,
+                shape.declared,
                 &validate::Checked {
                     real_type: None,
                     access: format!("payload.{}", field.swift_name),
@@ -4466,7 +4644,7 @@ fn named_payload(
         keys,
         optional: false,
         parameters: named_parameters,
-        rules: validate::payload_rules(export_name, step, !members.is_empty()),
+        rules: validate::payload_rules(shape.declared, step, !members.is_empty()),
         takes_keys,
         walked: None,
         written: true,
@@ -4494,8 +4672,8 @@ fn slot_payload(
         def: &field_def,
         step: step.map(ToOwned::to_owned),
     };
-    let rules = validate::member_rules(export_name, &checked);
-    let bound = validate::bound_alone(export_name, &checked);
+    let rules = validate::member_rules(shape.declared, &checked);
+    let bound = validate::bound_alone(shape.declared, &checked);
     // Under a tag alone and under none, the slot is read from the decoder of the enum.
     let handed_keys = shape.tag_attrs.content.is_none()
         && (shape.tag_attrs.untagged || shape.tag_attrs.tag.is_some())
@@ -4557,13 +4735,13 @@ fn slots_payload(
     } else {
         &[]
     };
-    let checked = !validate::slot_rules(export_name, slots).is_empty();
+    let checked = !validate::slot_rules(shape.declared, slots).is_empty();
     let bound = slots
         .iter()
         .enumerate()
         .flat_map(|(position, slot)| {
             validate::bound_alone(
-                export_name,
+                shape.declared,
                 &validate::Checked {
                     real_type: None,
                     access: format!("payload.slot{position}"),
@@ -4589,7 +4767,7 @@ fn slots_payload(
         keys: None,
         optional: false,
         parameters: parameters_reached(&[&tuple_field]),
-        rules: validate::payload_rules(export_name, step, checked),
+        rules: validate::payload_rules(shape.declared, step, checked),
         takes_keys: false,
         walked: None,
         written: true,
@@ -4606,12 +4784,19 @@ fn variant_case(case_name: &str, payload_type: Option<&str>) -> String {
 
 /// The Swift tokens a plain (all-unit, string-wire) enum earns: a `String`-backed enum, the wire
 /// spelling carried directly as each case's raw value.
-fn plain_enum_swift_source(
-    item_enum: &ItemEnum,
-    rust_ident: &str,
-    export_name: &str,
-    args: &SwiftTypeArgs<'_>,
-) -> String {
+fn plain_enum_swift_source(shape: &EnumShape<'_>) -> String {
+    let &EnumShape {
+        args,
+        declared,
+        defaults: _defaults,
+        export_name,
+        generic_params: _generic_params,
+        item_enum,
+        rust_ident,
+        tag_attrs: _tag_attrs,
+        type_parameters: _type_parameters,
+        valid: _valid,
+    } = shape;
     let checks = args.check;
     let rule = container_rename_rule(&item_enum.attrs);
     let variants: Vec<(String, String, Vec<String>)> = item_enum
@@ -4630,7 +4815,11 @@ fn plain_enum_swift_source(
         });
     cases.push_str(&aliases::raw_value_init(&variants));
     validate::note(rust_ident, None, !checks.is_empty());
-    let validate = validate::method(&validate::own_checks(checks));
+    let rules = validate::own_checks(checks);
+    let validate = shape.valid.map_or_else(
+        || validate::method(&rules),
+        |valid| validate::draft_method(&rules, valid),
+    );
     let reads = read::both(
         &format!(
             "let raw: String; var entry: SwiftSchemaAnyKey? = nil; if let single = try? \
@@ -4640,7 +4829,7 @@ fn plain_enum_swift_source(
              container.allKeys.first else {{ throw \
              DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
              debugDescription: \"{EXPECTED_VALUE}\")) }}; entry = key; raw = key.stringValue }}; \
-             guard let read = {export_name}(rawValue: raw) else {{ throw \
+             guard let read = {declared}(rawValue: raw) else {{ throw \
              DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
              debugDescription: \"unknown variant `\\(raw)`\")) }}; if let entry, let container = try? \
              decoder.container(keyedBy: SwiftSchemaAnyKey.self), !((try? \
@@ -4649,14 +4838,14 @@ fn plain_enum_swift_source(
              [entry], debugDescription: \"invalid type: expected unit\")) }}; self = read"
         ),
         &preprocess::Written {
-            named: export_name,
+            draft: shape.valid.is_some(),
+            named: declared,
             own: args.preprocess,
             ..preprocess::Written::default()
         },
     );
-    let body = format!(
-        "public enum {export_name}: String, Codable, Sendable {{ {cases}{reads}{validate} }}"
-    );
+    let body =
+        format!("public enum {declared}: String, Codable, Sendable {{ {cases}{reads}{validate} }}");
     let typealias = ident_typealias(rust_ident, export_name, "");
     format!("{body}{typealias}")
 }
@@ -4668,14 +4857,16 @@ fn plain_enum_swift_source(
 /// not the document: `allKeys` keeps no order to pick by.
 fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
-        args,
+        args: _args,
         defaults: _defaults,
         export_name,
+        declared,
         generic_params,
         item_enum,
         rust_ident,
         tag_attrs,
         type_parameters: _type_parameters,
+        valid: _valid,
     } = shape;
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
     let mut cases = String::new();
@@ -4747,21 +4938,14 @@ fn external_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
              default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(key.stringValue)\")) }}",
             one_key_container("SwiftSchemaExternalCodingKey")
         ),
-        &preprocess::Written {
-            beside: "",
-            named: export_name,
-            own: args.preprocess,
-            sealed: false,
-            twins,
-            closed: None,
-        },
+        &enum_written(shape, "", twins, None),
     );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ switch self {{ {encode_arms} }} }};"
     );
     let validate = enum_validate(shape, &ruled);
     let body = format!(
-        "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {key_type} {reads}{encode_method} {validate} }}"
+        "public enum {declared}{generic_params}: Codable, Sendable {{ {cases} {key_type} {reads}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
@@ -4856,11 +5040,13 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         args,
         defaults: _defaults,
         export_name,
+        declared,
         generic_params,
         item_enum,
         rust_ident,
         tag_attrs,
         type_parameters: _type_parameters,
+        valid: _valid,
     } = shape;
     let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
     let variant_rule = resolve_rename_rule(tag_attrs.rename_all.as_deref());
@@ -4932,14 +5118,12 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
              let tag = try container.decode(String.self, forKey: .swiftSchemaTag); \
              switch tag {{ {decode_arms} default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) }}"
         ),
-        &preprocess::Written {
-            beside: "",
-            named: export_name,
-            own: args.preprocess,
-            sealed: false,
+        &enum_written(
+            shape,
+            "",
             twins,
-            closed: closed_when_strict(variant_keys, args.preprocess),
-        },
+            closed_when_strict(variant_keys, args.preprocess),
+        ),
     );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ \
@@ -4949,7 +5133,7 @@ fn internal_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     let key = read::any_key_written(&reads, &encode_method);
     let validate = enum_validate(shape, &ruled);
     let body = format!(
-        "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {tag_coding_key} {reads}{key}{encode_method} {validate} }}"
+        "public enum {declared}{generic_params}: Codable, Sendable {{ {cases} {tag_coding_key} {reads}{key}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
@@ -5019,11 +5203,13 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
         args,
         defaults: _defaults,
         export_name,
+        declared,
         generic_params,
         item_enum,
         rust_ident,
         tag_attrs,
         type_parameters: _type_parameters,
+        valid: _valid,
     } = shape;
     let tag_key = tag_attrs.tag.as_deref().unwrap_or("type");
     let content_key = tag_attrs.content.as_deref().unwrap_or("content");
@@ -5092,14 +5278,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
              let tag = try container.decode(String.self, forKey: .swiftSchemaTag); \
              switch tag {{ {decode_arms} default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) }}"
         ),
-        &preprocess::Written {
-            beside: "",
-            named: export_name,
-            own: args.preprocess,
-            sealed: false,
-            twins,
-            closed,
-        },
+        &enum_written(shape, "", twins, closed),
     );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ \
@@ -5108,7 +5287,7 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
     );
     let validate = enum_validate(shape, &ruled);
     let body = format!(
-        "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {tagging_keys} {reads}{encode_method} {validate} }}"
+        "public enum {declared}{generic_params}: Codable, Sendable {{ {cases} {tagging_keys} {reads}{encode_method} {validate} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
@@ -5122,11 +5301,13 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
         args,
         defaults: _defaults,
         export_name,
+        declared,
         generic_params,
         item_enum,
         rust_ident,
         tag_attrs,
         type_parameters: _type_parameters,
+        valid: _valid,
     } = shape;
     let mut cases = String::new();
     let mut choosers = String::new();
@@ -5163,13 +5344,13 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             };
             let returned = payload.read(&from, &|held| format!("return {held}"), &mut twins);
             let reader = format!("swiftSchemaRead{named}");
-            let read = tried_read(&returned, export_name, &reader, ty, &mut choosers);
+            let read = tried_read(&returned, declared, &reader, ty, &mut choosers);
             let tried = within_variant(&variant.ident, || {
-                checked_alone(payload.keys.as_ref(), &read, export_name, &mut choosers)
+                checked_alone(payload.keys.as_ref(), &read, declared, &mut choosers)
             });
             let check = bound_check(
                 &payload.bound,
-                (export_name, &named.to_string(), ty),
+                (declared, &named.to_string(), ty),
                 &mut choosers,
             );
             decode_attempts.push_str(&untagged_attempt(
@@ -5188,18 +5369,17 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             null_variant(&case_name, &mut decode_attempts, &mut encode_arms);
         }
     }
+    let valid = shape.valid.unwrap_or(export_name);
     let reads = read::both(
         &format!(
-            "{decode_attempts}throw DecodingError.typeMismatch({export_name}.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"no untagged member matched\"))"
+            "{decode_attempts}throw DecodingError.typeMismatch({valid}.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"no untagged member matched\"))"
         ),
-        &preprocess::Written {
-            beside: &choosers,
-            named: export_name,
-            own: args.preprocess,
-            sealed: false,
+        &enum_written(
+            shape,
+            &choosers,
             twins,
-            closed: closed_when_strict(variant_keys, args.preprocess),
-        },
+            closed_when_strict(variant_keys, args.preprocess),
+        ),
     );
     let encode_method = format!(
         "public func encode(to encoder: Encoder) throws {{ switch self {{ {encode_arms} }} }};"
@@ -5208,7 +5388,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
     let key_type = read::any_key(&choosers);
     let helpers = validate::helpers(&choosers, &validate);
     let body = format!(
-        "public enum {export_name}{generic_params}: Codable, Sendable {{ {cases} {key_type}{choosers}{reads}{encode_method} {validate}{helpers} }}"
+        "public enum {declared}{generic_params}: Codable, Sendable {{ {cases} {key_type}{choosers}{reads}{encode_method} {validate}{helpers} }}"
     );
     let typealias = ident_typealias(rust_ident, export_name, generic_params);
     format!("{body}{}{typealias}", enum_date_helpers(shape, &slots))
@@ -5264,11 +5444,31 @@ fn tried_read(
 /// date, of `slots`, after the separator that ends the enum. Empty where none does.
 fn enum_date_helpers(shape: &EnumShape<'_>, slots: &[SwiftFieldShape]) -> String {
     let shapes: Vec<&SwiftFieldShape> = slots.iter().collect();
-    let helpers = leaf_helpers_for(shape.export_name, shape.generic_params, &shapes, None);
+    let helpers = leaf_helpers_for(shape.declared, shape.generic_params, &shapes, None);
     if helpers.is_empty() {
         helpers
     } else {
         format!("; {helpers}")
+    }
+}
+
+/// What the reads of an enum under any tagging are written from: the draft's own name, the readers
+/// `beside` it, the types written for its members joined by `twins`, and the keys it refuses a key
+/// beside.
+const fn enum_written<'shape>(
+    shape: &'shape EnumShape<'shape>,
+    beside: &'shape str,
+    twins: Vec<String>,
+    closed: Option<Vec<String>>,
+) -> preprocess::Written<'shape> {
+    preprocess::Written {
+        beside,
+        closed,
+        draft: shape.valid.is_some(),
+        named: shape.declared,
+        own: shape.args.preprocess,
+        sealed: false,
+        twins,
     }
 }
 
@@ -5277,7 +5477,10 @@ fn enum_validate(shape: &EnumShape<'_>, variants: &[(String, Vec<String>)]) -> S
     let mut rules: Vec<String> = validate::held_case(variants).into_iter().collect();
     rules.extend(validate::own_checks(shape.args.check));
     validate::note(shape.rust_ident, None, !rules.is_empty());
-    validate::method(&rules)
+    shape.valid.map_or_else(
+        || validate::method(&rules),
+        |valid| validate::draft_method(&rules, valid),
+    )
 }
 
 /// The Swift tokens an enum earns: a `String`-backed enum for an all-unit, untagged-by-default
@@ -5296,8 +5499,12 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
     let generic_params = swift_generic_params(&item_enum.generics);
     let defaults = SerdeDefaults::of_enum(item_enum);
+    let drafted = !args.undrafted;
+    let declared_as = declared_name(&export_name, args.undrafted);
+    let valid = held_at(&export_name, &generic_params);
     let shape = EnumShape {
         args,
+        declared: &declared_as,
         defaults: &defaults,
         export_name: &export_name,
         generic_params: &generic_params,
@@ -5305,10 +5512,11 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
         rust_ident: &rust_ident,
         tag_attrs: &tag_attrs,
         type_parameters: &type_parameters,
+        valid: drafted.then_some(valid.as_str()),
     };
     let mut aux = Vec::new();
-    let swift_source = if plain && writes_bare_variant_names {
-        plain_enum_swift_source(item_enum, &rust_ident, &export_name, args)
+    let declaration = if plain && writes_bare_variant_names {
+        plain_enum_swift_source(&shape)
     } else if tag_attrs.untagged {
         untagged_enum_swift_source(&shape, &mut aux)
     } else if tag_attrs.tag.is_some() && tag_attrs.content.is_some() {
@@ -5318,7 +5526,28 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
     } else {
         external_tagged_enum_swift_source(&shape, &mut aux)
     };
-    preprocess::note(&rust_ident, read::takes_keys(&swift_source));
+    preprocess::note(&rust_ident, read::takes_keys(&declaration));
+    let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
+    let body = if drafted {
+        let form = ValidForm {
+            conformances: if plain && writes_bare_variant_names && generic_params.is_empty() {
+                ", Hashable"
+            } else {
+                ""
+            },
+            keyed: None,
+            raw: plain && writes_bare_variant_names,
+        };
+        let unpaired = declaration
+            .strip_suffix(typealias.as_str())
+            .unwrap_or(&declaration);
+        format!(
+            "{}{typealias}",
+            with_valid_struct(unpaired, &export_name, &generic_params, &form)
+        )
+    } else {
+        declaration
+    };
     preprocess::note_entries(&rust_ident, flattened_entries(item_enum, args.preprocess));
     preprocess::note_tag_keys(&rust_ident, tag_keys(&tag_attrs, args.preprocess));
     preprocess::note_tag_and_content(
@@ -5329,15 +5558,19 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
     note_unit_entries(
         &rust_ident,
         if externally_tagged {
-            unit_entries(item_enum, &tag_attrs)
+            let mut entries = unit_entries(item_enum, &tag_attrs);
+            for entry in &mut entries {
+                entry.drafted = drafted;
+            }
+            entries
         } else {
             Vec::new()
         },
     );
     let full_source = if aux.is_empty() {
-        swift_source
+        body
     } else {
-        format!("{} {swift_source}", aux.join(" "))
+        format!("{} {body}", aux.join(" "))
     };
     swift_module_tokens(&rust_ident, item_enum.ident.span(), &full_source, &defaults)
 }

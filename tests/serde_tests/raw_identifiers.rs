@@ -203,7 +203,7 @@ mod on_a_mobile_surface {
         let definition = raw_mobile_swift::swift_definition();
         assert!(!definition.contains("r#"), "got: {definition}");
         assert!(
-            definition.contains("public let type: String;"),
+            definition.contains("public var type: String;"),
             "got: {definition}"
         );
         assert!(definition.contains("case match;"), "got: {definition}");

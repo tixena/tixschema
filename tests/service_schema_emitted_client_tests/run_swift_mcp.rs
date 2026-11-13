@@ -63,12 +63,12 @@ let canned = Canned(replies: replies)
 let client = MobileDocumentServiceMcpClient(transport: canned)
 var lines: [String] = []
 
-switch await client.getVersion(GetVersionRequest(documentId: "doc-1")) {
+switch await client.getVersion(try GetVersionRequestDraft(documentId: "doc-1").validate()) {
 case .success(let version): lines.append("ok version=\(version.version)")
 case .failure(let failure): lines.append(described(failure))
 }
 for id in ["missing", "", "panic", "doc-1", "doc-1", "doc-1"] {
-  switch await client.getVersion(GetVersionRequest(documentId: id)) {
+  switch await client.getVersion(GetVersionRequest(draft: GetVersionRequestDraft(documentId: id))) {
   case .success(let version): lines.append("ok version=\(version.version)")
   case .failure(let failure): lines.append(described(failure))
   }

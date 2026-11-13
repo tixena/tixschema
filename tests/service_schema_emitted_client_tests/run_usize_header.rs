@@ -26,7 +26,7 @@ struct QuotaRecorder: QuotaClientServiceHttpTransport {
 
 for quota in QUOTAS {
   let client = QuotaClientServiceHttpClient(transport: QuotaRecorder(quota: quota))
-  switch await client.ask(QuotaAsk(label: "a")) {
+  switch await client.ask(try QuotaAskDraft(label: "a").validate()) {
   case .success(let answered): print("\(quota): read \(answered.1.value)")
   case .failure(.fault(let fault)): print("\(quota): fault \(fault.kind.rawValue)")
   case .failure(.declared): print("\(quota): declared")

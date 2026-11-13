@@ -33,7 +33,7 @@ use super::lone_slots_models::{
 };
 
 /// What opens the read of a type alone.
-const UNJUDGED: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws { ";
+const UNJUDGED: &str = "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ";
 
 /// The write of every struct of one slot whose value Swift writes as it holds it: the value's own,
 /// through the struct's encoder.
@@ -325,19 +325,19 @@ fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
     holds(
         &strop_swift::swift_definition(),
         &[&format!(
-            "switch self.slung.value {{ {entry}default: try self.slung.encode(to: encoder) }}"
+            "switch self.slung.value.draft {{ {entry}default: try self.slung.encode(to: encoder) }}"
         )],
     );
     holds(
         &girthed_swift::swift_definition(),
         &[&format!(
-            "switch self.girth.value {{ {entry}default: try self.girth.encode(to: encoder) }}"
+            "switch self.girth.value.draft {{ {entry}default: try self.girth.encode(to: encoder) }}"
         )],
     );
     holds(
         &rigger_swift::swift_definition(),
         &[&format!(
-            "switch payload.value {{ {entry}default: try payload.encode(to: encoder) }}"
+            "switch payload.value.draft {{ {entry}default: try payload.encode(to: encoder) }}"
         )],
     );
 }
@@ -350,47 +350,47 @@ fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
     for (swift, opened, read_as, fitted) in [
         (
             count_swift::swift_definition(),
-            "public struct Count: Codable, Sendable { public let value: UInt32; ",
+            "public struct CountDraft: Codable, Sendable { public var value: UInt32; ",
             "UInt32",
             Some("SwiftSchemaFit<UInt32>.self).value"),
         ),
         (
             moniker_swift::swift_definition(),
-            "public struct Moniker: Codable, Sendable { public let value: String; ",
+            "public struct MonikerDraft: Codable, Sendable { public var value: String; ",
             "String",
             None,
         ),
         (
             unskipped_swift::swift_definition(),
-            "public struct Unskipped: Codable, Sendable { public let value: String; ",
+            "public struct UnskippedDraft: Codable, Sendable { public var value: String; ",
             "String",
             None,
         ),
         (
             single_swift::swift_definition(),
-            "public struct Single<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public let value: Stowed; ",
+            "public struct SingleDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var value: Stowed; ",
             "Stowed",
             Some("SwiftSchemaFit<Stowed>.self).value"),
         ),
         (
             stowed_list_swift::swift_definition(),
-            "public struct StowedList<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public let value: [Stowed]; ",
+            "public struct StowedListDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var value: [Stowed]; ",
             "[Stowed]",
             Some("[SwiftSchemaFit<Stowed>].self).map({ $0.value })"),
         ),
         (
             stowed_maybe_swift::swift_definition(),
-            "public struct StowedMaybe<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public let value: Stowed?; ",
+            "public struct StowedMaybeDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var value: Stowed?; ",
             "Stowed?",
             Some("SwiftSchemaFit<Stowed>?.self)?.value"),
         ),
         (
             stowed_by_name_swift::swift_definition(),
-            "public struct StowedByName<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public let value: [String: Stowed]; ",
+            "public struct StowedByNameDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var value: [String: Stowed]; ",
             "[String: Stowed]",
             Some("[String: SwiftSchemaFit<Stowed>].self).mapValues({ $0.value })"),
         ),
@@ -450,9 +450,9 @@ fn a_slot_validate_walks_is_read_unjudged_from_the_decoder_itself() {
     holds(
         &sacked_swift::swift_definition(),
         &[
-            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
            throws { self.value = try Sack<Stowed>(swiftSchemaUnjudged: decoder, \
-           swiftSchemaWithout: taken) }; public init(swiftSchemaUnjudged decoder: Decoder) throws \
+           swiftSchemaWithout: taken) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws \
            { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
            \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
            ![\"label\", \"stowed\"].contains(unknown.stringValue)",
@@ -461,9 +461,9 @@ fn a_slot_validate_walks_is_read_unjudged_from_the_decoder_itself() {
     holds(
         &baled_swift::swift_definition(),
         &[
-            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
            throws { self.value = try Bale(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
-           taken) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if \
+           taken) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if \
            !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
            \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
            ![\"label\"].contains(unknown.stringValue)",
@@ -510,13 +510,13 @@ fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
              return try Self.swiftSchemaParseIso8601Date(wireValue, codingPath: decoder.codingPath) }() }; ",
             "let written = Self.swiftSchemaFormatIso8601Date(value); try written.encode(to: \
              encoder) }; ",
-            "extension Ticked { private static let swiftSchemaIso8601Formatter",
+            "extension TickedDraft { private static let swiftSchemaIso8601Formatter",
         ],
     );
     holds(
         &ticked_millis_swift::swift_definition(),
         &[
-            "public let value: Int64; ",
+            "public var value: Int64; ",
             "let container = try decoder.singleValueContainer(); \
              self.value = try container.decode(SwiftSchemaFit<Int64>.self).value }; ",
             WRITTEN,
@@ -546,7 +546,7 @@ fn the_one_slot_is_reported_under_no_step() {
         ),
         (
             bales_swift::swift_definition(),
-            r#"for (index, held) in value.enumerated() { errors += held.validate().map { Bales.swiftSchemaUnder("\(index)", $0) } }; if value.count < 1 { errors.append("too short: minimum length is 1, got \(value.count)") }"#,
+            r#"for (index, held) in value.enumerated() { errors += held.validate().map { BalesDraft.swiftSchemaUnder("\(index)", $0) } }; if value.count < 1 { errors.append("too short: minimum length is 1, got \(value.count)") }"#,
         ),
         (
             maybe_bale_swift::swift_definition(),
@@ -574,9 +574,9 @@ fn a_struct_of_several_slots_wraps_the_tuple_of_the_ones_serde_reads() {
              container.codingPath, debugDescription: \"invalid length \\(count), expected 1\")) \
              }; slot0 = try container.decode(String.self);  }; ",
             r#"if slot0.unicodeScalars.count < 1 { errors.append("'0': too short: minimum length is 1, got \(slot0.unicodeScalars.count)") }"#,
-            "public struct Clipped: Codable, Sendable { public let value: ClippedTuple; ",
+            "public struct ClippedDraft: Codable, Sendable { public var value: ClippedTuple; ",
             "self.value = try ClippedTuple(swiftSchemaUnjudged: decoder) }; ",
-            "public func validate() -> [String] { var errors: [String] = []; \
+            "public func validationIssues() -> [String] { var errors: [String] = []; \
              errors += value.validate(); return errors }",
         ],
     );

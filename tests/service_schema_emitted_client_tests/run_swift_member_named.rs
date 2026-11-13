@@ -13,7 +13,7 @@ use super::runtime::judged;
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 const FUNCTIONS: &str = r#"
-func rated(_ value: Rating) -> [String] {
+func rated(_ value: RatingDraft) -> [String] {
   if case .rated = value { return ["a rating is unrated"] }
   return []
 }
@@ -23,7 +23,7 @@ func unrated(_ payload: Any) -> Any {
   return payload
 }
 
-func label(_ value: Parcel) -> [String] { value.label.isEmpty ? ["a parcel is labelled"] : [] }
+func label(_ value: ParcelDraft) -> [String] { value.label.isEmpty ? ["a parcel is labelled"] : [] }
 
 func code(_ value: String) -> [String] { value == "dup" ? ["a code is not dup"] : [] }
 
@@ -40,18 +40,18 @@ func seal(_ payload: Any) -> Any {
   return payload
 }
 
-func validate(_ value: Gauge) -> [String] { value.size > 9 ? ["a gauge is at most 9"] : [] }
+func validate(_ value: GaugeDraft) -> [String] { value.size > 9 ? ["a gauge is at most 9"] : [] }
 
 func value(_ value: Stamp) -> [String] { value.value.isEmpty ? ["a stamp is not empty"] : [] }
 
-func tag(_ value: Crate) -> [String] { value.tag == "x" ? ["a crate is not x"] : [] }
+func tag(_ value: CrateDraft) -> [String] { value.tag == "x" ? ["a crate is not x"] : [] }
 
-func title(_ value: Freight) -> [String] {
+func title(_ value: FreightDraft) -> [String] {
   if case .held(let payload) = value, payload.title.isEmpty { return ["a freight is titled"] }
   return []
 }
 
-func codes<CodeType>(_ value: Hold<CodeType>) -> [String] {
+func codes<CodeType>(_ value: HoldDraft<CodeType>) -> [String] {
   value.codes.isEmpty ? ["a hold has a code"] : []
 }
 
@@ -65,7 +65,7 @@ func entries(_ value: [UInt32: String]) -> [String] {
   value.isEmpty ? ["a ledger has an entry"] : []
 }
 
-func ruled(_ value: Plain) -> [String] { value.size == 0 ? ["a plain is sized"] : [] }
+func ruled(_ value: PlainDraft) -> [String] { value.size == 0 ? ["a plain is sized"] : [] }
 
 func report(_ name: String, _ violations: [String]) {
   if violations.isEmpty {
@@ -170,7 +170,7 @@ fn only_a_name_that_meets_a_member_is_called_through_a_forwarder() {
     let rating = rating_swift::swift_definition();
     assert!(
         rating.starts_with(
-            "private func _ratingCheckRated(_ swiftSchemaChecked: Rating) -> [String] { rated(swiftSchemaChecked) }\n"
+            "private func _ratingCheckRated(_ swiftSchemaChecked: RatingDraft) -> [String] { rated(swiftSchemaChecked) }\n"
         ),
         "{rating}"
     );

@@ -297,7 +297,7 @@ fn each_variant_payload_reads_in_swift_as_the_serde_read_reads_it() {
 #[test]
 fn an_omitted_key_with_a_default_reads_in_swift_as_its_default() {
     let roster = roster_swift::swift_definition();
-    assert!(roster.contains("let roles: [String]"), "{roster}");
+    assert!(roster.contains("var roles: [String]"), "{roster}");
     let rows: Vec<String> = OMITTED
         .iter()
         .map(|&(name, read_as, payload)| {

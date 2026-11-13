@@ -173,7 +173,7 @@ mod swift {
     const DRIVER: &str = r#"
 func told(_ at: Int, _ payload: String) {
   do {
-    switch try JSONDecoder().decode(Tethering.self, from: Data(payload.utf8)) {
+    switch try JSONDecoder().decode(Tethering.self, from: Data(payload.utf8)).draft {
     case .strapped: print("\(at): Strapped")
     case .tallied: print("\(at): Tallied")
     }

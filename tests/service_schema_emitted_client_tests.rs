@@ -333,6 +333,12 @@ mod run_swift_brand_reads;
 #[path = "service_schema_emitted_client_tests/run_swift_sealed_brands.rs"]
 mod run_swift_sealed_brands;
 
+/// A Swift model type is a draft and a valid type, which a second file of the module builds only
+/// through the draft's `validate()` or a read.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_valid_types.rs"]
+mod run_swift_valid_types;
+
 /// The models a map under a key Swift holds as its text is written on.
 #[cfg(all(test, feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys_models.rs"]

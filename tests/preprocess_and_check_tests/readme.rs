@@ -172,7 +172,7 @@ fn each_client_function_of_the_table_is_one_the_run_of_that_client_compiles() {
             " {",
         ),
         (
-            "func withinParcel(_ value: Parcel) -> [String]",
+            "func withinParcel(_ value: ParcelDraft) -> [String]",
             SWIFT_CHECK,
             " {",
         ),
@@ -282,7 +282,7 @@ fn each_read_of_the_table_is_one_a_test_of_its_language_holds() {
         ("a `FormatException`", "on FormatException catch", DART_READ),
         (
             "`init(swiftSchemaUnjudged:)`",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws",
             include_str!("../swift_tests/read.rs"),
         ),
         (

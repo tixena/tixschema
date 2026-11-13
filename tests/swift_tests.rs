@@ -32,6 +32,17 @@ mod swift_fitted;
 #[path = "support/swift_key_number.rs"]
 mod swift_key_number;
 
+/// The pair of structs the emitter writes for a model type.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_valid.rs"]
+mod swift_valid;
+
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "swift_tests/valid_types.rs"]
+mod valid_types;
+
 /// What the emitter writes into the read of a plain enum.
 #[cfg(test)]
 #[cfg(feature = "swift")]

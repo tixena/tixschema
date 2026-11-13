@@ -39,7 +39,7 @@ pub const SHOWN_FUNCTIONS: &str = r#"func withoutDuplicates(_ value: [String]) -
   return []
 }
 
-func withinParcel(_ value: Parcel) -> [String] {
+func withinParcel(_ value: ParcelDraft) -> [String] {
   value.fragileItemCodes.enumerated()
     .filter { !value.itemCodeList.contains($0.element) }
     .map { "'fragileItemCodes.\($0.offset)': \($0.element) is outside of itemCodeList" }
@@ -51,11 +51,11 @@ const ALIAS_BELOW_ERROR: &str =
 
 /// The developer's other functions, written by hand in Swift.
 pub const FUNCTIONS: &str = r#"
-func takingParcels(_ value: ClosedDock) -> [String] {
+func takingParcels(_ value: ClosedDockDraft) -> [String] {
   ["a closed dock takes no parcel"]
 }
 
-func withACode<CodeType>(_ value: Crate<CodeType>) -> [String] {
+func withACode<CodeType>(_ value: CrateDraft<CodeType>) -> [String] {
   value.codes.isEmpty ? ["'codes': a crate holds at least one code"] : []
 }
 
@@ -63,7 +63,7 @@ func withEntries<IdType>(_ value: Casket<IdType>) -> [String] {
   value.entries.isEmpty ? ["'entries': a casket holds at least one entry"] : []
 }
 
-func withALift(_ value: Lift) -> [String] {
+func withALift(_ value: LiftDraft) -> [String] {
   if case .unladen = value { return ["a lift carries something"] }
   return []
 }
@@ -695,8 +695,8 @@ fn a_bound_on_a_named_type_measures_the_string_it_holds() {
             answered: crate::judged_issues(refused.validation_issues()),
             name: "Waybill, a code its own type refuses",
             read: concat!(
-                r#"Waybill(laterCode: LaterCode(value: "ab"), "#,
-                r#"shortCode: Code(value: "a"), titled: "ti")"#,
+                r#"Waybill(draft: WaybillDraft(laterCode: LaterCode(value: "ab"), "#,
+                r#"shortCode: Code(value: "a"), titled: "ti"))"#,
             )
             .to_owned(),
         },
@@ -1206,10 +1206,13 @@ fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
             "tag alone, the enum's own check",
             read_as("Lift", &LiftDraft::Unladen),
         ),
-        ("untagged, a slot", r#"Tally.named("")"#.to_owned()),
+        (
+            "untagged, a slot",
+            r#"Tally(draft: TallyDraft.named(""))"#.to_owned(),
+        ),
         (
             "untagged, a named member",
-            "Tally.counted(TallyCountedPayload(tallyCount: 0))".to_owned(),
+            "Tally(draft: TallyDraft.counted(TallyCountedPayload(tallyCount: 0)))".to_owned(),
         ),
         ("a plain enum", read_as("Grade", &GradeDraft::Express)),
     ];

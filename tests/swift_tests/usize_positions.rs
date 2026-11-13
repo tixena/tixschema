@@ -7,16 +7,16 @@ use super::usize_positions_models::{placed_swift, slot_index_swift};
 fn a_usize_is_a_uint64_in_each_place_a_member_holds_one() {
     let placed = placed_swift::swift_definition();
     for expected in [
-        "public let at: UInt64;",
-        "public let defaulted: UInt64;",
-        "public let held: Holding<UInt64>;",
-        "public let indexed: [UInt64: String];",
-        "public let keyed: [String: UInt64];",
-        "public let listed: [UInt64];",
-        "public let maybe: UInt64?;",
+        "public var at: UInt64;",
+        "public var defaulted: UInt64;",
+        "public var held: Holding<UInt64>;",
+        "public var indexed: [UInt64: String];",
+        "public var keyed: [String: UInt64];",
+        "public var listed: [UInt64];",
+        "public var maybe: UInt64?;",
         "public struct PlacedPairedTuple: Codable, Sendable { let slot0: UInt64;",
-        "public let pinned: UInt64;",
-        "public let slot: SlotIndex;",
+        "public var pinned: UInt64;",
+        "public var slot: SlotIndex;",
         "public struct PlacedSpanRange: Codable, Sendable { public let start: UInt64; public let \
          end: UInt64;",
         "public struct PlacedIndexedKeyedMap: Codable, Sendable { public var storage: [UInt64: \

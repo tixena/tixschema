@@ -268,7 +268,6 @@ let answered = tally.count
 await transport.close()
 for call in calls { await call.value }
 
-#[cfg(slow_tests)]
 struct BurstReport: Encodable {
   let allSent: Bool
   let allInTime: Bool
@@ -306,7 +305,7 @@ func describeThumbnail(_ result: Result<(Data, String, String?), ThumbnailClient
     return ThumbnailReport(kind: "ok", errorCode: nil, errorHeaderOut: nil, headerOut: value.2)
   case .failure(.declared(let error)):
     let code: String
-    switch error.0 {
+    switch error.0.draft {
     case .notFound: code = "not-found"
     }
     return ThumbnailReport(kind: "operation", errorCode: code, errorHeaderOut: error.1, headerOut: nil)
@@ -425,7 +424,7 @@ struct MediaReport: Codable {
   let missingIsFault: Bool
 }
 
-let upload = MediaUpload(caption: "c", sha256: MediaId(value: "abc123"))
+let upload = try MediaUploadDraft(caption: "c", sha256: MediaId(validating: "abc123")).validate()
 let recorder = MediaRecorder(statHeaders: [("x-media-id", "abc123")])
 let client = MediaClientServiceHttpClient(transport: recorder)
 _ = await client.upload(upload)

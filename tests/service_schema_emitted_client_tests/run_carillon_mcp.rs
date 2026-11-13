@@ -328,7 +328,7 @@ for text in replies {
 }
 var rung: [String] = []
 for text in tolls {
-  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(CarillonBell(weight: 3))))
+  rung.append(tolled(await CarillonMcpServiceMcpClient(transport: Canned(answer: text)).toll(try CarillonBellDraft(weight: 3).validate())))
 }
 print("{\"read\":[" + read.joined(separator: ",") + "],\"tolled\":[" + rung.joined(separator: ",") + "]}")
 "#;

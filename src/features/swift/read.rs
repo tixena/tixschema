@@ -96,6 +96,12 @@ pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
      if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
      codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }";
 
+/// The read of a draft: its own, then `validationIssues()` on the value read.
+const JUDGED_DRAFT: &str = "public init(from decoder: Decoder) throws { \
+     try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); \
+     if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
+     codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }";
+
 /// What names, in the statements of a read, the keys the types around the type took: handed to
 /// what is read beside the type, or skipped by the read of a map's entries ([`read_entries`]).
 const TAKEN: [&str; 3] = [
@@ -821,11 +827,12 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         String::new()
     };
     let taking = names_taken(body) || names_taken(written.beside);
-    let reach = if written.sealed {
+    let reach = if written.sealed || written.draft {
         "fileprivate"
     } else {
         "public"
     };
+    let judged = if written.draft { JUDGED_DRAFT } else { JUDGED };
     let opened = format!(
         "{key}{payload}{twins}{}",
         helpers_for(&format!("{read}{payload}"))
@@ -833,17 +840,17 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
     if let Some(refusing) = refused {
         return format!(
             "{opened}{reach} {TAKING} {{ {body} }}; {reach} {UNJUDGED} {{ {refusing}\
-             try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }}; {JUDGED}; "
+             try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }}; {judged}; "
         );
     }
     if written.own.is_empty() {
         return if taking {
             format!(
-                "{opened}{reach} {TAKING} {{ {body} }}; {}; {JUDGED}; ",
+                "{opened}{reach} {TAKING} {{ {body} }}; {}; {judged}; ",
                 alone(reach)
             )
         } else {
-            format!("{opened}{reach} {UNJUDGED} {{ {body} }}; {JUDGED}; ")
+            format!("{opened}{reach} {UNJUDGED} {{ {body} }}; {judged}; ")
         };
     }
     let owner = written.named;
@@ -861,7 +868,7 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
          init(from decoder: Decoder) throws {{ value = try {owner}(swiftSchemaCorrected: decoder) }} }}; \
          private init(swiftSchemaCorrected decoder: Decoder) throws {{ {untaken}{body} }}; \
          {reach} {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
-         from: {corrected}, at: decoder.codingPath).value }}; {}; {JUDGED}; ",
+         from: {corrected}, at: decoder.codingPath).value }}; {}; {judged}; ",
         alone(reach)
     )
 }

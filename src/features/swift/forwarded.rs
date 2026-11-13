@@ -18,6 +18,8 @@ use crate::utils::compute_item_export_name;
 /// forwarders are named and typed from.
 #[derive(Default)]
 struct Context {
+    /// Whether the checks run on the draft of the type.
+    drafted: bool,
     export_name: String,
     generic_params: Vec<String>,
     members: Vec<String>,
@@ -62,7 +64,7 @@ pub(super) fn record(item: &Item, args: &SwiftTypeArgs<'_>) {
     } else {
         return;
     };
-    let mut members: Vec<String> = ["encode", "validate", "value"]
+    let mut members: Vec<String> = ["encode", "validate", "validationIssues", "draft", "value"]
         .iter()
         .map(|&name| name.to_owned())
         .collect();
@@ -85,8 +87,11 @@ pub(super) fn record(item: &Item, args: &SwiftTypeArgs<'_>) {
             members.push(name);
         }
     }
+    let drafted = !args.undrafted
+        && !matches!(item, Item::Struct(item_struct) if super::brand_field(item_struct).is_some());
     CONTEXT.with(|held| {
         *held.borrow_mut() = Context {
+            drafted,
             export_name: compute_item_export_name(args.type_name, args.name_override),
             generic_params: type_parameters_in_scope(generics),
             members,
@@ -141,7 +146,14 @@ fn forwarded(
             upper_first(&function.name)
         );
         let declaration = if kind == "Check" {
-            let whole = held_at(item, &bounded_generic_params(&context.generic_params));
+            let whole = held_at(
+                &if context.drafted {
+                    format!("{item}Draft")
+                } else {
+                    item.clone()
+                },
+                &bounded_generic_params(&context.generic_params),
+            );
             let ty = value_type.map_or(whole, |typed| typed());
             let reached: Vec<String> = context
                 .generic_params

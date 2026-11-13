@@ -10,20 +10,20 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 use crate::swift_plain_enum::plain_enum_read;
+use crate::swift_valid;
 
 /// What opens the payload type, written into each type that names a function.
 const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable { let value: Any; ";
 
 /// What opens the read of a type alone.
-const UNJUDGED: &str = "public init(swiftSchemaUnjudged decoder: Decoder) throws";
+const UNJUDGED: &str = "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws";
 
 /// What opens the read of a type beside the keys the types around it took.
-const BESIDE: &str =
-    "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
+const BESIDE: &str = "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws";
 
 /// The read of a type alone, where it has one that takes the keys the types around it took.
 const ALONE: &str = concat!(
-    "public init(swiftSchemaUnjudged decoder: Decoder) throws { ",
+    "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ",
     "try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
 );
 
@@ -342,7 +342,13 @@ fn payload_types(swift: &str) -> usize {
 /// What the three reads of a type that names `called` on itself are, around the statements
 /// `corrected` of its read of a corrected payload.
 fn corrected_reads(named: &str, called: &str, closing: &str, corrected: &str) -> String {
-    reads_reached(named, called, closing, corrected, "public")
+    reads_reached(
+        &format!("{named}Draft"),
+        called,
+        closing,
+        corrected,
+        "fileprivate",
+    )
 }
 
 /// [`corrected_reads`] of a type whose own reads are declared under `reach`.
@@ -380,7 +386,10 @@ fn a_struct_calls_the_function_of_a_member_and_its_own() {
     );
     assert!(swift.contains(&written), "{written} is not in: {swift}");
     assert_eq!(payload_types(&swift), 1, "got: {swift}");
-    assert!(!swift.contains("func encode(to encoder:"), "got: {swift}");
+    assert!(
+        !swift_valid::draft_of(&swift).contains("func encode(to encoder:"),
+        "got: {swift}"
+    );
 }
 
 /// The payload type reads any JSON value, reads a type back from one, and writes the coding path
@@ -832,7 +841,7 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
                 "self.value = try Carton(swiftSchemaUnjudged: decoder) } }; ",
             ),
             concat!(
-                "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
                 "let valuePayload = try SwiftSchemaPayload(from: decoder, without: taken).value; ",
                 "self.value = try SwiftSchemaPayload.read(SwiftSchemaReadValue.self, ",
                 "from: unwrapped(valuePayload), at: decoder.codingPath).value }; ",
@@ -844,7 +853,7 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
         &toted_swift::swift_definition(),
         &[
             concat!(
-                "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
                 "self.value = try Carton(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken) }; ",
             ),
             ALONE,
@@ -870,7 +879,7 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
 #[test]
 fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
     let tier = tier_swift::swift_definition();
-    let read = corrected_reads("Tier", "unwrapped(", ")", &plain_enum_read("Tier"));
+    let read = corrected_reads("Tier", "unwrapped(", ")", &plain_enum_read("TierDraft"));
     assert!(tier.contains(&read), "{read} is not in: {tier}");
 
     for (named, swift, opening) in [
@@ -895,7 +904,7 @@ fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
         holds(&swift, &[&opened, &called]);
         assert!(
             swift.contains(&format!(
-                "private struct SwiftSchemaRead: Decodable {{ let value: {named}; "
+                "private struct SwiftSchemaRead: Decodable {{ let value: {named}Draft; "
             )),
             "got: {swift}"
         );
@@ -934,7 +943,7 @@ fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
             concat!(
                 "private init(swiftSchemaCorrected decoder: Decoder) throws { ",
                 "let taken: [String] = []; ",
-                "if let value = try? Pick.swiftSchemaReadNamed(decoder, taken) { self = .named(value); return }; ",
+                "if let value = try? PickDraft.swiftSchemaReadNamed(decoder, taken) { self = .named(value); return }; ",
                 "if let value = try? Carton(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken) ",
                 "{ self = .whole(value); return }; ",
             ),
@@ -985,7 +994,7 @@ fn an_untagged_slot_over_an_option_that_names_a_function_takes_the_nil_it_reads(
                 "throws -> String? { ",
             ),
             concat!(
-                "do { let value = try Culled.swiftSchemaReadMaybe(decoder, taken); ",
+                "do { let value = try CulledDraft.swiftSchemaReadMaybe(decoder, taken); ",
                 "self = .maybe(value); return } catch {}; ",
                 "if let value = try? Carton(swiftSchemaUnjudged: decoder, ",
                 "swiftSchemaWithout: taken) { self = .whole(value); return }; ",

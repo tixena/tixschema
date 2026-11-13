@@ -540,11 +540,16 @@ fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
     let mut expected = String::new();
     let mut main = String::new();
     for (holder, serde_wrote, built) in &rows {
+        let held = if *built == "nil" {
+            (*built).to_owned()
+        } else {
+            format!("Tacking(draft: TackingDraft{built})")
+        };
         let sorted = written_back::<Value>(serde_wrote);
         let _ = writeln!(expected, "{holder}: {sorted} {sorted}");
         let _ = writeln!(
             main,
-            "print(\"{holder}: \\(written({holder}(note: \"a\", tacking: {built}))) \
+            "print(\"{holder}: \\(written({holder}(draft: {holder}Draft(note: \"a\", tacking: {held})))) \
              \\(writtenBack({holder}.self, #\"{serde_wrote}\"#))\")"
         );
     }

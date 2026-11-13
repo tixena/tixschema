@@ -21,6 +21,7 @@ fn args() -> SwiftTypeArgs<'static> {
         pattern: None,
         preprocess: &[],
         type_name: "Probe",
+        undrafted: true,
     }
 }
 

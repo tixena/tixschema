@@ -112,7 +112,7 @@ fn a_tuple_struct_reads_its_tuple_through_the_struct_written_for_it() {
     holds(
         &swift,
         &[
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws { \
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { \
              self.value = try TrunkTuple(swiftSchemaUnjudged: decoder) }; ",
         ],
     );

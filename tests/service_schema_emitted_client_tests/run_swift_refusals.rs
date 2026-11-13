@@ -718,7 +718,7 @@ fn an_untagged_enum_takes_the_fixed_array_for_an_array_of_its_length_alone() {
     for payload in payloads {
         let _ = writeln!(
             main,
-            "switch try! JSONDecoder().decode(Grappling.self, from: Data(\"{payload}\".utf8)) {{ \
+            "switch try! JSONDecoder().decode(Grappling.self, from: Data(\"{payload}\".utf8)).draft {{ \
              case .pair: print(\"{payload}: Pair\"); case .spread: print(\"{payload}: Spread\") }}"
         );
         let _ = writeln!(expected, "{payload}: {}", taken(payload));

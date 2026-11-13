@@ -61,11 +61,11 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
     }
     let splaying = splaying_swift::swift_definition();
     for held in [
-        "public let braiding: Braiding;",
+        "public var braiding: Braiding;",
         "do { self.braiding = try Braiding(swiftSchemaUnjudged: decoder, \
          swiftSchemaWithout: taken + [\"note\"]) } catch let refused as DecodingError { \
          throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; self.note = \
-         try container.decode(String.self, forKey: .note) }; public \
+         try container.decode(String.self, forKey: .note) }; fileprivate \
          init(swiftSchemaUnjudged decoder: Decoder) throws { if \
          !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
          \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: \
@@ -81,7 +81,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
     }
     let ranging = ranging_swift::swift_definition();
     for held in [
-        "public let counts: [String: UInt8];",
+        "public var counts: [String: UInt8];",
         "for entry in keyed.allKeys where !taken.contains(entry.stringValue) { \
          entries[entry.stringValue] = try keyed.decode(SwiftSchemaFit<UInt8>.self, forKey: entry).value }; self.counts = \
          entries } catch let refused as DecodingError { throw \

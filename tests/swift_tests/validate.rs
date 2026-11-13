@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use crate::swift_valid;
 use crate::tests::{
     adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift, by_u32_swift,
     correlation_id_swift, envelope_swift, external_tagged_swift, flattened_extra_swift,
@@ -15,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 /// What every emitted type with no rule declares.
-const NO_RULE: &str = "public func validate() -> [String] { [] }";
+const NO_RULE: &str = "public func validationIssues() -> [String] { [] }";
+
+/// What a type that is no draft answers when it has no rule.
+const NO_RULE_BY_VALIDATE: &str = "public func validate() -> [String] { [] }";
 
 /// The parcel of the shared table: a bound, a check on a field and a check on the type.
 #[model_schema(check = ["withinParcel"])]
@@ -166,49 +170,53 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
 #[test]
 fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
     assert_eq!(
-        parcel_swift::swift_definition(),
-        concat!(
-            "public struct Parcel: Codable, Sendable { public let fragileItemCodes: [String]; ",
-            "public let itemCodeList: [String]; public let label: String; ",
-            "enum CodingKeys: String, CodingKey { case fragileItemCodes; case itemCodeList; ",
-            "case label;  }; ",
-            "public init(fragileItemCodes: [String], itemCodeList: [String], label: String) ",
-            "{ self.fragileItemCodes = fragileItemCodes; self.itemCodeList = itemCodeList; ",
-            "self.label = label;  }; ",
-            "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; ",
-            "var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = ",
-            "stringValue }; init?(intValue: Int) { nil } }; ",
-            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) ",
-            "throws { let container = try decoder.container(keyedBy: CodingKeys.self); ",
-            "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
-            "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
-            "self.label = try container.decode(String.self, forKey: .label) }; ",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty ",
-            r#"&& decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] != nil) { "#,
-            "for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ",
-            r#"!["fragileItemCodes", "itemCodeList", "label"].contains(unknown.stringValue) "#,
-            "{ throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: ",
-            "decoder.codingPath + [unknown], debugDescription: ",
-            r#""unknown field `\(unknown.stringValue)`")) } }; try self.init("#,
-            "swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
-            "public init(from decoder: Decoder) throws { ",
-            "try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); ",
-            "if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(",
-            "codingPath: decoder.codingPath, ",
-            r#"debugDescription: violations.joined(separator: "; "))) } }; "#,
-            "public func validate() -> [String] { var errors: [String] = []; ",
-            "errors += withoutDuplicates(itemCodeList).map ",
-            r#"{ Parcel.swiftSchemaUnder("itemCodeList", $0) }; "#,
-            "if label.unicodeScalars.count < 1 { errors.append(",
-            r#""'label': too short: minimum length is 1, got \(label.unicodeScalars.count)") }; "#,
-            "errors += withinParcel(self); return errors }; ",
-            "private static func swiftSchemaUnder(_ place: String, _ violation: String) -> String ",
-            r#"{ if violation.hasPrefix("'"), "#,
-            r#"let end = violation.dropFirst().firstIndex(of: "'") { "#,
-            r#"return "'\(place).\(violation[violation.index(after: violation.startIndex)..<end])'"#,
-            r#"\(violation[violation.index(after: end)...])" }; "#,
-            r#"return "'\(place)': \(violation)" }; "#,
-            "public func swiftSchemaValidateBound() -> [String] { [] } }; ",
+        swift_valid::draft_of(&parcel_swift::swift_definition()),
+        format!(
+            "{}{} }};",
+            concat!(
+                "public struct ParcelDraft: Codable, Sendable { public var fragileItemCodes: [String]; ",
+                "public var itemCodeList: [String]; public var label: String; ",
+                "enum CodingKeys: String, CodingKey { case fragileItemCodes; case itemCodeList; ",
+                "case label;  }; ",
+                "public init(fragileItemCodes: [String], itemCodeList: [String], label: String) ",
+                "{ self.fragileItemCodes = fragileItemCodes; self.itemCodeList = itemCodeList; ",
+                "self.label = label;  }; ",
+                "private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; ",
+                "var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = ",
+                "stringValue }; init?(intValue: Int) { nil } }; ",
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) ",
+                "throws { let container = try decoder.container(keyedBy: CodingKeys.self); ",
+                "self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes); ",
+                "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
+                "self.label = try container.decode(String.self, forKey: .label) }; ",
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty ",
+                r#"&& decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] != nil) { "#,
+                "for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ",
+                r#"!["fragileItemCodes", "itemCodeList", "label"].contains(unknown.stringValue) "#,
+                "{ throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: ",
+                "decoder.codingPath + [unknown], debugDescription: ",
+                r#""unknown field `\(unknown.stringValue)`")) } }; try self.init("#,
+                "swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
+                "public init(from decoder: Decoder) throws { ",
+                "try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); ",
+                "if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(",
+                "codingPath: decoder.codingPath, ",
+                r#"debugDescription: violations.joined(separator: "; "))) } }; "#,
+                "public func validationIssues() -> [String] { var errors: [String] = []; ",
+                "errors += withoutDuplicates(itemCodeList).map ",
+                r#"{ ParcelDraft.swiftSchemaUnder("itemCodeList", $0) }; "#,
+                "if label.unicodeScalars.count < 1 { errors.append(",
+                r#""'label': too short: minimum length is 1, got \(label.unicodeScalars.count)") }; "#,
+                "errors += withinParcel(self); return errors }; ",
+                "private static func swiftSchemaUnder(_ place: String, _ violation: String) -> String ",
+                r#"{ if violation.hasPrefix("'"), "#,
+                r#"let end = violation.dropFirst().firstIndex(of: "'") { "#,
+                r#"return "'\(place).\(violation[violation.index(after: violation.startIndex)..<end])'"#,
+                r#"\(violation[violation.index(after: end)...])" }; "#,
+                r#"return "'\(place)': \(violation)" }; "#,
+                "public func swiftSchemaValidateBound() -> [String] { [] }; ",
+            ),
+            swift_valid::validating("Parcel")
         )
     );
 }
@@ -217,19 +225,19 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
 fn a_holder_runs_what_it_holds_under_the_place_it_holds_it_at() {
     let swift = manifest_swift::swift_definition();
     for written in [
-        r#"errors += firstParcel.validate().map { Manifest.swiftSchemaUnder("firstParcel", $0) }"#,
+        r#"errors += firstParcel.validate().map { ManifestDraft.swiftSchemaUnder("firstParcel", $0) }"#,
         concat!(
             "for (index, held) in parcelList.enumerated() { errors += held.validate().map ",
-            r#"{ Manifest.swiftSchemaUnder("parcelList.\(index)", $0) } }"#,
+            r#"{ ManifestDraft.swiftSchemaUnder("parcelList.\(index)", $0) } }"#,
         ),
         concat!(
             "for (key, held) in parcelsByDock.sorted(by: { $0.key < $1.key }) ",
             "{ errors += held.validate().map ",
-            r#"{ Manifest.swiftSchemaUnder("parcelsByDock.\(key)", $0) } }"#,
+            r#"{ ManifestDraft.swiftSchemaUnder("parcelsByDock.\(key)", $0) } }"#,
         ),
         concat!(
             "if let held = spareParcel { errors += held.validate().map ",
-            r#"{ Manifest.swiftSchemaUnder("spareParcel", $0) } }"#,
+            r#"{ ManifestDraft.swiftSchemaUnder("spareParcel", $0) } }"#,
         ),
     ] {
         assert!(swift.contains(written), "{written} is not in: {swift}");
@@ -268,14 +276,21 @@ fn every_emitted_type_has_validate() {
         let declared = swift.matches("public struct ").count()
             + swift.matches("public enum ").count()
             - swift.matches("KeyedMap: Codable").count();
+        let valid = swift.matches("@dynamicMemberLookup public struct ").count();
         assert_eq!(
-            swift.matches("public func validate() -> [String]").count(),
+            swift.matches("public func validate() -> [String]").count()
+                + swift
+                    .matches("public func validationIssues() -> [String]")
+                    .count()
+                + swift
+                    .matches("fileprivate func validate() -> [String]")
+                    .count(),
             declared,
             "got: {swift}"
         );
         assert_eq!(
-            swift.matches(NO_RULE).count(),
-            declared,
+            swift.matches(NO_RULE_BY_VALIDATE).count() + swift.matches(NO_RULE).count(),
+            declared - valid,
             "a type with no rule, which holds none that has one, answers an empty list: {swift}"
         );
     }
@@ -285,17 +300,23 @@ fn every_emitted_type_has_validate() {
 fn a_type_with_no_rule_keeps_the_encode_it_had() {
     let swift = window_request_swift::swift_definition();
     assert!(swift.contains(NO_RULE), "got: {swift}");
-    assert!(!swift.contains("func encode(to encoder:"), "got: {swift}");
+    assert!(
+        !swift_valid::draft_of(&swift).contains("func encode(to encoder:"),
+        "got: {swift}"
+    );
     let ruled = parcel_swift::swift_definition();
     assert!(ruled.contains("init(from decoder:"), "got: {ruled}");
-    assert!(!ruled.contains("func encode(to encoder:"), "got: {ruled}");
+    assert!(
+        !swift_valid::draft_of(&ruled).contains("func encode(to encoder:"),
+        "got: {ruled}"
+    );
 }
 
 #[test]
 fn a_member_named_after_the_method_or_a_local_of_it_keeps_its_key() {
     let swift = inspection_swift::swift_definition();
     for written in [
-        "public let errors: [String]; public let validate_: String; ",
+        "public var errors: [String]; public var validate_: String; ",
         r#"case errors; case validate_ = "validate"; "#,
         "if self.errors.count < 1 { errors.append(",
         r#""'errors': too short: minimum length is 1, got \(self.errors.count)") }"#,
@@ -375,7 +396,7 @@ fn a_range_is_written_where_a_value_can_break_it() {
         r#"if age > 120 { errors.append("'age': too large: maximum is 120, got \(age)") }"#,
         concat!(
             "if level < 0.5 { errors.append(",
-            r#""'level': too small: minimum is 0.5, got \(Reading.swiftSchemaPlain(level))") }"#,
+            r#""'level': too small: minimum is 0.5, got \(ReadingDraft.swiftSchemaPlain(level))") }"#,
         ),
         concat!(
             "if let held = spare { if held < 1 { errors.append(",
@@ -431,9 +452,9 @@ fn an_enum_runs_the_rules_of_the_case_it_holds() {
             "{ errors.append(\"'Boxed': too short: minimum length is 1, ",
             r#"got \(payload.unicodeScalars.count)") }; "#,
             "case .loose(let payload): errors += payload.validate().map ",
-            r#"{ Freight.swiftSchemaUnder("Loose", $0) }; "#,
+            r#"{ FreightDraft.swiftSchemaUnder("Loose", $0) }; "#,
             "case .split(let payload): errors += payload.validate().map ",
-            r#"{ Freight.swiftSchemaUnder("Split", $0) }; default: break }"#,
+            r#"{ FreightDraft.swiftSchemaUnder("Split", $0) }; default: break }"#,
         ),
         "if slot0.unicodeScalars.count < 1 { errors.append(\"'0': too short",
         r#"if slot1 < 1 { errors.append("'1': too small: minimum is 1, got \(slot1)") }"#,
