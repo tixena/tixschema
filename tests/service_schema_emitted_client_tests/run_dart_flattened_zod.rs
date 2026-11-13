@@ -18,7 +18,7 @@ use super::run_dart_validate::{analyzed, dart, module};
 const FUNCTIONS: &str = r#"
 dynamic asGiven(dynamic payload) => payload;
 
-List<String> aSpan(Span value) => switch (value) {
+List<String> aSpan(SpanDraft value) => switch (value) {
       SpanHours(:final hours) when hours == 0 => ["'hours': a span is not empty"],
       SpanDays(:final days) when days == '9' => ["'days': a span is under nine days"],
       _ => const [],

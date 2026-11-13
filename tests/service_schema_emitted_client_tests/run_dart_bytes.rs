@@ -75,7 +75,7 @@ fn main_source(holder_json: &str) -> String {
   row('null', () => BytesOptional.fromJson(jsonDecode('{{\"maybe\":null}}')));
   row('either bytes', () => BytesEither.fromJson(jsonDecode('[1,2]')));
   row('either text', () => BytesEither.fromJson(jsonDecode('\"x\"')));
-  final built = BytesImage(content_type: 'a', data: Uint8List.fromList([1, 2]));
+  final built = BytesImageDraft(content_type: 'a', data: Uint8List.fromList([1, 2])).validate();
   row('built', () => built);
   final looked = BytesLookalikes.fromJson(jsonDecode('{{\"boxed\":[1],\"digest\":[1,2,3,4],\"distinct\":[1],\"gaps\":[null,2],\"queued\":[1],\"sevens\":[7],\"signed\":[-1],\"wide\":[300]}}'));
   print('lookalikes: ${{looked.boxed is Uint8List}} ${{looked.sevens is Uint8List}} ${{looked.wide}}');

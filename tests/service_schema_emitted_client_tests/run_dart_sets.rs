@@ -60,7 +60,7 @@ fn calls() -> String {
         );
         written
     });
-    written_calls.push_str("  print(Ticket(tags: ['a', 'a']).validate());\n");
+    written_calls.push_str("  print(TicketDraft(tags: ['a', 'a']).validationIssues());\n");
     written_calls
 }
 

@@ -123,7 +123,7 @@ fn variants_main() -> String {
         .map(|(name, payload, _)| {
             format!(
                 "  final read{name} = {name}.fromJson(jsonDecode(r'{payload}'));\n  \
-                 print('{name}: read ${{(read{name} as {name}Furled).spare}}, written \
+                 print('{name}: read ${{(read{name}.toDraft() as {name}Furled).spare}}, written \
                  ${{jsonEncode(read{name}.toJson())}}');"
             )
         })

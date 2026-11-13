@@ -7,9 +7,9 @@
 
 use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::dart_ws_client::{
-    dart_type_of, declared_error_decode_stmts, has_one_way, header_call_args, header_out_push_stmt,
-    header_refused_fault, message_dart_typename, message_decode, message_encode, signed_zeros_call,
-    signed_zeros_fn, split_reply_record, success_decode_block,
+    dart_type_of, declared_error_decode_stmts, guarded_call, has_one_way, header_call_args,
+    header_out_push_stmt, header_refused_fault, message_dart_typename, message_decode,
+    message_encode, signed_zeros_call, signed_zeros_fn, split_reply_record, success_decode_block,
 };
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
@@ -2389,10 +2389,16 @@ fn reply_tail(
     let call = dart_call(operation);
     let error_ty = dart_type_of(error);
     let unit = is_unit_type(success);
+    let awaited = guarded_call(
+        &call,
+        error,
+        &shape.error_header_out,
+        &format!("ctx, decoded{header_args}"),
+    );
     let call_stmt = if unit {
-        format!("await handlers.{call}(ctx, decoded{header_args});")
+        format!("{awaited};")
     } else {
-        format!("final answered = await handlers.{call}(ctx, decoded{header_args});")
+        format!("final answered = {awaited};")
     };
     let (value_pre, value_expr, value_headers) = if unit {
         (String::new(), "null".to_owned(), None)
@@ -3016,6 +3022,7 @@ fn resource_body(
     let unjudged = unjudged_decode(operation, "source");
     let kind = format!("{named}FaultKind");
     let error_ty = dart_type_of(error);
+    let awaited = guarded_call(&call, error, &[], "ctx, decoded");
     let declared = dart_json_encode(error, "declared", true);
     let encoded = dart_json_encode(ty, "answered", true);
     let success = answer.replace("@ENCODED@", &encoded);
@@ -3037,7 +3044,7 @@ fn resource_body(
          return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, rejected, {schema}));\n  \
          }}\n  \
          try {{\n    \
-         final answered = await handlers.{call}(ctx, decoded);\n    \
+         final answered = {awaited};\n    \
          {success}\n  \
          }} on {error_ty} catch (declared) {{\n    \
          return _{prefix}McpRefused({declared}, {refusal});\n  \

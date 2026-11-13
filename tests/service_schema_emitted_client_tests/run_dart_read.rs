@@ -577,8 +577,8 @@ a tray its check refuses: refused (FormatException)
         "what the Rust read answers"
     );
     let mut entry = String::from(
-        "void taken(String name, Object Function() read) {\n  try {\n    print('$name: \
-         ${read().runtimeType}');\n  } on FormatException catch (refused) {\n    print('$name: \
+        "void taken(String name, Sticker Function() read) {\n  try {\n    print('$name: \
+         ${read().toDraft().runtimeType}');\n  } on FormatException catch (refused) {\n    print('$name: \
          refused (FormatException)');\n    print('    ${refused.message}');\n  }\n}\n\nvoid \
          main() {\n",
     );
@@ -831,12 +831,13 @@ fn the_readme_shows_the_reads_that_are_emitted_and_what_they_print() {
     let manifest_class = manifest_dart::dart_definition();
     let closes = " static Read _readAt";
     for reads in [
-        from_until(&parcel_class, "factory Parcel.fromJson(", closes),
+        from_until(&parcel_class, "factory ParcelDraft.fromJson(", closes),
         from_until(
-            &manifest_class,
-            "factory Manifest.fromJsonUnjudged(",
-            closes,
+            &parcel_class,
+            "factory Parcel.fromJson(",
+            " Map<String, dynamic> toJson() => _draft.toJson();",
         ),
+        from_until(&manifest_class, "factory ManifestDraft.fromJson(", closes),
     ] {
         assert!(
             shown.contains(&packed(reads)),

@@ -28,7 +28,7 @@ Never panicked() => throw 'the handler came apart';
 final libraryHandlers = LibraryServiceHandlers<void>(
   getBook: (ctx, req) async {
     if (req.book_id == 'panic') panicked();
-    if (req.book_id == 'book-1') return BookInfo(pages: 7);
+    if (req.book_id == 'book-1') return BookInfoDraft(pages: 7).validate();
     throw const BookErrorNotFound();
   },
   libraryGuide: (ctx, req) async => '# The library',
@@ -87,7 +87,7 @@ final depotHandlers = DepotServiceHandlers<void>(
 final bareHandlers = BareServiceHandlers<void>(
   getPlain: (ctx, req) async {
     if (req.book_id == 'panic') panicked();
-    if (req.book_id == 'book-1') return BookInfo(pages: 7);
+    if (req.book_id == 'book-1') return BookInfoDraft(pages: 7).validate();
     throw const BookErrorNotFound();
   },
 );

@@ -113,6 +113,13 @@ mod run_dart_ws;
 #[path = "service_schema_emitted_client_tests/run_dart_ws_headers.rs"]
 mod run_dart_ws_headers;
 
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_declared_errors.rs"]
+mod run_dart_declared_errors;
+
+#[cfg(all(test, feature = "dart"))]
+use run_dart_declared_errors::{SpoolService, spool_service_schema};
+
 /// The `validate()` of each emitted Dart type, run beside Rust's own.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_validate.rs"]
@@ -122,6 +129,12 @@ mod run_dart_validate;
 #[cfg(feature = "dart")]
 #[path = "service_schema_emitted_client_tests/run_dart_sealed_brands.rs"]
 mod run_dart_sealed_brands;
+
+/// A valid Dart type, which a second library builds through its draft alone.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_valid_types.rs"]
+mod run_dart_valid_types;
 
 /// The read of each emitted Dart type, which refuses what its `validate()` refuses.
 #[cfg(test)]

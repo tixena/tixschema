@@ -200,7 +200,7 @@ void main() async {
   }
   final rung = <Object?>[];
   for (final text in tolls) {
-    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBell(weight: 3))));
+    rung.add(tolled(await CarillonMcpServiceMcpClient(Canned(text)).toll(CarillonBellDraft(weight: 3).validate())));
   }
   print(jsonEncode(<String, dynamic>{'served': served, 'struck': strikes, 'read': read, 'tolled': rung}));
 }

@@ -8,9 +8,9 @@ use tixschema::model_schema;
 
 use super::unknown_keys::READ_AT;
 
-/// The codec of each type below but `Audit`: its two reads, and `toJson` as it was written before
-/// any type had `validate()`, but `Sleeve`'s, which reads and writes the value of its one slot.
-const CODEC: &str = include_str!("codec_before_validate.txt");
+/// The text of each type below but `Audit`, with each `validationIssues()` cut out where `; }`
+/// stands: the reads, `toJson` and the valid type.
+const CODEC: &str = include_str!("codec_without_validation_issues.txt");
 
 /// The helper a type that names a place carries, as it is written into the type.
 const UNDER: &str = "static String _under(String place, String violation) { if \
@@ -447,27 +447,37 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
     assert_eq!(
         parcel_dart::dart_definition(),
         format!(
-            "class Parcel {{ const Parcel({{required this.fragile_item_codes,required \
+            "class ParcelDraft {{ const ParcelDraft({{required this.fragile_item_codes,required \
              this.item_code_list,required this.label,}}); final List<String> \
              fragile_item_codes;final List<String> item_code_list;final String label; factory \
-             Parcel.fromJson(Map<String, dynamic> json) {{ final read = \
-             Parcel.fromJsonUnjudged(json); final violations = read.validate(); if \
-             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
-             }} factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in \
-             json.keys) {{ if (!const <String>{{'fragileItemCodes', 'itemCodeList', \
-             'label'}}.contains(key)) throw FormatException('Unknown key of a Parcel: $key', \
-             <Object>[key]); }} return Parcel(fragile_item_codes: _readAt(json, \
-             'fragileItemCodes', () => (json['fragileItemCodes'] as \
-             List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as \
-             String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
-             (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
-             e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
-             String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ \
-             'fragileItemCodes': fragile_item_codes.map((e) => e).toList(),'itemCodeList': \
-             item_code_list.map((e) => e).toList(),'label': label, }}; List<String> validate() => \
-             [ for (final violation in withoutDuplicates(item_code_list)) _under('itemCodeList', \
-             violation), if (label.runes.length < 1) \"'label': too short: minimum length is 1, \
-             got ${{label.runes.length}}\", ...withinParcel(this), ]; {UNDER} }}"
+             ParcelDraft.fromJson(Map<String, dynamic> json) {{ for (final key in json.keys) {{ \
+             if (!const <String>{{'fragileItemCodes', 'itemCodeList', 'label'}}.contains(key)) \
+             throw FormatException('Unknown key of a Parcel: $key', <Object>[key]); }} return \
+             ParcelDraft(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
+             (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
+             () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () \
+             => (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
+             () => e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] \
+             as String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'fragileItemCodes': \
+             fragile_item_codes.map((e) => e).toList(),'itemCodeList': \
+             item_code_list.map((e) => e).toList(),'label': label, }}; List<String> \
+             validationIssues() => [ for (final violation in \
+             withoutDuplicates(item_code_list)) _under('itemCodeList', violation), if \
+             (label.runes.length < 1) \"'label': too short: minimum length is 1, got \
+             ${{label.runes.length}}\", ...withinParcel(this), ]; {UNDER} Parcel validate() {{ \
+             final found = validationIssues(); if (found.isNotEmpty) throw \
+             FormatException(found.join('; ')); return Parcel._(this); }} }} class Parcel {{ \
+             const Parcel._(this._draft); final ParcelDraft _draft; List<String> \
+             get fragile_item_codes => _draft.fragile_item_codes; List<String> get \
+             item_code_list => _draft.item_code_list; String get label => _draft.label; \
+             ParcelDraft toDraft() => _draft; factory Parcel.fromJson(Map<String, dynamic> json) \
+             {{ final read = ParcelDraft.fromJson(json); final violations = \
+             read.validationIssues(); if (violations.isNotEmpty) throw \
+             FormatException(violations.join('; ')); return Parcel._(read); }} factory \
+             Parcel.fromJsonUnjudged(Map<String, dynamic> json) => \
+             Parcel._(ParcelDraft.fromJson(json)); Map<String, dynamic> toJson() => \
+             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static Object \
+             $thrown(Object thrown) => thrown is ParcelDraft ? thrown.validate() : thrown; }}"
         )
     );
 }
@@ -476,7 +486,7 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
 fn a_type_with_no_rule_answers_an_empty_list() {
     let depot = depot_dart::dart_definition();
     assert!(
-        depot.ends_with("toJson() => { 'name': name, }; List<String> validate() => const []; }"),
+        depot.contains("toJson() => { 'name': name, }; List<String> validationIssues() => const []; Depot validate()"),
         "got: {depot}"
     );
     assert!(!depot.contains("_under"), "got: {depot}");
@@ -489,7 +499,7 @@ fn each_bound_is_written_on_the_value_it_measures() {
     let gauge = gauge_dart::dart_definition();
     assert!(
         gauge.contains(
-            "List<String> validate() => [ \
+            "List<String> validationIssues() => [ \
              if (code_list.length < 1) \"'codeList': too short: minimum length is 1, got \
              ${code_list.length}\", \
              if (code_list.length > 3) \"'codeList': too long: maximum length is 3, got \
@@ -504,7 +514,7 @@ fn each_bound_is_written_on_the_value_it_measures() {
              pattern '^[a-z]+\\$'\", \
              if (short_note case final held?) if (held.runes.length < 2) \"'shortNote': too \
              short: minimum length is 2, got ${held.runes.length}\", \
-             if (sort_code case final held?) for (final violation in held.validate()) \
+             if (sort_code case final held?) for (final violation in held.validationIssues()) \
              _under('sortCode', violation), \
              if (sort_code case final held?) if (_boundLength(held) < 1) \
              \"'sortCode': too short: minimum length is 1, got ${_boundLength(held)}\", \
@@ -535,14 +545,14 @@ fn a_holder_runs_what_it_holds_under_its_place() {
     let manifest = manifest_dart::dart_definition();
     assert!(
         manifest.contains(&format!(
-            "List<String> validate() => [ \
-             for (final violation in first_parcel.validate()) _under('firstParcel', violation), \
+            "List<String> validationIssues() => [ \
+             for (final violation in first_parcel.validationIssues()) _under('firstParcel', violation), \
              for (final (index, held) in parcel_list.indexed) for (final violation in \
-             held.validate()) _under('parcelList.$index', violation), \
+             held.validationIssues()) _under('parcelList.$index', violation), \
              for (final entry in parcels_by_dock.entries) for (final violation in \
-             entry.value.validate()) _under('parcelsByDock.${{entry.key}}', violation), \
-             if (spare_parcel case final held?) for (final violation in held.validate()) \
-             _under('spareParcel', violation), ]; {UNDER} }}"
+             entry.value.validationIssues()) _under('parcelsByDock.${{entry.key}}', violation), \
+             if (spare_parcel case final held?) for (final violation in held.validationIssues()) \
+             _under('spareParcel', violation), ]; {UNDER} Manifest validate()"
         )),
         "got: {manifest}"
     );
@@ -555,7 +565,8 @@ fn a_brand_calls_its_check_on_itself() {
     let code = code_dart::dart_definition();
     assert!(
         code.ends_with(
-            "dynamic toJson() => value; List<String> validate() => [ ...upperCase(this), ]; }"
+            "dynamic toJson() => value; List<String> validationIssues() => [ ...upperCase(this), ]; \
+             static Object $thrown(Object thrown) => thrown; }"
         ),
         "got: {code}"
     );
@@ -567,18 +578,18 @@ fn a_brand_calls_its_check_on_itself() {
 fn a_slot_is_named_by_its_position_and_a_lone_slot_by_nothing() {
     let pair = pair_dart::dart_definition();
     assert!(
-        pair.ends_with(
-            "List<String> validate() => [ if (value.$1.runes.length < 1) \"'0': too short: \
+        pair.contains(
+            "List<String> validationIssues() => [ if (value.$1.runes.length < 1) \"'0': too short: \
              minimum length is 1, got ${value.$1.runes.length}\", if (value.$2 < 1) \"'1': too \
-             small: minimum is 1, got ${value.$2}\", ]; }"
+             small: minimum is 1, got ${value.$2}\", ]; Pair validate()"
         ),
         "got: {pair}"
     );
     let sleeve = sleeve_dart::dart_definition();
     assert!(
-        sleeve.ends_with(
-            "List<String> validate() => [ if (value.runes.length < 1) \"too short: minimum length \
-             is 1, got ${value.runes.length}\", ]; }"
+        sleeve.contains(
+            "List<String> validationIssues() => [ if (value.runes.length < 1) \"too short: minimum \
+             length is 1, got ${value.runes.length}\", ]; Sleeve validate()"
         ),
         "got: {sleeve}"
     );
@@ -592,10 +603,11 @@ fn a_variant_is_named_by_the_steps_serde_writes() {
     assert_written(
         &freight,
         &[
-            "dynamic toJson(); List<String> validate(); } class FreightBoxed extends Freight {",
-            "@override List<String> validate() => [ for (final violation in value.validate()) \
+            "dynamic toJson(); List<String> validationIssues(); Freight validate() {",
+            "class FreightBoxed extends FreightDraft {",
+            "@override List<String> validationIssues() => [ for (final violation in value.validationIssues()) \
              _under('Boxed', violation), ...routed(this), ];",
-            "@override dynamic toJson() => 'Held'; @override List<String> validate() => [ \
+            "@override dynamic toJson() => 'Held'; @override List<String> validationIssues() => [ \
              ...routed(this), ]; }",
             "if (freight_label.runes.length < 1) \"'Loose.freightLabel': too short: minimum \
              length is 1, got ${freight_label.runes.length}\", ...routed(this), ];",
@@ -608,8 +620,9 @@ fn a_variant_is_named_by_the_steps_serde_writes() {
     assert_written(
         &haul,
         &[
-            "dynamic toJson(); List<String> validate(); } class HaulBoxed extends Haul {",
-            "@override List<String> validate() => [ if (value.runes.length < 1) \"'held': too \
+            "dynamic toJson(); List<String> validationIssues(); Haul validate() {",
+            "class HaulBoxed extends HaulDraft {",
+            "@override List<String> validationIssues() => [ if (value.runes.length < 1) \"'held': too \
              short: minimum length is 1, got ${value.runes.length}\", ];",
             "if (haul_label.runes.length < 1) \"'held.haulLabel': too short: minimum length is \
              1, got ${haul_label.runes.length}\", ];",
@@ -622,9 +635,10 @@ fn a_variant_is_named_by_the_steps_serde_writes() {
     assert_written(
         &lift,
         &[
-            "dynamic toJson(); List<String> validate(); } class LiftBoxed extends Lift {",
-            "@override List<String> validate() => [ ...value.validate(), ]; }",
-            "@override List<String> validate() => [ if (lift_label.runes.length < 1) \
+            "dynamic toJson(); List<String> validationIssues(); Lift validate() {",
+            "class LiftBoxed extends LiftDraft {",
+            "@override List<String> validationIssues() => [ ...value.validationIssues(), ]; }",
+            "@override List<String> validationIssues() => [ if (lift_label.runes.length < 1) \
              \"'liftLabel': too short: minimum length is 1, got ${lift_label.runes.length}\", ]; }",
         ],
     );
@@ -632,10 +646,11 @@ fn a_variant_is_named_by_the_steps_serde_writes() {
     assert_written(
         &reference,
         &[
-            "dynamic toJson(); List<String> validate(); } class ReferenceNamed extends Reference {",
-            "@override List<String> validate() => [ if (name.runes.length < 1) \"'name': too \
+            "dynamic toJson(); List<String> validationIssues(); Reference validate() {",
+            "class ReferenceNamed extends ReferenceDraft {",
+            "@override List<String> validationIssues() => [ if (name.runes.length < 1) \"'name': too \
              short: minimum length is 1, got ${name.runes.length}\", ]; }",
-            "@override List<String> validate() => [ if (value < 1) \"too small: minimum is 1, \
+            "@override List<String> validationIssues() => [ if (value < 1) \"too small: minimum is 1, \
              got ${value}\", ]; }",
         ],
     );
@@ -645,13 +660,17 @@ fn a_variant_is_named_by_the_steps_serde_writes() {
 fn an_enum_with_no_data_answers_its_checks() {
     let grade = grade_dart::dart_definition();
     assert!(
-        grade.ends_with("String toJson() => wireValue; List<String> validate() => const []; }"),
+        grade.ends_with(
+            "String toJson() => wireValue; List<String> validationIssues() => const []; static Object \
+             $thrown(Object thrown) => thrown; }"
+        ),
         "got: {grade}"
     );
     let rating = rating_dart::dart_definition();
     assert!(
         rating.ends_with(
-            "String toJson() => wireValue; List<String> validate() => [ ...rated(this), ]; }"
+            "String toJson() => wireValue; List<String> validationIssues() => [ ...rated(this), ]; static Object \
+             $thrown(Object thrown) => thrown; }"
         ),
         "got: {rating}"
     );
@@ -665,7 +684,7 @@ fn an_enums_string_check_reaches_the_fields_written_as_text() {
     assert_written(
         &stamp,
         &[
-            "@override List<String> validate() => [ \
+            "@override List<String> validationIssues() => [ \
              if (ink.runes.length < 2) \"'ink': too short: minimum length is 2, got \
              ${ink.runes.length}\", \
              if (ink.runes.length > 9) \"'ink': too long: maximum length is 9, got \
@@ -673,7 +692,7 @@ fn an_enums_string_check_reaches_the_fields_written_as_text() {
              if (!RegExp(\"[aeiou]\").hasMatch(ink)) \"'ink': does not match pattern '[aeiou]'\", \
              if (!RegExp(\"^[a-z]+\\$\").hasMatch(ink)) \"'ink': does not match pattern \
              '^[a-z]+\\$'\", ]; }",
-            "@override List<String> validate() => [ \
+            "@override List<String> validationIssues() => [ \
              if (seal.runes.length < 2) \"'seal': too short: minimum length is 2, got \
              ${seal.runes.length}\", \
              if (!RegExp(\"^[a-z]+\\$\").hasMatch(seal)) \"'seal': does not match pattern \
@@ -688,16 +707,23 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
     assert_eq!(
         audit_dart::dart_definition(),
         format!(
-            "class Audit {{ const Audit({{required this.validate_,}}); final bool validate_; \
-             factory Audit.fromJson(Map<String, dynamic> json) {{ final read = \
-             Audit.fromJsonUnjudged(json); final violations = read.validate(); if \
-             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; \
-             }} factory Audit.fromJsonUnjudged(Map<String, dynamic> json) {{ for (final key in \
+            "class AuditDraft {{ const AuditDraft({{required this.validate_,}}); final bool validate_; \
+             factory AuditDraft.fromJson(Map<String, dynamic> json) {{ for (final key in \
              json.keys) {{ if (!const <String>{{'validate'}}.contains(key)) throw \
              FormatException('Unknown key of a Audit: $key', <Object>[key]); }} return \
-             Audit(validate_: _readAt(json, 'validate', () => json['validate'] as bool),); }} \
+             AuditDraft(validate_: _readAt(json, 'validate', () => json['validate'] as bool),); }} \
              {READ_AT} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
-             List<String> validate() => const []; }}"
+             List<String> validationIssues() => const []; Audit validate() {{ final found = \
+             validationIssues(); if (found.isNotEmpty) throw FormatException(found.join('; ')); \
+             return Audit._(this); }} }} class Audit {{ const Audit._(this._draft); final \
+             AuditDraft _draft; bool get validate_ => _draft.validate_; AuditDraft toDraft() => \
+             _draft; factory Audit.fromJson(Map<String, dynamic> json) {{ final read = \
+             AuditDraft.fromJson(json); final violations = read.validationIssues(); if \
+             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
+             Audit._(read); }} factory Audit.fromJsonUnjudged(Map<String, dynamic> json) => \
+             Audit._(AuditDraft.fromJson(json)); Map<String, dynamic> toJson() => \
+             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static Object \
+             $thrown(Object thrown) => thrown is AuditDraft ? thrown.validate() : thrown; }}"
         )
     );
     assert_eq!(
@@ -713,29 +739,32 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
 fn a_types_own_check_is_called_on_the_whole_value() {
     let filled = crate_dart::dart_definition();
     assert!(
-        filled.ends_with(
-            "List<String> validate() => [ if (label.runes.length < 1) \"'label': too short: \
-             minimum length is 1, got ${label.runes.length}\", ...withACode(this), ]; }"
+        filled.contains(
+            "List<String> validationIssues() => [ if (label.runes.length < 1) \"'label': too \
+             short: minimum length is 1, got ${label.runes.length}\", ...withACode(this), ]; \
+             Crate<CodeType> validate()"
         ),
         "got: {filled}"
     );
     let closed = closed_dock_dart::dart_definition();
     assert!(
-        closed.ends_with("List<String> validate() => [ ...takingParcels(this), ]; }"),
+        closed.contains(
+            "List<String> validationIssues() => [ ...takingParcels(this), ]; ClosedDock validate()"
+        ),
         "got: {closed}"
     );
     let consignment = consignment_dart::dart_definition();
     assert!(
         consignment.contains(
-            "dynamic toJson() => (value).toJson(); List<String> validate() => [ \
-             ...value.validate(), ]; }"
+            "dynamic toJson() => (value).toJson(); List<String> validationIssues() => [ \
+             ...value.validationIssues(), ]; static Object $thrown(Object thrown) => thrown; }"
         ),
         "got: {consignment}"
     );
 }
 
-/// `validate()` is written at the end of each class, after its codec, so every piece of the
-/// codec is there, in its order.
+/// `validationIssues()` is written after the codec of each class, so every piece of the text
+/// around it is there, in its order.
 #[test]
 fn the_codec_of_each_type_is_the_text_it_was() {
     let written = definitions();
