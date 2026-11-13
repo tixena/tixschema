@@ -227,22 +227,22 @@ fn a_renamed_enum_republishes_its_ident_under_the_bound_under_each_tagging() {
     for (swift, published, republished) in [
         (
             scroll_swift::swift_definition(),
-            "public enum Parchment<Leaf: Codable & Sendable>: Codable, Sendable { ",
+            "public enum ParchmentDraft<Leaf: Codable & Sendable>: Codable, Sendable { ",
             "public typealias Scroll<Leaf: Codable & Sendable> = Parchment<Leaf>;",
         ),
         (
             tagged_scroll_swift::swift_definition(),
-            "public enum TaggedParchment<Leaf: Codable & Sendable>: Codable, Sendable { ",
+            "public enum TaggedParchmentDraft<Leaf: Codable & Sendable>: Codable, Sendable { ",
             "public typealias TaggedScroll<Leaf: Codable & Sendable> = TaggedParchment<Leaf>;",
         ),
         (
             adjacent_scroll_swift::swift_definition(),
-            "public enum AdjacentParchment<Leaf: Codable & Sendable>: Codable, Sendable { ",
+            "public enum AdjacentParchmentDraft<Leaf: Codable & Sendable>: Codable, Sendable { ",
             "public typealias AdjacentScroll<Leaf: Codable & Sendable> = AdjacentParchment<Leaf>;",
         ),
         (
             untagged_scroll_swift::swift_definition(),
-            "public enum UntaggedParchment<Leaf: Codable & Sendable>: Codable, Sendable { ",
+            "public enum UntaggedParchmentDraft<Leaf: Codable & Sendable>: Codable, Sendable { ",
             "public typealias UntaggedScroll<Leaf: Codable & Sendable> = \
              UntaggedParchment<Leaf>;",
         ),
@@ -270,26 +270,26 @@ fn a_holder_declared_above_names_the_republished_ident_and_one_declared_below_th
     holds(
         &lectern_swift::swift_definition(),
         &[
-            "public struct Lectern<Leaf: Codable & Sendable>: Codable, Sendable { \
-             public let adjacentScroll: AdjacentScroll<Leaf>; \
-             public let diptych: Diptych<Leaf>; public let scroll: Scroll<Leaf>; \
-             public let shelfmark: Shelfmark<Leaf>; public let spread: Spread<Leaf>; \
-             public let taggedScroll: TaggedScroll<Leaf>; public let tome: Tome<Leaf>; \
-             public let untaggedScroll: UntaggedScroll<Leaf>; public let volume: Volume<Leaf>; ",
+            "public struct LecternDraft<Leaf: Codable & Sendable>: Codable, Sendable { \
+             public var adjacentScroll: AdjacentScroll<Leaf>; \
+             public var diptych: Diptych<Leaf>; public var scroll: Scroll<Leaf>; \
+             public var shelfmark: Shelfmark<Leaf>; public var spread: Spread<Leaf>; \
+             public var taggedScroll: TaggedScroll<Leaf>; public var tome: Tome<Leaf>; \
+             public var untaggedScroll: UntaggedScroll<Leaf>; public var volume: Volume<Leaf>; ",
         ],
     );
     holds(
         &library_swift::swift_definition(),
         &[
-            "public struct Library<Leaf: Codable & Sendable>: Codable, Sendable { \
-             public let adjacentScroll: AdjacentParchment<Leaf>; \
-             public let catalog: CatalogType<Leaf>; public let diptych: Twofold<Leaf>; \
-             public let leaves: LeavesType<Leaf>; public let margin: MarginType<Leaf>; \
-             public let scroll: Parchment<Leaf>; public let shelfmark: CallNumber<Leaf>; \
-             public let spread: SpreadType<Leaf>; \
-             public let taggedScroll: TaggedParchment<Leaf>; public let tome: Codex<Leaf>; \
-             public let untaggedScroll: UntaggedParchment<Leaf>; \
-             public let volume: VolumeType<Leaf>; ",
+            "public struct LibraryDraft<Leaf: Codable & Sendable>: Codable, Sendable { \
+             public var adjacentScroll: AdjacentParchment<Leaf>; \
+             public var catalog: CatalogType<Leaf>; public var diptych: Twofold<Leaf>; \
+             public var leaves: LeavesType<Leaf>; public var margin: MarginType<Leaf>; \
+             public var scroll: Parchment<Leaf>; public var shelfmark: CallNumber<Leaf>; \
+             public var spread: SpreadType<Leaf>; \
+             public var taggedScroll: TaggedParchment<Leaf>; public var tome: Codex<Leaf>; \
+             public var untaggedScroll: UntaggedParchment<Leaf>; \
+             public var volume: VolumeType<Leaf>; ",
         ],
     );
 }

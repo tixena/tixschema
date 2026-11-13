@@ -65,12 +65,12 @@ func messages(_ result: Result<[McpPromptMessage], ShelfWireServiceReviewShelfFa
 }
 
 let overHttp = ShelfWireServiceHttpClient(transport: Canned())
-let httpDescribed = blocks(await overHttp.describeShelf(ShelfWireRequest(shelf: "history")))
+let httpDescribed = blocks(await overHttp.describeShelf(try ShelfWireRequestDraft(shelf: "history").validate()))
 let httpReviewed = messages(await overHttp.reviewShelf("history"))
 let httpListed = page(await overHttp.listShelves(nil))
 
 let overWs = ShelfWireServiceWsTransport(socket: Relay(), options: .init(heartbeat: nil))
-let wsDescribed = blocks(await overWs.describeShelf(ShelfWireRequest(shelf: "history")))
+let wsDescribed = blocks(await overWs.describeShelf(try ShelfWireRequestDraft(shelf: "history").validate()))
 let wsReviewed = messages(await overWs.reviewShelf("history"))
 let wsListed = page(await overWs.listShelves(nil))
 

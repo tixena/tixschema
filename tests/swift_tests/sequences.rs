@@ -184,6 +184,9 @@ fn beside_validate(swift: &str) -> String {
     let mut written = swift.to_owned();
     for opening in [
         "public func validate() -> [String] ",
+        "public func validationIssues() -> [String] ",
+        "public func validate() throws -> ",
+        "fileprivate func validate() -> [String] ",
         "; private static func swiftSchema",
     ] {
         while let Some(start) = written.find(opening) {
@@ -350,10 +353,10 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
 fn each_sequence_is_declared_an_array() {
     let swift = lone_swift::swift_definition();
     for declared in [
-        "public let binaryHeap: [String]",
-        "public let btreeSet: [String]",
-        "public let hashSet: [String]",
-        "public let vecDeque: [UInt32]",
+        "public var binaryHeap: [String]",
+        "public var btreeSet: [String]",
+        "public var hashSet: [String]",
+        "public var vecDeque: [UInt32]",
     ] {
         assert!(swift.contains(declared), "{declared} in: {swift}");
     }
@@ -377,7 +380,7 @@ fn each_sequence_is_written_as_a_vec_is() {
 #[test]
 fn an_index_set_is_written_as_a_vec_is() {
     let swift = indexed_lone_swift::swift_definition();
-    assert!(swift.contains("public let indexSet: [String]"), "{swift}");
+    assert!(swift.contains("public var indexSet: [String]"), "{swift}");
     assert_set_twins(
         (&swift, "IndexedLone"),
         (
@@ -392,15 +395,15 @@ fn an_index_set_is_written_as_a_vec_is() {
 fn a_sequence_nested_optional_held_and_of_a_model_is_written_as_a_vec_is() {
     let swift = bundled_swift::swift_definition();
     for declared in [
-        "public let buoys: [Buoy]",
-        "public let buoysByDock: [String: [Buoy]]",
-        "public let byDock: [String: [String]]",
+        "public var buoys: [Buoy]",
+        "public var buoysByDock: [String: [Buoy]]",
+        "public var byDock: [String: [String]]",
         "let slot0: [BundledStowedTupleSlot0Tuple]",
-        "public let grid: [[String]]",
-        "public let layered: [[UInt32]]",
-        "public let listed: [[String]]",
-        "public let spare: [UInt32]?",
-        "public let tether: Tether<[String]>",
+        "public var grid: [[String]]",
+        "public var layered: [[UInt32]]",
+        "public var listed: [[String]]",
+        "public var spare: [UInt32]?",
+        "public var tether: Tether<[String]>",
         "let slot0: [String]",
     ] {
         assert!(swift.contains(declared), "{declared} in: {swift}");
@@ -416,7 +419,7 @@ fn a_sequence_nested_optional_held_and_of_a_model_is_written_as_a_vec_is() {
 fn a_sequence_of_a_model_filled_with_a_parameter_is_written_as_a_vec_is() {
     let swift = tethered_swift::swift_definition();
     assert!(
-        swift.contains("public let queue: [Tether<IdType>]"),
+        swift.contains("public var queue: [Tether<IdType>]"),
         "{swift}"
     );
     let (held, as_vec) = twins(

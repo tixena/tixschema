@@ -269,12 +269,30 @@ pub(super) fn method(rules: &[String]) -> String {
 
 /// `validate()` alone, for a brand that answers the question of its bound itself.
 pub(super) fn rules_method(rules: &[String]) -> String {
+    listing("validate", rules)
+}
+
+/// What a draft declares in place of [`method`]: `validationIssues()` lists the rules, the
+/// bound is answered as any type answers it, and `validate()` makes the valid value `valid` names
+/// or throws the rules broken, joined as a read joins them.
+pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
+    format!(
+        "{}; {EMPTY_BOUND}; public func validate() throws -> {valid} {{ \
+         let found = validationIssues(); if !found.isEmpty {{ throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: \
+         found.joined(separator: \"; \"))) }}; return {valid}(draft: self) }}",
+        listing("validationIssues", rules)
+    )
+}
+
+/// The method `name` that lists the `rules` a value breaks, with the helpers they call.
+fn listing(name: &str, rules: &[String]) -> String {
     if rules.is_empty() {
-        return "public func validate() -> [String] { [] }".to_owned();
+        return format!("public func {name}() -> [String] {{ [] }}");
     }
     let body = rules.join("; ");
     format!(
-        "public func validate() -> [String] {{ var errors: [String] = []; {body}; return errors }}{}",
+        "public func {name}() -> [String] {{ var errors: [String] = []; {body}; return errors }}{}",
         helpers(&body, "")
     )
 }

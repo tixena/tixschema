@@ -339,7 +339,7 @@ fn the_wrapper_of_a_date_key_is_written_whole() {
              private static var isoFormatterForKeys: ISO8601DateFormatter { \
              let f = ISO8601DateFormatter(); \
              f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; ",
-            "public let byAt: [Date: Stowed]; ",
+            "public var byAt: [Date: Stowed]; ",
         ],
     );
 }

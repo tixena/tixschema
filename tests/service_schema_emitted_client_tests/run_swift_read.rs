@@ -68,7 +68,7 @@ func signetPressed(_ value: Signet) -> [String] {
   value.value.contains(where: { $0.isLowercase }) ? ["a signet is pressed in upper case"] : []
 }
 
-func withAnUrgency(_ value: Urgency) -> [String] {
+func withAnUrgency(_ value: UrgencyDraft) -> [String] {
   if case .low = value { return ["a low urgency is not carried"] }
   return []
 }
@@ -138,7 +138,7 @@ fileprivate func built<Read: ReadUnjudged & Encodable>(_ name: String, _ type: R
 /// The variant of each untagged enum a value holds, by its Rust name.
 const VARIANTS: &str = r#"
 func variant(_ held: Sorted) -> String {
-  switch held {
+  switch held.draft {
   case .brief: return "Brief"
   case .coded: return "Coded"
   case .counted: return "Counted"
@@ -151,7 +151,7 @@ func variant(_ held: Sorted) -> String {
 }
 
 func variant(_ held: Vetted) -> String {
-  switch held {
+  switch held.draft {
   case .signed: return "Signed"
   case .worded: return "Worded"
   }
@@ -367,7 +367,7 @@ fn driver_of(rows: &[Row]) -> String {
 /// this file in place of theirs, then this file's own.
 fn declared() -> Vec<String> {
     let mut written = definitions();
-    written.retain(|definition| !definition.starts_with("public struct Manifest:"));
+    written.retain(|definition| !definition.starts_with("public struct ManifestDraft:"));
     written.extend([
         manifest_swift::swift_definition(),
         mooring_swift::swift_definition(),
@@ -1175,7 +1175,7 @@ fn the_ws_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
     assert_eq!(
         poll_once(TrackingBackEnd.track(&(), "A".to_owned()))
             .unwrap()
-            .map(|parcel| parcel.label),
+            .map(|parcel| parcel.label.clone()),
         Ok("A".to_owned())
     );
     let Some(swift) = answered_by(TrackingClientServiceSchema::swift_ws_client(), WS_DRIVER) else {

@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn the_crates_own_range_keeps_its_description_in_swift() {
         let swift = shelved_swift::swift_definition();
-        assert!(swift.contains("public let span: Range<UInt32>;"), "{swift}");
+        assert!(swift.contains("public var span: Range<UInt32>;"), "{swift}");
         assert!(!swift.contains("ShelvedSpanRange"), "{swift}");
     }
 

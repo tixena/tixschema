@@ -74,7 +74,7 @@ mod tests {
     fn the_crates_own_result_keeps_its_description_in_swift() {
         let swift = shelved_swift::swift_definition();
         assert!(
-            swift.contains("public let outcome: Result<UInt32, String>;"),
+            swift.contains("public var outcome: Result<UInt32, String>;"),
             "{swift}"
         );
         assert!(!swift.contains("ShelvedOutcomeResult"), "{swift}");

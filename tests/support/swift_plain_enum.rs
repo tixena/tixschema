@@ -30,9 +30,9 @@ pub fn plain_enum_read(named: &str) -> String {
 /// read of its own, and the one that judges.
 pub fn plain_enum_reads(named: &str) -> String {
     format!(
-        "{ANY_KEY}; public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {} }}; public \
+        "{ANY_KEY}; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {} }}; public \
          init(from decoder: Decoder) throws {{ try self.init(swiftSchemaUnjudged: decoder); let \
-         violations = validate(); if !violations.isEmpty {{ throw \
+         violations = validationIssues(); if !violations.isEmpty {{ throw \
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
          debugDescription: violations.joined(separator: \"; \"))) }} }};",
         plain_enum_read(named)

@@ -158,7 +158,7 @@ fn the_struct_of_a_variant_declares_the_parameter_its_members_name() {
              public let cargo: [Stowed]; public let deck: UInt32; ",
             "public struct HoldKeggedPayload<Stowed: Codable & Sendable>: Codable, Sendable { \
              public let byDock: [String: Keg<Stowed>]; ",
-            "public enum Hold<Stowed: Codable & Sendable>: Codable, Sendable { \
+            "public enum HoldDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
              case closed(HoldClosedPayload); case empty; \
              case kegged(HoldKeggedPayload<Stowed>); case laden(HoldLadenPayload<Stowed>); ",
             "case \"Kegged\": do { self = .kegged(try HoldKeggedPayload<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; case \"Laden\": do { self = .laden(try HoldLadenPayload<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
@@ -189,7 +189,7 @@ fn the_struct_of_a_variant_declares_only_the_parameters_its_members_name() {
              Stowed; ",
             "public struct LadingMarksPayload<Marked: Codable & Sendable>: Codable, Sendable { \
              public let marks: [Marked]; ",
-            "public enum Lading<Stowed: Codable & Sendable, Marked: Codable & Sendable>: \
+            "public enum LadingDraft<Stowed: Codable & Sendable, Marked: Codable & Sendable>: \
              Codable, Sendable { case both(LadingBothPayload<Stowed, Marked>); \
              case marks(LadingMarksPayload<Marked>); ",
             "case \"Both\": self = .both(try LadingBothPayload<Stowed, \
@@ -222,7 +222,7 @@ fn each_tagging_holds_the_struct_of_a_variant_at_the_parameters_it_declares() {
              Sendable { ",
             "case both(UntaggedLadingBothPayload<Stowed, Marked>); \
              case marks(UntaggedLadingMarksPayload<Marked>); ",
-            "if let value = try? (taken.isEmpty ? UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder) : UntaggedLading.swiftSchemaOnly(decoder, [\"marked\", \"stowed\"], taken, UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) { self = .both(value); return }; if let value = try? (taken.isEmpty ? UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder) : UntaggedLading.swiftSchemaOnly(decoder, [\"marks\"], taken, UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) { self = .marks(value); return }; ",
+            "if let value = try? (taken.isEmpty ? UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder) : UntaggedLadingDraft.swiftSchemaOnly(decoder, [\"marked\", \"stowed\"], taken, UntaggedLadingBothPayload<Stowed, Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) { self = .both(value); return }; if let value = try? (taken.isEmpty ? UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder) : UntaggedLadingDraft.swiftSchemaOnly(decoder, [\"marks\"], taken, UntaggedLadingMarksPayload<Marked>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) { self = .marks(value); return }; ",
         ],
     );
 }

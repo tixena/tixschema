@@ -1,14 +1,14 @@
 ### `validate()` in the Swift client
 
-Every Swift type `swift_definition()` writes has `public func validate() -> [String]`: a struct, a tuple struct, a unit struct, the wrapper of a [branded newtype](generics-and-brands.md#branded-newtypes), an enum under every tagging and a plain one, a type with a parameter at every filling, and the struct written for a variant's named members or for a tuple. It answers one message per broken rule, and an empty list for a value that keeps every one. It judges a value built or changed in code, and `init(from:)` of the type calls it on the value it read, so [a read refuses what it refuses](#a-swift-read-refuses-what-validate-refuses).
+Every Swift model type `swift_definition()` writes is a pair: `ParcelDraft`, which code builds and changes, and `Parcel`, the [valid type](#a-swift-model-type-is-a-draft-and-a-valid-type). A struct, a tuple struct, a unit struct, an enum under every tagging and a plain one, and a type with a parameter at every filling each have the pair. The draft has `public func validationIssues() -> [String]`, which answers one message per broken rule, and an empty list for a value that keeps every one, and `public func validate() throws -> Parcel`, which makes the valid value or throws those messages. It judges a value built or changed in code, and `init(from:)` of the type calls it on the value it read, so [a read refuses what it refuses](#a-swift-read-refuses-what-validate-refuses). A [branded newtype](generics-and-brands.md#branded-newtypes) has no draft: its wrapper has `public func validate() -> [String]`, as does the struct written for a variant's named members or for a tuple.
 
 ```swift
-let parcel = Parcel(label: "", itemCodeList: ["x", "x"], fragileItemCodes: [])
-let violations = parcel.validate()
+var draft = ParcelDraft(label: "", itemCodeList: ["x", "x"], fragileItemCodes: [])
+let violations = draft.validationIssues()
 // ["'label': too short: minimum length is 1, got 0", "'itemCodeList': duplicate item code x"]
 ```
 
-A type with no rule, which holds no type that has one, declares `public func validate() -> [String] { [] }`.
+A type with no rule, which holds no type that has one, declares `public func validationIssues() -> [String] { [] }`.
 
 **What runs** is what the Rust [`validate()`](validation.md#the-validate-method) of the type runs, in its order and in its words: what the value a member holds reports, then the member's bounds, then the checks it names, member by member as declared, and the type's own checks last. A bound written on a member runs beside the bounds its type declares, the member's first.
 
@@ -20,7 +20,7 @@ A type with no rule, which holds no type that has one, declares `public func val
 | `pattern`, and an enum's own beside a field's | `value.range(of: "...", options: .regularExpression) == nil`: a match anywhere in the string |
 | [`literal`](literals-and-type-names.md#literal-values) | `value != 214`, `value != "fixed"`, `!value`: on each item of a list, under its index |
 | `check = ["withinParcel"]` | `withinParcel(value)`, the Swift function of that name |
-| a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `Parcel.swiftSchemaRepeats(value)`, ahead of the set's count: two items are one where `JSONEncoder` with sorted keys writes one text for both, and the message is [`repeats an item: a set holds each item once`](models.md#a-set-holds-each-item-once) |
+| a `HashSet`, a `BTreeSet` or an `IndexSet`, with no key | `ParcelDraft.swiftSchemaRepeats(value)`, ahead of the set's count: two items are one where `JSONEncoder` with sorted keys writes one text for both, and the message is [`repeats an item: a set holds each item once`](models.md#a-set-holds-each-item-once) |
 
 - **The unit of a length is the Unicode code point**: `"é"` counts 1, `"e\u{301}"` 2, and a character outside the Basic Multilingual Plane 1. Rust, Zod and the other clients count the same unit ([Field Validation](validation.md#string-constraints-minlength-maxlength-pattern)).
 - **A whole float is quoted back without `.0`**, as Rust writes it: `2.0` reads `got 2`.
@@ -31,19 +31,19 @@ A type with no rule, which holds no type that has one, declares `public func val
 - **A branded newtype runs its own bounds on the value it wraps**, under no path. One that declares a parameter runs them where the value is of its declared default's Swift type (`value as? String`), and at no other filling. A declared default that is itself a brand written with arguments, `default_types(WrapType = StrictDocumentId<String>)`, is told by `value as? StrictDocumentId<String>`, which Swift keeps the arguments of, and the bounds measure the value that brand holds. A `String`, a `PathBuf` and a `char` are all a Swift `String`.
 - **A bound on a field typed with a brand** measures the text the brand's wrapper answers with `swiftSchemaBoundText`, a member every brand over a string or a path has, and a length counts what it answers with `swiftSchemaBoundLength`, which a brand over a string, a path or a list has; a brand over a brand answers through the brand it holds. The brand is declared above the field's type or below it. A bound on a field typed with an alias of a string measures the string, and a length on one typed with an alias of a list counts its items.
 
-**A type that holds another** runs its `validate()` and writes each message under the place it holds it at:
+**A type that holds another** runs the `validate()` of the value it holds, which a valid type declares for the generated file alone, and writes each message under the place it holds it at:
 
 ```swift
-errors += firstParcel.validate().map { Manifest.swiftSchemaUnder("firstParcel", $0) }
-for (index, held) in parcelList.enumerated() { errors += held.validate().map { Manifest.swiftSchemaUnder("parcelList.\(index)", $0) } }
-for (key, held) in parcelsByDock.sorted(by: { $0.key < $1.key }) { errors += held.validate().map { Manifest.swiftSchemaUnder("parcelsByDock.\(key)", $0) } }
-if let held = spareParcel { errors += held.validate().map { Manifest.swiftSchemaUnder("spareParcel", $0) } }
+errors += firstParcel.validate().map { ManifestDraft.swiftSchemaUnder("firstParcel", $0) }
+for (index, held) in parcelList.enumerated() { errors += held.validate().map { ManifestDraft.swiftSchemaUnder("parcelList.\(index)", $0) } }
+for (key, held) in parcelsByDock.sorted(by: { $0.key < $1.key }) { errors += held.validate().map { ManifestDraft.swiftSchemaUnder("parcelsByDock.\(key)", $0) } }
+if let held = spareParcel { errors += held.validate().map { ManifestDraft.swiftSchemaUnder("spareParcel", $0) } }
 ```
 
 A Swift dictionary keeps no order, so a map is walked by its sorted keys. A map's key is judged as its value is, under the same place, as Rust's `validate()` judges it: with `pitches: BTreeMap<Pitch, u32>` over a brand whose `check` refuses a pitch above 12, `{"pitches":{"13":1}}` is refused with `'pitches.13': 13 is outside of the scale`, and the walk binds no value it does not judge:
 
 ```swift
-for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += key.validate().map { Chime.swiftSchemaUnder("pitches.\(key.value)", $0) } }
+for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += key.validate().map { ChimeDraft.swiftSchemaUnder("pitches.\(key.value)", $0) } }
 ```
 
 A key of a brand over a brand is judged by both checks, each under the key, as serde judges each: the walk runs the outer brand's, and the read the inner brand's, as the read of the brand inside a value judges it. With `outer: BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose `check` refuses `mute`, and `Outer`'s `check` refusing `soft`, `{"outer":{"mute":1}}` is refused at the coding path `outer.mute` with `mute is silent`, and `{"outer":{"soft":1}}` with `'outer.soft': soft is quiet`. The `ws_rpc` client names the field `outer.mute` and `outer.soft`, as the Rust dispatcher names each.
@@ -72,8 +72,8 @@ A value behind a type parameter is not reached, as in Rust. `swiftSchemaUnder` i
 | | Swift |
 |---|---|
 | A field's check | `func withoutDuplicates(_ value: [String]) -> [String]` |
-| A type's check | `func withinParcel(_ value: Parcel) -> [String]` |
-| The check of a type with a parameter, written once | `func withACode<CodeType>(_ value: Crate<CodeType>) -> [String]` |
+| A type's check | `func withinParcel(_ value: ParcelDraft) -> [String]` |
+| The check of a type with a parameter, written once | `func withACode<CodeType>(_ value: CrateDraft<CodeType>) -> [String]` |
 
 ```swift
 func withoutDuplicates(_ value: [String]) -> [String] {
@@ -84,14 +84,14 @@ func withoutDuplicates(_ value: [String]) -> [String] {
   return []
 }
 
-func withinParcel(_ value: Parcel) -> [String] {
+func withinParcel(_ value: ParcelDraft) -> [String] {
   value.fragileItemCodes.enumerated()
     .filter { !value.itemCodeList.contains($0.element) }
     .map { "'fragileItemCodes.\($0.offset)': \($0.element) is outside of itemCodeList" }
 }
 ```
 
-A function answers one message per broken rule, and an empty list for none. A field's check takes the field's own value, under an `Option` only where one is held, and names no path: `validate()` writes each message under the field. A type's check takes the whole value and leads each message with the path of what it refuses, as [in Rust](checks.md#the-messages). A name with no function does not build:
+A function answers one message per broken rule, and an empty list for none. A field's check takes the field's own value, under an `Option` only where one is held, and names no path: `validate()` writes each message under the field. A type's check takes the whole draft, the value its rules run on, and leads each message with the path of what it refuses, as [in Rust](checks.md#the-messages). A name with no function does not build:
 
 ```text
 error: cannot find 'withinParcel' in scope
@@ -99,7 +99,7 @@ error: cannot find 'withinParcel' in scope
 
 **What you declare.**
 
-- **A field named `validate`** is declared `validate_`, the method having the name, and keeps its key: `case validate_ = "validate"`.
+- **A field named `validate`, `validationIssues` or `draft`** is declared `validate_`, `validationIssues_` or `draft_`, the draft having the methods and the valid type the `draft` property, and keeps its key: `case validate_ = "validate"`. On the valid type it reads as `holder.draft_`, and `holder.draft` is the draft.
 - **A type tixschema has not written** is one a holder cannot tell from a model declared below it, so it calls its `validate()` and reads it through its `init(swiftSchemaUnjudged:)`: a type of your own that a generated type holds, a map's key among them, declares `func validate() -> [String] { [] }`, `func swiftSchemaValidateBound() -> [String] { [] }` and `init(swiftSchemaUnjudged decoder: Decoder) throws { try self.init(from: decoder) }`. An alias of a type that has none (`type LaterTitle = String;`) is declared above the type that holds it. Declared below, the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'validate'`.
 - **A type alias of a list, a map or an `Option` is declared above every type whose field names it.** Declared below, the holder reads it as a model, and the emitted Swift does not compile: `incorrect argument label in call (have 'swiftSchemaUnjudged:', expected 'from:')` and `value of type 'ProbeList' (aka 'Array<String>') has no member 'validate'`. Move the alias above the holder.
 - **An alias of a string that a field bounds** is declared above that field's type. Declared below, it is a name the emitter reads as a brand, and the Swift compiler answers `value of type 'LaterTitle' (aka 'String') has no member 'swiftSchemaBoundLength'`, or `'swiftSchemaBoundText'` for a pattern. The same error answers a length or a pattern on a field typed with a struct or an enum, which holds no string to measure.
@@ -128,10 +128,10 @@ The `debugDescription` is the list `validate()` answers of the value read, every
 
 The text holds no coding path. `codingPath` is the decoder's own, as for every decoding error: empty for the value the read was asked for, and `1` for the second manifest of a `[Manifest]`.
 
-**What the emitter writes.** Every struct and every enum has two initializers that read it:
+**What the emitter writes.** Every draft has two initializers that read it, and the valid type forwards them. The read alone is `fileprivate`, which the generated file alone reaches:
 
 ```swift
-public init(swiftSchemaUnjudged decoder: Decoder) throws {
+fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {
   let container = try decoder.container(keyedBy: CodingKeys.self)
   self.label = try container.decode(String.self, forKey: .label)
   self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)
@@ -140,15 +140,15 @@ public init(swiftSchemaUnjudged decoder: Decoder) throws {
 
 public init(from decoder: Decoder) throws {
   try self.init(swiftSchemaUnjudged: decoder)
-  let violations = validate()
+  let violations = validationIssues()
   if !violations.isEmpty {
     throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: "; ")))
   }
 }
 ```
 
-- **`init(swiftSchemaUnjudged:)` is the read alone.** It builds the value from the same payload and judges nothing. It is what a type that holds another reads it with, and what reads a value that is to be repaired: call it from an `init(from:)` of your own, which is where a `Decoder` is handed out.
-- **Every struct declares its memberwise initializer**, `public init(label: String, itemCodeList: [String], fragileItemCodes: [String])` here: the one Swift synthesizes is gone once a struct writes an `init(from:)`. A value built with it is judged when you call `validate()`.
+- **`init(swiftSchemaUnjudged:)` is the read alone.** It builds the value from the same payload and judges nothing. It is `fileprivate`, so a type that holds another reads it with, and a file of the module other than the generated one does not compile a call of it: ``error: incorrect argument label in call (have 'swiftSchemaUnjudged:', expected 'from:')``. A value that is to be repaired is read through a [`preprocess` function](preprocess.md).
+- **Every draft declares its memberwise initializer**, `public init(label: String, itemCodeList: [String], fragileItemCodes: [String])` here, and holds its members in `var`: the one Swift synthesizes is gone once a struct writes an `init(from:)`. A value built with it is judged when you call `validate()`.
 - **`encode(to:)` judges no bound and no check.** Swift synthesizes it where it did, and the emitter writes it for a type that holds a `char` or a chrono date, time, or date and time, each held as a `String`, which it writes in [the form every target reads](client-forms.md#the-form-each-client-sends): a `NaiveDateTime` with a `Z`, and a `NaiveTime` or a `NaiveDateTime` without seconds, is written in the form serde writes, and a text no such rewrite turns into its form is refused with `EncodingError.invalidValue`, `expected a character, found "ab"` or `expected a date, found "2024-1-5"`, under the encoder's coding path.
 - **A brand and a tuple struct that declares one slot write their value through their own encoder**, as serde writes it, so a flattened one joins its value's keys to the holder's object. With `pub struct Baled(pub Bale);` over `pub struct Bale { pub label: String }`, flattened beside `count: u32`, the holder is written `{"label":"l","count":2}`.
 - **A `char` and a chrono date, time, and date and time are read in their one form**, as TypeScript and Zod read each: `"ab"` for a `char` is refused with `DecodingError.dataCorrupted` and `expected a character, found "ab"`, as serde refuses it, and a text `z.iso.date()`, `z.iso.time()` or `z.iso.datetime({ local: true })` refuses with `expected a date, found ...`, `expected a time, found ...` or `expected a date and time, found ...`, the value quoted as JSON, under the decoder's coding path, and a map's key under the path of its entry. Where serde and Zod part on a date, the read follows Zod: it refuses `2024-1-5`, which serde reads, and reads `2024-01-05T10:20Z`, which serde refuses. A `DateTime<Tz>` is a `Date`, read from RFC 3339 with or without a fraction of a second, and written as chrono writes it: no fraction for a date of whole seconds, `2024-01-05T10:20:30Z`, and three digits of one otherwise, `2024-01-05T10:20:30.500Z`. Swift holds a millisecond: a date finer than that is read at the millisecond, and a map keyed by dates that read as one key is refused with `repeated key ...` under the entry, where it kept one entry. `validate()` names a date key as serde writes it, fraction included. Under `as_number` it is an `Int64`, the number serde writes. An integer is held in its own type, which holds its range.
@@ -213,4 +213,27 @@ let label = Label(text: text)
 let data = try JSONEncoder().encode(label)            // {"text":"Shipping"}
 ```
 
-The generated types read a brand they hold through the `fileprivate` read, so a holder answers for `{"text":""}` as it did. The seal is for immutability, not for security: it holds a file of the module to the brand's rules, and the generated file itself is not held. A tuple struct that is no brand, and an alias, keep their public `init(value:)`.
+The generated types read a brand they hold through the `fileprivate` read, so a holder answers for `{"text":""}` as it did. The seal is for immutability, not for security: it holds a file of the module to the brand's rules, and the generated file itself is not held. A tuple struct that is no brand has a draft and a valid type, as every model type does, and an alias is a `typealias` of what it names.
+
+#### A Swift model type is a draft and a valid type
+
+Every struct, tuple struct, unit struct and enum a Swift client declares for a model is a pair, as the [Rust draft and valid type](models.md#a-draft-and-a-valid-type) are. `ShipmentDraft` is the type you build and change: its members are `var`, it has the memberwise initializer, `validationIssues()` and `validate() throws -> Shipment`. `Shipment` holds a draft that passed its rules, and a client, a holder and a function that takes a `Shipment` hold a value that did:
+
+```swift
+var draft = ShipmentDraft(label: try LabelText(validating: "Shipping"), parcelCount: 3)
+let shipment = try draft.validate()
+print(shipment.parcelCount)                  // 3, read through @dynamicMemberLookup
+draft.parcelCount = 200
+do { _ = try draft.validate() } catch { print(error) }
+// dataCorrupted(... debugDescription: "'parcelCount': too large: maximum is 100, got 200")
+let again: ShipmentDraft = shipment.draft    // the draft back, to change and validate again
+```
+
+`validate()` throws `DecodingError.dataCorrupted` with an empty coding path and the messages `validationIssues()` lists joined with `; `, which is the text `init(from:)` throws for a read of the same value. `JSONEncoder().encode(shipment)` writes what `JSONEncoder().encode(shipment.draft)` writes, and `JSONDecoder().decode(Shipment.self, from:)` judges as it did.
+
+A file of the module other than the generated one builds a `Shipment` through `validate()` or a read alone. Its initializer and its unjudged reads are `fileprivate`, so `Shipment(draft: draft)` does not compile there (``error: incorrect argument label in call (have 'draft:', expected 'from:')``), nor does `Shipment(label: label, parcelCount: 3)` (``error: extra arguments at positions #1, #2 in call`` and ``error: missing argument for parameter 'from' in call``). A member of a valid value is read and not changed: `shipment.parcelCount = 1` is ``error: cannot assign to property: 'shipment' is immutable``, and `shipment.draft.parcelCount = 1` is ``error: cannot assign to property: 'draft' is a 'let' constant``. The seal is for immutability, not for security: the generated file itself is not held to it.
+
+An enum is read through its draft: `switch shipmentLeg.draft { case .voyage: ... }`. A valid enum has no case of its own, so `switch leg { case .voyage: ... }` is ``error: type 'Leg' has no member 'voyage'``, and `Lane.air` as a `Lane` is ``error: instance member 'air' cannot be used on type 'Lane'; did you mean to use a value of this type instead?``. Write `LaneDraft.air`, and `try LaneDraft.air.validate()` where a `Lane` is wanted.
+
+A function a `check` names takes the draft, the type its rules run on: `func withinParcel(_ value: Parcel)` is ``error: cannot convert value of type 'ParcelDraft' to expected argument type 'Parcel'``. A type a service writes for itself, such as a generated message or a fault type, has no draft and is declared as written.
+

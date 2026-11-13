@@ -194,7 +194,7 @@ mod on_a_mobile_surface {
         for written in [
             "private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" };",
             "var tagged = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); try tagged.encode(\"TaggedMobile\", forKey: .swiftSchemaTag);",
-            "public init(swiftSchemaUnjudged decoder: Decoder) throws { let tagged = try \
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { let tagged = try \
              decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); guard \
              tagged.contains(.swiftSchemaTag) else { throw \
              DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \

@@ -4,16 +4,47 @@
 
 ### 10. The Swift `validate()`
 
-Every Swift type the emitter writes has `public func validate() -> [String]`, which runs what the
-Rust `validate()` of the type runs, in its order and in its words. `docs/guide/swift.md`'s "`validate()` in
-the Swift client" section is the consumer's view; this is what a change to the emitter has to keep.
+Every Swift model type the emitter writes is a pair, and the pair's draft has
+`public func validationIssues() -> [String]`, which runs what the Rust `validate()` of the type
+runs, in its order and in its words. `docs/guide/swift.md`'s "`validate()` in the Swift client"
+section is the consumer's view; this is what a change to the emitter has to keep.
 
+- **A model type is a draft and a valid type.** `struct_swift_tokens`, `tuple_struct_swift_tokens`
+  (through `value_wrapper_tokens`) and `enum_swift_tokens` in `src/features/swift.rs` write the
+  declared item as `{Name}Draft` and follow it with the struct `{Name}` that `valid_struct` writes,
+  unless `SwiftTypeArgs::undrafted` says a service wrote the type for itself (it is declared as
+  written, with `validate() -> [String]`). A brand is neither: it has no draft. The draft holds its
+  members in `var` (`OwnRead::valid`), declares `validationIssues()`, the body `validate()` was, and
+  `validate() throws -> {Name}`, which throws the messages joined with `; ` as a
+  `DecodingError.dataCorrupted` with codingPath `[]` (`validate::draft_method`), and its reads are
+  `fileprivate` (`Written::draft`), its judged `init(from:)` calling `validationIssues()`.
+  `{Name}` is `@dynamicMemberLookup` over a `let draft`, with a `fileprivate init(draft:)`, an
+  `init(from:)` that reads the draft, the `fileprivate` unjudged reads the draft declares
+  (`init(swiftSchemaUnjudged:)`, and the one that takes the keys the types around it took where the
+  draft has it), `encode(to:)` writing the draft, and `fileprivate` `validate()` and
+  `swiftSchemaValidateBound()` that answer what the draft's `validationIssues()` and
+  `swiftSchemaValidateBound()` answer, so a holder in the generated file runs a held model as it ran
+  it. A plain enum is `Hashable` and has a `fileprivate init?(rawValue:)`, and a tuple struct of one
+  slot a `fileprivate init(value:)`, for the map keyed by either (`ValidForm`).
+- **A name is the draft's wherever a static or a private member of the type is named.** Everything
+  that is named at the type it is declared in is written under the draft's name: the owner of
+  `swiftSchemaUnder` and the other helpers (`field_rules`, `payload_rules`, `bound_check`), the
+  `extension {Name}Draft` the date and text helpers sit in, `SwiftSchemaRead` and
+  `init(swiftSchemaCorrected:)`, the property wrapper of a member that holds an `Option` of its own
+  type, and the check functions `forwarded.rs` writes, which take `{Name}Draft`. A name that is a
+  hint, a published name or a word of a message stays the declared one: the structs written for a
+  variant (`{Name}{Variant}Payload`), `typeMismatch({Name}.self, ...)`, and ``{Name}: \(tag) takes
+  no value``. A value of an externally tagged enum a holder flattens is switched on through `.draft`
+  (`UnitEntry::drafted`).
+- **A member named `validationIssues` or `draft` is declared `validationIssues_` or `draft_`**, as
+  one named `validate` is `validate_`, since the draft has the methods and the valid type the `draft`
+  property (`swift_property`). The valid type reads it as `holder.draft_`.
 - **A brand is sealed.** `value_wrapper_tokens` in `src/features/swift.rs` writes a brand's
   `init(value:)` and its own reads `fileprivate`, through `Written::sealed`, and adds
   `public init(validating:)`, which runs `validate()` and throws the `DecodingError.dataCorrupted`
   that `init(from:)` throws, with codingPath `[]`. A holder in the generated file reads the brand
-  through `init(swiftSchemaUnjudged:)` as before, so every answer is unchanged. A tuple struct and an
-  alias go through the same function and keep a public `init(value:)`.
+  through `init(swiftSchemaUnjudged:)` as before, so every answer is unchanged. An alias is a
+  `typealias` of what it names.
 
 - **The emitter is handed what it reads.** `swift_suffix_tokens` in `src/model_schema.rs` builds a
   `SwiftTypeArgs`: the `name` override, the type's `check` names, a brand's or an enum's
@@ -61,7 +92,7 @@ the Swift client" section is the consumer's view; this is what a change to the e
   it from one with a rule.
 - **A local of the method is never read as a property.** `property_read` reads a property named
   `errors`, `held`, `index` or `key` through `self` (`TAKEN_BY_VALIDATE`), and `swift_property`
-  declares a field named `validate` as `validate_`, with its key kept. `swift_field_member` is
+  declares a field named `validate`, `validationIssues` or `draft` as `validate_`, `validationIssues_` or `draft_`, with its key kept. `swift_field_member` is
   the same seam, so a service client reads the property under the name it was declared with.
 
 ### 11. The Swift read
@@ -69,13 +100,15 @@ the Swift client" section is the consumer's view; this is what a change to the e
 The Swift read of a strict type refuses a key no member reads, as the Rust, Zod, Dart and Kotlin reads do. A type whose keys are known (`closed_keys` in `src/features/swift.rs`: its own members, and those it flattens whose type was written above and refuses a key itself or takes known keys) writes its own read twice: `init(swiftSchemaUnjudged:swiftSchemaWithout:)` reads the members and refuses nothing, and `init(swiftSchemaUnjudged:)` refuses a key outside the list, then calls it with no key taken. A holder, an enum under a tag and a lone slot read a type beside other keys through the first, and refuse the keys of the whole object once, in the second; a list element, a map value and a member read the type through the second. An enum under a tag alone, or under a tag and a content key, and an untagged enum refuse a key none of their variants reads in their second read; an untagged enum tries a variant's struct through its second read, and where the enum is itself handed keys, through `swiftSchemaOnly`, which refuses a key that is neither the struct's nor taken and then reads the struct through its first read, as serde tries a strict variant on the keys its holder leaves. A `nonstrict` type, a type that names a function on itself, a struct under its own tag and a type that flattens a member whose keys are not known refuse nothing. The case of a unit variant of a strict enum under a tag alone refuses a key that is neither the tag nor one the types around the enum took (`unit_beside_the_tag`), as the Rust read the macro writes for that variant does, whatever its other variants hold. Where the Swift registries hold no keys of a flattened member (`flattened_contribution`), the macro's classifier answers them (`flatten_order::flattened_keys`): an externally tagged enum's variant names, a struct of one slot's slot, and, for a member serde hands every key its holder leaves, the keys of one that refuses a key beside its own, a strict struct that flattens one, enum under a tag alone or untagged enum among them. A member that reads past a key leaves the holder refusing nothing. One declared below its holder or in another crate is listed by a placeholder (`unmet_keys`, `member_keys::of`), which `swift_definition()` replaces with the keys the type publishes in `__TIXSCHEMA_KEYS`.
 
 Every Swift type the emitter writes has two reads: `init(swiftSchemaUnjudged:)` is the type's own,
-and `init(from:)` runs it and then `validate()`, throwing `DecodingError.dataCorrupted` with every
+and `init(from:)` runs it and then `validate()`, or `validationIssues()` for a draft, throwing `DecodingError.dataCorrupted` with every
 message joined by `; ` under the decoder's own coding path. `docs/guide/swift.md`'s "A Swift read refuses
 what `validate()` refuses" section is the consumer's view; this is what a change to the emitter has
 to keep.
 
 - **`src/features/swift/read.rs` writes both.** `both` takes the statements of the type's own read
-  and writes the pair, `JUDGED` being one text for every type. A struct, the struct written for a
+  and writes the pair, `JUDGED` being one text for every type but a draft, whose own is
+  `JUDGED_DRAFT`: it calls `validationIssues()`, and its own read is `fileprivate` as a brand's is
+  (`Written::draft`), the valid type forwarding it. A struct, the struct written for a
   variant's members and for a tuple, a brand's wrapper, a tuple struct and an enum under every
   tagging call it. A plain enum that names no check keeps the `init(from:)` Swift synthesizes, and
   its unjudged initializer is that read.

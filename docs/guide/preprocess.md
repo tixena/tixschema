@@ -348,11 +348,11 @@ private init(swiftSchemaCorrected decoder: Decoder) throws {
   self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label])
 }
 
-public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
+fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
   self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath).value
 }
 
-public init(swiftSchemaUnjudged decoder: Decoder) throws {
+fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {
   try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: [])
 }
 ```

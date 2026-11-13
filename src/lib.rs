@@ -442,7 +442,7 @@ fn main() {
 
     let swift = swift_file();
     assert!(swift.contains("public struct Invoice: Codable, Sendable"));
-    assert!(swift.contains("public func validate() -> [String]"));
+    assert!(swift.contains("public func validationIssues() -> [String]"));
 
     let kotlin = kotlin_file();
     assert!(kotlin.contains("data class Invoice("));

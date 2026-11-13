@@ -367,11 +367,11 @@ fn a_tuple_struct_reads_and_writes_the_date_of_a_slot_as_its_text() {
 fn a_map_swift_keys_natively_turns_each_date_it_holds() {
     let plain = plain_chart_swift::swift_definition();
     holds(
-        declared(&plain, "PlainChart"),
+        declared(&plain, "PlainChartDraft"),
         &[
-            "public let byName: [String: Date]; ".to_owned(),
-            "public let byTurn: [Int: Date]; ".to_owned(),
-            "public let marksByName: [String: [Date]]; public let maybeByName: [String: Date?]; "
+            "public var byName: [String: Date]; ".to_owned(),
+            "public var byTurn: [Int: Date]; ".to_owned(),
+            "public var marksByName: [String: [Date]]; public var maybeByName: [String: Date?]; "
                 .to_owned(),
             "let wireByName = try container.decode([String: String].self, forKey: .byName); \
              self.byName = try wireByName.mapValues { \
@@ -399,14 +399,14 @@ fn a_map_swift_keys_natively_turns_each_date_it_holds() {
                 .to_owned(),
         ],
     );
-    holds(&plain, &[helpers("PlainChart", STORED)]);
+    holds(&plain, &[helpers("PlainChartDraft", STORED)]);
     holds(
         &chart_swift::swift_definition(),
         &[
             "self.byName = try wireByName.mapValues { \
              try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) }; "
                 .to_owned(),
-            helpers("Chart", COMPUTED),
+            helpers("ChartDraft", COMPUTED),
         ],
     );
 }
@@ -459,8 +459,12 @@ fn a_variant_of_one_slot_reads_and_writes_its_date_under_each_tagging() {
     let parsed = "self = .stamped(try Self.swiftSchemaParseIso8601Date(wireStamped, \
                   codingPath: decoder.codingPath)); ";
     for (named, swift, formatter) in [
-        ("PlainTide", plain_tide_swift::swift_definition(), STORED),
-        ("Tide", tide_swift::swift_definition(), COMPUTED),
+        (
+            "PlainTideDraft",
+            plain_tide_swift::swift_definition(),
+            STORED,
+        ),
+        ("TideDraft", tide_swift::swift_definition(), COMPUTED),
     ] {
         holds(
             &swift,
@@ -479,12 +483,12 @@ fn a_variant_of_one_slot_reads_and_writes_its_date_under_each_tagging() {
     }
     for (named, swift, formatter) in [
         (
-            "AdjacentPlainTide",
+            "AdjacentPlainTideDraft",
             adjacent_plain_tide_swift::swift_definition(),
             STORED,
         ),
         (
-            "AdjacentTide",
+            "AdjacentTideDraft",
             adjacent_tide_swift::swift_definition(),
             COMPUTED,
         ),
@@ -505,12 +509,12 @@ fn a_variant_of_one_slot_reads_and_writes_its_date_under_each_tagging() {
     }
     for (named, swift, formatter) in [
         (
-            "UntaggedPlainTide",
+            "UntaggedPlainTideDraft",
             untagged_plain_tide_swift::swift_definition(),
             STORED,
         ),
         (
-            "UntaggedTide",
+            "UntaggedTideDraft",
             untagged_tide_swift::swift_definition(),
             COMPUTED,
         ),
@@ -610,8 +614,8 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
             "public struct PlainChartSwungArgument1Date: Codable, Sendable { public let value: Date?; "
                 .to_owned(),
             "let wireValue = try container.decode(String?.self); ".to_owned(),
-            "public let dated: Pannier<PlainChartDatedArgument0Date>; ".to_owned(),
-            "public let swung: Pendulum<PlainChartSwungArgument0Date, PlainChartSwungArgument1Date>; ".to_owned(),
+            "public var dated: Pannier<PlainChartDatedArgument0Date>; ".to_owned(),
+            "public var swung: Pendulum<PlainChartSwungArgument0Date, PlainChartSwungArgument1Date>; ".to_owned(),
             "self.dated = try container.decode(Pannier<PlainChartDatedArgument0Date>.self, \
              forKey: .dated); "
                 .to_owned(),
@@ -624,7 +628,7 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
             "public struct StowedChartDatedArgument0Date: Codable, Sendable { public let value: Date; "
                 .to_owned(),
             helpers("StowedChartDatedArgument0Date", STORED),
-            "public let dated: Chime<StowedChartDatedArgument0Date, Stowed>; ".to_owned(),
+            "public var dated: Chime<StowedChartDatedArgument0Date, Stowed>; ".to_owned(),
         ],
     );
 }

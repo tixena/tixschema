@@ -17,7 +17,7 @@ use super::runtime::judged;
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 
 const DRIVER: &str = r#"
-func affirmed(_ value: Verdict) -> [String] {
+func affirmed(_ value: VerdictDraft) -> [String] {
   if case .overturned = value { return ["a verdict is upheld"] }
   return []
 }

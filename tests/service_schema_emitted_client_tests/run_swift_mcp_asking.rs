@@ -96,12 +96,12 @@ for call in calls {
   let label = call["label"] as! String
   switch label {
   case "declared": outcomes[label] = deleted(await client.deleteDocument(DeleteDocumentRequest(documentId: "doc-1", confirmation: nil)))
-  case "confirmed": outcomes[label] = deleted(await client.deleteDocument(DeleteDocumentRequest(documentId: "doc-1", confirmation: AskingConfirmation(confirm: true))))
+  case "confirmed": outcomes[label] = deleted(await client.deleteDocument(DeleteDocumentRequest(documentId: "doc-1", confirmation: try AskingConfirmationDraft(confirm: true).validate())))
   case "image": outcomes[label] = previewed(await previewer.documentPreview("doc-1"))
   case "audio": outcomes[label] = previewed(await previewer.documentPreview("voice"))
   case "plain": outcomes[label] = previewed(await previewer.documentPreview("plain"))
   case "missing": outcomes[label] = previewed(await previewer.documentPreview("nothing"))
-  case "report": outcomes[label] = reported(await client.buildReport(AskingReportRequest(title: "Q3")))
+  case "report": outcomes[label] = reported(await client.buildReport(try AskingReportRequestDraft(title: "Q3").validate()))
   case "link": outcomes[label] = imported(await client.importFromDrive("1A2b3C"))
   case "linked": outcomes[label] = imported(await client.importFromDrive("connected"))
   default: fatalError("no call is made for \(label)")

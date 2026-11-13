@@ -148,7 +148,7 @@ fn the_swift_text_reads_and_writes_a_unit_variant_beside_the_tag_as_its_entry() 
          { return answer }; switch entry.key { case \"Loose\": return \"Loose\"; default: return \
          answer } }(), at: decoder.codingPath));",
         "case .external(let payload): try container.encode(\"External\", forKey: \
-         .swiftSchemaTag); switch payload { case .loose: var entry = \
+         .swiftSchemaTag); switch payload.draft { case .loose: var entry = \
          encoder.container(keyedBy: SwiftSchemaAnyKey.self); try entry.encodeNil(forKey: \
          SwiftSchemaAnyKey(stringValue: \"Loose\")!); default: try payload.encode(to: encoder) \
          };",

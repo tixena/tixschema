@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use crate::swift_plain_enum::plain_enum_reads;
+use crate::swift_valid;
 
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,14 +196,14 @@ pub enum ReservedMember {
 fn a_struct_earns_codable_with_coding_keys() {
     let swift = window_request_swift::swift_definition();
     assert!(
-        swift.contains("public struct WindowRequest: Codable, Sendable"),
+        swift.contains("public struct WindowRequestDraft: Codable, Sendable"),
         "got: {swift}"
     );
     assert!(
-        swift.contains("public let conversationId: String"),
+        swift.contains("public var conversationId: String"),
         "got: {swift}"
     );
-    assert!(swift.contains("public let limit: UInt32?"), "got: {swift}");
+    assert!(swift.contains("public var limit: UInt32?"), "got: {swift}");
     assert!(
         swift.contains("case conversationId = \"conversation_id\""),
         "got: {swift}"
@@ -210,7 +211,8 @@ fn a_struct_earns_codable_with_coding_keys() {
     assert!(swift.contains("case limit"), "got: {swift}");
     // The read is written, to judge the value it reads; nothing here needs a written `encode`.
     assert!(swift.contains("init(from decoder:"), "got: {swift}");
-    assert!(!swift.contains("func encode(to encoder:"), "got: {swift}");
+    let draft = swift.split("@dynamicMemberLookup").next().unwrap();
+    assert!(!draft.contains("func encode(to encoder:"), "got: {swift}");
 }
 
 #[test]
@@ -239,7 +241,7 @@ fn every_width_maps_to_its_own_swift_type() {
 fn a_plain_enum_earns_a_string_raw_value_enum() {
     let swift = status_swift::swift_definition();
     assert!(
-        swift.contains("public enum Status: String, Codable, Sendable"),
+        swift.contains("public enum StatusDraft: String, Codable, Sendable"),
         "got: {swift}"
     );
     assert!(swift.contains("case active = \"active\""), "got: {swift}");
@@ -250,7 +252,7 @@ fn a_plain_enum_earns_a_string_raw_value_enum() {
 fn an_externally_tagged_enum_writes_the_payload_under_its_own_tag_key() {
     let swift = external_tagged_swift::swift_definition();
     assert!(
-        swift.contains("public enum ExternalTagged: Codable, Sendable"),
+        swift.contains("public enum ExternalTaggedDraft: Codable, Sendable"),
         "got: {swift}"
     );
     assert!(
@@ -274,7 +276,7 @@ fn an_externally_tagged_enum_writes_the_payload_under_its_own_tag_key() {
 fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
     let swift = internal_tagged_swift::swift_definition();
     assert!(
-        swift.contains("public enum InternalTagged: Codable, Sendable"),
+        swift.contains("public enum InternalTaggedDraft: Codable, Sendable"),
         "got: {swift}"
     );
     assert!(
@@ -299,7 +301,7 @@ fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
 fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
     let swift = adjacent_tagged_swift::swift_definition();
     assert!(
-        swift.contains("public enum AdjacentTagged: Codable, Sendable"),
+        swift.contains("public enum AdjacentTaggedDraft: Codable, Sendable"),
         "got: {swift}"
     );
     assert!(
@@ -329,17 +331,17 @@ fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
 fn an_untagged_enum_tries_each_member_in_turn() {
     let swift = untagged_swift::swift_definition();
     assert!(
-        swift.contains("public enum Untagged: Codable, Sendable"),
+        swift.contains("public enum UntaggedDraft: Codable, Sendable"),
         "got: {swift}"
     );
     assert!(swift.contains(
         "if let value = try? (taken.isEmpty ? UntaggedCountPayload(swiftSchemaUnjudged: \
-             decoder) : Untagged.swiftSchemaOnly(decoder, [\"count\"], taken, \
+             decoder) : UntaggedDraft.swiftSchemaOnly(decoder, [\"count\"], taken, \
              UntaggedCountPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)))"
     ));
     assert!(swift.contains(
         "if let value = try? (taken.isEmpty ? UntaggedTextPayload(swiftSchemaUnjudged: \
-             decoder) : Untagged.swiftSchemaOnly(decoder, [\"text\"], taken, \
+             decoder) : UntaggedDraft.swiftSchemaOnly(decoder, [\"text\"], taken, \
              UntaggedTextPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)))"
     ));
     assert!(swift.contains("no untagged member matched"), "got: {swift}");
@@ -384,7 +386,7 @@ fn a_tuple_field_earns_an_unkeyed_container_struct() {
     assert!(swift.contains("decoder.unkeyedContainer()"), "got: {swift}");
     assert!(swift.contains("encoder.unkeyedContainer()"), "got: {swift}");
     assert!(
-        swift.contains("public let pair: TuplePointPairTuple"),
+        swift.contains("public var pair: TuplePointPairTuple"),
         "got: {swift}"
     );
 }
@@ -397,7 +399,7 @@ fn a_numeric_map_key_earns_a_keyed_wrapper() {
         "got: {swift}"
     );
     assert!(
-        swift.contains("public let byU32: [UInt32: String]"),
+        swift.contains("public var byU32: [UInt32: String]"),
         "got: {swift}"
     );
     assert!(swift.contains("DynamicCodingKey"), "got: {swift}");
@@ -407,7 +409,7 @@ fn a_numeric_map_key_earns_a_keyed_wrapper() {
 fn a_boolean_map_key_earns_a_keyed_wrapper() {
     let swift = by_bool_swift::swift_definition();
     assert!(
-        swift.contains("public let byBool: [Bool: String]"),
+        swift.contains("public var byBool: [Bool: String]"),
         "got: {swift}"
     );
     assert!(
@@ -423,7 +425,7 @@ fn a_boolean_map_key_earns_a_keyed_wrapper() {
 fn a_plain_enum_map_key_earns_a_keyed_wrapper() {
     let swift = by_enum_swift::swift_definition();
     assert!(
-        swift.contains("public let byEnum: [Primary: String]"),
+        swift.contains("public var byEnum: [Primary: String]"),
         "got: {swift}"
     );
     assert!(swift.contains("Primary(rawValue: wireKey)"), "got: {swift}");
@@ -436,7 +438,7 @@ fn a_generic_struct_binds_its_parameter_to_codable_and_sendable() {
         swift.contains("public struct Envelope<T: Codable & Sendable>: Codable, Sendable"),
         "got: {swift}"
     );
-    assert!(swift.contains("public let value: T"), "got: {swift}");
+    assert!(swift.contains("public var value: T"), "got: {swift}");
 }
 
 #[test]
@@ -455,7 +457,7 @@ fn a_name_override_moves_the_swift_name_and_republishes_the_ident() {
 #[test]
 fn a_nullable_field_always_writes_its_key_even_when_nil() {
     let swift = with_nullable_swift::swift_definition();
-    assert!(swift.contains("public let note: String?"), "got: {swift}");
+    assert!(swift.contains("public var note: String?"), "got: {swift}");
     assert!(
         swift.contains("try container.encode(self.note, forKey: .note)"),
         "got: {swift}"
@@ -487,22 +489,22 @@ fn a_flattened_field_decodes_from_its_holders_whole_object_and_encodes_through_t
 #[test]
 fn object_id_maps_to_a_bare_reference() {
     let swift = document_swift::swift_definition();
-    assert!(swift.contains("public let id: ObjectId"), "got: {swift}");
+    assert!(swift.contains("public var id: ObjectId"), "got: {swift}");
 }
 
 #[cfg(feature = "chrono")]
 #[test]
 fn naive_dates_are_plain_strings_and_datetime_is_date_with_a_fractional_second_formatter() {
     let swift = timestamps_swift::swift_definition();
-    assert!(swift.contains("public let date: String"), "got: {swift}");
+    assert!(swift.contains("public var date: String"), "got: {swift}");
     assert!(
-        swift.contains("public let dateTime: String"),
+        swift.contains("public var dateTime: String"),
         "got: {swift}"
     );
-    assert!(swift.contains("public let time: String"), "got: {swift}");
-    assert!(swift.contains("public let instant: Date"), "got: {swift}");
+    assert!(swift.contains("public var time: String"), "got: {swift}");
+    assert!(swift.contains("public var instant: Date"), "got: {swift}");
     assert!(
-        swift.contains("public let instantMillis: Int64"),
+        swift.contains("public var instantMillis: Int64"),
         "got: {swift}"
     );
     assert!(swift.contains("ISO8601DateFormatter"), "got: {swift}");
@@ -620,16 +622,18 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
 #[test]
 fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     assert_eq!(
-        reserved_members_swift::swift_definition(),
-        "public struct ReservedMembers: Codable, Sendable { public let `class`: String; public let `in`: String; public let type: String; enum CodingKeys: String, CodingKey { case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try container.decode(String.self, forKey: .type) }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } }; "
+        swift_valid::draft_of(&reserved_members_swift::swift_definition()),
+        "public struct ReservedMembersDraft: Codable, Sendable { public var `class`: String; public var `in`: String; public var type: String; enum CodingKeys: String, CodingKey { case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try container.decode(String.self, forKey: .type) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> ReservedMembers { let found = validationIssues(); if !found.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: found.joined(separator: \"; \"))) }; return ReservedMembers(draft: self) } };"
     );
     assert_eq!(
-        reserved_member_swift::swift_definition(),
+        swift_valid::draft_of(&reserved_member_swift::swift_definition()),
         format!(
-            "public enum ReservedMember: String, Codable, Sendable {{ case `default` = \
-             \"Default\"; case `in` = \"In\"; case other = \"Other\"; {} public func validate() \
-             -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> [String] {{ [] }} }}",
-            plain_enum_reads("ReservedMember")
+            "public enum ReservedMemberDraft: String, Codable, Sendable {{ case `default` = \
+             \"Default\"; case `in` = \"In\"; case other = \"Other\"; {} public func \
+             validationIssues() -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> \
+             [String] {{ [] }}; {} }}",
+            plain_enum_reads("ReservedMemberDraft"),
+            swift_valid::validating("ReservedMember")
         )
     );
     assert_eq!(

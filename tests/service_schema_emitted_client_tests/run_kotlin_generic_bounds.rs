@@ -275,7 +275,7 @@ fn rows() -> Vec<Row> {
         Row {
             dart: "Shelf<Slot>(by_slot: {'north-dock': Item(label: ''), 'south-dock': Item(label: 'a')}).validate()",
             kotlin: "Shelf<Slot>(mapOf(Slot.NorthDock to Item(\"\"), Slot.SouthDock to Item(\"a\"))).validate()",
-            swift: "Shelf<Slot>(bySlot: [\"north-dock\": Item(label: \"\"), \"south-dock\": Item(label: \"a\")]).validate()",
+            swift: "ShelfDraft<Slot>(bySlot: [\"north-dock\": Item(draft: ItemDraft(label: \"\")), \"south-dock\": Item(draft: ItemDraft(label: \"a\"))]).validationIssues()",
             name: "a map keyed by a plain enum",
             rust: shelf(vec![
                 (SlotDraft::NorthDock.validate().unwrap(), ""),
@@ -287,7 +287,7 @@ fn rows() -> Vec<Row> {
         Row {
             dart: "Shelf<Berth>(by_slot: {'b1': Item(label: '')}).validate()",
             kotlin: "Shelf<Berth>(mapOf(Berth.of(\"b1\") to Item(\"\"))).validate()",
-            swift: "Shelf<Berth>(bySlot: [\"b1\": Item(label: \"\")]).validate()",
+            swift: "ShelfDraft<Berth>(bySlot: [\"b1\": Item(draft: ItemDraft(label: \"\"))]).validationIssues()",
             name: "a map keyed by a brand",
             rust: ShelfDraft {
                 by_slot: BTreeMap::from([(Berth::new("b1".to_owned()).unwrap(), item(""))]),
@@ -298,7 +298,7 @@ fn rows() -> Vec<Row> {
         Row {
             dart: "Shelf<String>(by_slot: {'k': Item(label: '')}).validate()",
             kotlin: "Shelf<String>(mapOf(\"k\" to Item(\"\"))).validate()",
-            swift: "Shelf<String>(bySlot: [\"k\": Item(label: \"\")]).validate()",
+            swift: "ShelfDraft<String>(bySlot: [\"k\": Item(draft: ItemDraft(label: \"\"))]).validationIssues()",
             name: "a map keyed by the default",
             rust: ShelfDraft {
                 by_slot: BTreeMap::from([("k".to_owned(), item(""))]),
@@ -309,7 +309,7 @@ fn rows() -> Vec<Row> {
         Row {
             dart: "Shelf<int>(by_slot: {'7': Item(label: '')}).validate()",
             kotlin: "Shelf<UInt>(mapOf(7u to Item(\"\"))).validate()",
-            swift: "Shelf<UInt32>(bySlot: [\"7\": Item(label: \"\")]).validate()",
+            swift: "ShelfDraft<UInt32>(bySlot: [\"7\": Item(draft: ItemDraft(label: \"\"))]).validationIssues()",
             name: "a map keyed by a number",
             rust: ShelfDraft {
                 by_slot: BTreeMap::from([(7_u32, item(""))]),

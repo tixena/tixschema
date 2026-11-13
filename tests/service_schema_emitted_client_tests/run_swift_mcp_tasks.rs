@@ -108,7 +108,7 @@ var outcomes: [String: Any] = [:]
 for call in calls {
   let label = call["label"] as! String
   switch label {
-  case "started": outcomes[label] = started(await client.startExport(ExportRequest(folder: "reports")))
+  case "started": outcomes[label] = started(await client.startExport(try ExportRequestDraft(folder: "reports").validate()))
   case "working": outcomes[label] = statused(await client.exportStatus("7f3a"))
   case "completed": outcomes[label] = statused(await client.exportStatus("done"))
   case "waiting": outcomes[label] = statused(await client.exportStatus("needs"))

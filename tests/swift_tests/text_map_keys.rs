@@ -330,7 +330,7 @@ fn a_wrapper_reads_a_model_under_a_key_held_as_its_text_with_no_judgement() {
              codingPath: container.codingPath + [codingKey]); \
              result[key] = try Moorage(swiftSchemaUnjudged: \
              container.superDecoder(forKey: codingKey)) }; storage = result }; ",
-            "public let berths: [String: Moorage]; ",
+            "public var berths: [String: Moorage]; ",
         ],
     );
 }
@@ -342,7 +342,7 @@ fn the_parameter_as_a_key_is_held_as_its_text() {
         &[
             "public struct GazetteerByStowedKeyedMap<Stowed: Codable & Sendable>: Codable, \
              Sendable { public var storage: [String: UInt32]; ",
-            "public let byStowed: [String: UInt32]; ",
+            "public var byStowed: [String: UInt32]; ",
             &format!(
                 "{TEXT_KEY}try container.decode(SwiftSchemaFit<UInt32>.self, forKey: codingKey).value }}; "
             ),

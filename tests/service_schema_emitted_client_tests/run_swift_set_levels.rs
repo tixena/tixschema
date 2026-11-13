@@ -44,8 +44,9 @@ fn a_set_is_one_list_level_in_the_swift_types() {
         "row(\"broken\", {broken_name}.self, #\"{broken_json}\"#)"
     );
     main.push_str(
-        "print(Shelf(entries: [Entry(name: \"a\")], keyed: [:], maybe: nil, nullable: [], \
-         slot: ShelfSlotTuple(slot0: [], slot1: 1)).validate().joined(separator: \"; \"))\n",
+        "print(ShelfDraft(entries: [Entry(draft: EntryDraft(name: \"a\"))], keyed: [:], \
+         maybe: nil, nullable: [], slot: ShelfSlotTuple(slot0: [], slot1: 1)).validationIssues()\
+         .joined(separator: \"; \"))\n",
     );
     let mut parts = vec![
         "import Foundation".to_owned(),
