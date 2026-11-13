@@ -14,8 +14,8 @@ use super::models::Quay;
 #[cfg(feature = "serde")]
 use super::models::variant_report;
 use super::models::{
-    AdjacentBerthing, Berthing, ExternalBerthing, UntaggedBerthing, VARIANT_CASES, VARIANT_REPORT,
-    north_dock,
+    AdjacentBerthing, Berthing, BerthingDraft, ExternalBerthing, UntaggedBerthing,
+    UntaggedBerthingDraft, VARIANT_CASES, VARIANT_REPORT, north_dock,
 };
 
 /// The untagged enum under another name.
@@ -157,9 +157,9 @@ pub enum WrittenOnly {
     },
 }
 
-impl From<Berthing> for ReadThrough {
+impl From<Berthing> for ReadThroughDraft {
     fn from(read: Berthing) -> Self {
-        if let Berthing::Docked { dock, pier } = read {
+        if let BerthingDraft::Docked { dock, pier } = BerthingDraft::from(read) {
             Self::Docked { dock, pier }
         } else {
             Self::Docked {
@@ -170,11 +170,11 @@ impl From<Berthing> for ReadThrough {
     }
 }
 
-impl TryFrom<Berthing> for TriedThrough {
+impl TryFrom<Berthing> for TriedThroughDraft {
     type Error = String;
 
     fn try_from(read: Berthing) -> Result<Self, Self::Error> {
-        if let Berthing::Docked { dock, pier } = read {
+        if let BerthingDraft::Docked { dock, pier } = BerthingDraft::from(read) {
             Ok(Self::Docked { dock, pier })
         } else {
             Err("not docked".to_owned())
@@ -196,10 +196,12 @@ where
 fn serde_reads_a_missing_member_of_a_variant_as_its_default_under_each_tagging() {
     assert_eq!(
         serde_json::from_str::<Berthing>(r#"{"kind":"Docked","pier":3}"#).unwrap(),
-        Berthing::Docked {
+        BerthingDraft::Docked {
             dock: String::new(),
             pier: 3
         }
+        .validate()
+        .unwrap()
     );
     for (written, expected) in [
         (
@@ -249,25 +251,31 @@ fn serde_reads_each_variant_payload_as_the_table_says() {
 fn the_members_no_refusal_reaches_read_as_before() {
     assert_eq!(
         serde_json::from_str::<OptionalBerth>(r#"{"kind":"Docked","pier":3}"#).unwrap(),
-        OptionalBerth::Docked {
+        OptionalBerthDraft::Docked {
             dock: None,
             pier: 3
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<SkippedBerth>(r#"{"kind":"Docked","line":"l","pier":3}"#).unwrap(),
-        SkippedBerth::Docked {
+        SkippedBerthDraft::Docked {
             dock: north_dock(),
             line: String::new(),
             pier: 3
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<ReadThrough>(r#"{"kind":"Docked","pier":3}"#).unwrap(),
-        ReadThrough::Docked {
+        ReadThroughDraft::Docked {
             dock: String::new(),
             pier: 3
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<TriedThrough>(r#"{"kind":"Adrift"}"#)
@@ -276,7 +284,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
         "not docked"
     );
     assert_eq!(
-        serde_json::to_string(&WrittenOnly::Docked {
+        serde_json::to_string(&WrittenOnlyDraft::Docked {
             dock: "d".to_owned(),
             pier: 3
         })
@@ -289,7 +297,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
 #[test]
 fn the_enum_with_no_default_is_built_and_written_by_serde() {
     assert_eq!(
-        serde_json::to_string(&[Tide::Ebbing { height: 2 }, Tide::Slack]).unwrap(),
+        serde_json::to_string(&[TideDraft::Ebbing { height: 2 }, TideDraft::Slack]).unwrap(),
         r#"[{"kind":"Ebbing","height":2},{"kind":"Slack"}]"#
     );
 }
@@ -299,13 +307,17 @@ fn the_enum_with_no_default_is_built_and_written_by_serde() {
 fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
     assert_eq!(
         serde_json::from_str::<Slipway>(r#"{"label":"q","line":"l"}"#).unwrap(),
-        Slipway {
-            berth: UntaggedBerthing::Moored {
+        SlipwayDraft {
+            berth: UntaggedBerthingDraft::Moored {
                 dock: north_dock(),
                 line: "l".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             label: "q".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -693,9 +705,11 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
     };
     assert_eq!(
         read(r#"{"harbour":"h"}"#),
-        Ok(Anchorage::Named {
+        Ok(AnchorageDraft::Named {
             harbour: "h".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         read(r#"{"harbour":"h","line":""}"#),
@@ -703,9 +717,15 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
     );
     assert_eq!(
         read(r#"{"line":"x"}"#),
-        Ok(Anchorage::Held(UntaggedBerthing::Moored {
-            dock: north_dock(),
-            line: "x".to_owned(),
-        }))
+        Ok(AnchorageDraft::Held(
+            UntaggedBerthingDraft::Moored {
+                dock: north_dock(),
+                line: "x".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+        .validate()
+        .unwrap())
     );
 }

@@ -155,11 +155,11 @@ fn each_model_is_written_as_serde_writes_it() {
     let first = at(1_704_164_645_678);
     let second = at(1_709_208_000_100);
     assert_eq!(
-        read_back(&Sighting { at: first }),
+        read_back(&SightingDraft { at: first }),
         r#"{"at":"2024-01-02T03:04:05.678Z"}"#
     );
     assert_eq!(
-        read_back(&Voyage {
+        read_back(&VoyageDraft {
             at: first,
             at_millis: second,
             held: "a".to_owned(),
@@ -173,11 +173,11 @@ fn each_model_is_written_as_serde_writes_it() {
         r#""2024-01-02T03:04:05.678Z""#
     );
     assert_eq!(
-        read_back(&Waypoint(first, "a".to_owned())),
+        read_back(&WaypointDraft(first, "a".to_owned())),
         r#"["2024-01-02T03:04:05.678Z","a"]"#
     );
     assert_eq!(
-        read_back(&Chart {
+        read_back(&ChartDraft {
             by_name: HashMap::from([("n".to_owned(), first)]),
             by_number: HashMap::from([(1, first)]),
             pair: (first, "a".to_owned()),
@@ -192,22 +192,22 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     let first = at(1_704_164_645_678);
     for (held, written) in [
         (
-            Tide::Logged {
+            TideDraft::Logged {
                 at: first,
                 held: "a".to_owned(),
             },
             r#"{"Logged":{"at":"2024-01-02T03:04:05.678Z","held":"a"}}"#,
         ),
         (
-            Tide::Noted { at: first },
+            TideDraft::Noted { at: first },
             r#"{"Noted":{"at":"2024-01-02T03:04:05.678Z"}}"#,
         ),
         (
-            Tide::Paired(first, "a".to_owned()),
+            TideDraft::Paired(first, "a".to_owned()),
             r#"{"Paired":["2024-01-02T03:04:05.678Z","a"]}"#,
         ),
         (
-            Tide::Stamped(first),
+            TideDraft::Stamped(first),
             r#"{"Stamped":"2024-01-02T03:04:05.678Z"}"#,
         ),
     ] {
@@ -215,14 +215,14 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     }
     for (held, written) in [
         (
-            TaggedTide::Logged {
+            TaggedTideDraft::Logged {
                 at: first,
                 held: "a".to_owned(),
             },
             r#"{"kind":"Logged","at":"2024-01-02T03:04:05.678Z","held":"a"}"#,
         ),
         (
-            TaggedTide::Noted { at: first },
+            TaggedTideDraft::Noted { at: first },
             r#"{"kind":"Noted","at":"2024-01-02T03:04:05.678Z"}"#,
         ),
     ] {
@@ -230,22 +230,22 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     }
     for (held, written) in [
         (
-            AdjacentTide::Logged {
+            AdjacentTideDraft::Logged {
                 at: first,
                 held: "a".to_owned(),
             },
             r#"{"kind":"Logged","held":{"at":"2024-01-02T03:04:05.678Z","held":"a"}}"#,
         ),
         (
-            AdjacentTide::Noted { at: first },
+            AdjacentTideDraft::Noted { at: first },
             r#"{"kind":"Noted","held":{"at":"2024-01-02T03:04:05.678Z"}}"#,
         ),
         (
-            AdjacentTide::Paired(first, "a".to_owned()),
+            AdjacentTideDraft::Paired(first, "a".to_owned()),
             r#"{"kind":"Paired","held":["2024-01-02T03:04:05.678Z","a"]}"#,
         ),
         (
-            AdjacentTide::Stamped(first),
+            AdjacentTideDraft::Stamped(first),
             r#"{"kind":"Stamped","held":"2024-01-02T03:04:05.678Z"}"#,
         ),
     ] {
@@ -253,18 +253,18 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
     }
     for (held, written) in [
         (
-            UntaggedTide::Logged {
+            UntaggedTideDraft::Logged {
                 at: first,
                 held: "a".to_owned(),
             },
             r#"{"at":"2024-01-02T03:04:05.678Z","held":"a"}"#,
         ),
         (
-            UntaggedTide::Noted { at: first },
+            UntaggedTideDraft::Noted { at: first },
             r#"{"at":"2024-01-02T03:04:05.678Z"}"#,
         ),
         (
-            UntaggedTide::Stamped(first),
+            UntaggedTideDraft::Stamped(first),
             r#""2024-01-02T03:04:05.678Z""#,
         ),
     ] {

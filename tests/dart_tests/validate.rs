@@ -211,7 +211,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -235,28 +235,28 @@ fn upper_case(value: &Code) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn routed(value: &Freight) -> Result<(), Vec<String>> {
-    if matches!(value, Freight::Held) {
+fn routed(value: &FreightDraft) -> Result<(), Vec<String>> {
+    if matches!(value, FreightDraft::Held) {
         return Err(vec!["a held freight has no route".to_owned()]);
     }
     Ok(())
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
-    if matches!(value, Rating::Unrated) {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
     Ok(())
 }
 
-fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
+fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
     }
     Ok(())
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
@@ -296,12 +296,14 @@ fn assert_written(definition: &str, written: &[&str]) {
 
 #[test]
 fn every_declared_type_is_constructible() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: Vec::new(),
         label: "A".to_owned(),
-    };
-    let gauge = Gauge {
+    }
+    .validate()
+    .unwrap();
+    let gauge = GaugeDraft {
         code_list: vec!["a".to_owned()],
         item_count: 1,
         item_label: "ab".to_owned(),
@@ -310,7 +312,7 @@ fn every_declared_type_is_constructible() {
         unit_weight: 1.0,
     };
     assert_eq!(gauge.item_count, 1);
-    let manifest = Manifest {
+    let manifest = ManifestDraft {
         first_parcel: parcel.clone(),
         parcel_list: vec![parcel.clone()],
         parcels_by_dock: HashMap::from([("north".to_owned(), parcel.clone())]),
@@ -318,65 +320,65 @@ fn every_declared_type_is_constructible() {
     };
     assert_eq!(manifest.parcel_list.len(), 1);
     assert_eq!(
-        Depot {
+        DepotDraft {
             name: "d".to_owned()
         }
         .name,
         "d"
     );
-    assert_eq!(Pair("a".to_owned(), 1).1, 1);
-    assert_eq!(Sleeve("a".to_owned()).0, "a");
+    assert_eq!(PairDraft("a".to_owned(), 1).1, 1);
+    assert_eq!(SleeveDraft("a".to_owned()).0, "a");
     let freights = [
-        Freight::Boxed(parcel.clone()),
-        Freight::Held,
-        Freight::Loose {
+        FreightDraft::Boxed(parcel.clone()),
+        FreightDraft::Held,
+        FreightDraft::Loose {
             freight_label: "f".to_owned(),
         },
-        Freight::Split("a".to_owned(), 1),
+        FreightDraft::Split("a".to_owned(), 1),
     ];
     assert_eq!(freights.len(), 4);
     let hauls = [
-        Haul::Boxed("a".to_owned()),
-        Haul::Loose {
+        HaulDraft::Boxed("a".to_owned()),
+        HaulDraft::Loose {
             haul_label: "h".to_owned(),
         },
-        Haul::Split("a".to_owned(), 1),
+        HaulDraft::Split("a".to_owned(), 1),
     ];
     assert_eq!(hauls.len(), 3);
     let lifts = [
-        Lift::Boxed(parcel.clone()),
-        Lift::Loose {
+        LiftDraft::Boxed(parcel.clone()),
+        LiftDraft::Loose {
             lift_label: "l".to_owned(),
         },
     ];
     assert_eq!(lifts.len(), 2);
     let references = [
-        Reference::Named {
+        ReferenceDraft::Named {
             name: "n".to_owned(),
         },
-        Reference::Numbered(1),
+        ReferenceDraft::Numbered(1),
     ];
     assert_eq!(references.len(), 2);
-    assert_eq!([Grade::Express, Grade::Standard].len(), 2);
-    assert_eq!([Rating::Express, Rating::Unrated].len(), 2);
+    assert_eq!([GradeDraft::Express, GradeDraft::Standard].len(), 2);
+    assert_eq!([RatingDraft::Express, RatingDraft::Unrated].len(), 2);
     let stamps = [
-        Stamp::Inked {
+        StampDraft::Inked {
             ink: "blue".to_owned(),
             pages: 1,
         },
-        Stamp::Pressed {
+        StampDraft::Pressed {
             seal: "wax".to_owned(),
         },
     ];
     assert_eq!(stamps.len(), 2);
-    assert!(Audit { validate: true }.validate);
-    let filled = Crate {
+    assert!(AuditDraft { validate: true }.validate);
+    let filled = CrateDraft {
         codes: vec![7_u32],
         label: "c".to_owned(),
     };
     assert_eq!(filled.codes.len(), 1);
     assert_eq!(
-        serde_json::to_string(&ClosedDock).unwrap(),
+        serde_json::to_string(&ClosedDockDraft).unwrap(),
         "{}",
         "a unit struct is written as an empty object"
     );
@@ -387,7 +389,7 @@ fn every_declared_type_is_constructible() {
 /// Each function a check names, called as the Rust side calls it.
 #[test]
 fn each_named_function_answers_for_its_value() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: vec!["y".to_owned()],
         item_code_list: vec!["x".to_owned(), "x".to_owned()],
         label: "A".to_owned(),
@@ -410,13 +412,21 @@ fn each_named_function_answers_for_its_value() {
     );
     assert_eq!(upper_case(&Code::new("AB".to_owned()).unwrap()), Ok(()));
     assert_eq!(
-        routed(&Freight::Held).unwrap_err(),
+        routed(&FreightDraft::Held).unwrap_err(),
         ["a held freight has no route"]
     );
-    assert_eq!(routed(&Freight::Boxed(parcel)), Ok(()));
-    assert_eq!(rated(&Rating::Unrated).unwrap_err(), ["a parcel is rated"]);
-    assert_eq!(rated(&Rating::Express), Ok(()));
-    let empty = Crate {
+    assert_eq!(
+        routed(&FreightDraft::Boxed(Parcel::model_schema_wrap_unjudged(
+            parcel
+        ))),
+        Ok(())
+    );
+    assert_eq!(
+        rated(&RatingDraft::Unrated).unwrap_err(),
+        ["a parcel is rated"]
+    );
+    assert_eq!(rated(&RatingDraft::Express), Ok(()));
+    let empty = CrateDraft {
         codes: Vec::<String>::new(),
         label: "c".to_owned(),
     };
@@ -425,7 +435,7 @@ fn each_named_function_answers_for_its_value() {
         ["'codes': a crate holds at least one code"]
     );
     assert_eq!(
-        taking_parcels(&ClosedDock).unwrap_err(),
+        taking_parcels(&ClosedDockDraft).unwrap_err(),
         ["a closed dock takes no parcel"]
     );
 }
@@ -691,7 +701,7 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
         )
     );
     assert_eq!(
-        serde_json::to_string(&Audit { validate: true }).unwrap(),
+        serde_json::to_string(&AuditDraft { validate: true }).unwrap(),
         r#"{"validate":true}"#,
         "the key serde writes, which the definition above reads and writes"
     );

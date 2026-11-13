@@ -21,36 +21,40 @@ pub enum Edit {
 }
 
 fn path(segments: &[&str]) -> Path {
-    Path {
+    PathDraft {
         segments: segments.iter().map(|&segment| segment.to_owned()).collect(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn the_check_does_not_reach_a_field_typed_with_the_model() {
-    assert_eq!(Edit::Move { to: path(&[]) }.validate(), Ok(()));
-    assert_eq!(Edit::Move { to: path(&["a"]) }.validate(), Ok(()));
+    assert_eq!(
+        EditDraft::Move { to: path(&[]) }.validation_issues(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        EditDraft::Move { to: path(&["a"]) }.validation_issues(),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
 fn the_check_still_reaches_the_standard_types() {
     assert_eq!(
-        Edit::Rename {
+        EditDraft::Rename {
             name: String::new()
         }
-        .validate(),
-        Err(vec![
-            "'name': too short: minimum length is 1, got 0".to_owned()
-        ])
+        .validation_issues(),
+        vec!["'name': too short: minimum length is 1, got 0".to_owned()]
     );
     assert_eq!(
-        Edit::Relocate {
+        EditDraft::Relocate {
             dir: PathBuf::new()
         }
-        .validate(),
-        Err(vec![
-            "'dir': too short: minimum length is 1, got 0".to_owned()
-        ])
+        .validation_issues(),
+        vec!["'dir': too short: minimum length is 1, got 0".to_owned()]
     );
 }
 
@@ -70,5 +74,5 @@ fn the_read_keeps_the_model_whole() {
         "op": "Move", "to": { "segments": [] }
     }))
     .unwrap();
-    assert_eq!(read, Edit::Move { to: path(&[]) });
+    assert_eq!(read, EditDraft::Move { to: path(&[]) }.validate().unwrap());
 }

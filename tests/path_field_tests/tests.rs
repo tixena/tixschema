@@ -45,23 +45,27 @@ struct PlainPathFields {
 }
 
 fn path_fields() -> PathFields {
-    PathFields {
+    PathFieldsDraft {
         arced: Arc::from(Path::new("/etc/hosts")),
         boxed: PathBuf::from("/etc/hosts").into_boxed_path(),
         cowed: Cow::Owned(PathBuf::from("/etc/hosts")),
         owned: PathBuf::from("/etc/hosts"),
         rced: Rc::from(Path::new("/etc/hosts")),
     }
+    .validate()
+    .unwrap()
 }
 
 fn plain_path_fields() -> PlainPathFields {
-    PlainPathFields {
+    PlainPathFieldsDraft {
         arced: PathBuf::from("/etc/hosts"),
         boxed: PathBuf::from("/etc/hosts"),
         cowed: PathBuf::from("/etc/hosts"),
         owned: PathBuf::from("/etc/hosts"),
         rced: PathBuf::from("/etc/hosts"),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -175,16 +179,16 @@ fn test_a_constrained_path_that_breaks_its_bound_is_refused_as_it_is_read() {
     let accepted = serde_json::from_str::<ConstrainedPath>(r#"{"owned":"/etc"}"#).unwrap();
     assert_eq!(accepted.owned, PathBuf::from("/etc"));
     assert!(
-        accepted.validate().is_ok(),
+        accepted.validation_issues().is_empty(),
         "A payload the wire admits must be one validate() admits: {:?}",
-        accepted.validate().err()
+        accepted.validation_issues()
     );
 
-    let short = ConstrainedPath {
+    let short = ConstrainedPathDraft {
         owned: PathBuf::from("/a"),
     };
     assert_eq!(
-        short.validate().unwrap_err(),
+        short.validation_issues(),
         vec!["'owned': too short: minimum length is 3, got 2"]
     );
 }
@@ -225,9 +229,9 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
 
     let accepted = serde_json::from_str::<ConstrainedPaths>(GOOD).unwrap();
     assert!(
-        accepted.validate().is_ok(),
+        accepted.validation_issues().is_empty(),
         "the payload every bound admits has to pass: {:?}",
-        accepted.validate().err()
+        accepted.validation_issues()
     );
 
     for (field, short) in SPELLINGS {
@@ -242,7 +246,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
         );
     }
 
-    let short = ConstrainedPaths {
+    let short = ConstrainedPathsDraft {
         arced: Arc::from(Path::new("a")),
         boxed: PathBuf::from("b").into_boxed_path(),
         cowed: Cow::Owned(PathBuf::from("c")),
@@ -252,7 +256,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
         rced: Rc::from(Path::new("g")),
     };
     assert_eq!(
-        short.validate().unwrap_err(),
+        short.validation_issues(),
         SPELLINGS
             .iter()
             .map(|(field, _)| format!("'{field}': too short: minimum length is 3, got 1"))
@@ -264,7 +268,7 @@ fn test_every_constrained_path_spelling_is_held_to_its_bound() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
-    let held = ListedPaths {
+    let held = ListedPathsDraft {
         listed: vec![
             BoundedPath::new(PathBuf::from("/etc")).unwrap(),
             BoundedPath::model_schema_read_unjudged(
@@ -274,7 +278,7 @@ fn test_each_path_of_a_list_is_held_by_the_brand_it_is_typed_with() {
         ],
     };
     assert_eq!(
-        held.validate().unwrap_err(),
+        held.validation_issues(),
         vec!["'listed.1': too short: minimum length is 3, got 2"]
     );
     assert_eq!(
@@ -319,11 +323,11 @@ fn test_a_path_that_is_not_utf8_is_measured_by_its_lossy_rendering() {
         owned: PathBuf,
     }
 
-    let instance = LossilyMeasured {
+    let instance = LossilyMeasuredDraft {
         owned: PathBuf::from(OsStr::from_bytes(&[0xff])),
     };
     assert!(
-        instance.validate().is_ok(),
+        instance.validation_issues().is_empty(),
         "one invalid byte renders as the one replacement character: {:?}",
         instance.validate().err()
     );

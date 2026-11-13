@@ -19,9 +19,10 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::wrapped_keys_models::{
-    AdjacentConvoy, AdjacentSquadron, Armada, Berthing, Burgee, Callsign, Cleat, Convoy, Dockage,
-    Hull, Lanyard, Logroll, Logroster, Signal, Squadron, StowedTaskforce, TaggedConvoy,
-    TaggedSquadron, Taskforce, Unhashed, UntaggedConvoy, UntaggedSquadron, adjacent_convoy_swift,
+    AdjacentConvoyDraft, AdjacentSquadronDraft, ArmadaDraft, BerthingDraft, Burgee, Callsign,
+    Cleat, CleatDraft, ConvoyDraft, DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal,
+    SquadronDraft, StowedTaskforceDraft, TaggedConvoyDraft, TaggedSquadronDraft, Taskforce,
+    TaskforceDraft, Unhashed, UntaggedConvoyDraft, UntaggedSquadronDraft, adjacent_convoy_swift,
     adjacent_squadron_swift, armada_swift, berthing_swift, burgee_swift, callsign_swift,
     cleat_swift, convoy_swift, dockage_swift, greeting_swift, hailer_swift, hull_swift,
     lanyard_swift, logroll_swift, logroster_swift, signal_swift, squadron_swift,
@@ -30,8 +31,8 @@ use super::wrapped_keys_models::{
 };
 #[cfg(feature = "chrono")]
 use super::wrapped_keys_models::{
-    Postmark, Regatta, StowedRegatta, first, postmark_key_swift, postmark_swift, regatta_swift,
-    stowed_regatta_swift,
+    Postmark, Regatta, RegattaDraft, StowedRegattaDraft, first, postmark_key_swift, postmark_swift,
+    regatta_swift, stowed_regatta_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -141,8 +142,12 @@ where
 
 /// [`Taskforce`] with every map holding entries.
 fn taskforce() -> Taskforce {
-    Taskforce {
-        berthing: under(Berthing::Port, Berthing::Starboard, &1),
+    TaskforceDraft {
+        berthing: under(
+            BerthingDraft::Port.validate().unwrap(),
+            BerthingDraft::Starboard.validate().unwrap(),
+            &1,
+        ),
         callsign: callsigns(&1),
         hailer: under(
             Callsign::new("charlie".to_owned()).unwrap(),
@@ -159,11 +164,13 @@ fn taskforce() -> Taskforce {
         burgee: under(Burgee::new(5_u32).unwrap(), Burgee::new(6_u32).unwrap(), &6),
         signal: under(Signal::new(true).unwrap(), Signal::new(false).unwrap(), &7),
     }
+    .validate()
+    .unwrap()
 }
 
 /// [`Taskforce`] with every map empty.
 fn empty_taskforce() -> Taskforce {
-    Taskforce {
+    TaskforceDraft {
         berthing: HashMap::new(),
         callsign: HashMap::new(),
         hailer: HashMap::new(),
@@ -173,6 +180,8 @@ fn empty_taskforce() -> Taskforce {
         burgee: HashMap::new(),
         signal: HashMap::new(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payloads of each struct, brand and list or optional of maps.
@@ -188,7 +197,7 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "each key as a field that declares a parameter",
             "StowedTaskforce<String>",
-            &StowedTaskforce {
+            &StowedTaskforceDraft {
                 callsign: callsigns(&text),
                 hull: hulls(&text),
                 burgee: under(
@@ -206,7 +215,7 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "a list, an optional and a map of maps",
             "Armada",
-            &Armada {
+            &ArmadaDraft {
                 listed: vec![callsigns(&1), HashMap::new()],
                 maybe: Some(hulls(&2)),
                 nested: HashMap::from([(1, callsigns(&3))]),
@@ -215,7 +224,7 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "a list, an optional and a map of maps, none",
             "Armada",
-            &Armada {
+            &ArmadaDraft {
                 listed: Vec::new(),
                 maybe: None,
                 nested: HashMap::new(),
@@ -239,40 +248,40 @@ fn struct_rows() -> Vec<Row> {
         refused_row(
             "a number brand under a key that is no number",
             "Taskforce",
-            &Taskforce {
+            &TaskforceDraft {
                 burgee: under(Burgee::new(1_u32).unwrap(), Burgee::new(2_u32).unwrap(), &6),
-                ..empty_taskforce()
+                ..empty_taskforce().into()
             },
             "1",
         ),
         refused_row(
             "an alias of a number under a key that is no number",
             "Taskforce",
-            &Taskforce {
+            &TaskforceDraft {
                 hull: hulls(&4),
-                ..empty_taskforce()
+                ..empty_taskforce().into()
             },
             "1",
         ),
         refused_row(
             "a brand over a flag under a key that is no flag",
             "Taskforce",
-            &Taskforce {
+            &TaskforceDraft {
                 signal: under(Signal::new(true).unwrap(), Signal::new(false).unwrap(), &7),
-                ..empty_taskforce()
+                ..empty_taskforce().into()
             },
             "true",
         ),
         refused_row(
             "an alias of a brand of a number under a key that is no number",
             "Taskforce",
-            &Taskforce {
+            &TaskforceDraft {
                 lanyard: under(
                     Lanyard::new(Burgee::new(1_u32).unwrap()).unwrap(),
                     Lanyard::new(Burgee::new(2_u32).unwrap()).unwrap(),
                     &7,
                 ),
-                ..empty_taskforce()
+                ..empty_taskforce().into()
             },
             "1",
         ),
@@ -283,7 +292,7 @@ fn struct_rows() -> Vec<Row> {
 #[cfg(feature = "chrono")]
 fn date_rows() -> Vec<Row> {
     let later = DateTime::<Utc>::from_timestamp_millis(1_709_208_000_100).unwrap();
-    let held = Regatta {
+    let held = RegattaDraft {
         aliased: under(first(), later, &1),
         branded: under(
             Postmark::new(first()).unwrap(),
@@ -291,7 +300,7 @@ fn date_rows() -> Vec<Row> {
             &2,
         ),
     };
-    let stowed = StowedRegatta {
+    let stowed = StowedRegattaDraft {
         aliased: under(first(), later, &"t".to_owned()),
         branded: under(
             Postmark::new(first()).unwrap(),
@@ -307,7 +316,7 @@ fn date_rows() -> Vec<Row> {
             &stowed,
         ),
         {
-            let written = serde_json::to_string(&Regatta {
+            let written = serde_json::to_string(&RegattaDraft {
                 aliased: HashMap::from([(first(), 1)]),
                 branded: HashMap::new(),
             })
@@ -329,15 +338,15 @@ fn date_rows() -> Vec<Row> {
 /// The payload of a [`Dockage`] with an empty label under each key, which the Swift read refuses
 /// with the messages the Rust `validate()` answers, each key named as it is written.
 fn refused_by_rule_row() -> Row {
-    let empty = Cleat {
+    let empty = Cleat::model_schema_wrap_unjudged(CleatDraft {
         label: String::new(),
-    };
-    let held = Dockage {
+    });
+    let held = DockageDraft {
         callsign: HashMap::from([(Callsign::new("alpha".to_owned()).unwrap(), empty.clone())]),
         hull: HashMap::from([(7, empty.clone())]),
         signal: HashMap::from([(Signal::new(true).unwrap(), empty)]),
     };
-    let messages = held.validate().unwrap_err();
+    let messages = held.validation_issues();
     assert_eq!(messages.len(), 3, "{messages:?}");
     let name = "an empty label under a brand, a flag and an alias";
     let lines = messages.iter().fold(String::new(), |mut lines, line| {
@@ -362,7 +371,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, no tag",
             "Squadron",
-            serde_json::to_string(&Squadron::Docked {
+            serde_json::to_string(&SquadronDraft::Docked {
                 callsign: docked().0,
                 hailer: docked().1,
             }),
@@ -370,7 +379,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, a tag alone",
             "TaggedSquadron",
-            serde_json::to_string(&TaggedSquadron::Docked {
+            serde_json::to_string(&TaggedSquadronDraft::Docked {
                 callsign: docked().0,
                 hailer: docked().1,
             }),
@@ -378,7 +387,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, a tag and a content key",
             "AdjacentSquadron",
-            serde_json::to_string(&AdjacentSquadron::Docked {
+            serde_json::to_string(&AdjacentSquadronDraft::Docked {
                 callsign: docked().0,
                 hailer: docked().1,
             }),
@@ -386,7 +395,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, untagged",
             "UntaggedSquadron",
-            serde_json::to_string(&UntaggedSquadron::Docked {
+            serde_json::to_string(&UntaggedSquadronDraft::Docked {
                 callsign: docked().0,
                 hailer: docked().1,
             }),
@@ -394,7 +403,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, no tag, a parameter",
             "Convoy<String>",
-            serde_json::to_string(&Convoy::Docked {
+            serde_json::to_string(&ConvoyDraft::Docked {
                 callsign: stowed().0,
                 hailer: stowed().1,
             }),
@@ -402,7 +411,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, a tag alone, a parameter",
             "TaggedConvoy<String>",
-            serde_json::to_string(&TaggedConvoy::Docked {
+            serde_json::to_string(&TaggedConvoyDraft::Docked {
                 callsign: stowed().0,
                 hailer: stowed().1,
             }),
@@ -410,7 +419,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, a tag and a content key, a parameter",
             "AdjacentConvoy<String>",
-            serde_json::to_string(&AdjacentConvoy::Docked {
+            serde_json::to_string(&AdjacentConvoyDraft::Docked {
                 callsign: stowed().0,
                 hailer: stowed().1,
             }),
@@ -418,7 +427,7 @@ fn variant_rows() -> Vec<Row> {
         (
             "a variant, untagged, a parameter",
             "UntaggedConvoy<String>",
-            serde_json::to_string(&UntaggedConvoy::Docked {
+            serde_json::to_string(&UntaggedConvoyDraft::Docked {
                 callsign: stowed().0,
                 hailer: stowed().1,
             }),

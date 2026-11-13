@@ -136,12 +136,7 @@ pub enum WireScalarKind {
 /// The number serde reads a map key of from the text between its quotes: an integer of the type
 /// serde names `expected` in a refusal, held to `range` as decimal digits, or a float where `range`
 /// is `None`.
-#[cfg(any(
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
+#[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NumberKey {
     pub expected: &'static str,
@@ -727,7 +722,7 @@ enum ForwardedKey {
 thread_local! {
     /// The names of unit structs `process_struct` has rewritten to write and read `{}`. Read by
     /// `is_unit_type` (`service_schema::parse`) to answer a unit struct's success like `()`'s own.
-    static UNIT_STRUCTS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    static UNIT_STRUCTS: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
 }
 
 thread_local! {
@@ -1955,10 +1950,23 @@ pub fn is_recorded_untagged_enum(ty: &Type) -> bool {
 
 /// Records that `rust_ident` names a unit struct.
 #[cfg(feature = "serde")]
-pub fn record_unit_struct(rust_ident: &str) {
+pub fn record_unit_struct(rust_ident: &str, drafted: bool) {
     UNIT_STRUCTS.with(|names| {
-        names.borrow_mut().insert(rust_ident.to_owned());
+        names.borrow_mut().insert(rust_ident.to_owned(), drafted);
     });
+}
+
+/// Whether `ty` names a recorded unit struct that has a draft, whose value is made through the
+/// draft.
+#[cfg(feature = "serde")]
+pub fn is_recorded_drafted_unit_struct_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    let Some(leaf) = named.path.segments.last() else {
+        return false;
+    };
+    UNIT_STRUCTS.with(|names| names.borrow().get(&leaf.ident.to_string()) == Some(&true))
 }
 
 /// Whether `ty`'s own name is one [`record_unit_struct`] has seen. `false` for a type declared
@@ -1971,7 +1979,7 @@ pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
     let Some(leaf) = named.path.segments.last() else {
         return false;
     };
-    UNIT_STRUCTS.with(|names| names.borrow().contains(&leaf.ident.to_string()))
+    UNIT_STRUCTS.with(|names| names.borrow().contains_key(&leaf.ident.to_string()))
 }
 
 pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {

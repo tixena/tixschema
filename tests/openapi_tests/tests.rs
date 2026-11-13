@@ -445,13 +445,15 @@ impl DocumentService<()> for Archive {
     ) -> Result<Document, CreateDocumentError> {
         ready(()).await;
         if title.is_empty() {
-            return Err(CreateDocumentError::TitleTaken);
+            return Err(CreateDocumentErrorDraft::TitleTaken.validate().unwrap());
         }
-        Ok(Document {
+        Ok(DocumentDraft {
             id: "doc-2".to_owned(),
             tags,
             title,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn get_document(
@@ -460,11 +462,13 @@ impl DocumentService<()> for Archive {
         document_id: String,
     ) -> Result<Document, DocumentError> {
         ready(()).await;
-        Ok(Document {
+        Ok(DocumentDraft {
             id: document_id,
             tags: vec!["minutes".to_owned()],
             title: "Board meeting".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn purge_document(&self, _ctx: &(), _document_id: String) {
@@ -473,7 +477,7 @@ impl DocumentService<()> for Archive {
 
     async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {
         ready(()).await;
-        Err(SweepError::Busy)
+        Err(SweepErrorDraft::Busy.validate().unwrap())
     }
 
     async fn update_document(
@@ -482,11 +486,13 @@ impl DocumentService<()> for Archive {
         req: UpdateDocumentRequest,
     ) -> Result<Document, DocumentError> {
         ready(()).await;
-        Ok(Document {
-            id: req.document_id,
+        Ok(DocumentDraft {
+            id: req.document_id.clone(),
             tags: Vec::new(),
-            title: req.title,
-        })
+            title: req.title.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -501,7 +507,7 @@ impl SearchService<()> for Archive {
     ) -> Result<Vec<Document>, SearchError> {
         ready(()).await;
         if folder_id.is_empty() {
-            return Err(SearchError::FolderMissing);
+            return Err(SearchErrorDraft::FolderMissing.validate().unwrap());
         }
         Ok(Vec::new())
     }
@@ -515,7 +521,10 @@ impl VersionService<()> for Archive {
         _byte_range: String,
     ) -> Result<VersionResponse, (RangeError, String)> {
         ready(()).await;
-        Err((RangeError::Unsatisfiable, "bytes */120".to_owned()))
+        Err((
+            RangeErrorDraft::Unsatisfiable.validate().unwrap(),
+            "bytes */120".to_owned(),
+        ))
     }
 
     async fn get_version(
@@ -527,9 +536,12 @@ impl VersionService<()> for Archive {
     ) -> Result<(VersionResponse, String), GetVersionError> {
         ready(()).await;
         if version_id == 0 {
-            return Err(GetVersionError::VersionGone);
+            return Err(GetVersionErrorDraft::VersionGone.validate().unwrap());
         }
-        Ok((VersionResponse { version_id }, "v-7".to_owned()))
+        Ok((
+            VersionResponseDraft { version_id }.validate().unwrap(),
+            "v-7".to_owned(),
+        ))
     }
 }
 
@@ -540,7 +552,7 @@ impl ContentService<()> for Archive {
         _document_id: String,
     ) -> Result<(content_service_schema::StreamedAnswer, String), ContentError> {
         ready(()).await;
-        Err(ContentError::NotFound)
+        Err(ContentErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn get_content(
@@ -550,7 +562,7 @@ impl ContentService<()> for Archive {
         _byte_range: Option<String>,
     ) -> Result<content_service_schema::StreamedAnswer, ContentError> {
         ready(()).await;
-        Err(ContentError::NotFound)
+        Err(ContentErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn get_thumbnail(
@@ -559,7 +571,7 @@ impl ContentService<()> for Archive {
         _document_id: String,
     ) -> Result<(Vec<u8>, String, String), ContentError> {
         ready(()).await;
-        Err(ContentError::NotFound)
+        Err(ContentErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -573,9 +585,11 @@ impl UploadService<()> for Archive {
         _attachment: Box<dyn upload_service_schema::BodySource + Send>,
     ) -> Result<UploadResponse, UploadError> {
         ready(()).await;
-        Ok(UploadResponse {
+        Ok(UploadResponseDraft {
             document_id: format!("{folder_id}-1"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -587,28 +601,32 @@ impl RenamedMemberService<()> for Archive {
     ) -> Result<SweepReport, SweepError> {
         ready(()).await;
         if req.title.is_empty() {
-            return Err(SweepError::Busy);
+            return Err(SweepErrorDraft::Busy.validate().unwrap());
         }
-        Ok(SweepReport { swept: 1 })
+        Ok(SweepReportDraft { swept: 1 }.validate().unwrap())
     }
 }
 
 impl ShelvingService<()> for Archive {
     async fn move_shelf(&self, _ctx: &(), req: ShelfMove) -> Result<SweepReport, SweepError> {
         ready(()).await;
-        Ok(SweepReport {
+        Ok(SweepReportDraft {
             swept: req.destination.aisle,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn place_shelf(&self, _ctx: &(), req: ShelfPlacement) -> Result<SweepReport, SweepError> {
         ready(()).await;
         if req.note.text.is_empty() {
-            return Err(SweepError::Busy);
+            return Err(SweepErrorDraft::Busy.validate().unwrap());
         }
-        Ok(SweepReport {
+        Ok(SweepReportDraft {
             swept: req.location.bay,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -620,7 +638,7 @@ impl FolderService<()> for Archive {
 
     async fn get_folder(&self, _ctx: &(), _name: String) -> Result<Folder, FolderError> {
         ready(()).await;
-        Err(FolderError::NameTaken)
+        Err(FolderErrorDraft::NameTaken.validate().unwrap())
     }
 }
 
@@ -631,7 +649,7 @@ impl PlainService<()> for Archive {
         _document_id: String,
     ) -> Result<Document, DocumentError> {
         ready(()).await;
-        Err(DocumentError::NotFound)
+        Err(DocumentErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -875,13 +893,17 @@ fn a_placeholder_reads_the_schema_of_a_member_under_the_key_serde_reads_it_from(
             "schema": { "type": "string", "minLength": 3_u32 },
         }])
     );
-    let found = answered(Archive.renamed(
-        &(),
-        RenamedMemberRequest {
-            document_id: "doc-1".to_owned(),
-            title: "t".to_owned(),
-        },
-    ));
+    let found = answered(
+        Archive.renamed(
+            &(),
+            RenamedMemberRequestDraft {
+                document_id: "doc-1".to_owned(),
+                title: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
     assert!(found.is_ok(), "the implementation refused");
 }
 
@@ -1055,25 +1077,27 @@ fn a_type_two_operations_bodies_hold_is_one_component() {
             "required": ["text"],
         })
     );
-    let placed = ShelfPlacement {
-        location: ShelfLocation { aisle: 4, bay: 2 },
-        note: ShelfNote {
+    let placed = ShelfPlacementDraft {
+        location: ShelfLocationDraft { aisle: 4, bay: 2 }.validate().unwrap(),
+        note: ShelfNoteDraft {
             text: "fragile".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_described(&document, &reference("ShelfPlacement"), &placed);
     assert_eq!(
-        answered(Archive.place_shelf(&(), placed))
+        answered(Archive.place_shelf(&(), placed.validate().unwrap()))
             .ok()
             .map(|report| report.swept),
         Some(2)
     );
-    let moved = ShelfMove {
-        destination: ShelfLocation { aisle: 7, bay: 1 },
+    let moved = ShelfMoveDraft {
+        destination: ShelfLocationDraft { aisle: 7, bay: 1 }.validate().unwrap(),
     };
     assert_described(&document, &reference("ShelfMove"), &moved);
     assert_eq!(
-        answered(Archive.move_shelf(&(), moved))
+        answered(Archive.move_shelf(&(), moved.validate().unwrap()))
             .ok()
             .map(|report| report.swept),
         Some(7)
@@ -1190,13 +1214,17 @@ fn what_an_implementation_answers_with_json_bodies_is_what_the_document_describe
         json_schema_of(&at["get"]["responses"]["200"]),
         &found.unwrap(),
     );
-    let updated = answered(Archive.update_document(
-        &(),
-        UpdateDocumentRequest {
-            document_id: "doc-1".to_owned(),
-            title: "Minutes".to_owned(),
-        },
-    ));
+    let updated = answered(
+        Archive.update_document(
+            &(),
+            UpdateDocumentRequestDraft {
+                document_id: "doc-1".to_owned(),
+                title: "Minutes".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
     assert_described(
         &documents,
         json_schema_of(&at["put"]["responses"]["200"]),
@@ -1264,14 +1292,18 @@ fn what_an_implementation_answers_beside_headers_and_parts_is_what_the_document_
     assert_described(&uploads, json_schema_of(uploaded_at), &uploaded.unwrap());
 
     let folders = FolderServiceSchema::openapi();
-    let nested = Folder {
+    let nested = FolderDraft {
         name: "Board".to_owned(),
-        parent: Some(Box::new(Folder {
-            name: "Archive".to_owned(),
-            parent: None,
-        })),
+        parent: Some(Box::new(
+            FolderDraft {
+                name: "Archive".to_owned(),
+                parent: None,
+            }
+            .validate()
+            .unwrap(),
+        )),
     };
-    let created_folder = answered(Archive.create_folder(&(), nested)).unwrap();
+    let created_folder = answered(Archive.create_folder(&(), nested.validate().unwrap())).unwrap();
     let folder_at = &folders["paths"]["/folders"]["post"]["responses"]["200"];
     assert_described(&folders, json_schema_of(folder_at), &created_folder);
     let taken = answered(Archive.get_folder(&(), "Board".to_owned())).unwrap_err();

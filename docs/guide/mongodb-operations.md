@@ -147,7 +147,7 @@ Each kind is a type of `invoice_schema`. The first parameter is the row a filter
 
 **`nest` reaches a nested model.** `Customer` has paths of its own, `Customer::MONGO_FIELDS`. `nest`, on the path that holds a customer, takes a filter or an update built from those and answers the same filter or update over the rows of `Invoice`, each key written under the path's own. `paths.customer().nest(customer.address().nest(address.city().eq("Moca".to_owned())?))` asks for a city three types down, and the key it writes is `customer.address.city`.
 
-A path builds a `Filter<Invoice>` or an `Update<Invoice>`, the two documents an operation takes. Building one asks nothing of MongoDB:
+A path builds a `Filter<Invoice>` or an `Update<Invoice>`, the two documents an operation takes. Building one asks nothing of MongoDB. A value a path takes is a valid one, so a status is made from its draft: below, `valid_invoice_status(draft)` is `draft.validate().unwrap()`, written once where it is not inside a function that answers a `Result`:
 
 ```rust
 use bson::doc;
@@ -160,7 +160,7 @@ fn to_chase(city: &str, above: f64) -> Result<Filter<Invoice>, WriteError> {
     let in_city = Address::MONGO_FIELDS.city().eq(city.to_owned())?;
     Ok(paths
         .status()
-        .eq(InvoiceStatus::PastDue)?
+        .eq(valid_invoice_status(InvoiceStatusDraft::PastDue))?
         .or(paths.total().gt(above)?)
         .and(paths.customer().nest(customer.address().nest(in_city)))
         .and(paths.paid_at().exists(false)))
@@ -171,7 +171,7 @@ fn paid(at: &str) -> Result<Update<Invoice>, WriteError> {
     let (paths, customer) = (Invoice::MONGO_FIELDS, Customer::MONGO_FIELDS);
     Ok(paths
         .status()
-        .set(InvoiceStatus::Paid)?
+        .set(valid_invoice_status(InvoiceStatusDraft::Paid))?
         .and(paths.paid_at().set(at.to_owned())?)
         .and(paths.customer().nest(customer.open_invoices().set(0)?))
         .and(paths.tags().push("settled".to_owned())?))
@@ -224,9 +224,9 @@ Every operator, once, with the document it writes. `paths` is `Invoice::MONGO_FI
 
 | Written | The document it builds |
 |---------|------------------------|
-| `paths.status().eq(InvoiceStatus::PastDue)?` | `{ "status": { "$eq": "past-due" } }` |
-| `paths.status().is_in([InvoiceStatus::Draft, InvoiceStatus::PastDue])?` | `{ "status": { "$in": ["draft", "past-due"] } }` |
-| `paths.status().set(InvoiceStatus::Paid)?` | `{ "$set": { "status": "paid" } }` |
+| `paths.status().eq(valid_invoice_status(InvoiceStatusDraft::PastDue))?` | `{ "status": { "$eq": "past-due" } }` |
+| `paths.status().is_in([valid_invoice_status(InvoiceStatusDraft::Draft), valid_invoice_status(InvoiceStatusDraft::PastDue)])?` | `{ "status": { "$in": ["draft", "past-due"] } }` |
+| `paths.status().set(valid_invoice_status(InvoiceStatusDraft::Paid))?` | `{ "$set": { "status": "paid" } }` |
 
 **A list of plain values, a `ListField`.** A list is matched through its elements: `contains` asks for one value, `contains_any` and `contains_none` for several, and `elem_match` holds one element to every condition of an `Element`, which `element()` starts and `eq`, `ne`, `gt`, `gte`, `lt` and `lte` add to. `size` takes how many elements the list holds. `push` and `pull` change one element, and `set` and `set_on_insert` take the whole list:
 
@@ -249,10 +249,12 @@ A comparison of the list itself is no operator: `paths.tags().gt("export".to_own
 ```rust
 /// The address the examples write.
 fn moca() -> Address {
-    Address {
+    AddressDraft {
         city: "Moca".to_owned(),
         postal_code: "56000".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 ```
 
@@ -282,11 +284,13 @@ fn moca() -> Address {
 ```rust
 /// The line item the examples write.
 fn bolts() -> LineItem {
-    LineItem {
+    LineItemDraft {
         price: 4.5,
         quantity: 9,
         sku: "C-3".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 ```
 
@@ -306,7 +310,7 @@ fn bolts() -> LineItem {
 | `paths.payment().nest(payment.is_card())` | `{ "payment.kind": { "$eq": "card" } }` |
 | `paths.payment().nest(payment.is_cash())` | `{ "payment.kind": { "$eq": "cash" } }` |
 | `paths.payment().nest(payment.card().last4().eq("4242".to_owned())?)` | `{ "payment.last4": { "$eq": "4242" } }` |
-| `paths.payment().set(Payment::Cash)?` | `{ "$set": { "payment": { "kind": "cash" } } }` |
+| `paths.payment().set(valid_payment(PaymentDraft::Cash))?` | `{ "$set": { "payment": { "kind": "cash" } } }` |
 
 **The arms of an enum under a tag.** `<tag>__<value>()` is a function of the enum's own paths, one per variant serde writes, and it answers the rows of that arm. Its name is the tag key, `__`, and the value serde writes for the variant, each in snake case. What it answers is an arm filter, an `ArmFilter<Root, M>`: a filter over the rows of the enum that holds the arm's tag from the start, and whose `and` takes a filter over the rows of `M`, the model the arm holds, and over no other. So a field of an arm is asked only together with that arm's tag, and a row of another arm that writes the same key is not matched. The function is a `const fn`, so a `const` item holds an arm filter, and each use of the `const` is a new value:
 
@@ -469,7 +473,7 @@ fn of_cost_center(code: &str) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
         .status()
-        .ne(InvoiceStatus::Draft)?
+        .ne(valid_invoice_status(InvoiceStatusDraft::Draft))?
         .and(Filter::raw(doc! { "details.costCenter": code })))
 }
 
@@ -657,7 +661,7 @@ async fn every_operation(
     let drafts = || {
         paths
             .status()
-            .eq(InvoiceStatus::Draft)
+            .eq(InvoiceStatusDraft::Draft.validate().unwrap())
             .map_err(OperationError::Unwritable)
     };
     let voided = || {

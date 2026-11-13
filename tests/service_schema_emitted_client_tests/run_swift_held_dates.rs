@@ -12,9 +12,10 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::held_dates_models::{
-    AdjacentCountedTide, AdjacentPlainTide, Chime, Chimed, CountedTide, FirstHolder, Pannier,
-    Pendulum, PlainChart, PlainTide, SecondHolder, StowedChart, StowedTicker, Ticker, Tock,
-    TwinHolder, UntaggedCountedTide, UntaggedPlainTide, adjacent_counted_tide_swift,
+    AdjacentCountedTideDraft, AdjacentPlainTideDraft, ChimeDraft, Chimed, CountedTideDraft,
+    FirstHolderDraft, PannierDraft, PendulumDraft, PlainChart, PlainChartDraft, PlainTideDraft,
+    SecondHolderDraft, StowedChart, StowedChartDraft, StowedTickerDraft, TickerDraft, TockDraft,
+    TwinHolderDraft, UntaggedCountedTideDraft, UntaggedPlainTideDraft, adjacent_counted_tide_swift,
     adjacent_plain_tide_swift, chime_swift, chimed_swift, counted_tide_swift, first,
     first_holder_swift, pannier_swift, pendulum_swift, plain_chart_swift, plain_tide_swift, second,
     second_holder_swift, stowed_chart_swift, stowed_ticker_swift, ticker_swift, tock_swift,
@@ -104,36 +105,44 @@ where
 
 /// [`PlainChart`] with [`first`] in each place a date is held, and [`second`] beside it.
 fn plain_chart() -> PlainChart {
-    PlainChart {
+    PlainChartDraft {
         at: second(),
         by_name: HashMap::from([("a".to_owned(), first())]),
         by_number: HashMap::from([(1, first()), (2, second())]),
         by_turn: HashMap::from([(-1, first())]),
-        dated: Pannier { held: first() },
+        dated: PannierDraft { held: first() }.validate().unwrap(),
         marks_by_name: HashMap::from([("m".to_owned(), vec![first(), second()])]),
         maybe_by_name: HashMap::from([("n".to_owned(), None), ("s".to_owned(), Some(first()))]),
         pair: (first(), 1),
         spans: (vec![first(), second()], Some(second())),
-        swung: Pendulum {
+        swung: PendulumDraft {
             first: vec![first()],
             second: None,
-        },
+        }
+        .validate()
+        .unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// [`StowedChart`] with [`first`] in each place a date is held.
 fn stowed_chart() -> StowedChart<String> {
-    StowedChart {
+    StowedChartDraft {
         at: second(),
         by_name: HashMap::from([("a".to_owned(), first())]),
         by_number: HashMap::from([(1, first())]),
-        dated: Chime {
+        dated: ChimeDraft {
             first: first(),
             second: "c".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         held: "h".to_owned(),
         pair: (first(), "p".to_owned()),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payloads of a struct and of a tuple struct, in a type that declares a parameter and in one
@@ -148,18 +157,20 @@ fn struct_rows() -> Vec<Row> {
         read_row(
             "the same, with empty maps",
             "PlainChart",
-            &PlainChart {
+            &PlainChartDraft {
                 by_name: HashMap::new(),
                 by_number: HashMap::new(),
                 by_turn: HashMap::new(),
                 marks_by_name: HashMap::new(),
                 maybe_by_name: HashMap::new(),
                 spans: (Vec::new(), None),
-                swung: Pendulum {
+                swung: PendulumDraft {
                     first: Vec::new(),
                     second: Some(second()),
-                },
-                ..plain_chart()
+                }
+                .validate()
+                .unwrap(),
+                ..plain_chart().into()
             },
         ),
         read_row(
@@ -167,53 +178,57 @@ fn struct_rows() -> Vec<Row> {
             "StowedChart<String>",
             &stowed_chart(),
         ),
-        read_row("a tuple struct", "Tock", &Tock(first(), 2)),
+        read_row("a tuple struct", "Tock", &TockDraft(first(), 2)),
         read_row("a brand", "Chimed", &Chimed::new(first()).unwrap()),
     ]
 }
 
 /// A holder's three fillings of [`Pannier`], each date in the text chrono writes.
 fn holder_rows() -> Vec<Row> {
-    let dated = || Pannier { held: first() };
-    let numbered = || Pannier {
+    let dated = || PannierDraft { held: first() };
+    let numbered = || PannierDraft {
         held: HashMap::from([(1, "a".to_owned())]),
     };
-    let paired = || Pannier {
+    let paired = || PannierDraft {
         held: ("p".to_owned(), 1),
     };
     vec![
         read_row(
             "a date, a map and a tuple filling one generic type in a holder",
             "FirstHolder",
-            &FirstHolder {
-                dated: dated(),
-                numbered: numbered(),
-                paired: paired(),
+            &FirstHolderDraft {
+                dated: dated().validate().unwrap(),
+                numbered: numbered().validate().unwrap(),
+                paired: paired().validate().unwrap(),
             },
         ),
         read_row(
             "the same fillings in a second holder",
             "SecondHolder",
-            &SecondHolder {
-                dated: dated(),
-                numbered: numbered(),
-                paired: paired(),
+            &SecondHolderDraft {
+                dated: dated().validate().unwrap(),
+                numbered: numbered().validate().unwrap(),
+                paired: paired().validate().unwrap(),
             },
         ),
         read_row(
             "two fields of one holder filling one generic type the same way",
             "TwinHolder",
-            &TwinHolder {
-                dated: dated(),
-                later: Pannier { held: second() },
-                numbered: numbered(),
-                other_numbered: Pannier {
+            &TwinHolderDraft {
+                dated: dated().validate().unwrap(),
+                later: PannierDraft { held: second() }.validate().unwrap(),
+                numbered: numbered().validate().unwrap(),
+                other_numbered: PannierDraft {
                     held: HashMap::from([(2, "b".to_owned())]),
-                },
-                other_paired: Pannier {
+                }
+                .validate()
+                .unwrap(),
+                other_paired: PannierDraft {
                     held: ("q".to_owned(), 2),
-                },
-                paired: paired(),
+                }
+                .validate()
+                .unwrap(),
+                paired: paired().validate().unwrap(),
             },
         ),
     ]
@@ -225,62 +240,62 @@ fn variant_rows() -> Vec<Row> {
         read_row(
             "a variant's member, no tag attribute",
             "PlainTide",
-            &PlainTide::Logged { at: first() },
+            &PlainTideDraft::Logged { at: first() },
         ),
         read_row(
             "several slots, no tag attribute",
             "PlainTide",
-            &PlainTide::Paired(first(), 1),
+            &PlainTideDraft::Paired(first(), 1),
         ),
         read_row(
             "an optional slot, no tag attribute",
             "PlainTide",
-            &PlainTide::Pending(Some(first())),
+            &PlainTideDraft::Pending(Some(first())),
         ),
         read_row(
             "an optional slot with no date, no tag attribute",
             "PlainTide",
-            &PlainTide::Pending(None),
+            &PlainTideDraft::Pending(None),
         ),
         read_row(
             "one slot, no tag attribute",
             "PlainTide",
-            &PlainTide::Stamped(first()),
+            &PlainTideDraft::Stamped(first()),
         ),
         read_row(
             "a variant's member, a tag and a content key",
             "AdjacentPlainTide",
-            &AdjacentPlainTide::Logged { at: first() },
+            &AdjacentPlainTideDraft::Logged { at: first() },
         ),
         read_row(
             "several slots, a tag and a content key",
             "AdjacentPlainTide",
-            &AdjacentPlainTide::Paired(first(), 1),
+            &AdjacentPlainTideDraft::Paired(first(), 1),
         ),
         read_row(
             "an optional slot, a tag and a content key",
             "AdjacentPlainTide",
-            &AdjacentPlainTide::Pending(Some(first())),
+            &AdjacentPlainTideDraft::Pending(Some(first())),
         ),
         read_row(
             "an optional slot with no date, a tag and a content key",
             "AdjacentPlainTide",
-            &AdjacentPlainTide::Pending(None),
+            &AdjacentPlainTideDraft::Pending(None),
         ),
         read_row(
             "one slot, a tag and a content key",
             "AdjacentPlainTide",
-            &AdjacentPlainTide::Stamped(first()),
+            &AdjacentPlainTideDraft::Stamped(first()),
         ),
         read_row(
             "a variant's member, untagged",
             "UntaggedPlainTide",
-            &UntaggedPlainTide::Logged { at: first() },
+            &UntaggedPlainTideDraft::Logged { at: first() },
         ),
         read_row(
             "one slot, untagged",
             "UntaggedPlainTide",
-            &UntaggedPlainTide::Stamped(first()),
+            &UntaggedPlainTideDraft::Stamped(first()),
         ),
     ]
 }
@@ -291,52 +306,52 @@ fn counted_rows() -> Vec<Row> {
         read_row(
             "one slot under as_number, no tag attribute",
             "CountedTide",
-            &CountedTide::Counted(first()),
+            &CountedTideDraft::Counted(first()),
         ),
         read_row(
             "an optional slot under as_number, no tag attribute",
             "CountedTide",
-            &CountedTide::Maybe(Some(first())),
+            &CountedTideDraft::Maybe(Some(first())),
         ),
         read_row(
             "an optional slot under as_number with no date, no tag attribute",
             "CountedTide",
-            &CountedTide::Maybe(None),
+            &CountedTideDraft::Maybe(None),
         ),
         read_row(
             "several slots under as_number, no tag attribute",
             "CountedTide",
-            &CountedTide::Spanned(first(), 1),
+            &CountedTideDraft::Spanned(first(), 1),
         ),
         read_row(
             "one slot under as_number, a tag and a content key",
             "AdjacentCountedTide",
-            &AdjacentCountedTide::Counted(first()),
+            &AdjacentCountedTideDraft::Counted(first()),
         ),
         read_row(
             "an optional slot under as_number, a tag and a content key",
             "AdjacentCountedTide",
-            &AdjacentCountedTide::Maybe(Some(first())),
+            &AdjacentCountedTideDraft::Maybe(Some(first())),
         ),
         read_row(
             "several slots under as_number, a tag and a content key",
             "AdjacentCountedTide",
-            &AdjacentCountedTide::Spanned(first(), 1),
+            &AdjacentCountedTideDraft::Spanned(first(), 1),
         ),
         read_row(
             "one slot under as_number, untagged",
             "UntaggedCountedTide",
-            &UntaggedCountedTide::Counted(first()),
+            &UntaggedCountedTideDraft::Counted(first()),
         ),
         read_row(
             "a tuple struct under as_number",
             "Ticker",
-            &Ticker(first(), 1),
+            &TickerDraft(first(), 1),
         ),
         read_row(
             "a tuple struct under as_number that declares a parameter",
             "StowedTicker<String>",
-            &StowedTicker(first(), "t".to_owned()),
+            &StowedTickerDraft(first(), "t".to_owned()),
         ),
     ]
 }
@@ -344,24 +359,26 @@ fn counted_rows() -> Vec<Row> {
 /// The payloads whose date in each place is no date, each refused by the serde read and by the
 /// Swift read.
 fn refused_rows() -> Vec<Row> {
-    let only = |chart: PlainChart| PlainChart {
+    let only = |chart: PlainChart| PlainChartDraft {
         by_name: HashMap::new(),
         by_number: HashMap::new(),
         by_turn: HashMap::new(),
         marks_by_name: HashMap::new(),
         maybe_by_name: HashMap::new(),
         spans: (Vec::new(), None),
-        swung: Pendulum {
+        swung: PendulumDraft {
             first: Vec::new(),
             second: None,
-        },
-        ..chart
+        }
+        .validate()
+        .unwrap(),
+        ..chart.into()
     };
     vec![
         refused_row(
             "a map's value that is no date",
             "PlainChart",
-            &PlainChart {
+            &PlainChartDraft {
                 by_name: HashMap::from([("a".to_owned(), first())]),
                 ..only(plain_chart())
             },
@@ -369,7 +386,7 @@ fn refused_rows() -> Vec<Row> {
         refused_row(
             "a value of a map under a key Swift wraps that is no date",
             "PlainChart",
-            &PlainChart {
+            &PlainChartDraft {
                 by_number: HashMap::from([(1, first())]),
                 ..only(plain_chart())
             },
@@ -382,25 +399,27 @@ fn refused_rows() -> Vec<Row> {
         refused_row(
             "a slot of a tuple that is no date",
             "StowedChart<String>",
-            &StowedChart {
+            &StowedChartDraft {
                 by_name: HashMap::new(),
                 by_number: HashMap::new(),
-                dated: Chime {
+                dated: ChimeDraft {
                     first: second(),
                     second: "c".to_owned(),
-                },
-                ..stowed_chart()
+                }
+                .validate()
+                .unwrap(),
+                ..stowed_chart().into()
             },
         ),
         refused_row(
             "one slot that is no date, no tag attribute",
             "PlainTide",
-            &PlainTide::Stamped(first()),
+            &PlainTideDraft::Stamped(first()),
         ),
         refused_row(
             "several slots, one no date, a tag and a content key",
             "AdjacentPlainTide",
-            &AdjacentPlainTide::Paired(first(), 1),
+            &AdjacentPlainTideDraft::Paired(first(), 1),
         ),
     ]
 }

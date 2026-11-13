@@ -21,13 +21,13 @@ mod kotlin_plain_enum;
 
 /// The private function the emitter writes into a serializer that reads a part of a value apart.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "support/kotlin_inner.rs"]
 mod kotlin_inner;
 
 /// The private function the emitter writes into a serializer that reads a flattened member.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "support/kotlin_flattened.rs"]
 mod kotlin_flattened;
 

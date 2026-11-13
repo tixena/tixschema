@@ -35,7 +35,7 @@ fn serde_writes_a_unit_as_null_and_refuses_an_empty_array() {
             .to_string(),
         "invalid type: sequence, expected unit"
     );
-    let holder = UnitHolder {
+    let holder = UnitHolderDraft {
         branded: UnitBrand::new(()).unwrap(),
         unit: (),
     };

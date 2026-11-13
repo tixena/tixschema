@@ -1850,6 +1850,7 @@ fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Op
 ///     pub content: String,
 /// }
 ///
+/// #[tixschema::model_schema()]
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub enum GetVersionError {
 ///     NotFound,
@@ -2118,6 +2119,7 @@ fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Op
 /// ```rust
 /// use tixschema::service_schema;
 ///
+/// #[tixschema::model_schema()]
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub enum ThumbnailError {
 ///     NotFound,
@@ -2242,6 +2244,7 @@ fn named_message_argument<'op>(operation: &'op TraitItemFn, raw: &RawHttp) -> Op
 /// ```rust
 /// use tixschema::service_schema;
 ///
+/// #[tixschema::model_schema()]
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub enum ContentError {
 ///     NotFound,

@@ -2,7 +2,7 @@
 //! the one place the session's correlation map can be read: the dropped call leaves nothing in it.
 
 use super::{DocumentSessionClient, FrameSession};
-use crate::tests::WatchRequest;
+use crate::tests::WatchRequestDraft;
 use core::future::{Future as _, pending};
 use core::pin::pin;
 use core::task::{Context as PollContext, Waker};
@@ -15,9 +15,15 @@ fn waiting(session: &FrameSession) -> usize {
 /// Polls a `watch` call once, while its slot is held, then drops it.
 fn dropped_after_one_poll(session: &FrameSession) {
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.watch(WatchRequest {
-        document_id: "doc-1".to_owned(),
-    }));
+    let mut call = pin!(
+        client.watch(
+            WatchRequestDraft {
+                document_id: "doc-1".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+    );
     assert!(
         call.as_mut()
             .poll(&mut PollContext::from_waker(Waker::noop()))

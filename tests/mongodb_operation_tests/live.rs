@@ -12,10 +12,11 @@ use mongodb::options::{ClientOptions, Collation, CollationStrength, Hint};
 use mongodb::{Client, Collection};
 
 use super::invoice_schema::OperationError;
-use super::offline::Receipt;
+use super::offline::{Receipt, ReceiptDraft};
 use super::{
-    Customer, Invoice, InvoiceStatus, every_row, invoice, names_the_unreadable_row, numbered,
-    readable, seeded_id, stored, unreadable, whole_number_as_text,
+    Customer, Invoice, InvoiceDraft, InvoiceStatus, InvoiceStatusDraft, every_row, invoice,
+    names_the_unreadable_row, numbered, readable, seeded_id, stored, unreadable,
+    whole_number_as_text,
 };
 use crate::BSON_MAJOR;
 
@@ -235,7 +236,7 @@ async fn live_a_row_is_read_through_the_functions_its_type_names() {
     let Some(held) = seeded("corrected", vec![stored]).await else {
         return;
     };
-    let read = Receipt::new(seeded_id(), "R-1", 0);
+    let read = ReceiptDraft::new(seeded_id(), "R-1", 0).validate().unwrap();
     let paths = Receipt::MONGO_FIELDS;
     let one = Receipt::find_one(&held, paths.id().eq(seeded_id()).unwrap())
         .await
@@ -282,7 +283,12 @@ async fn live_an_unreachable_server_is_a_database_error_for_every_operation() {
         .collection::<Document>("unreachable");
     let paths = Invoice::MONGO_FIELDS;
     let matching = || paths.number().eq("INV-0042".to_owned()).unwrap();
-    let paid = || paths.status().set(InvoiceStatus::Paid).unwrap();
+    let paid = || {
+        paths
+            .status()
+            .set(InvoiceStatusDraft::Paid.validate().unwrap())
+            .unwrap()
+    };
 
     let refusals = [
         (
@@ -336,27 +342,38 @@ async fn live_an_unreachable_server_is_a_database_error_for_every_operation() {
 
 #[tokio::test]
 async fn live_count_answers_how_many_rows_a_filter_matches() {
-    let draft = Invoice {
-        status: InvoiceStatus::Draft,
-        ..numbered(3_u32)
+    let draft = InvoiceDraft {
+        status: InvoiceStatusDraft::Draft.validate().unwrap(),
+        ..numbered(3_u32).into()
     };
-    let paid = Invoice {
+    let paid = InvoiceDraft {
         paid_at: Some(PAID_AT.to_owned()),
-        status: InvoiceStatus::Paid,
-        ..numbered(4_u32)
+        status: InvoiceStatusDraft::Paid.validate().unwrap(),
+        ..numbered(4_u32).into()
     };
-    let rows = [numbered(1_u32), numbered(2_u32), draft, paid]
-        .iter()
-        .map(stored)
-        .collect();
+    let rows = [
+        numbered(1_u32),
+        numbered(2_u32),
+        draft.validate().unwrap(),
+        paid.validate().unwrap(),
+    ]
+    .iter()
+    .map(stored)
+    .collect();
     let Some(held) = seeded("count", rows).await else {
         return;
     };
     let paths = Invoice::MONGO_FIELDS;
 
-    let past_due = Invoice::count(&held, paths.status().eq(InvoiceStatus::PastDue).unwrap())
-        .await
-        .unwrap();
+    let past_due = Invoice::count(
+        &held,
+        paths
+            .status()
+            .eq(InvoiceStatusDraft::PastDue.validate().unwrap())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
     say(&format!("count answers {past_due:?}"));
     assert_eq!(past_due, 2_u64, "the two past due");
     let unpaid = Invoice::count(&held, paths.paid_at().exists(false))
@@ -438,9 +455,13 @@ async fn live_one_unreadable_row_refuses_every_row_until_a_resolver_repairs_it()
 
 #[tokio::test]
 async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() {
-    let draft = |at: u32| Invoice {
-        status: InvoiceStatus::Draft,
-        ..numbered(at)
+    let draft = |at: u32| {
+        InvoiceDraft {
+            status: InvoiceStatusDraft::Draft.validate().unwrap(),
+            ..numbered(at).into()
+        }
+        .validate()
+        .unwrap()
     };
     let rows = [draft(1_u32), draft(2_u32), numbered(3_u32), numbered(4_u32)]
         .iter()
@@ -454,7 +475,7 @@ async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() 
 
     let voided = Invoice::update_many(
         &held,
-        of(InvoiceStatus::Draft),
+        of(InvoiceStatusDraft::Draft.validate().unwrap()),
         paths.total().set(0_u32).unwrap(),
     )
     .await
@@ -474,12 +495,12 @@ async fn live_update_many_and_the_deletes_act_on_the_rows_their_filters_match() 
         .unwrap();
     assert_eq!(voided_rows, 2_u64, "no other row was changed");
 
-    let one = Invoice::delete_one(&held, of(InvoiceStatus::PastDue))
+    let one = Invoice::delete_one(&held, of(InvoiceStatusDraft::PastDue.validate().unwrap()))
         .await
         .unwrap();
     say(&format!("delete_one answers {one:?}"));
     assert_eq!(one.deleted_count, 1_u64, "one of the two past due");
-    let drafts = Invoice::delete_many(&held, of(InvoiceStatus::Draft))
+    let drafts = Invoice::delete_many(&held, of(InvoiceStatusDraft::Draft.validate().unwrap()))
         .await
         .unwrap();
     say(&format!("delete_many answers {drafts:?}"));
@@ -500,7 +521,7 @@ async fn live_update_one_changes_the_row_its_filter_matches() {
 
     let paid = paths
         .status()
-        .set(InvoiceStatus::Paid)
+        .set(InvoiceStatusDraft::Paid.validate().unwrap())
         .unwrap()
         .and(paths.paid_at().set(PAID_AT.to_owned()).unwrap());
     let result = Invoice::update_one(&held, numbered_42(), paid)
@@ -519,16 +540,26 @@ async fn live_update_one_changes_the_row_its_filter_matches() {
     let read = Invoice::find_one(&held, numbered_42()).await.unwrap();
     assert_eq!(
         read,
-        Some(Invoice {
-            paid_at: Some(PAID_AT.to_owned()),
-            status: InvoiceStatus::Paid,
-            ..invoice()
-        }),
+        Some(
+            InvoiceDraft {
+                paid_at: Some(PAID_AT.to_owned()),
+                status: InvoiceStatusDraft::Paid.validate().unwrap(),
+                ..invoice().into()
+            }
+            .validate()
+            .unwrap()
+        ),
         "the row reads as the update left it"
     );
-    let past_due = Invoice::count(&held, paths.status().eq(InvoiceStatus::PastDue).unwrap())
-        .await
-        .unwrap();
+    let past_due = Invoice::count(
+        &held,
+        paths
+            .status()
+            .eq(InvoiceStatusDraft::PastDue.validate().unwrap())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
     assert_eq!(past_due, 1_u64, "the other row is as it was");
     held.drop().await.unwrap();
 }

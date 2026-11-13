@@ -22,21 +22,21 @@ pub struct LabelledTwin {
 
 #[test]
 fn its_items_are_counted() {
-    let empty = Labelled {
+    let empty = LabelledDraft {
         labels: IndexSet::new(),
     };
-    let twin = LabelledTwin {
+    let twin = LabelledTwinDraft {
         labels: HashSet::new(),
     };
     assert_eq!(
-        empty.validate().unwrap_err(),
+        empty.validation_issues(),
         vec!["'labels': too short: minimum length is 1, got 0"]
     );
-    assert_eq!(empty.validate(), twin.validate());
-    let held = Labelled {
+    assert_eq!(empty.validation_issues(), twin.validation_issues());
+    let held = LabelledDraft {
         labels: IndexSet::from(["only".to_owned()]),
     };
-    assert_eq!(held.validate(), Ok(()));
+    assert_eq!(held.validation_issues(), Vec::<String>::new());
 }
 
 #[cfg(feature = "zod")]

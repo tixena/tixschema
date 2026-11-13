@@ -134,12 +134,14 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<(RangeResult, String), RangeError>> {
         self.reach(format!("read_range {document_id} {byte_range:?}"));
         let outcome = if document_id == "missing" {
-            Err(RangeError::NotFound)
+            Err(RangeErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok((
-                RangeResult {
+                RangeResultDraft {
                     content: format!("range-of-{document_id}"),
-                },
+                }
+                .validate()
+                .unwrap(),
                 "etag-1".to_owned(),
             ))
         };
@@ -158,7 +160,7 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<(), UnwatchError>> {
         self.reach(format!("unwatch {}", req.document_id));
         let outcome = if req.document_id == "missing" {
-            Err(UnwatchError::NotFound)
+            Err(UnwatchErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok(())
         };
@@ -172,11 +174,13 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<WatchResult, WatchError>> {
         self.reach(format!("watch {}", req.document_id));
         let outcome = match req.document_id.as_str() {
-            "missing" => Err(WatchError::NotFound),
-            "revoked" => Err(WatchError::Revoked {
+            "missing" => Err(WatchErrorDraft::NotFound.validate().unwrap()),
+            "revoked" => Err(WatchErrorDraft::Revoked {
                 reason: "the session ended".to_owned(),
-            }),
-            _ => Ok(WatchResult { accepted: true }),
+            }
+            .validate()
+            .unwrap()),
+            _ => Ok(WatchResultDraft { accepted: true }.validate().unwrap()),
         };
         ready(outcome)
     }
@@ -533,9 +537,15 @@ fn a_header_in_binding_nothing_carried_decodes_as_the_arguments_own_absent_value
 fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
     let (session, sent) = frame_session();
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.watch(WatchRequest {
-        document_id: "doc-1".to_owned(),
-    }));
+    let mut call = pin!(
+        client.watch(
+            WatchRequestDraft {
+                document_id: "doc-1".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+    );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
     assert_eq!(
         sent.last(),
@@ -556,7 +566,7 @@ fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
     assert_eq!(delivered, Poll::Ready(()));
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Ok(WatchResult { accepted: true })),
+        Poll::Ready(Ok(WatchResultDraft { accepted: true }.validate().unwrap())),
     );
 }
 
@@ -564,9 +574,15 @@ fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
 fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     let (session, _sent) = frame_session();
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.watch(WatchRequest {
-        document_id: "missing".to_owned(),
-    }));
+    let mut call = pin!(
+        client.watch(
+            WatchRequestDraft {
+                document_id: "missing".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+    );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
     let delivered = poll_by_hand(
         pin!(session.deliver(
@@ -577,7 +593,9 @@ fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     assert_eq!(delivered, Poll::Ready(()));
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Err(CallError::Operation(WatchError::NotFound))),
+        Poll::Ready(Err(CallError::Operation(
+            WatchErrorDraft::NotFound.validate().unwrap()
+        ))),
     );
 }
 
@@ -586,9 +604,15 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     let service = DocumentBackEnd::new();
     let (session, sent) = frame_session();
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.watch(WatchRequest {
-        document_id: "revoked".to_owned(),
-    }));
+    let mut call = pin!(
+        client.watch(
+            WatchRequestDraft {
+                document_id: "revoked".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+    );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
     let request = sent.0.lock().unwrap().last().cloned().unwrap();
     let reply = answer(&service, &request).unwrap();
@@ -604,9 +628,13 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
     );
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Err(CallError::Operation(WatchError::Revoked {
-            reason: "the session ended".to_owned(),
-        }))),
+        Poll::Ready(Err(CallError::Operation(
+            WatchErrorDraft::Revoked {
+                reason: "the session ended".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        ))),
     );
 }
 
@@ -614,9 +642,15 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
 fn close_fails_a_waiting_request_with_a_transport_failure_fault() {
     let (session, _sent) = frame_session();
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.watch(WatchRequest {
-        document_id: "doc-1".to_owned(),
-    }));
+    let mut call = pin!(
+        client.watch(
+            WatchRequestDraft {
+                document_id: "doc-1".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+    );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
     session.close("the socket closed before the reply arrived");
     let fault = match poll_by_hand(call.as_mut()) {
@@ -642,10 +676,16 @@ fn a_frame_writer_push_writes_a_notify_frame() {
     let (writer, sent) = events_frame_writer();
     let client = SessionEventsClient::new(writer);
     let outcome = poll_by_hand(
-        pin!(client.document_changed(DocumentChangedRequest {
-            document_id: "doc-1".to_owned(),
-            version: 3_u32,
-        }))
+        pin!(
+            client.document_changed(
+                DocumentChangedRequestDraft {
+                    document_id: "doc-1".to_owned(),
+                    version: 3_u32,
+                }
+                .validate()
+                .unwrap()
+            )
+        )
         .as_mut(),
     );
     assert_eq!(outcome, Poll::Ready(Ok(())));
@@ -663,7 +703,7 @@ fn a_frame_writer_push_writes_a_notify_frame() {
 #[test]
 fn a_frame_writer_asked_for_request_answers_err_naming_the_operation() {
     let (writer, _sent) = frame_writer();
-    let asked = WatchRequest {
+    let asked = WatchRequestDraft {
         document_id: "doc-1".to_owned(),
     };
     let refused = match poll_by_hand(pin!(writer.request("watch", &asked, Vec::new())).as_mut()) {
@@ -755,9 +795,15 @@ fn touch_is_one_way_and_writes_a_notify_frame() {
     let (session, sent) = frame_session();
     let client = DocumentSessionClient::new(session);
     let outcome = poll_by_hand(
-        pin!(client.touch(TouchRequest {
-            document_id: "doc-1".to_owned(),
-        }))
+        pin!(
+            client.touch(
+                TouchRequestDraft {
+                    document_id: "doc-1".to_owned(),
+                }
+                .validate()
+                .unwrap()
+            )
+        )
         .as_mut(),
     );
     assert_eq!(outcome, Poll::Ready(Ok(())));
@@ -777,9 +823,15 @@ fn touch_is_one_way_and_writes_a_notify_frame() {
 fn unwatch_reads_the_unit_success_reply() {
     let (session, sent) = frame_session();
     let client = DocumentSessionClient::new(session.clone());
-    let mut call = pin!(client.unwatch(UnwatchRequest {
-        document_id: "doc-1".to_owned(),
-    }));
+    let mut call = pin!(
+        client.unwatch(
+            UnwatchRequestDraft {
+                document_id: "doc-1".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
+    );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
     assert_eq!(
         sent.last(),
@@ -826,9 +878,11 @@ fn read_range_round_trips_header_in_and_header_out() {
     assert_eq!(
         poll_by_hand(call.as_mut()),
         Poll::Ready(Ok((
-            RangeResult {
+            RangeResultDraft {
                 content: "range-of-doc-1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             "etag-1".to_owned(),
         ))),
     );
@@ -867,11 +921,15 @@ fn a_document_session_client_exposes_the_transport_it_was_bound_to() {
 #[test]
 fn the_session_events_trait_is_implementable_the_way_a_browser_would() {
     let browser = SessionEventsBrowser;
-    poll_once(browser.document_changed(
-        &(),
-        DocumentChangedRequest {
-            document_id: "doc-1".to_owned(),
-            version: 1,
-        },
-    ));
+    poll_once(
+        browser.document_changed(
+            &(),
+            DocumentChangedRequestDraft {
+                document_id: "doc-1".to_owned(),
+                version: 1,
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
 }

@@ -1,0 +1,13 @@
+error[E0423]: cannot find function, tuple struct or tuple variant `Shipment` in module `declared`
+  --> tests/valid_type_refusals/build_outside_the_declaring_module.rs:18:31
+   |
+18 |     let _shipment = declared::Shipment(draft);
+   |                               ^^^^^^^^ not found in `declared`
+   |
+   = note: a type alias named `declared::Shipment` exists in another namespace
+note: tuple struct `crate::declared::shipment_schema::__tixschema_valid_shipment_schema::Shipment` exists but is inaccessible
+  --> tests/valid_type_refusals/build_outside_the_declaring_module.rs:9:5
+   |
+ 9 |     #[model_schema()]
+   |     ^^^^^^^^^^^^^^^^^ not accessible
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

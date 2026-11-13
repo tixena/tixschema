@@ -38,13 +38,13 @@ mod a_marker_parameter {
             serde_json::to_value(PathBuf::from("ab")).unwrap(),
         )
         .unwrap();
-        assert_eq!(short.validate(), Err(vec![TOO_SHORT.to_owned()]));
+        assert_eq!(short.validation_issues(), vec![TOO_SHORT.to_owned()]);
         let counted = serde_json::from_str::<MarkedPath<u32>>(r#""ab""#).unwrap_err();
         assert!(counted.to_string().contains(TOO_SHORT), "got: {counted}");
         let opaque = serde_json::from_str::<MarkedPath<Opaque>>(r#""ab""#).unwrap_err();
         assert!(opaque.to_string().contains(TOO_SHORT), "got: {opaque}");
         let sound = serde_json::from_str::<MarkedPath<Opaque>>(r#""abc""#).unwrap();
-        assert_eq!(sound.validate(), Ok(()));
+        assert_eq!(sound.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
@@ -53,11 +53,11 @@ mod a_marker_parameter {
             serde_json::to_value("ab".to_owned()).unwrap(),
         )
         .unwrap();
-        assert_eq!(short.validate(), Err(vec![TOO_SHORT.to_owned()]));
+        assert_eq!(short.validation_issues(), vec![TOO_SHORT.to_owned()]);
         let refused = serde_json::from_str::<MarkedText<Opaque>>(r#""ab""#).unwrap_err();
         assert!(refused.to_string().contains(TOO_SHORT), "got: {refused}");
         let sound = serde_json::from_str::<MarkedText<Opaque>>(r#""abc""#).unwrap();
-        assert_eq!(sound.validate(), Ok(()));
+        assert_eq!(sound.validation_issues(), Vec::<String>::new());
     }
 }
 

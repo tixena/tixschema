@@ -276,52 +276,71 @@ fn references(value: &Value, found: &mut Vec<String>) {
 }
 
 fn storefront() -> Storefront {
-    let address = PostalAddress {
+    let address = PostalAddressDraft {
         city: "Lisbon".to_owned(),
         street: "Rua Augusta".to_owned(),
     };
-    let label = ShelfLabel {
+    let label = ShelfLabelDraft {
         text: "Tea".to_owned(),
     };
-    let measured = |amount: f64| Measured {
+    let measured = |amount: f64| MeasuredDraft {
         amount,
         unit: "cm".to_owned(),
     };
-    let counted = |amount: u32| Measured {
+    let counted = |amount: u32| MeasuredDraft {
         amount,
         unit: "boxes".to_owned(),
     };
-    Storefront {
-        billing: address.clone(),
-        category: Category {
-            children: vec![Category {
-                children: Vec::new(),
-                label: label.clone(),
-            }],
-            label: label.clone(),
-        },
-        current_draft: drafts::Revision { number: 4 },
-        current_release: releases::Revision {
+    StorefrontDraft {
+        billing: address.clone().validate().unwrap(),
+        category: CategoryDraft {
+            children: vec![
+                CategoryDraft {
+                    children: Vec::new(),
+                    label: label.clone().validate().unwrap(),
+                }
+                .validate()
+                .unwrap(),
+            ],
+            label: label.clone().validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
+        current_draft: drafts::RevisionDraft { number: 4 }.validate().unwrap(),
+        current_release: releases::RevisionDraft {
             label: "spring".to_owned(),
             number: 3,
-        },
-        depth: measured(40.5),
-        height: measured(180.0),
+        }
+        .validate()
+        .unwrap(),
+        depth: measured(40.5).validate().unwrap(),
+        height: measured(180.0).validate().unwrap(),
         owner: CustomerId::new("customer-1".to_owned()).unwrap(),
-        phone: PhoneNumber {
+        phone: PhoneNumberDraft {
             digits: "213000000".to_owned(),
-        },
-        previous_draft: drafts::Revision { number: 3 },
-        previous_release: releases::Revision {
+        }
+        .validate()
+        .unwrap(),
+        previous_draft: drafts::RevisionDraft { number: 3 }.validate().unwrap(),
+        previous_release: releases::RevisionDraft {
             label: "winter".to_owned(),
             number: 2,
-        },
-        reserved: counted(2),
+        }
+        .validate()
+        .unwrap(),
+        reserved: counted(2).validate().unwrap(),
         reviewer: CustomerId::new("customer-2".to_owned()).unwrap(),
-        shelf: Shelf { label, position: 1 },
-        shipping: address,
-        stock: counted(12),
+        shelf: ShelfDraft {
+            label: label.validate().unwrap(),
+            position: 1,
+        }
+        .validate()
+        .unwrap(),
+        shipping: address.validate().unwrap(),
+        stock: counted(12).validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -500,15 +519,15 @@ fn two_types_of_one_name_used_twice_each_are_two_definitions() {
     assert_valid_and_resolved(&document);
 
     let validator = draft202012::new(&document).unwrap();
-    let probe = Probe {
-        held: sensors::Probe { depth: 3 },
+    let probe = ProbeDraft {
+        held: sensors::ProbeDraft { depth: 3 }.validate().unwrap(),
         label: "north".to_owned(),
     };
-    let mut written = serde_json::to_value(Survey {
-        first: probe.clone(),
-        reading: sensors::Probe { depth: 4 },
-        second: probe,
-        spare: sensors::Probe { depth: 5 },
+    let mut written = serde_json::to_value(SurveyDraft {
+        first: probe.clone().validate().unwrap(),
+        reading: sensors::ProbeDraft { depth: 4 }.validate().unwrap(),
+        second: probe.validate().unwrap(),
+        spare: sensors::ProbeDraft { depth: 5 }.validate().unwrap(),
     })
     .unwrap();
     assert!(validator.is_valid(&written), "{written:#}");
@@ -541,12 +560,16 @@ fn a_recursive_type_holding_another_type_of_its_name_reaches_its_own_definition(
     assert_valid_and_resolved(&document);
 
     let validator = draft202012::new(&document).unwrap();
-    let mut written = serde_json::to_value(chains::Probe {
-        held: sensors::Probe { depth: 1 },
-        next: Some(Box::new(chains::Probe {
-            held: sensors::Probe { depth: 2 },
-            next: None,
-        })),
+    let mut written = serde_json::to_value(chains::ProbeDraft {
+        held: sensors::ProbeDraft { depth: 1 }.validate().unwrap(),
+        next: Some(Box::new(
+            chains::ProbeDraft {
+                held: sensors::ProbeDraft { depth: 2 }.validate().unwrap(),
+                next: None,
+            }
+            .validate()
+            .unwrap(),
+        )),
     })
     .unwrap();
     assert!(validator.is_valid(&written), "{written:#}");
@@ -602,22 +625,34 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
     assert_valid_and_resolved(&document);
 
     let validator = draft202012::new(&document).unwrap();
-    let mut written = serde_json::to_value(EdgeHolder {
-        a: Boxed {
-            item: sensors::Probe { depth: 1 },
-        },
-        b: looped::Probe {
-            held: sensors::Probe { depth: 2 },
-            kids: vec![Boxed {
-                item: looped::Probe {
-                    held: sensors::Probe { depth: 3 },
-                    kids: Vec::new(),
-                },
-            }],
-        },
-        c: Boxed {
-            item: sensors::Probe { depth: 4 },
-        },
+    let mut written = serde_json::to_value(EdgeHolderDraft {
+        a: BoxedDraft {
+            item: sensors::ProbeDraft { depth: 1 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
+        b: looped::ProbeDraft {
+            held: sensors::ProbeDraft { depth: 2 }.validate().unwrap(),
+            kids: vec![
+                BoxedDraft {
+                    item: looped::ProbeDraft {
+                        held: sensors::ProbeDraft { depth: 3 }.validate().unwrap(),
+                        kids: Vec::new(),
+                    }
+                    .validate()
+                    .unwrap(),
+                }
+                .validate()
+                .unwrap(),
+            ],
+        }
+        .validate()
+        .unwrap(),
+        c: BoxedDraft {
+            item: sensors::ProbeDraft { depth: 4 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
     })
     .unwrap();
     assert!(validator.is_valid(&written), "{written:#}");
@@ -685,22 +720,36 @@ fn a_type_holding_a_type_in_flight_leaves_the_other_type_of_its_name_its_definit
     assert_valid_and_resolved(&document);
 
     let validator = draft202012::new(&document).unwrap();
-    let mut written = serde_json::to_value(HolderShelf {
-        a: first::Holder {
-            p: sensors::Probe { depth: 1 },
-        },
-        b: ring::Probe {
-            back: vec![second::Holder {
-                p: Box::new(ring::Probe {
-                    back: Vec::new(),
-                    held: sensors::Probe { depth: 3 },
-                }),
-            }],
-            held: sensors::Probe { depth: 2 },
-        },
-        c: first::Holder {
-            p: sensors::Probe { depth: 4 },
-        },
+    let mut written = serde_json::to_value(HolderShelfDraft {
+        a: first::HolderDraft {
+            p: sensors::ProbeDraft { depth: 1 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
+        b: ring::ProbeDraft {
+            back: vec![
+                second::HolderDraft {
+                    p: Box::new(
+                        ring::ProbeDraft {
+                            back: Vec::new(),
+                            held: sensors::ProbeDraft { depth: 3 }.validate().unwrap(),
+                        }
+                        .validate()
+                        .unwrap(),
+                    ),
+                }
+                .validate()
+                .unwrap(),
+            ],
+            held: sensors::ProbeDraft { depth: 2 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
+        c: first::HolderDraft {
+            p: sensors::ProbeDraft { depth: 4 }.validate().unwrap(),
+        }
+        .validate()
+        .unwrap(),
     })
     .unwrap();
     assert!(validator.is_valid(&written), "{written:#}");

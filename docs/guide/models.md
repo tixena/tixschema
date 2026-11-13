@@ -16,6 +16,37 @@ pub struct UserProfile {
 }
 ```
 
+#### A Draft and a Valid Type
+
+One declaration makes two types. The type you write is emitted as `{Name}Draft`, with the fields, derives and attributes you wrote: code builds it and changes it. `{Name}` is the valid type, which only the draft's `validate()` and a read of the type make, so a function that takes `&UserProfile` gets a value that passed every rule the type declares. Every `#[model_schema()]` struct and enum has the pair; a [brand](generics-and-brands.md#a-brand-is-sealed) has none.
+
+```rust
+let draft = UserProfileDraft {
+    user_id: "u1".to_owned(),
+    name: "Ada".to_owned(),
+    age: 36,
+    score: 1.5,
+    is_verified: true,
+};
+
+// `validate()` takes the draft and answers the valid value, or every rule it breaks.
+let profile: UserProfile = draft.clone().validate().unwrap();
+assert_eq!(profile.age, 36);
+
+// The draft lists the same rules without being consumed.
+assert!(draft.validation_issues().is_empty());
+
+// A valid value turns back into its draft, which is open again.
+let mut again: UserProfileDraft = profile.into();
+again.age = 37;
+```
+
+The valid type reads like the draft: `profile.age` and `&*profile` (a `match &*payment { PaymentDraft::Card { .. } => .. }` over an enum) work through `Deref`. It has no `DerefMut`, so `profile.age = 1` and `&mut profile.age` do not compile, and its tuple constructor is closed, so `UserProfile(draft)` does not compile in the declaring module or outside it. `#[derive(Default)]` stays on the draft only, because a default would build a valid value no check saw.
+
+The valid type writes what its draft writes, and `serde_json::from_str::<UserProfile>(..)`, a MongoDB read and a dispatcher's read return a valid value and refuse a broken one with the messages `validate()` gives. The surfaces keep the declared name: TypeScript, Zod, JSON Schema, Dart, Swift, Kotlin, MCP and OpenAPI all publish `UserProfile`. A member that holds a model names the valid type (`pub profile: UserProfile`), so a draft is built from values that already passed. `Self` in a member names the valid type too. A serde message that names the type, such as `data did not match any variant of untagged enum` or `the enum variant X::Y cannot be serialized`, names `UserProfile` where the read or the write goes through the valid type, and `UserProfileDraft` where it goes through the draft itself.
+
+A declaration whose `{Name}Draft` is the name of another type in the module stops the build with the compiler's duplicate-name error (`E0428`). The type the valid wrapper is made of is generic and hidden: the compiler prints a valid value's type as `UserProfile<UserProfileDraft>`, and a type declared in a function body is wrapped as one declared beside it.
+
 #### Unit Structs
 
 A unit struct -- `pub struct Ping;`, no braces, no fields -- crosses the wire as `{}`. Serde's own derive would write and read it as `null`, disagreeing with every other surface, which already describes an empty struct as an object; the macro replaces the author's own `Serialize`/`Deserialize` derive with impls that write `{}` and read it back (refusing a key, unless the type is [`nonstrict`](#unknown-keys-strict-reads-and-nonstrict), and refusing `null`), keeping every other derive and attribute exactly as written:
@@ -25,7 +56,7 @@ A unit struct -- `pub struct Ping;`, no braces, no fields -- crosses the wire as
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ping;
 
-assert_eq!(serde_json::to_string(&Ping).unwrap(), "{}");
+assert_eq!(serde_json::to_string(&PingDraft).unwrap(), "{}");
 serde_json::from_str::<Ping>("{}").unwrap();
 serde_json::from_str::<Ping>("null").unwrap_err();
 ```
@@ -200,7 +231,7 @@ pub fn north_dock() -> String {
 pub struct Wharf {
     #[serde(default)]
     pub dock: String,
-    #[serde(default)]
+    #[serde(default = "main_gangway")]
     pub gangway: Gangway,
     #[serde(default = "north_dock")]
     pub gate: String,
@@ -208,7 +239,7 @@ pub struct Wharf {
 }
 ```
 
-`Gangway` is a `#[model_schema(enable = ["jsonschema"])]` struct of the crate's own, whose `Default` is `{"label":"main","width":2}`. serde reads `{"label":"w"}` as `{"dock":"","gangway":{"label":"main","width":2},"gate":"north","label":"w"}`, and so does each surface:
+`Gangway` is a `#[model_schema(enable = ["jsonschema"])]` struct of the crate's own, whose draft has a `Default` of `{"label":"main","width":2}` and which `main_gangway()` makes valid: a member typed with a model type names the function that builds the valid value, since the valid type has no `Default`. serde reads `{"label":"w"}` as `{"dock":"","gangway":{"label":"main","width":2},"gate":"north","label":"w"}`, and so does each surface:
 
 | Surface | What reads a key the payload leaves out |
 |---------|-----------------------------------------|

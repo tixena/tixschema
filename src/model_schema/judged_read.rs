@@ -87,10 +87,20 @@ const UNJUDGED: &str = "_unjudged";
 /// The read of a type that publishes `validate()`, before its `validate()`.
 pub const UNJUDGED_READ: &str = "model_schema_read_unjudged";
 
+/// What the read of a draft and of its valid type are written as.
+pub struct Drafted {
+    /// What sits beside the draft: its own unjudged read, which holders and the valid type call.
+    pub draft: TokenStream,
+    /// Whether `draft` is the refusal of a conversion the macro cannot put a read behind.
+    pub refused: bool,
+    /// What sits beside the valid type, where it can build one.
+    pub valid: TokenStream,
+}
+
 /// What [`judged`] answers for an item whose read the macro writes.
 enum Judged {
     Refused(TokenStream),
-    Written(TokenStream),
+    Written(TokenStream, TokenStream),
 }
 
 /// What the hooks recorded for the item being expanded add to its read: the functions, and the
@@ -553,9 +563,11 @@ impl HookScope {
     /// What the hooks of `input` are written with, beside the bounds of its read.
     pub fn of(input: &DeriveInput, bounds: &ReadBounds) -> Self {
         let generics = &input.generics;
-        let name = &input.ident;
+        let name = &super::valid_type::declared_name(&input.ident);
         let (_, type_generics, _) = generics.split_for_impl();
         let named = quote! { #name #type_generics };
+        let draft = super::valid_type::draft_ident(name);
+        let draft_named = quote! { #draft #type_generics };
         let parameters: Vec<Ident> = generics
             .type_params()
             .map(|declared| declared.ident.clone())
@@ -576,7 +588,7 @@ impl HookScope {
             })
         });
         let mut declared: Vec<Predicate> = inline
-            .map(|written| Predicate::of(written, &named, &parameters_written, &lifetimes))
+            .map(|written| Predicate::of(written, &draft_named, &parameters_written, &lifetimes))
             .collect();
         for predicate in generics
             .where_clause
@@ -585,7 +597,7 @@ impl HookScope {
         {
             declared.extend(Predicate::split(
                 predicate,
-                &named,
+                &draft_named,
                 &parameters_written,
                 &lifetimes,
             ));
@@ -594,7 +606,7 @@ impl HookScope {
             .predicates
             .iter()
             .flat_map(|predicate| {
-                Predicate::split(predicate, &named, &parameters_written, &lifetimes)
+                Predicate::split(predicate, &draft_named, &parameters_written, &lifetimes)
             })
             .collect();
         Self {
@@ -1866,14 +1878,16 @@ fn hooked(
 ///
 /// Where the type names a `preprocess` of its own, the function reads the payload, calls each
 /// function on it, and hands what they answer to a second function, written beside it, which
-/// reads the copy: the read of a payload already corrected.
+/// reads the copy: the read of a payload already corrected. Where `wrapping` names the valid type
+/// of `input`, a draft, the read of a corrected payload is answered for it too.
 fn unjudged_read(
     input: &DeriveInput,
     derive: &syn::Path,
     unjudged: &Ident,
     doc: &str,
     asked_by_the_impl: bool,
-) -> (TokenStream, ReadBounds) {
+    wrapping: Option<&Ident>,
+) -> (TokenStream, ReadBounds, TokenStream) {
     let bounds = authored_read_bounds(input);
     // Each name the function declares is one the item does not write: the copy writes the item's
     // own types beside them.
@@ -1902,6 +1916,22 @@ fn unjudged_read(
     // A hook is declared inside the function that reads the copy, where that function's own
     // parameter is in scope: it goes by a name no function a hook calls has.
     let (deserializer, corrected) = (&corrects.deserializer, &corrects.corrected);
+    let drafted = &input.ident;
+    let wrapped = |read: &Ident, documented: &str| {
+        wrapping.map(|_| {
+            quote! {
+                #[doc = #documented]
+                pub fn #read #read_parameters (#deserializer: #reader) -> ::core::result::Result<Self, #reader::Error>
+                where
+                    #reader: serde::Deserializer<#de>,
+                    #(#borrowed_for,)*
+                    #(#predicates,)*
+                {
+                    <#drafted #type_generics>::#read(#deserializer).map(Self::model_schema_wrap_unjudged)
+                }
+            }
+        })
+    };
     if own.is_empty() {
         let read = quote! {
             #[doc = #doc]
@@ -1916,7 +1946,7 @@ fn unjudged_read(
                 <#remote_name #type_generics>::deserialize(#deserializer)
             }
         };
-        return (read, bounds);
+        return (read, bounds, TokenStream::new());
     }
     let correction = corrects.statements(own);
     let told = told_by(&reader);
@@ -1945,7 +1975,11 @@ fn unjudged_read(
             <#remote_name #type_generics>::deserialize(#deserializer)
         }
     };
-    (read, bounds)
+    let valid_corrected = wrapped(
+        &of_corrected,
+        " The read of a payload the functions `preprocess` names on the type have corrected.",
+    );
+    (read, bounds, quote! { #valid_corrected })
 }
 
 /// `'de: 'a + 'b` for the lifetimes the read borrows for, where it borrows for any.
@@ -1959,15 +1993,23 @@ fn outlived(bounds: &ReadBounds) -> Option<syn::WherePredicate> {
 
 /// `model_schema_read_unjudged` and the `Deserialize` that calls it, for an item that derives
 /// `Deserialize` by `derive`: with `validate()` run after it where the item `publishes_validate`.
-fn written_read(input: &DeriveInput, derive: &syn::Path, publishes_validate: bool) -> TokenStream {
+/// Where `valid` names the valid type of the item, which is then a draft, the draft reads without
+/// judging, and the valid type's read is answered beside it.
+fn written_read(
+    input: &DeriveInput,
+    derive: &syn::Path,
+    publishes_validate: bool,
+    valid: Option<&Ident>,
+) -> (TokenStream, TokenStream) {
     let name = &input.ident;
     let unjudged = Ident::new(UNJUDGED_READ, Span::call_site());
-    let (read, bounds) = unjudged_read(
+    let (read, bounds, corrected_read_of_valid) = unjudged_read(
         input,
         derive,
         &unjudged,
         " The read alone, for a holder that judges the whole value once.",
         false,
+        valid,
     );
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
     let reader = reader_parameter(input);
@@ -1986,7 +2028,16 @@ fn written_read(input: &DeriveInput, derive: &syn::Path, publishes_validate: boo
         .predicates
         .extend(undeclared_bounds(&input.generics, bounds.predicates));
     let (read_impl_generics, _, read_where_clause) = read_at.split_for_impl();
-    let judged = if publishes_validate {
+    let judged = if publishes_validate && valid.is_none() && super::valid_type::is_undrafted() {
+        quote! {
+            let read = Self::#unjudged(deserializer)?;
+            let found = read.validation_issues();
+            if !found.is_empty() {
+                return ::core::result::Result::Err((#refusal)(found));
+            }
+            ::core::result::Result::Ok(read)
+        }
+    } else if publishes_validate && valid.is_none() {
         quote! {
             let read = Self::#unjudged(deserializer)?;
             read.validate().map_err(#refusal)?;
@@ -1995,7 +2046,7 @@ fn written_read(input: &DeriveInput, derive: &syn::Path, publishes_validate: boo
     } else {
         quote! { Self::#unjudged(deserializer) }
     };
-    quote! {
+    let draft = quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #read
         }
@@ -2008,7 +2059,15 @@ fn written_read(input: &DeriveInput, derive: &syn::Path, publishes_validate: boo
                 #judged
             }
         }
-    }
+    };
+    let wrapper = valid.map(|valid_name| {
+        quote! {
+            impl #impl_generics #valid_name #type_generics #where_clause {
+                #corrected_read_of_valid
+            }
+        }
+    });
+    (draft, wrapper.unwrap_or_default())
 }
 
 /// What the unjudged read of the unit struct `name` is written as where the struct names a
@@ -2045,7 +2104,7 @@ fn conversion_refusal(
     written_at: Span,
     corrects: bool,
 ) -> TokenStream {
-    let name = &input.ident;
+    let name = &super::valid_type::declared_name(&input.ident);
     let refusal = if corrects {
         format!(
             "type `{name}`: `#[serde({key} = ...)]` puts a conversion of its author's between \
@@ -2071,25 +2130,26 @@ fn conversion_refusal(
 /// What an item that derives `Deserialize` gains where it publishes `validate()` or names a
 /// `preprocess`, on itself or on a member, or the refusal of a conversion written on it. `None`
 /// for every other item, which is left as it is.
-fn judged(input: &DeriveInput, publishes_validate: bool) -> Option<Judged> {
+fn judged(input: &DeriveInput, publishes_validate: bool, valid: Option<&Ident>) -> Option<Judged> {
     let corrects = preprocess::named().any();
     if !(publishes_validate || corrects) || !derives_deserialize(&input.attrs) {
         return None;
     }
     let derive = deserialize_derive(&input.attrs)?;
-    Some(match serde_conversion(&input.attrs) {
-        Some((key, written_at)) => {
-            Judged::Refused(conversion_refusal(input, key, written_at, corrects))
-        }
-        None => Judged::Written(written_read(input, &derive, publishes_validate)),
-    })
+    if let Some((key, written_at)) = serde_conversion(&input.attrs) {
+        return Some(Judged::Refused(conversion_refusal(
+            input, key, written_at, corrects,
+        )));
+    }
+    let (draft, wrapper) = written_read(input, &derive, publishes_validate, valid);
+    Some(Judged::Written(draft, wrapper))
 }
 
 /// What a struct's read gains where it derives `Deserialize` and publishes `validate()` or names
 /// a `preprocess`, taking the struct's own `Deserialize` off it. Nothing for any other struct.
 pub fn of_struct(item: &mut ItemStruct, publishes_validate: bool) -> TokenStream {
-    match judged(&DeriveInput::from(item.clone()), publishes_validate) {
-        Some(Judged::Written(read)) => {
+    match judged(&DeriveInput::from(item.clone()), publishes_validate, None) {
+        Some(Judged::Written(read, _)) => {
             leave_the_read_to_the_macro(&mut item.attrs, item.fields.iter_mut());
             read
         }
@@ -2098,10 +2158,38 @@ pub fn of_struct(item: &mut ItemStruct, publishes_validate: bool) -> TokenStream
     }
 }
 
-/// [`of_struct`] for an enum.
-pub fn of_enum(item: &mut ItemEnum, publishes_validate: bool) -> TokenStream {
-    match judged(&DeriveInput::from(item.clone()), publishes_validate) {
-        Some(Judged::Written(read)) => {
+/// [`of_struct`] for the draft `item` of the valid type `valid`.
+pub fn drafted_struct(item: &mut ItemStruct, publishes_validate: bool, valid: &Ident) -> Drafted {
+    let input = DeriveInput::from(item.clone());
+    let wrapping = (!super::valid_type::is_undrafted()).then_some(valid);
+    match judged(&input, publishes_validate, wrapping) {
+        Some(Judged::Written(draft, wrapper)) => {
+            leave_the_read_to_the_macro(&mut item.attrs, item.fields.iter_mut());
+            Drafted {
+                draft,
+                refused: false,
+                valid: wrapper,
+            }
+        }
+        Some(Judged::Refused(refusal)) => Drafted {
+            draft: refusal,
+            refused: true,
+            valid: TokenStream::new(),
+        },
+        None => Drafted {
+            draft: TokenStream::new(),
+            refused: false,
+            valid: TokenStream::new(),
+        },
+    }
+}
+
+/// [`drafted_struct`] for an enum.
+pub fn drafted_enum(item: &mut ItemEnum, publishes_validate: bool, valid: &Ident) -> Drafted {
+    let input = DeriveInput::from(item.clone());
+    let wrapping = (!super::valid_type::is_undrafted()).then_some(valid);
+    match judged(&input, publishes_validate, wrapping) {
+        Some(Judged::Written(draft, wrapper)) => {
             if !derives_serialize(&item.attrs) {
                 for variant in &mut item.variants {
                     without_serde(&mut variant.attrs);
@@ -2113,10 +2201,22 @@ pub fn of_enum(item: &mut ItemEnum, publishes_validate: bool) -> TokenStream {
                     .iter_mut()
                     .flat_map(|variant| variant.fields.iter_mut()),
             );
-            read
+            Drafted {
+                draft,
+                refused: false,
+                valid: wrapper,
+            }
         }
-        Some(Judged::Refused(refusal)) => refusal,
-        None => TokenStream::new(),
+        Some(Judged::Refused(refusal)) => Drafted {
+            draft: refusal,
+            refused: true,
+            valid: TokenStream::new(),
+        },
+        None => Drafted {
+            draft: TokenStream::new(),
+            refused: false,
+            valid: TokenStream::new(),
+        },
     }
 }
 

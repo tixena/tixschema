@@ -104,9 +104,12 @@ struct Tally {
 #[test]
 fn what_serde_wrote_through_an_alias_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
-    let tally = Tally {
+    let tally = TallyDraft {
         counts: HashMap::from([("a".to_owned(), 1_i32)]),
-        marks: Marks::from([("k".to_owned(), vec![declared::Mark { weight: 2_i32 }])]),
+        marks: Marks::from([(
+            "k".to_owned(),
+            vec![declared::MarkDraft { weight: 2_i32 }.validate().unwrap()],
+        )]),
     };
     let stored_row = written(&tally);
     assert_eq!(
@@ -115,7 +118,7 @@ fn what_serde_wrote_through_an_alias_is_read_and_the_decider_never_runs() {
     );
     assert_eq!(
         read_counting!(Tally, tally_schema, stored_row, calls),
-        Ok(tally)
+        Ok(tally.validate().unwrap())
     );
     let empty = doc! { "counts": {}, "marks": {} };
     read_counting!(Tally, tally_schema, empty, calls).unwrap();
@@ -185,9 +188,11 @@ fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
     let stored_row = doc! { "a": 1_i32, "b": [true] };
     assert_eq!(
         read_counting!(Block, block_schema, stored_row, calls),
-        Ok(Block {
+        Ok(BlockDraft {
             properties: doc! { "a": 1_i32, "b": [true] },
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }

@@ -11,7 +11,7 @@ use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::{Address, Customer, Invoice, shown, shown_value};
+use super::{Address, AddressDraft, Customer, Invoice, shown, shown_value};
 
 /// Flattened into the row that holds it: its keys sit among that row's own.
 #[model_schema(enable = ["decode_with", "mongodb"])]
@@ -198,10 +198,12 @@ where
     A: Tr<B> + Clone;
 
 fn moca() -> Stop {
-    Stop {
+    StopDraft {
         city: "Moca".to_owned(),
         postal_code: "56000".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -256,15 +258,26 @@ fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
         shown(
             invoice
                 .payment()
-                .eq(Payment::Wire(WireDetails {
-                    iban: "DO28".to_owned(),
-                }))
+                .eq(PaymentDraft::Wire(
+                    WireDetailsDraft {
+                        iban: "DO28".to_owned(),
+                    }
+                    .validate()
+                    .unwrap()
+                )
+                .validate()
+                .unwrap())
                 .unwrap()
         ),
         r#"{ "payment": { "$eq": { "kind": "wire", "iban": "DO28" } } }"#
     );
     assert_eq!(
-        shown(invoice.payment().set(Payment::Cash).unwrap()),
+        shown(
+            invoice
+                .payment()
+                .set(PaymentDraft::Cash.validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "$set": { "payment": { "kind": "cash" } } }"#
     );
 }
@@ -359,10 +372,12 @@ fn a_generic_models_member_typed_by_the_parameter_is_one_whole_value() {
     );
     let at_moca = shipped
         .inner()
-        .eq(Address {
+        .eq(AddressDraft {
             city: "Moca".to_owned(),
             postal_code: "56000".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
         .unwrap();
     assert_eq!(
         shown(invoice.shipping().nest(at_moca)),
@@ -429,7 +444,7 @@ fn a_shape_no_path_kind_covers_is_one_whole_value() {
         shown(assorted.stops().push(moca()).unwrap()),
         r#"{ "$push": { "stops": { "city": "Moca", "postalCode": "56000" } } }"#
     );
-    let stored = Assorted {
+    let stored = AssortedDraft {
         by_city: HashMap::from([("Moca".to_owned(), moca())]),
         grid: vec![vec![1_u32, 2_u32]],
         labels: None,
@@ -475,7 +490,7 @@ fn an_index_set_is_a_list_and_an_order_keeping_map_is_written_with_its_row() {
         shown(more.set(IndexSet::from([3_u32, 1_u32])).unwrap()),
         r#"{ "$set": { "more": [Int64(3), Int64(1)] } }"#
     );
-    let stored = Catalogued {
+    let stored = CataloguedDraft {
         by_city: IndexMap::from([("Moca".to_owned(), moca()), ("Azua".to_owned(), moca())]),
         labels: IndexSet::from(["b".to_owned(), "a".to_owned()]),
         more: None,
@@ -553,17 +568,29 @@ fn a_flattened_enum_and_a_flattened_optional_model_are_at_the_rows_own_level() {
         ),
         r#"{ "revision": { "$gte": Int64(2) } }"#
     );
-    let stored = Journey {
-        audit: Some(Audit {
-            created_by: "eduardo".to_owned(),
-            revision: 2_u32,
-        }),
+    let stored = JourneyDraft {
+        audit: Some(
+            AuditDraft {
+                created_by: "eduardo".to_owned(),
+                revision: 2_u32,
+            }
+            .validate()
+            .unwrap(),
+        ),
         code: "J-1".to_owned(),
-        drop: Drop::Door(moca()),
-        leg: Leg::Flight("IB-1".to_owned(), 4_u32),
-        payment: Payment::Wire(WireDetails {
-            iban: "DO28".to_owned(),
-        }),
+        drop: DropDraft::Door(moca()).validate().unwrap(),
+        leg: LegDraft::Flight("IB-1".to_owned(), 4_u32)
+            .validate()
+            .unwrap(),
+        payment: PaymentDraft::Wire(
+            WireDetailsDraft {
+                iban: "DO28".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
+        .validate()
+        .unwrap(),
     }
     .serialize(bson::Serializer::new())
     .unwrap();
@@ -591,7 +618,12 @@ fn a_variant_named_as_an_operator_is_asked_through_nest() {
         r#"{ "movement.dock": { "$eq": Int64(4) } }"#
     );
     assert_eq!(
-        shown(transit.movement().is_in([Movement::Out]).unwrap()),
+        shown(
+            transit
+                .movement()
+                .is_in([MovementDraft::Out.validate().unwrap()])
+                .unwrap()
+        ),
         r#"{ "movement": { "$in": [{ "kind": "out" }] } }"#
     );
 }
@@ -630,7 +662,7 @@ fn a_bound_naming_a_parameter_no_slot_names_leaves_the_slots_paths_as_they_are()
         shown(linked.2.gt(3_u32).unwrap()),
         r#"{ "1": { "$gt": Int64(3) } }"#
     );
-    let stored = Linked::<String, u8>("C-1".to_owned(), PhantomData, 3_u32)
+    let stored = LinkedDraft::<String, u8>("C-1".to_owned(), PhantomData, 3_u32)
         .serialize(bson::Serializer::new())
         .unwrap();
     assert_eq!(shown_value(&stored), r#"["C-1", Int64(3)]"#);

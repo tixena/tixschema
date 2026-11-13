@@ -65,22 +65,22 @@ fn a_length_counts_the_characters_rust_counts_under_zod() {
     source.push_str(HARNESS);
     let mut expected = String::new();
     for (name, text) in VALUES {
-        let initial = Initial {
+        let initial = InitialDraft {
             name: text.to_owned(),
         };
-        let pair = Pair {
+        let pair = PairDraft {
             name: text.to_owned(),
         };
         for (label, payload, answered) in [
             (
                 "Initial",
                 serde_json::to_string(&initial).unwrap(),
-                initial.validate(),
+                initial.validate().map(|_| ()),
             ),
             (
                 "Pair",
                 serde_json::to_string(&pair).unwrap(),
-                pair.validate(),
+                pair.validate().map(|_| ()),
             ),
         ] {
             let row = format!("{label}, {name}");
@@ -90,7 +90,7 @@ fn a_length_counts_the_characters_rust_counts_under_zod() {
                 serde_json::to_string(&row).unwrap(),
                 serde_json::to_string(&payload).unwrap()
             );
-            let _ = writeln!(expected, "{row}: {}", said(answered));
+            let _ = writeln!(expected, "{row}: {}", said(answered.map(|_valid| ())));
         }
     }
     assert!(

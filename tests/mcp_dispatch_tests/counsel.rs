@@ -79,14 +79,14 @@ impl CounselService<()> for Counsels {
 
     fn get_counsel(&self, _ctx: &()) -> impl Future<Output = Result<Counsel, CounselError>> {
         self.reach("get-counsel".to_owned());
-        ready(Ok(Counsel { version: 3 }))
+        ready(Ok(CounselDraft { version: 3 }.validate().unwrap()))
     }
 
     fn greet(&self, _ctx: &(), name: String) -> impl Future<Output = Result<String, CounselError>> {
         self.reach(format!("greet {name}"));
         assert!(name != "boom", "the greeter came apart");
         ready(if name == "missing" {
-            Err(CounselError::NotFound)
+            Err(CounselErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok(format!("Say hello to {name}."))
         })
@@ -102,7 +102,7 @@ impl CounselService<()> for Counsels {
         use counsel_service_schema::{McpContent, McpPromptMessage, McpResourceContents, McpRole};
         self.reach(format!("review-document-type {document_type} {focus:?}"));
         ready(if document_type == "missing" {
-            Err(CounselError::NotFound)
+            Err(CounselErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok(vec![
                 McpPromptMessage {

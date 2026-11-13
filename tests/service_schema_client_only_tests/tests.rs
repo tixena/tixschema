@@ -194,14 +194,16 @@ impl CallService<()> for CallBackEnd {
 
     async fn read_balance(&self, _ctx: &(), req: CallRequest) -> Result<CallAnswer, CallFailure> {
         ready(()).await;
-        Ok(CallAnswer {
+        Ok(CallAnswerDraft {
             invoices: u32::try_from(req.customer_id.len()).unwrap(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn sweep(&self, _ctx: &()) -> Result<CallAnswer, CallFailure> {
         ready(()).await;
-        Ok(CallAnswer { invoices: 0 })
+        Ok(CallAnswerDraft { invoices: 0 }.validate().unwrap())
     }
 }
 
@@ -212,9 +214,11 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
         req: CreateDocumentRequest,
     ) -> Result<CreateDocumentResponse, CreateDocumentError> {
         ready(()).await;
-        Ok(CreateDocumentResponse {
+        Ok(CreateDocumentResponseDraft {
             document_id: format!("doc-{}", req.title),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn get_thumbnail(
@@ -239,9 +243,11 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
     ) -> Result<(VersionResponse, String), GetVersionError> {
         ready(()).await;
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: format!("{document_id}@{version_id}"),
-            },
+            }
+            .validate()
+            .unwrap(),
             "v1".to_owned(),
         ))
     }
@@ -257,9 +263,11 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
         _from_version: Option<String>,
     ) -> Result<VersionResponse, GetVersionError> {
         ready(()).await;
-        Ok(VersionResponse {
+        Ok(VersionResponseDraft {
             content: document_id,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -408,11 +416,20 @@ where
 fn a_call_placed_without_a_dispatcher_reads_the_answer_the_remote_wrote() {
     let transport = ProbeTransport::new(&[r#"{"ok":true,"value":{"invoices":7}}"#]);
     let client = amqp_client::CallServiceClient::new(transport);
-    let answered = poll_once(client.read_balance(CallRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.read_balance(
+            CallRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
-    assert_eq!(answered, Ok(CallAnswer { invoices: 7 }));
+    assert_eq!(
+        answered,
+        Ok(CallAnswerDraft { invoices: 7 }.validate().unwrap())
+    );
     assert_eq!(client.transport().calls(), vec!["read-balance".to_owned()]);
 }
 
@@ -424,7 +441,7 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
     assert_eq!(
         answered,
         Err(call_service_schema::CallError::Operation(
-            CallFailure::DbError
+            CallFailureDraft::DbError.validate().unwrap()
         ))
     );
 }
@@ -432,9 +449,15 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
 #[test]
 fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure() {
     let client = amqp_client::CallServiceClient::new(RefusingTransport);
-    let answered = poll_once(client.read_balance(CallRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let answered = poll_once(
+        client.read_balance(
+            CallRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     let reported = match &answered {
         Err(call_service_schema::CallError::Fault(reported)) => Some(reported),
@@ -452,9 +475,15 @@ fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure(
 #[test]
 fn a_one_way_send_answers_the_transport_s_own_refusal_as_a_fault() {
     let client = amqp_client::CallServiceClient::new(RefusingTransport);
-    let reported = poll_once(client.note(CallRequest {
-        customer_id: "acme".to_owned(),
-    }))
+    let reported = poll_once(
+        client.note(
+            CallRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap()
     .unwrap_err();
     assert_eq!(
@@ -466,24 +495,35 @@ fn a_one_way_send_answers_the_transport_s_own_refusal_as_a_fault() {
 
 #[test]
 fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
-    let answered = poll_once(CallBackEnd.read_balance(
-        &(),
-        CallRequest {
-            customer_id: "acme".to_owned(),
-        },
-    ))
+    let answered = poll_once(
+        CallBackEnd.read_balance(
+            &(),
+            CallRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
-    assert_eq!(answered, Ok(CallAnswer { invoices: 4 }));
+    assert_eq!(
+        answered,
+        Ok(CallAnswerDraft { invoices: 4 }.validate().unwrap())
+    );
     assert_eq!(
         poll_once(CallBackEnd.sweep(&())).unwrap(),
-        Ok(CallAnswer { invoices: 0 })
+        Ok(CallAnswerDraft { invoices: 0 }.validate().unwrap())
     );
-    poll_once(CallBackEnd.note(
-        &(),
-        CallRequest {
-            customer_id: "acme".to_owned(),
-        },
-    ))
+    poll_once(
+        CallBackEnd.note(
+            &(),
+            CallRequestDraft {
+                customer_id: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
 }
 
@@ -504,9 +544,11 @@ fn a_call_records_the_exact_request_method_path_query_headers_and_body() {
     assert_eq!(
         answered,
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: "d1@v1".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             "v9".to_owned()
         ))
     );
@@ -555,15 +597,23 @@ fn a_bodied_call_carries_the_message_as_the_json_body() {
         br#"{"document_id":"doc-report"}"#.to_vec(),
     )]);
     let client = http_rest_client::DocumentClientServiceClient::new(transport);
-    let answered = poll_once(client.create_document(CreateDocumentRequest {
-        title: "report".to_owned(),
-    }))
+    let answered = poll_once(
+        client.create_document(
+            CreateDocumentRequestDraft {
+                title: "report".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(
         answered,
-        Ok(CreateDocumentResponse {
+        Ok(CreateDocumentResponseDraft {
             document_id: "doc-report".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let requests = client.transport().requests();
     assert_eq!(requests.len(), 1, "got: {requests:?}");
@@ -585,7 +635,7 @@ fn a_mapped_status_decodes_into_the_declared_error() {
     assert_eq!(
         answered,
         Err(document_client_service_schema::CallError::Operation(
-            GetVersionError::NotFound
+            GetVersionErrorDraft::NotFound.validate().unwrap()
         ))
     );
 }
@@ -653,9 +703,11 @@ fn a_generated_field_bound_to_a_placeholder_fills_the_path() {
     let answered = poll_once(client.read_window("d1".to_owned(), Some("v1".to_owned()))).unwrap();
     assert_eq!(
         answered,
-        Ok(VersionResponse {
+        Ok(VersionResponseDraft {
             content: "d1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         client.transport().requests()[0].path,
@@ -740,7 +792,7 @@ fn a_bytes_operations_mapped_status_still_decodes_into_the_declared_error() {
     assert_eq!(
         answered,
         Err(document_client_service_schema::CallError::Operation(
-            ThumbnailError::NotFound
+            ThumbnailErrorDraft::NotFound.validate().unwrap()
         ))
     );
 }
@@ -753,24 +805,32 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
     assert_eq!(
         answered,
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: "d1@v1".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             "v1".to_owned()
         ))
     );
     poll_once(DocumentClientBackEnd.purge_document(&(), "d1".to_owned())).unwrap();
     assert_eq!(
-        poll_once(DocumentClientBackEnd.create_document(
-            &(),
-            CreateDocumentRequest {
-                title: "report".to_owned()
-            }
-        ))
+        poll_once(
+            DocumentClientBackEnd.create_document(
+                &(),
+                CreateDocumentRequestDraft {
+                    title: "report".to_owned()
+                }
+                .validate()
+                .unwrap()
+            )
+        )
         .unwrap(),
-        Ok(CreateDocumentResponse {
+        Ok(CreateDocumentResponseDraft {
             document_id: "doc-report".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         poll_once(DocumentClientBackEnd.get_thumbnail(&(), "d1".to_owned())).unwrap(),
@@ -782,8 +842,10 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
     );
     assert_eq!(
         poll_once(DocumentClientBackEnd.read_window(&(), "d1".to_owned(), None)).unwrap(),
-        Ok(VersionResponse {
+        Ok(VersionResponseDraft {
             content: "d1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }

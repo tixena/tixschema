@@ -8,6 +8,8 @@
 use crate::features::js_literal;
 #[cfg(feature = "serde")]
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+#[cfg(feature = "serde")]
+use crate::model_schema::valid_type::draft_ident;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ItemEnum;
@@ -143,7 +145,7 @@ impl SerdeDefaults {
             return Self::none();
         }
         let parameters = declared(&item.generics);
-        let ident = &item.ident;
+        let ident = &draft_ident(&item.ident);
         let whole = written_default(&item.attrs)
             .filter(|_| parameters.is_empty())
             .map(|written| match written {

@@ -27,13 +27,18 @@ fn an_alias_above_holds_the_type_declared_here() {
     assert_eq!(
         read,
         BTreeMap::from([
-            ("deck".to_owned(), Value::Text("oak".to_owned())),
+            (
+                "deck".to_owned(),
+                ValueDraft::Text("oak".to_owned()).validate().unwrap()
+            ),
             (
                 "rail".to_owned(),
-                Value::Entries(BTreeMap::from([(
+                ValueDraft::Entries(BTreeMap::from([(
                     "post".to_owned(),
-                    Value::Text("ash".to_owned())
+                    ValueDraft::Text("ash".to_owned()).validate().unwrap()
                 )]))
+                .validate()
+                .unwrap()
             ),
         ]),
         "each value is read as the type declared here"

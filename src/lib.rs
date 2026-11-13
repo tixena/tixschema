@@ -301,8 +301,8 @@ let said = refused.to_string();
 assert!(said.contains("'userName': too short: minimum length is 3, got 2"));
 assert!(said.contains("'age': too large: maximum is 120, got 150"));
 
-// A value built in code is judged by `validate()`.
-let built = Signup { user_name: "ada_l".to_owned(), age: 36 };
+// A value built in code is a draft, which `validate()` judges into the valid `Signup`.
+let built = SignupDraft { user_name: "ada_l".to_owned(), age: 36 };
 assert!(built.validate().is_ok());
 
 // The same rules reach Zod and JSON Schema.
@@ -535,9 +535,9 @@ pub struct OrderBook;
 impl Orders<()> for OrderBook {
     async fn get_order(&self, _ctx: &(), req: OrderLookup) -> Result<OrderSummary, OrderError> {
         if req.order_id == "A-1" {
-            Ok(OrderSummary { order_id: req.order_id, total_cents: 4250 })
+            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.validate().unwrap())
         } else {
-            Err(OrderError::NotFound)
+            Err(OrderErrorDraft::NotFound.validate().unwrap())
         }
     }
 }
@@ -649,7 +649,7 @@ fn to_chase(above: f64) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
         .status()
-        .eq(InvoiceStatus::PastDue)?
+        .eq(InvoiceStatusDraft::PastDue.validate().unwrap())?
         .or(paths.total().gt(above)?)
         .and(paths.paid_at().exists(false)))
 }
@@ -730,7 +730,10 @@ fn main() {
         }
         Verdict::Fixed
     });
-    assert_eq!(read.ok(), Some(OrderLine { sku: "BK-101".to_owned(), quantity: 3 }));
+    assert_eq!(
+        read.ok(),
+        Some(OrderLineDraft { sku: "BK-101".to_owned(), quantity: 3 }.validate().unwrap())
+    );
 }
 ```
 "#
@@ -1791,8 +1794,8 @@ pub struct Registration {
     pub username: String,
 }
 
-let built = Registration { age: 150, username: "ab".to_owned() };
-let messages = built.validate().unwrap_err();
+let built = RegistrationDraft { age: 150, username: "ab".to_owned() };
+let messages = built.validation_issues();
 for message in &messages {
     println!("{message:?}");
 }
@@ -1881,7 +1884,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// ```text
 /// // Rust
 /// fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>
-/// fn within_parcel(value: &Parcel) -> Result<(), Vec<String>>
+/// fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>
 /// // TypeScript
 /// function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void
 /// function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void
@@ -2237,7 +2240,7 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
 
-use orders_schema::{CallError, ServiceFaultKind};
+use orders_schema::CallError;
 
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
@@ -2282,9 +2285,9 @@ pub struct OrderBook;
 impl Orders<()> for OrderBook {
     async fn get_order(&self, _ctx: &(), req: OrderLookup) -> Result<OrderSummary, OrderError> {
         if req.order_id == "A-1" {
-            Ok(OrderSummary { order_id: req.order_id, total_cents: 4250 })
+            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.validate().unwrap())
         } else {
-            Err(OrderError::NotFound)
+            Err(OrderErrorDraft::NotFound.validate().unwrap())
         }
     }
 }
@@ -2345,18 +2348,13 @@ fn run<F: std::future::Future>(call: F) -> F::Output {
 fn main() {
     let client = orders_client::OrdersClient::new(InMemory);
 
-    let found = run(client.get_order(OrderLookup { order_id: "A-1".to_owned() }));
-    assert!(matches!(found, Ok(OrderSummary { total_cents: 4250, .. })));
+    let lookup = |order_id: &str| OrderLookupDraft { order_id: order_id.to_owned() }.validate().unwrap();
 
-    let missing = run(client.get_order(OrderLookup { order_id: "B-7".to_owned() }));
-    assert!(matches!(missing, Err(CallError::Operation(OrderError::NotFound))));
+    let found = run(client.get_order(lookup("A-1")));
+    assert!(matches!(&found, Ok(summary) if summary.total_cents == 4250));
 
-    // The client checks the message before the transport is reached.
-    let refused = run(client.get_order(OrderLookup { order_id: String::new() }));
-    let Err(CallError::Fault(fault)) = refused else {
-        panic!("the empty id was sent");
-    };
-    assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
+    let missing = run(client.get_order(lookup("B-7")));
+    assert!(matches!(&missing, Err(CallError::Operation(error)) if matches!(&**error, OrderErrorDraft::NotFound)));
 }
 ```
 "#

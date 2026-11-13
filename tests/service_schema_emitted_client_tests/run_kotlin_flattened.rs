@@ -32,24 +32,25 @@ use super::corrected_options_models::{
     reeved_kotlin, seized_kotlin, served_kotlin, snaked_kotlin, tholepin_kotlin, wormed_kotlin,
 };
 use super::flattened_models::{
-    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
-    CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
-    Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying, GAFFING,
-    GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching, Knotting, LOCKER,
-    Lanyarding, Luffing, MARLINE, Netting, PAYLOAD, PENNANT_TAGS, Pennant, Rousing, SCARFING,
-    SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing, Scudding, Seizing,
-    Semaphore, Snubbing, Splicing, Stowing, Striking, Stropping, Swaying, Tacking, UNDER_AN_ALIAS,
-    UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping, Yawing, belting_kotlin,
-    bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin, bunting_kotlin,
-    cathead_kotlin, chafing_kotlin, chock_kotlin, cleating_kotlin, corrected_locker_kotlin,
-    dipping_kotlin, dressing_kotlin, emptied_locker_kotlin, ensign_kotlin, flag_kotlin,
-    fraying_kotlin, gaffing_kotlin, gammoning_kotlin, gonfalon_kotlin, hawser_kotlin,
-    heaving_kotlin, hitching_kotlin, jibing_kotlin, knotting_kotlin, lanyarding_kotlin,
-    luffing_kotlin, marline_kotlin, netting_kotlin, noting_kotlin, pennant_kotlin, quaying_kotlin,
-    read_of, rousing_kotlin, scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin,
-    sheeting_kotlin, snubber_kotlin, snubbing_kotlin, splicing_kotlin, stowing_kotlin,
-    striking_kotlin, stropping_kotlin, swaying_kotlin, tacking_kotlin, ticketed_kotlin,
-    unwritten_kotlin, whelping_kotlin, whipping_kotlin, yawing_kotlin,
+    BELTING, BOWLINING, BROACHING, Belting, BeltingDraft, Bending, Bowlining, Brailing, Broaching,
+    CHAFING, CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING,
+    DRESSING_TAGS, Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag,
+    Fraying, GAFFING, GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching,
+    Knotting, LOCKER, Lanyarding, Luffing, MARLINE, Netting, PAYLOAD, PENNANT_TAGS, Pennant,
+    Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
+    Scudding, Seizing, Semaphore, Snubbing, Splicing, Stowing, StowingDraft, Striking, Stropping,
+    Swaying, TackingDraft, UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping,
+    Whipping, YawingDraft, belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin,
+    broaching_kotlin, bunting_kotlin, cathead_kotlin, chafing_kotlin, chock_kotlin,
+    cleating_kotlin, corrected_locker_kotlin, dipping_kotlin, dressing_kotlin,
+    emptied_locker_kotlin, ensign_kotlin, flag_kotlin, fraying_kotlin, gaffing_kotlin,
+    gammoning_kotlin, gonfalon_kotlin, hawser_kotlin, heaving_kotlin, hitching_kotlin,
+    jibing_kotlin, knotting_kotlin, lanyarding_kotlin, luffing_kotlin, marline_kotlin,
+    netting_kotlin, noting_kotlin, pennant_kotlin, quaying_kotlin, read_of, rousing_kotlin,
+    scarfing_kotlin, scudding_kotlin, seizing_kotlin, semaphore_kotlin, sheeting_kotlin,
+    snubber_kotlin, snubbing_kotlin, splicing_kotlin, stowing_kotlin, striking_kotlin,
+    stropping_kotlin, swaying_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
+    whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
 use super::runtime::ran_kotlin;
 #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -1008,34 +1009,37 @@ fn an_enum_under_a_tag_and_a_content_key_takes_both_keys_in_kotlin() {
 fn a_flattened_enum_writes_in_kotlin_as_serde_writes_it() {
     let tackings = [
         (
-            Tacking::Bay {
+            TackingDraft::Bay {
                 label: "n".to_owned(),
             },
             "TackingBay(label = \"n\")",
         ),
-        (Tacking::Calm, "TackingCalm"),
+        (TackingDraft::Calm, "TackingCalm"),
         (
-            Tacking::Dock {
+            TackingDraft::Dock {
                 label: "s".to_owned(),
             },
             "TackingDock(label = \"s\")",
         ),
-        (Tacking::Held("x".to_owned()), "TackingHeld(value = \"x\")"),
+        (
+            TackingDraft::Held("x".to_owned()),
+            "TackingHeld(value = \"x\")",
+        ),
     ];
     let note = || "a".to_owned();
     let mut rows = Vec::new();
     for (tacking, built) in tackings {
-        let stowing = Stowing {
+        let stowing = StowingDraft {
             note: note(),
-            tacking: tacking.clone(),
+            tacking: tacking.clone().validate().unwrap(),
         };
-        let belting = Belting {
+        let belting = BeltingDraft {
             note: note(),
-            tacking: Some(tacking.clone()),
+            tacking: Some(tacking.clone().validate().unwrap()),
         };
-        let yawing = Yawing {
+        let yawing = YawingDraft {
             note: note(),
-            tacking,
+            tacking: tacking.validate().unwrap(),
         };
         let written = [
             ("Stowing", json(&stowing)),
@@ -1046,7 +1050,7 @@ fn a_flattened_enum_writes_in_kotlin_as_serde_writes_it() {
             written.map(|(holder, wrote)| (holder, wrote, format!("{holder}(\"a\", {built})"))),
         );
     }
-    let unheld = Belting {
+    let unheld = BeltingDraft {
         note: note(),
         tacking: None,
     };

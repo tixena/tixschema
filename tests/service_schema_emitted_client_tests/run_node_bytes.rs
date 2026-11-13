@@ -118,10 +118,12 @@ impl BytesClientService<()> for BytesBackEnd {
 
     async fn store(&self, _ctx: &(), req: BytesPhoto) -> Result<BytesPhoto, BytesFault> {
         ready(()).await;
-        Ok(BytesPhoto {
-            content_type: req.content_type,
+        Ok(BytesPhotoDraft {
+            content_type: req.content_type.clone(),
             data: req.data.iter().map(|byte| 255 - byte).collect(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -222,7 +224,7 @@ fn bytes_travel_as_a_json_array_through_each_typescript_client_and_dispatcher() 
         serde_json::from_str(ran[0]["bus"]["carried"][0].as_str().unwrap()).unwrap();
     assert_eq!(
         poll_once(BytesBackEnd.store(&(), read))
-            .map(|answered| answered.map(|photo| photo.data).ok()),
+            .map(|answered| answered.map(|photo| photo.data.clone()).ok()),
         Some(Some(vec![118, 175, 177, 184]))
     );
     assert_eq!(

@@ -360,7 +360,7 @@ mod constrained_branded_tests {
             serde_json::to_value("not-a-hex-id".to_owned()).unwrap(),
         )
         .unwrap();
-        assert!(invalid.validate().is_err());
+        assert_ne!(invalid.validation_issues(), Vec::<String>::new());
     }
 }
 
@@ -1249,9 +1249,13 @@ mod branded_display_tests {
 
     #[test]
     fn test_branded_display_over_a_sibling_inner_with_its_own_display_impl() {
-        let wrapped = WrapsDisplay::new(DisplayInner {
-            value: "xyz".to_owned(),
-        })
+        let wrapped = WrapsDisplay::new(
+            DisplayInnerDraft {
+                value: "xyz".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .unwrap();
         assert_eq!(wrapped.to_string(), "inner:xyz");
     }
@@ -2023,17 +2027,18 @@ mod branded_sibling_inner_tests {
 
     #[test]
     fn a_sibling_brand_writes_the_object_its_inner_writes() {
-        let part = Part {
+        let part = PartDraft {
             a: "a".to_owned(),
             b: 1,
         };
         assert_eq!(
-            serde_json::to_string(&WrappedPart::new(part.clone()).unwrap()).unwrap(),
+            serde_json::to_string(&WrappedPart::new(part.clone().validate().unwrap()).unwrap())
+                .unwrap(),
             r#"{"a":"a","b":1}"#
         );
         assert_eq!(
             serde_json::to_string(&part).unwrap(),
-            serde_json::to_string(&WrappedPart::new(part).unwrap()).unwrap()
+            serde_json::to_string(&WrappedPart::new(part.validate().unwrap()).unwrap()).unwrap()
         );
     }
 
@@ -2607,7 +2612,7 @@ mod constrained_path_brand_tests {
         let accepted = serde_json::from_str::<AssetPath>("\"/etc\"").unwrap();
         assert_eq!(accepted, AssetPath::new(PathBuf::from("/etc")).unwrap());
         assert!(
-            accepted.validate().is_ok(),
+            accepted.validation_issues().is_empty(),
             "A payload the wire admits must be one validate() admits: {:?}",
             accepted.validate().err()
         );

@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
 
+#[model_schema(enable = ["jsonschema"])]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-#[model_schema(enable = ["jsonschema"])]
 struct BasicUser {
     age: u32,
     height: f32,
@@ -62,7 +62,7 @@ struct UserWithOptionals {
 #[cfg(feature = "serde")]
 #[test]
 fn test_basic_structs_constructible() {
-    let basic = BasicUser {
+    let basic = BasicUserDraft {
         age: 0,
         height: 0.0,
         id: String::new(),
@@ -70,9 +70,9 @@ fn test_basic_structs_constructible() {
         name: String::new(),
     };
     assert_eq!(basic.id, String::new());
-    let empty = EmptyStruct;
+    let empty = EmptyStruct::model_schema_unit();
     assert_eq!(format!("{empty:?}"), "EmptyStruct");
-    let optionals = UserWithOptionals {
+    let optionals = UserWithOptionalsDraft {
         age: None,
         email: None,
         id: String::new(),
@@ -267,20 +267,20 @@ fn test_field_typed_as_a_unit_struct_zod_schema() {
 #[test]
 #[cfg(feature = "serde")]
 fn test_field_typed_as_a_unit_struct_round_trips_as_an_empty_object() {
-    let value = HoldsMarker {
+    let value = HoldsMarkerDraft {
         label: "widget".to_owned(),
-        marker: EmptyStruct,
+        marker: EmptyStructDraft.validate().unwrap(),
     };
     let written = serde_json::to_string(&value).unwrap();
     assert_eq!(written, r#"{"label":"widget","marker":{}}"#);
     let read: HoldsMarker = serde_json::from_str(&written).unwrap();
-    assert_eq!(read, value);
+    assert_eq!(read, value.validate().unwrap());
 }
 
 #[test]
 #[cfg(feature = "serde")]
 fn test_empty_struct_writes_and_reads_an_empty_object() {
-    assert_eq!(serde_json::to_string(&EmptyStruct).unwrap(), "{}");
+    assert_eq!(serde_json::to_string(&EmptyStructDraft).unwrap(), "{}");
     serde_json::from_str::<EmptyStruct>("{}").unwrap();
     serde_json::from_str::<EmptyStruct>(r#"{"extra":1}"#).unwrap_err();
     serde_json::from_str::<EmptyStruct>("null").unwrap_err();
@@ -289,7 +289,7 @@ fn test_empty_struct_writes_and_reads_an_empty_object() {
 #[test]
 #[cfg(feature = "serde")]
 fn test_serialize_only_unit_struct_writes_an_empty_object() {
-    assert_eq!(serde_json::to_string(&WriteOnlyMarker).unwrap(), "{}");
+    assert_eq!(serde_json::to_string(&WriteOnlyMarkerDraft).unwrap(), "{}");
 }
 
 #[test]

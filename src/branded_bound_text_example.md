@@ -17,7 +17,7 @@ pub struct Record {
 }
 
 fn main() {
-    let empty = Record { latest: Label::new(String::new()).unwrap() };
-    assert!(empty.validate().is_err());
+    let empty = RecordDraft { latest: Label::new(String::new()).unwrap() };
+    assert_eq!(empty.validation_issues().len(), 1);
 }
 ```

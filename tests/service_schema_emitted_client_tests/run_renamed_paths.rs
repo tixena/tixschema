@@ -557,9 +557,11 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         req: KeyedBeside,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
-            id: req.document_id,
-        })
+        Ok(KeyedAnswerDraft {
+            id: req.document_id.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn keyed_gen_labelled(
@@ -569,9 +571,11 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         _title: String,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: labels.join("|"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn keyed_gen_list(
@@ -581,9 +585,11 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         _title: String,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: format!("{pages:?}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn keyed_generated(
@@ -593,73 +599,91 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         _title: String,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer { id: document_id })
+        Ok(KeyedAnswerDraft { id: document_id }.validate().unwrap())
     }
 
     async fn labelled(&self, _ctx: &(), req: KeyedLabelled) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: req.labels.join("|"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn listed(&self, _ctx: &(), req: KeyedListed) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: format!("{:?}", req.pages),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn own_key(&self, _ctx: &(), req: KeyedOwn) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
-            id: req.document_id,
-        })
+        Ok(KeyedAnswerDraft {
+            id: req.document_id.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn paged(&self, _ctx: &(), req: KeyedPaged) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: req.page_size.to_string(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn pinned(&self, _ctx: &(), req: KeyedPinned) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: req.pinned.to_string(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn plain(&self, _ctx: &(), req: KeyedPlain) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
-            id: req.document_id,
-        })
+        Ok(KeyedAnswerDraft {
+            id: req.document_id.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn quoted_key(&self, _ctx: &(), req: KeyedQuoted) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
-            id: req.document_id,
-        })
+        Ok(KeyedAnswerDraft {
+            id: req.document_id.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn renamed(&self, _ctx: &(), req: KeyedRenamed) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         if req.document_id == "refused" {
-            return Err(KeyedRefused::Nope);
+            return Err(KeyedRefusedDraft::Nope.validate().unwrap());
         }
-        Ok(KeyedAnswer {
-            id: req.document_id,
-        })
+        Ok(KeyedAnswerDraft {
+            id: req.document_id.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn tallied(&self, _ctx: &(), req: KeyedTally) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: req.tally.to_string(),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn two_placeholders(
@@ -668,9 +692,11 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         req: KeyedRenamed,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswer {
+        Ok(KeyedAnswerDraft {
             id: format!("{}|{}", req.document_id, req.title),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::{Version, lines};
+use super::{Version, VersionDraft, lines};
 
 /// What `from_value_with` lists for `$stored`, read as `$model` by a decider that rejects it.
 macro_rules! listed {
@@ -431,15 +431,19 @@ where
 }
 
 fn sheet(extra: Option<Extra>, paint: Paint) -> Sheet {
-    Sheet {
-        audit: Audit {
+    SheetDraft {
+        audit: AuditDraft {
             created_by: "ada".to_owned(),
             revision: 1_i32,
-        },
+        }
+        .validate()
+        .unwrap(),
         extra,
         paint,
         title: "t".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// What serde writes for a type that flattens fields carries no key the walker does not know.
@@ -447,13 +451,19 @@ fn sheet(extra: Option<Extra>, paint: Paint) -> Sheet {
 fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
     let whole = sheet(
-        Some(Extra {
-            note: "n".to_owned(),
-            weight: 2,
-        }),
-        Paint::Solid {
+        Some(
+            ExtraDraft {
+                note: "n".to_owned(),
+                weight: 2,
+            }
+            .validate()
+            .unwrap(),
+        ),
+        PaintDraft::Solid {
             color: "red".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     );
     let written = serde_json::to_value(&whole).unwrap();
     assert_eq!(
@@ -473,41 +483,45 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
         Ok(whole)
     );
 
-    let filed = Filed {
-        audit: Audit {
+    let filed = FiledDraft {
+        audit: AuditDraft {
             created_by: "ada".to_owned(),
             revision: 1_i32,
-        },
-        origin: Origin {
+        }
+        .validate()
+        .unwrap(),
+        origin: OriginDraft {
             source: "import".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         title: "t".to_owned(),
     };
     let filed_written = serde_json::to_value(&filed).unwrap();
     assert_eq!(
         read_counting!(Filed, filed_schema, filed_written, calls),
-        Ok(filed)
+        Ok(filed.validate().unwrap())
     );
 
-    let notice = Notice {
-        channel: Channel::Pager { number: 7_i32 },
+    let notice = NoticeDraft {
+        channel: ChannelDraft::Pager { number: 7_i32 }.validate().unwrap(),
         subject: "s".to_owned(),
     };
     let notice_written = serde_json::to_value(&notice).unwrap();
     assert_eq!(notice_written, json!({ "number": 7_i32, "subject": "s" }));
     assert_eq!(
         read_counting!(Notice, notice_schema, notice_written, calls),
-        Ok(notice)
+        Ok(notice.validate().unwrap())
     );
 
-    let counts = Counts {
+    let counts = CountsDraft {
         by_name: HashMap::from([("a".to_owned(), 1_i32), ("b".to_owned(), 2_i32)]),
     };
     let counts_written = serde_json::to_value(&counts).unwrap();
     assert_eq!(counts_written, json!({ "a": 1_i32, "b": 2_i32 }));
     assert_eq!(
         read_counting!(Counts, counts_schema, counts_written, calls),
-        Ok(counts)
+        Ok(counts.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -515,14 +529,14 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
 #[test]
 fn a_flattened_optional_type_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
-    let written = serde_json::to_value(sheet(None, Paint::Clear)).unwrap();
+    let written = serde_json::to_value(sheet(None, PaintDraft::Clear.validate().unwrap())).unwrap();
     assert_eq!(
         written,
         json!({ "createdBy": "ada", "kind": "Clear", "revision": 1_i32, "title": "t" })
     );
     assert_eq!(
         read_counting!(Sheet, sheet_schema, written, calls),
-        Ok(sheet(None, Paint::Clear))
+        Ok(sheet(None, PaintDraft::Clear.validate().unwrap()))
     );
     assert_eq!(calls, 0);
 }
@@ -600,13 +614,17 @@ fn a_decider_repairs_a_flattened_types_value_by_the_path_it_is_handed() {
     );
     assert_eq!(
         read,
-        Ok(Note {
-            audit: Audit {
+        Ok(NoteDraft {
+            audit: AuditDraft {
                 created_by: "7".to_owned(),
                 revision: 1_i32,
-            },
+            }
+            .validate()
+            .unwrap(),
             text: "hello".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -621,7 +639,7 @@ fn a_flattened_optional_type_half_there_is_mistyped_at_the_object() {
     });
     assert_eq!(
         serde_json::from_value::<Sheet>(stored.clone()).unwrap(),
-        sheet(None, Paint::Clear)
+        sheet(None, PaintDraft::Clear.validate().unwrap())
     );
     let read = Sheet::from_value_with(stored.clone(), |_raw, _found| sheet_schema::Verdict::Reject);
     assert_eq!(
@@ -665,7 +683,7 @@ fn a_decider_takes_out_the_half_of_an_optional_type_the_object_holds() {
         }
         sheet_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(sheet(None, Paint::Clear)));
+    assert_eq!(read, Ok(sheet(None, PaintDraft::Clear.validate().unwrap())));
 }
 
 #[test]
@@ -679,10 +697,12 @@ fn a_flattened_optional_type_that_is_there_lists_its_own_issues() {
     let refused = json!({ "title": "t", "version": { "number": "3" } });
     assert_eq!(
         serde_json::from_value::<Proof>(refused.clone()).unwrap(),
-        Proof {
+        ProofDraft {
             stamp: None,
             title: "t".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         listed!(Proof, proof_schema, refused),
@@ -718,10 +738,10 @@ fn a_flattened_tagged_enum_reads_its_tag_in_the_outer_object() {
 #[test]
 fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys() {
     let mut calls = 0_u32;
-    let framed = Framed {
-        edge: Edge::Curved { radius: 1.5_f64 },
+    let framed = FramedDraft {
+        edge: EdgeDraft::Curved { radius: 1.5_f64 }.validate().unwrap(),
         title: "t".to_owned(),
-        trim: Trim::Dotted { gap: 2_i32 },
+        trim: TrimDraft::Dotted { gap: 2_i32 }.validate().unwrap(),
     };
     let written = serde_json::to_value(&framed).unwrap();
     assert_eq!(
@@ -735,12 +755,12 @@ fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys
     );
     assert_eq!(
         read_counting!(Framed, framed_schema, written, calls),
-        Ok(framed)
+        Ok(framed.validate().unwrap())
     );
-    let units = Framed {
-        edge: Edge::Straight,
+    let units = FramedDraft {
+        edge: EdgeDraft::Straight.validate().unwrap(),
         title: "t".to_owned(),
-        trim: Trim::Solid,
+        trim: TrimDraft::Solid.validate().unwrap(),
     };
     let units_written = serde_json::to_value(&units).unwrap();
     assert_eq!(
@@ -749,7 +769,7 @@ fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys
     );
     assert_eq!(
         read_counting!(Framed, framed_schema, units_written, calls),
-        Ok(units)
+        Ok(units.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -876,14 +896,17 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 #[test]
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
-    let releases = Releases {
-        by_name: BTreeMap::from([("first".to_owned(), Version { number: 1_i32 })]),
+    let releases = ReleasesDraft {
+        by_name: BTreeMap::from([(
+            "first".to_owned(),
+            VersionDraft { number: 1_i32 }.validate().unwrap(),
+        )]),
     };
     let written = serde_json::to_value(&releases).unwrap();
     assert_eq!(written, json!({ "first": { "number": 1_i32 } }));
     assert_eq!(
         read_counting!(Releases, releases_schema, written, calls),
-        Ok(releases)
+        Ok(releases.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -961,12 +984,12 @@ fn a_flattened_type_that_flattens_others_is_walked_in_the_same_object() {
 #[test]
 fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
-    let audit = || Audit {
+    let audit = || AuditDraft {
         created_by: "ada".to_owned(),
         revision: 1_i32,
     };
-    let logged = serde_json::to_value(Logged::Made {
-        audit: audit(),
+    let logged = serde_json::to_value(LoggedDraft::Made {
+        audit: audit().validate().unwrap(),
         title: "t".to_owned(),
     })
     .unwrap();
@@ -975,8 +998,8 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
         json!({ "Made": { "createdBy": "ada", "revision": 1_i32, "title": "t" } })
     );
     read_counting!(Logged, logged_schema, logged, calls).unwrap();
-    let posted = serde_json::to_value(Posted::Made {
-        audit: audit(),
+    let posted = serde_json::to_value(PostedDraft::Made {
+        audit: audit().validate().unwrap(),
         title: "t".to_owned(),
     })
     .unwrap();
@@ -985,8 +1008,8 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
         json!({ "createdBy": "ada", "kind": "Made", "revision": 1_i32, "title": "t" })
     );
     read_counting!(Posted, posted_schema, posted, calls).unwrap();
-    let queued = serde_json::to_value(Queued::Made {
-        audit: audit(),
+    let queued = serde_json::to_value(QueuedDraft::Made {
+        audit: audit().validate().unwrap(),
         title: "t".to_owned(),
     })
     .unwrap();
@@ -995,8 +1018,8 @@ fn what_serde_wrote_for_a_variant_that_flattens_is_read_and_the_decider_never_ru
         json!({ "data": { "createdBy": "ada", "revision": 1_i32, "title": "t" }, "kind": "Made" })
     );
     read_counting!(Queued, queued_schema, queued, calls).unwrap();
-    let seen = serde_json::to_value(Seen::Made {
-        audit: audit(),
+    let seen = serde_json::to_value(SeenDraft::Made {
+        audit: audit().validate().unwrap(),
         title: "t".to_owned(),
     })
     .unwrap();
@@ -1086,9 +1109,11 @@ fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function(
     let stored = json!({ "x": 1_i32 });
     assert_eq!(
         read_counting!(Marked, marked_schema, stored, calls),
-        Ok(Marked {
+        Ok(MarkedDraft {
             rest: HashMap::from([("x".to_owned(), 1_i32)]),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
     let negative = json!({ "x": -1_i32 });
@@ -1105,10 +1130,12 @@ fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function(
 fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
     assert_eq!(
         serde_json::from_value::<Traced>(json!({ "title": "t" })).unwrap(),
-        Traced {
+        TracedDraft {
             title: "t".to_owned(),
-            trace: Trace::Pending { cached: 0 },
+            trace: TraceDraft::Pending { cached: 0 }.validate().unwrap(),
         }
+        .validate()
+        .unwrap()
     );
     let stored = json!({ "legacy": true, "title": "t" });
     assert!(!serde_reads::<Traced>(&stored));
@@ -1122,16 +1149,18 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
 
 #[test]
 fn a_flattened_untagged_enum_is_handed_no_key_of_the_outer_type() {
-    let scoreboard = Scoreboard {
+    let scoreboard = ScoreboardDraft {
         id: "i".to_owned(),
-        scores: Scores::Pointed(Pointed { a: 1_i32 }),
+        scores: ScoresDraft::Pointed(PointedDraft { a: 1_i32 }.validate().unwrap())
+            .validate()
+            .unwrap(),
     };
     let written = serde_json::to_value(&scoreboard).unwrap();
     assert_eq!(written, json!({ "a": 1_i32, "id": "i" }));
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Scoreboard, scoreboard_schema, written, calls),
-        Ok(scoreboard)
+        Ok(scoreboard.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1170,7 +1199,7 @@ fn a_flattened_untagged_enum_no_variant_reads_holds_what_the_enum_was_handed() {
 #[test]
 fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
-    let painted = Painted {
+    let painted = PaintedDraft {
         own: "x".to_owned(),
         paint: None,
     };
@@ -1178,9 +1207,9 @@ fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     assert_eq!(painted_written, json!({ "own": "x" }));
     assert_eq!(
         read_counting!(Painted, painted_schema, painted_written, calls),
-        Ok(painted)
+        Ok(painted.validate().unwrap())
     );
-    let reached = Reached {
+    let reached = ReachedDraft {
         channel: None,
         own: "x".to_owned(),
     };
@@ -1188,18 +1217,20 @@ fn a_flattened_optional_enum_that_is_absent_is_no_issue() {
     assert_eq!(reached_written, json!({ "own": "x" }));
     assert_eq!(
         read_counting!(Reached, reached_schema, reached_written, calls),
-        Ok(reached)
+        Ok(reached.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
 
 #[test]
 fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue() {
-    let layered = Layered {
-        audit: Audit {
+    let layered = LayeredDraft {
+        audit: AuditDraft {
             created_by: "ada".to_owned(),
             revision: 1_i32,
-        },
+        }
+        .validate()
+        .unwrap(),
         paint: None,
         title: "t".to_owned(),
     };
@@ -1211,7 +1242,7 @@ fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue()
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Layered, layered_schema, written, calls),
-        Ok(layered)
+        Ok(layered.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -1233,10 +1264,12 @@ fn an_absent_flattened_optional_enum_leaves_the_objects_keys_to_the_outer_type()
     let no_variant = json!({ "address": 5_i32, "own": "x" });
     assert_eq!(
         serde_json::from_value::<Reached>(no_variant.clone()).unwrap(),
-        Reached {
+        ReachedDraft {
             channel: None,
             own: "x".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         listed!(Reached, reached_schema, no_variant),
@@ -1247,11 +1280,15 @@ fn an_absent_flattened_optional_enum_leaves_the_objects_keys_to_the_outer_type()
 #[test]
 fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
     let mut calls = 0_u32;
-    let painted = Painted {
+    let painted = PaintedDraft {
         own: "x".to_owned(),
-        paint: Some(Paint::Solid {
-            color: "red".to_owned(),
-        }),
+        paint: Some(
+            PaintDraft::Solid {
+                color: "red".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
     };
     let painted_written = serde_json::to_value(&painted).unwrap();
     assert_eq!(
@@ -1260,19 +1297,27 @@ fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
     );
     assert_eq!(
         read_counting!(Painted, painted_schema, painted_written, calls),
-        Ok(painted)
+        Ok(painted.validate().unwrap())
     );
-    let reached = Reached {
-        channel: Some(Channel::Mail(ByMail {
-            address: "a@b".to_owned(),
-        })),
+    let reached = ReachedDraft {
+        channel: Some(
+            ChannelDraft::Mail(
+                ByMailDraft {
+                    address: "a@b".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
+            .validate()
+            .unwrap(),
+        ),
         own: "x".to_owned(),
     };
     let reached_written = serde_json::to_value(&reached).unwrap();
     assert_eq!(reached_written, json!({ "address": "a@b", "own": "x" }));
     assert_eq!(
         read_counting!(Reached, reached_schema, reached_written, calls),
-        Ok(reached)
+        Ok(reached.validate().unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -1302,10 +1347,12 @@ fn a_flattened_optional_enum_named_and_not_read_is_mistyped_at_the_object() {
     ] {
         assert_eq!(
             serde_json::from_value::<Painted>(stored.clone()).unwrap(),
-            Painted {
+            PaintedDraft {
                 own: "x".to_owned(),
                 paint: None,
             }
+            .validate()
+            .unwrap()
         );
         let read = Painted::from_value_with(stored.clone(), |_raw, _found| {
             painted_schema::Verdict::Reject
@@ -1329,7 +1376,7 @@ fn a_flattened_optional_enum_named_and_not_read_is_mistyped_at_the_object() {
 #[test]
 fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     let mut calls = 0_u32;
-    let absent = Edged {
+    let absent = EdgedDraft {
         edge: None,
         own: "x".to_owned(),
     };
@@ -1337,10 +1384,10 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     assert_eq!(absent_written, json!({ "own": "x" }));
     assert_eq!(
         read_counting!(Edged, edged_schema, absent_written, calls),
-        Ok(absent)
+        Ok(absent.validate().unwrap())
     );
-    let there = Edged {
-        edge: Some(Edge::Curved { radius: 1.5_f64 }),
+    let there = EdgedDraft {
+        edge: Some(EdgeDraft::Curved { radius: 1.5_f64 }.validate().unwrap()),
         own: "x".to_owned(),
     };
     let there_written = serde_json::to_value(&there).unwrap();
@@ -1350,7 +1397,7 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
     );
     assert_eq!(
         read_counting!(Edged, edged_schema, there_written, calls),
-        Ok(there)
+        Ok(there.validate().unwrap())
     );
     assert_eq!(calls, 0);
     let undeclared = json!({ "legacy": true, "own": "x" });
@@ -1364,7 +1411,7 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
 #[test]
 fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     let mut calls = 0_u32;
-    let absent = Trimmed {
+    let absent = TrimmedDraft {
         own: "x".to_owned(),
         trim: None,
     };
@@ -1372,11 +1419,11 @@ fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     assert_eq!(absent_written, json!({ "own": "x" }));
     assert_eq!(
         read_counting!(Trimmed, trimmed_schema, absent_written, calls),
-        Ok(absent)
+        Ok(absent.validate().unwrap())
     );
-    let there = Trimmed {
+    let there = TrimmedDraft {
         own: "x".to_owned(),
-        trim: Some(Trim::Dotted { gap: 2_i32 }),
+        trim: Some(TrimDraft::Dotted { gap: 2_i32 }.validate().unwrap()),
     };
     let there_written = serde_json::to_value(&there).unwrap();
     assert_eq!(
@@ -1385,7 +1432,7 @@ fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     );
     assert_eq!(
         read_counting!(Trimmed, trimmed_schema, there_written, calls),
-        Ok(there)
+        Ok(there.validate().unwrap())
     );
     assert_eq!(calls, 0);
     let content_alone = json!({ "data": { "gap": 2_i32 }, "own": "x" });

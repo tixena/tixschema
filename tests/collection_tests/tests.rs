@@ -867,19 +867,24 @@ where
 }
 
 fn metric_tag() -> MetricTag {
-    MetricTag {
+    MetricTagDraft {
         label: "a".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// One populated `SetSlotValues`, with a single member in every slot the fixture opens — one
 /// member, so the wire it writes is a value the `Vec` twin's wire can be held against outright
 /// rather than a shape a set's iteration order could reorder.
 fn set_slot_values() -> SetSlotValues {
-    SetSlotValues {
+    SetSlotValuesDraft {
         aliased_tags: HashMap::from([("k".to_owned(), one(metric_tag()))]),
-        enum_keyed_ids: HashMap::from([(MetricSlot::Daily, one(7_u32))]),
-        enum_keyed_tags: HashMap::from([(MetricSlot::Daily, one(metric_tag()))]),
+        enum_keyed_ids: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), one(7_u32))]),
+        enum_keyed_tags: HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            one(metric_tag()),
+        )]),
         labels: HashMap::from([("k".to_owned(), one("t".to_owned()))]),
         optional_element_ids: HashMap::from([("k".to_owned(), one(None))]),
         optional_ids: HashMap::from([("k".to_owned(), Some(one(7_u32)))]),
@@ -889,14 +894,19 @@ fn set_slot_values() -> SetSlotValues {
         tuple_labels: (7, one("t".to_owned())),
         tuple_optional_ids: ("t".to_owned(), one(None)),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The same members under the `Vec` spelling of every slot.
 fn vec_slot_values() -> VecSlotValues {
-    VecSlotValues {
+    VecSlotValuesDraft {
         aliased_tags: HashMap::from([("k".to_owned(), one(metric_tag()))]),
-        enum_keyed_ids: HashMap::from([(MetricSlot::Daily, one(7_u32))]),
-        enum_keyed_tags: HashMap::from([(MetricSlot::Daily, one(metric_tag()))]),
+        enum_keyed_ids: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), one(7_u32))]),
+        enum_keyed_tags: HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            one(metric_tag()),
+        )]),
         labels: HashMap::from([("k".to_owned(), one("t".to_owned()))]),
         optional_element_ids: HashMap::from([("k".to_owned(), one(None))]),
         optional_ids: HashMap::from([("k".to_owned(), Some(one(7_u32)))]),
@@ -906,21 +916,25 @@ fn vec_slot_values() -> VecSlotValues {
         tuple_labels: (7, one("t".to_owned())),
         tuple_optional_ids: ("t".to_owned(), one(None)),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The same sibling in each slot the fixture opens: bare, and under each wrapper spelling.
 fn sibling_slot_values() -> SiblingSlotValues {
-    SiblingSlotValues {
+    SiblingSlotValuesDraft {
         bare: ("t".to_owned(), metric_tag()),
         setted: ("t".to_owned(), one(metric_tag())),
         vecced: ("t".to_owned(), vec![metric_tag()]),
     }
+    .validate()
+    .unwrap()
 }
 
 /// One populated `NestedSequenceFields`, every field holding a single innermost value so the wire
 /// it writes is read for its nesting rather than for its order.
 fn nested_sequence_fields() -> NestedSequenceFields {
-    NestedSequenceFields {
+    NestedSequenceFields::model_schema_wrap_unjudged(NestedSequenceFieldsDraft {
         aliased_rows: vec![vec![metric_tag()]],
         constrained_rows: vec![vec!["abc".to_owned()]],
         deep_ids: vec![vec![vec![7_u32]]],
@@ -931,19 +945,24 @@ fn nested_sequence_fields() -> NestedSequenceFields {
         sibling_rows: vec![vec![metric_tag()]],
         small_ids: vec![vec![7_u32]],
         vec_of_sets: vec![one(7_u32)],
-    }
+    })
 }
 
 /// The same nesting in every slot the slot fixture opens.
 fn nested_sequence_slots() -> NestedSequenceSlots {
-    NestedSequenceSlots {
-        enum_keyed_rows: HashMap::from([(MetricSlot::Daily, vec![vec![7_u32]])]),
+    NestedSequenceSlotsDraft {
+        enum_keyed_rows: HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            vec![vec![7_u32]],
+        )]),
         optional_rows: HashMap::from([("k".to_owned(), Some(vec![vec![7_u32]]))]),
         rows: HashMap::from([("k".to_owned(), vec![vec![7_u32]])]),
         set_rows: HashMap::from([("k".to_owned(), one(vec![7_u32]))]),
         sibling_rows: HashMap::from([("k".to_owned(), vec![vec![metric_tag()]])]),
         tuple_rows: ("t".to_owned(), vec![vec![7_u32]]),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The `name: Type;` lines of a generated TypeScript definition, the `JSDoc` blocks around them
@@ -959,13 +978,15 @@ fn ts_field_declarations(definition: &str) -> Vec<String> {
 
 /// One populated instance of every wrapper twin the crate may hold, serialized.
 fn covered_wrapper_payloads() -> [(&'static str, serde_json::Value); 4] {
-    let tag = MetricTag {
+    let tag = MetricTagDraft {
         label: "a".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     [
         (
             "HashSet",
-            serde_json::to_value(SetElementFields {
+            serde_json::to_value(SetElementFieldsDraft {
                 aliased_tags: one(tag.clone()),
                 big_ids: one(9_i64),
                 constrained_labels: one("abc".to_owned()),
@@ -978,7 +999,7 @@ fn covered_wrapper_payloads() -> [(&'static str, serde_json::Value); 4] {
         ),
         (
             "BTreeSet",
-            serde_json::to_value(BTreeSetElementFields {
+            serde_json::to_value(BTreeSetElementFieldsDraft {
                 aliased_tags: one(tag.clone()),
                 big_ids: one(9_i64),
                 constrained_labels: one("abc".to_owned()),
@@ -991,7 +1012,7 @@ fn covered_wrapper_payloads() -> [(&'static str, serde_json::Value); 4] {
         ),
         (
             "BinaryHeap",
-            serde_json::to_value(BinaryHeapElementFields {
+            serde_json::to_value(BinaryHeapElementFieldsDraft {
                 aliased_tags: one(tag.clone()),
                 big_ids: one(9_i64),
                 constrained_labels: one("abc".to_owned()),
@@ -1004,7 +1025,7 @@ fn covered_wrapper_payloads() -> [(&'static str, serde_json::Value); 4] {
         ),
         (
             "VecDeque",
-            serde_json::to_value(VecDequeElementFields {
+            serde_json::to_value(VecDequeElementFieldsDraft {
                 aliased_tags: one(tag.clone()),
                 big_ids: one(9_i64),
                 constrained_labels: one("abc".to_owned()),
@@ -1114,7 +1135,7 @@ fn assert_enum_keyed_map_value(
 
 #[test]
 fn test_collection_structs_constructible() {
-    let comprehensive = ComprehensiveHashMapTest {
+    let comprehensive = ComprehensiveHashMapTestDraft {
         bool_array: HashMap::new(),
         bool_value: HashMap::new(),
         f64_array: HashMap::new(),
@@ -1129,25 +1150,28 @@ fn test_collection_structs_constructible() {
         u64_value: HashMap::new(),
     };
     assert!(comprehensive.bool_value.is_empty());
-    let with_64bit = HashMapWith64Bit {
+    let with_64bit = HashMapWith64BitDraft {
         i64_map: HashMap::new(),
         id: String::new(),
         mixed_map: HashMap::new(),
         u64_map: HashMap::new(),
     };
     assert_eq!(with_64bit.id, String::new());
-    let with_collections = UserWithCollections {
+    let with_collections = UserWithCollectionsDraft {
         id: String::new(),
         metadata: HashMap::new(),
         scores: Vec::new(),
         tags: Vec::new(),
     };
     assert_eq!(with_collections.id, String::new());
-    let optional_values = OptionalMapValues {
-        enum_keyed: HashMap::from([(MetricSlot::Daily, None)]),
+    let optional_values = OptionalMapValuesDraft {
+        enum_keyed: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), None)]),
         string_keyed: HashMap::from([("k".to_owned(), None)]),
     };
-    assert_eq!(optional_values.enum_keyed[&MetricSlot::Daily], None);
+    assert_eq!(
+        optional_values.enum_keyed[&MetricSlotDraft::Daily.validate().unwrap()],
+        None
+    );
 }
 
 #[cfg(feature = "serde")]
@@ -1285,23 +1309,25 @@ fn test_comprehensive_hashmap_typescript_generation() {
 
 #[test]
 fn test_enum_keyed_scalar_value_maps_constructible() {
-    let maps = EnumKeyedScalarValueMaps {
+    let maps = EnumKeyedScalarValueMapsDraft {
         bool_value: HashMap::new(),
         f64_value: HashMap::new(),
         i64_value: HashMap::new(),
         string_array: HashMap::new(),
         string_value: HashMap::from([
-            (MetricSlot::Daily, "d".to_owned()),
-            (MetricSlot::Weekly, "w".to_owned()),
+            (MetricSlotDraft::Daily.validate().unwrap(), "d".to_owned()),
+            (MetricSlotDraft::Weekly.validate().unwrap(), "w".to_owned()),
         ]),
         u64_value: HashMap::new(),
     };
     assert_eq!(
-        maps.string_value.get(&MetricSlot::Daily),
+        maps.string_value
+            .get(&MetricSlotDraft::Daily.validate().unwrap()),
         Some(&"d".to_owned())
     );
     assert_eq!(
-        maps.string_value.get(&MetricSlot::Weekly),
+        maps.string_value
+            .get(&MetricSlotDraft::Weekly.validate().unwrap()),
         Some(&"w".to_owned())
     );
 }
@@ -1382,16 +1408,23 @@ fn test_enum_keyed_scalar_value_maps_typescript_generation() {
 
 #[test]
 fn test_enum_keyed_sibling_value_maps_constructible() {
-    let maps = EnumKeyedSiblingValueMaps {
+    let maps = EnumKeyedSiblingValueMapsDraft {
         sample_array: HashMap::from([(
-            MetricSlot::Daily,
-            vec![MetricSample {
-                label: "d".to_owned(),
-            }],
+            MetricSlotDraft::Daily.validate().unwrap(),
+            vec![
+                MetricSampleDraft {
+                    label: "d".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ],
         )]),
         sample_value: HashMap::new(),
     };
-    assert_eq!(maps.sample_array[&MetricSlot::Daily].len(), 1);
+    assert_eq!(
+        maps.sample_array[&MetricSlotDraft::Daily.validate().unwrap()].len(),
+        1
+    );
 }
 
 #[cfg(feature = "serde")]
@@ -1412,11 +1445,16 @@ fn test_enum_keyed_sibling_value_maps_json_schema() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_enum_keyed_sibling_array_member_matches_the_serialized_form() {
-    let sample = MetricSample {
+    let sample = MetricSampleDraft {
         label: "d".to_owned(),
-    };
-    let maps = EnumKeyedSiblingValueMaps {
-        sample_array: HashMap::from([(MetricSlot::Daily, vec![sample.clone()])]),
+    }
+    .validate()
+    .unwrap();
+    let maps = EnumKeyedSiblingValueMapsDraft {
+        sample_array: HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            vec![sample.clone()],
+        )]),
         sample_value: HashMap::new(),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -1438,19 +1476,19 @@ fn test_enum_keyed_sibling_array_member_matches_the_serialized_form() {
 
 #[test]
 fn test_a_sequence_wrapped_map_key_has_no_wire_form() {
-    let vec_keyed = HashMap::from([(vec![MetricSlot::Daily], 1_u32)]);
+    let vec_keyed = HashMap::from([(vec![MetricSlotDraft::Daily.validate().unwrap()], 1_u32)]);
     assert_eq!(
         serde_json::to_value(&vec_keyed).unwrap_err().to_string(),
         "key must be a string"
     );
 
-    let array_keyed = HashMap::from([([MetricSlot::Daily; 1], 1_u32)]);
+    let array_keyed = HashMap::from([([MetricSlotDraft::Daily.validate().unwrap(); 1], 1_u32)]);
     assert_eq!(
         serde_json::to_value(&array_keyed).unwrap_err().to_string(),
         "key must be a string"
     );
 
-    let bare_keyed = HashMap::from([(MetricSlot::Daily, 1_u32)]);
+    let bare_keyed = HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), 1_u32)]);
     assert_eq!(
         serde_json::to_value(&bare_keyed).unwrap(),
         serde_json::json!({ "Daily": 1_u32 })
@@ -1459,18 +1497,21 @@ fn test_a_sequence_wrapped_map_key_has_no_wire_form() {
 
 #[test]
 fn test_nested_map_values_constructible_on_both_key_paths() {
-    let enum_keyed = EnumKeyedNestedMapValues {
+    let enum_keyed = EnumKeyedNestedMapValuesDraft {
         counts: HashMap::new(),
         labels: HashMap::from([(
-            MetricSlot::Daily,
+            MetricSlotDraft::Daily.validate().unwrap(),
             HashMap::from([("a".to_owned(), "one".to_owned())]),
         )]),
         rows: HashMap::new(),
         samples: HashMap::new(),
     };
-    assert_eq!(enum_keyed.labels[&MetricSlot::Daily]["a"], "one");
+    assert_eq!(
+        enum_keyed.labels[&MetricSlotDraft::Daily.validate().unwrap()]["a"],
+        "one"
+    );
 
-    let string_keyed = StringKeyedNestedMapValues {
+    let string_keyed = StringKeyedNestedMapValuesDraft {
         counts: HashMap::new(),
         labels: HashMap::from([(
             "daily".to_owned(),
@@ -1578,31 +1619,38 @@ fn bucket_keyed_count_map() -> serde_json::Value {
 
 #[test]
 fn test_nested_enum_keyed_map_values_constructible() {
-    let nested = NestedEnumKeyedMapValues {
+    let nested = NestedEnumKeyedMapValuesDraft {
         arrayed: HashMap::new(),
         enum_keyed_outer: HashMap::from([(
-            MetricSlot::Daily,
-            HashMap::from([(MetricBucket::Low, 3_isize)]),
+            MetricSlotDraft::Daily.validate().unwrap(),
+            HashMap::from([(MetricBucketDraft::Low.validate().unwrap(), 3_isize)]),
         )]),
         optional: HashMap::from([("a".to_owned(), None)]),
         siblings: HashMap::new(),
         string_keyed_outer: HashMap::from([(
             "a".to_owned(),
-            HashMap::from([(MetricBucket::High, 7_isize)]),
+            HashMap::from([(MetricBucketDraft::High.validate().unwrap(), 7_isize)]),
         )]),
     };
     assert_eq!(
-        nested.enum_keyed_outer[&MetricSlot::Daily][&MetricBucket::Low],
+        nested.enum_keyed_outer[&MetricSlotDraft::Daily.validate().unwrap()]
+            [&MetricBucketDraft::Low.validate().unwrap()],
         3
     );
-    assert_eq!(nested.string_keyed_outer["a"][&MetricBucket::High], 7);
+    assert_eq!(
+        nested.string_keyed_outer["a"][&MetricBucketDraft::High.validate().unwrap()],
+        7
+    );
     assert_eq!(nested.optional["a"], None);
 
-    let field_position = BucketKeyedMap {
-        counts: HashMap::from([(MetricBucket::High, 7_isize)]),
+    let field_position = BucketKeyedMapDraft {
+        counts: HashMap::from([(MetricBucketDraft::High.validate().unwrap(), 7_isize)]),
         samples: HashMap::new(),
     };
-    assert_eq!(field_position.counts[&MetricBucket::High], 7);
+    assert_eq!(
+        field_position.counts[&MetricBucketDraft::High.validate().unwrap()],
+        7
+    );
 }
 
 #[cfg(feature = "serde")]
@@ -1653,14 +1701,14 @@ fn test_nested_enum_keyed_map_values_enumerate_their_inner_key() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_nested_enum_keyed_map_members_match_the_serialized_keys() {
-    let nested = NestedEnumKeyedMapValues {
+    let nested = NestedEnumKeyedMapValuesDraft {
         arrayed: HashMap::new(),
         enum_keyed_outer: HashMap::new(),
         optional: HashMap::new(),
         siblings: HashMap::new(),
         string_keyed_outer: HashMap::from([(
             "a".to_owned(),
-            HashMap::from([(MetricBucket::High, 7_isize)]),
+            HashMap::from([(MetricBucketDraft::High.validate().unwrap(), 7_isize)]),
         )]),
     };
     let payload = serde_json::to_value(&nested).unwrap();
@@ -1738,13 +1786,17 @@ fn test_enum_keyed_sibling_value_maps_typescript_generation() {
 
 #[test]
 fn test_string_keyed_sibling_value_maps_constructible() {
-    let maps = StringKeyedSiblingValueMaps {
+    let maps = StringKeyedSiblingValueMapsDraft {
         optional_sample: HashMap::from([("m".to_owned(), None)]),
         sample_array: HashMap::from([(
             "d".to_owned(),
-            vec![MetricSample {
-                label: "d".to_owned(),
-            }],
+            vec![
+                MetricSampleDraft {
+                    label: "d".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ],
         )]),
         sample_value: HashMap::new(),
     };
@@ -1779,10 +1831,12 @@ fn test_string_keyed_sibling_value_maps_json_schema() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_string_keyed_sibling_members_match_the_serialized_form() {
-    let sample = MetricSample {
+    let sample = MetricSampleDraft {
         label: "d".to_owned(),
-    };
-    let maps = StringKeyedSiblingValueMaps {
+    }
+    .validate()
+    .unwrap();
+    let maps = StringKeyedSiblingValueMapsDraft {
         optional_sample: HashMap::from([("m".to_owned(), None)]),
         sample_array: HashMap::from([("d".to_owned(), vec![sample.clone()])]),
         sample_value: HashMap::from([("s".to_owned(), sample)]),
@@ -1856,21 +1910,23 @@ fn test_string_keyed_sibling_value_maps_typescript_generation() {
 #[test]
 fn test_brand_keyed_maps_constructible() {
     let key = CorrelationId::new("abc".to_owned()).unwrap();
-    let maps = BrandKeyedMaps {
+    let maps = BrandKeyedMapsDraft {
         chained: HashMap::from([(TraceId::new(key.clone()).unwrap(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
         nested: HashMap::from([(key.clone(), HashMap::from([(key.clone(), 3)]))]),
         samples: HashMap::from([(
             key.clone(),
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     assert_eq!(maps.counts[&key], 1);
     assert_eq!(maps.nested[&key][&key], 3);
 
-    let twin = StringKeyedBrandTwin {
+    let twin = StringKeyedBrandTwinDraft {
         chained: HashMap::from([("abc".to_owned(), 2)]),
         counts: HashMap::from([("abc".to_owned(), 1)]),
         nested: HashMap::from([("abc".to_owned(), HashMap::from([("abc".to_owned(), 3)]))]),
@@ -1923,15 +1979,17 @@ fn test_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[test]
 fn test_brand_keyed_maps_match_the_serialized_form() {
     let key = CorrelationId::new("abc".to_owned()).unwrap();
-    let maps = BrandKeyedMaps {
+    let maps = BrandKeyedMapsDraft {
         chained: HashMap::from([(TraceId::new(key.clone()).unwrap(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
         nested: HashMap::from([(key.clone(), HashMap::from([(key.clone(), 3)]))]),
         samples: HashMap::from([(
             key,
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -1954,14 +2012,14 @@ fn test_brand_keyed_maps_match_the_serialized_form() {
     );
 
     let read_back: BrandKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn test_alias_keyed_maps_constructible() {
     let key: SlotKey = "abc".to_owned();
-    let maps = AliasKeyedMaps {
+    let maps = AliasKeyedMapsDraft {
         branded: HashMap::from([(CorrelationId::new(key.clone()).unwrap(), 4)]),
         chained: HashMap::from([(key.clone(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
@@ -1969,15 +2027,17 @@ fn test_alias_keyed_maps_constructible() {
         paths: HashMap::from([(PathBuf::from("a/b"), 5)]),
         samples: HashMap::from([(
             key.clone(),
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     assert_eq!(maps.counts[&key], 1);
     assert_eq!(maps.nested[&key][&key], 3);
 
-    let twin = StringKeyedAliasKeyTwin {
+    let twin = StringKeyedAliasKeyTwinDraft {
         branded: HashMap::from([("abc".to_owned(), 4)]),
         chained: HashMap::from([("abc".to_owned(), 2)]),
         counts: HashMap::from([("abc".to_owned(), 1)]),
@@ -2035,7 +2095,7 @@ fn test_alias_keyed_maps_name_the_alias_as_the_key_type() {
 #[test]
 fn test_alias_keyed_maps_match_the_serialized_form() {
     let key: SlotKey = "abc".to_owned();
-    let maps = AliasKeyedMaps {
+    let maps = AliasKeyedMapsDraft {
         branded: HashMap::from([(CorrelationId::new(key.clone()).unwrap(), 4)]),
         chained: HashMap::from([(key.clone(), 2)]),
         counts: HashMap::from([(key.clone(), 1)]),
@@ -2043,9 +2103,11 @@ fn test_alias_keyed_maps_match_the_serialized_form() {
         paths: HashMap::from([(PathBuf::from("a/b"), 5)]),
         samples: HashMap::from([(
             key,
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2070,13 +2132,13 @@ fn test_alias_keyed_maps_match_the_serialized_form() {
     );
 
     let read_back: AliasKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn test_scalar_brand_keyed_maps_constructible() {
-    let maps = ScalarBrandKeyedMaps {
+    let maps = ScalarBrandKeyedMapsDraft {
         by_enabled: HashMap::from([(Enabled::new(true).unwrap(), 4)]),
         by_tick: HashMap::from([(Tick::new(7_u32).unwrap(), 1)]),
         chained: HashMap::from([(TickRef::new(Tick::new(7_u32).unwrap()).unwrap(), 2)]),
@@ -2086,9 +2148,11 @@ fn test_scalar_brand_keyed_maps_constructible() {
         )]),
         samples: HashMap::from([(
             Tick::new(7_u32).unwrap(),
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     assert_eq!(maps.by_tick[&Tick::new(7_u32).unwrap()], 1);
@@ -2097,7 +2161,7 @@ fn test_scalar_brand_keyed_maps_constructible() {
         3
     );
 
-    let twin = ScalarKeyedBrandTwin {
+    let twin = ScalarKeyedBrandTwinDraft {
         by_enabled: HashMap::from([(true, 4)]),
         by_tick: HashMap::from([(7, 1)]),
         chained: HashMap::from([(7, 2)]),
@@ -2106,17 +2170,20 @@ fn test_scalar_brand_keyed_maps_constructible() {
     };
     assert_eq!(twin.by_tick[&7], maps.by_tick[&Tick::new(7_u32).unwrap()]);
 
-    let enum_branded = EnumBrandKeyedMaps {
-        counts: HashMap::from([(SlotBrand::new(MetricSlot::Daily).unwrap(), 1)]),
+    let enum_branded = EnumBrandKeyedMapsDraft {
+        counts: HashMap::from([(
+            SlotBrand::new(MetricSlotDraft::Daily.validate().unwrap()).unwrap(),
+            1,
+        )]),
         samples: HashMap::new(),
     };
-    let enum_twin = StringKeyedEnumBrandTwin {
+    let enum_twin = StringKeyedEnumBrandTwinDraft {
         counts: HashMap::from([("Daily".to_owned(), 1)]),
         samples: HashMap::new(),
     };
     assert_eq!(
         enum_twin.counts["Daily"],
-        enum_branded.counts[&SlotBrand::new(MetricSlot::Daily).unwrap()]
+        enum_branded.counts[&SlotBrand::new(MetricSlotDraft::Daily.validate().unwrap()).unwrap()]
     );
 }
 
@@ -2124,10 +2191,10 @@ fn test_scalar_brand_keyed_maps_constructible() {
 #[test]
 fn test_chrono_brand_keyed_maps_constructible() {
     let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
-    let maps = ChronoBrandKeyedMaps {
+    let maps = ChronoBrandKeyedMapsDraft {
         by_day: HashMap::from([(Day::new(day).unwrap(), 1)]),
     };
-    let twin = ChronoKeyedBrandTwin {
+    let twin = ChronoKeyedBrandTwinDraft {
         by_day: HashMap::from([(day, 1)]),
     };
     assert_eq!(twin.by_day[&day], maps.by_day[&Day::new(day).unwrap()]);
@@ -2204,7 +2271,7 @@ fn test_scalar_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
-    let maps = ScalarBrandKeyedMaps {
+    let maps = ScalarBrandKeyedMapsDraft {
         by_enabled: HashMap::from([(Enabled::new(true).unwrap(), 4)]),
         by_tick: HashMap::from([(Tick::new(7_u32).unwrap(), 1)]),
         chained: HashMap::from([(TickRef::new(Tick::new(7_u32).unwrap()).unwrap(), 2)]),
@@ -2214,9 +2281,11 @@ fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
         )]),
         samples: HashMap::from([(
             Tick::new(7_u32).unwrap(),
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2235,7 +2304,7 @@ fn test_scalar_brand_keyed_maps_match_the_serialized_form() {
     }
 
     let read_back: ScalarBrandKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[cfg(feature = "serde")]
@@ -2269,13 +2338,18 @@ fn test_enum_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_enum_brand_keyed_maps_match_the_serialized_form() {
-    let maps = EnumBrandKeyedMaps {
-        counts: HashMap::from([(SlotBrand::new(MetricSlot::Daily).unwrap(), 1)]),
+    let maps = EnumBrandKeyedMapsDraft {
+        counts: HashMap::from([(
+            SlotBrand::new(MetricSlotDraft::Daily.validate().unwrap()).unwrap(),
+            1,
+        )]),
         samples: HashMap::from([(
-            SlotBrand::new(MetricSlot::Weekly).unwrap(),
-            MetricSample {
+            SlotBrand::new(MetricSlotDraft::Weekly.validate().unwrap()).unwrap(),
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2283,7 +2357,7 @@ fn test_enum_brand_keyed_maps_match_the_serialized_form() {
     assert!(payload["samples"]["Weekly"].is_object(), "got: {payload}");
 
     let read_back: EnumBrandKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[test]
@@ -2295,7 +2369,7 @@ fn test_chrono_brand_keyed_maps_describe_as_their_bare_inner_twin() {
     );
 
     let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
-    let maps = ChronoBrandKeyedMaps {
+    let maps = ChronoBrandKeyedMapsDraft {
         by_day: HashMap::from([(Day::new(day).unwrap(), 1)]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2305,7 +2379,7 @@ fn test_chrono_brand_keyed_maps_describe_as_their_bare_inner_twin() {
     );
 
     let read_back: ChronoBrandKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[test]
@@ -2333,7 +2407,7 @@ fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
 #[test]
 fn test_scalar_alias_keyed_maps_constructible() {
     let tick: TickKey = 7;
-    let maps = ScalarAliasKeyedMaps {
+    let maps = ScalarAliasKeyedMapsDraft {
         branded: HashMap::from([(Tick::new(tick).unwrap(), 4)]),
         by_enabled: HashMap::from([(true, 5)]),
         by_tick: HashMap::from([(tick, 1)]),
@@ -2341,15 +2415,17 @@ fn test_scalar_alias_keyed_maps_constructible() {
         nested: HashMap::from([(tick, HashMap::from([(true, 3)]))]),
         samples: HashMap::from([(
             tick,
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     assert_eq!(maps.by_tick[&tick], 1);
     assert_eq!(maps.nested[&tick][&true], 3);
 
-    let twin = ScalarKeyedAliasTwin {
+    let twin = ScalarKeyedAliasTwinDraft {
         branded: HashMap::from([(Tick::new(7_u32).unwrap(), 4)]),
         by_enabled: HashMap::from([(true, 5)]),
         by_tick: HashMap::from([(7, 1)]),
@@ -2412,7 +2488,7 @@ fn test_scalar_alias_keyed_maps_name_the_alias_as_the_key_type() {
 #[test]
 fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
     let tick: TickKey = 7;
-    let maps = ScalarAliasKeyedMaps {
+    let maps = ScalarAliasKeyedMapsDraft {
         branded: HashMap::from([(Tick::new(tick).unwrap(), 4)]),
         by_enabled: HashMap::from([(true, 5)]),
         by_tick: HashMap::from([(tick, 1)]),
@@ -2420,9 +2496,11 @@ fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
         nested: HashMap::from([(tick, HashMap::from([(true, 3)]))]),
         samples: HashMap::from([(
             tick,
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2449,7 +2527,7 @@ fn test_scalar_alias_keyed_maps_match_the_serialized_form() {
     }
 
     let read_back: ScalarAliasKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[test]
@@ -2461,7 +2539,7 @@ fn test_chrono_alias_keyed_maps_describe_as_their_bare_target_twin() {
     );
 
     let day = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
-    let maps = ChronoAliasKeyedMaps {
+    let maps = ChronoAliasKeyedMapsDraft {
         by_day: HashMap::from([(day, 1)]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2471,17 +2549,17 @@ fn test_chrono_alias_keyed_maps_describe_as_their_bare_target_twin() {
     );
 
     let read_back: ChronoAliasKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[cfg(feature = "chrono")]
 #[test]
 fn test_chrono_alias_keyed_maps_constructible() {
     let day: DayKey = NaiveDate::from_ymd_opt(2020, 1, 2).unwrap();
-    let maps = ChronoAliasKeyedMaps {
+    let maps = ChronoAliasKeyedMapsDraft {
         by_day: HashMap::from([(day, 1)]),
     };
-    let twin = ChronoKeyedAliasTwin {
+    let twin = ChronoKeyedAliasTwinDraft {
         by_day: HashMap::from([(day, 1)]),
     };
     assert_eq!(twin.by_day[&day], maps.by_day[&day]);
@@ -2510,7 +2588,7 @@ fn test_chrono_alias_keyed_maps_name_the_alias_as_the_key_type() {
 /// The value every `bool`-keyed assertion below is read off, and the object serde writes for it.
 #[cfg(feature = "serde")]
 fn bool_keyed_maps() -> BoolKeyedMaps {
-    BoolKeyedMaps {
+    BoolKeyedMapsDraft {
         alias_of_brand: HashMap::from([(Enabled::new(true).unwrap(), 1)]),
         aliased: HashMap::from([(true, 2)]),
         aliased_chain: HashMap::from([(true, 3)]),
@@ -2522,11 +2600,15 @@ fn bool_keyed_maps() -> BoolKeyedMaps {
         optional: Some(HashMap::from([(true, 10)])),
         samples: HashMap::from([(
             true,
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     }
+    .validate()
+    .unwrap()
 }
 
 #[cfg(feature = "serde")]
@@ -2675,27 +2757,47 @@ fn test_bool_keyed_maps_describe_their_values_under_the_two_keys() {
 /// whole enumeration.
 #[cfg(feature = "serde")]
 fn enumerated_keyed_maps() -> EnumeratedKeyedMaps {
-    EnumeratedKeyedMaps {
-        alias_of_brand: HashMap::from([(SlotBrand::new(MetricSlot::Daily).unwrap(), 1)]),
-        aliased: HashMap::from([(MetricSlot::Daily, 2)]),
-        aliased_chain: HashMap::from([(MetricSlot::Weekly, 3)]),
-        bare: HashMap::from([(MetricSlot::Daily, 4)]),
-        branded: HashMap::from([(SlotBrand::new(MetricSlot::Weekly).unwrap(), 5)]),
+    EnumeratedKeyedMapsDraft {
+        alias_of_brand: HashMap::from([(
+            SlotBrand::new(MetricSlotDraft::Daily.validate().unwrap()).unwrap(),
+            1,
+        )]),
+        aliased: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), 2)]),
+        aliased_chain: HashMap::from([(MetricSlotDraft::Weekly.validate().unwrap(), 3)]),
+        bare: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), 4)]),
+        branded: HashMap::from([(
+            SlotBrand::new(MetricSlotDraft::Weekly.validate().unwrap()).unwrap(),
+            5,
+        )]),
         branded_chain: HashMap::from([(
-            SlotBrandRef::new(SlotBrand::new(MetricSlot::Daily).unwrap()).unwrap(),
+            SlotBrandRef::new(SlotBrand::new(MetricSlotDraft::Daily.validate().unwrap()).unwrap())
+                .unwrap(),
             6,
         )]),
-        forward: HashMap::from([(LaterSlot::First, 7)]),
-        listed: vec![HashMap::from([(MetricSlot::Daily, 8)])],
-        nested: HashMap::from([(MetricSlot::Daily, HashMap::from([(MetricSlot::Weekly, 9)]))]),
-        optional: Some(HashMap::from([(MetricSlot::Daily, 10)])),
+        forward: HashMap::from([(LaterSlotDraft::First.validate().unwrap(), 7)]),
+        listed: vec![HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            8,
+        )])],
+        nested: HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            HashMap::from([(MetricSlotDraft::Weekly.validate().unwrap(), 9)]),
+        )]),
+        optional: Some(HashMap::from([(
+            MetricSlotDraft::Daily.validate().unwrap(),
+            10,
+        )])),
         samples: HashMap::from([(
-            MetricSlot::Weekly,
-            MetricSample {
+            MetricSlotDraft::Weekly.validate().unwrap(),
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     }
+    .validate()
+    .unwrap()
 }
 
 #[cfg(feature = "serde")]
@@ -2848,7 +2950,7 @@ fn test_enumerated_keyed_maps_keep_the_document_that_admits_a_subset() {
 #[cfg(all(feature = "chrono", feature = "serde"))]
 fn date_time_keyed_maps() -> DateTimeKeyedMaps {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
-    DateTimeKeyedMaps {
+    DateTimeKeyedMapsDraft {
         alias_of_brand: HashMap::from([(Stamp::new(stamp).unwrap(), 1)]),
         aliased: HashMap::from([(stamp, 2)]),
         aliased_chain: HashMap::from([(stamp, 3)]),
@@ -2860,11 +2962,15 @@ fn date_time_keyed_maps() -> DateTimeKeyedMaps {
         optional: Some(HashMap::from([(stamp, 9)])),
         samples: HashMap::from([(
             stamp,
-            MetricSample {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -3057,7 +3163,7 @@ fn test_property_keyed_maps_keep_their_own_schema_on_zod() {
 #[test]
 #[cfg(feature = "chrono")]
 fn test_property_keyed_maps_write_the_keys_they_describe() {
-    let maps = PropertyKeyedMaps {
+    let maps = PropertyKeyedMapsDraft {
         chars: HashMap::from([('a', 1)]),
         dates: HashMap::from([(NaiveDate::from_ymd_opt(2020, 1, 2).unwrap(), 2)]),
         datetimes: HashMap::from([(
@@ -3068,7 +3174,7 @@ fn test_property_keyed_maps_write_the_keys_they_describe() {
             3,
         )]),
         numbers: HashMap::from([(7, 4)]),
-        slots: HashMap::from([(MetricSlot::Daily, 5)]),
+        slots: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), 5)]),
         strings: HashMap::from([("s".to_owned(), 6)]),
         times: HashMap::from([(NaiveTime::from_hms_opt(3, 4, 5).unwrap(), 7)]),
     };
@@ -3085,7 +3191,7 @@ fn test_property_keyed_maps_write_the_keys_they_describe() {
     assert_eq!(payload["times"], serde_json::json!({ "03:04:05": 7_i64 }));
 
     let read_back: PropertyKeyedMaps = serde_json::from_value(payload).unwrap();
-    assert_eq!(read_back, maps);
+    assert_eq!(read_back, maps.validate().unwrap());
 }
 
 #[test]
@@ -3110,13 +3216,15 @@ fn test_bool_brand_and_alias_keep_their_value_surface() {
 
 #[test]
 fn test_string_keyed_alias_value_maps_constructible() {
-    let maps = StringKeyedAliasValueMaps {
+    let maps = StringKeyedAliasValueMapsDraft {
         sample_array: HashMap::new(),
         sample_value: HashMap::from([(
             "s".to_owned(),
-            MetricSampleRef {
+            MetricSampleDraft {
                 label: "s".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     assert_eq!(maps.sample_value["s"].label, "s");
@@ -3170,8 +3278,8 @@ fn test_string_keyed_alias_value_maps_typescript_generation() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_optional_map_values_admit_the_null_serde_writes() {
-    let values = OptionalMapValues {
-        enum_keyed: HashMap::from([(MetricSlot::Daily, None)]),
+    let values = OptionalMapValuesDraft {
+        enum_keyed: HashMap::from([(MetricSlotDraft::Daily.validate().unwrap(), None)]),
         string_keyed: HashMap::from([("k".to_owned(), None)]),
     };
     let payload = serde_json::to_value(&values).unwrap();
@@ -3227,23 +3335,31 @@ fn wrapped_map_fields_properties() -> serde_json::Map<String, serde_json::Value>
 }
 
 fn wrapped_map_fields() -> WrappedMapFields {
-    WrappedMapFields {
-        bucket_counts: HashMap::from([(MetricBucket::High, 7_isize)]),
+    WrappedMapFieldsDraft {
+        bucket_counts: HashMap::from([(MetricBucketDraft::High.validate().unwrap(), 7_isize)]),
         labels: HashMap::from([("a".to_owned(), "one".to_owned())]),
         optional_labels: None,
         optional_wrapped_labels: Some(vec![HashMap::from([("a".to_owned(), "one".to_owned())])]),
         raw_keyed_counts: HashMap::from([(3_u32, 4_isize)]),
-        wrapped_bucket_counts: vec![HashMap::from([(MetricBucket::Low, 2_isize)])],
+        wrapped_bucket_counts: vec![HashMap::from([(
+            MetricBucketDraft::Low.validate().unwrap(),
+            2_isize,
+        )])],
         wrapped_labels: vec![HashMap::from([("b".to_owned(), "two".to_owned())])],
         wrapped_raw_keyed_counts: once(HashMap::from([(6_u32, 8_isize)])).collect(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn test_wrapped_map_fields_constructible() {
     let fields = wrapped_map_fields();
     assert_eq!(fields.wrapped_labels[0]["b"], "two");
-    assert_eq!(fields.wrapped_bucket_counts[0][&MetricBucket::Low], 2);
+    assert_eq!(
+        fields.wrapped_bucket_counts[0][&MetricBucketDraft::Low.validate().unwrap()],
+        2
+    );
     assert_eq!(fields.wrapped_raw_keyed_counts[0][&6], 8);
     assert_eq!(fields.optional_labels, None);
 }
@@ -3415,10 +3531,12 @@ fn test_hashmap_with_64bit_ts_definition() {
 
 #[test]
 fn test_element_fields_constructible_under_both_spellings() {
-    let tag = MetricTag {
+    let tag = MetricTagDraft {
         label: "a".to_owned(),
-    };
-    let sets = SetElementFields {
+    }
+    .validate()
+    .unwrap();
+    let sets = SetElementFieldsDraft {
         aliased_tags: HashSet::from([tag.clone()]),
         big_ids: HashSet::from([9_i64]),
         constrained_labels: HashSet::from(["abc".to_owned()]),
@@ -3430,7 +3548,7 @@ fn test_element_fields_constructible_under_both_spellings() {
     assert!(sets.small_ids.contains(&7));
     assert!(sets.big_ids.contains(&9));
 
-    let vecs = VecElementFields {
+    let vecs = VecElementFieldsDraft {
         aliased_tags: vec![tag.clone()],
         big_ids: vec![9],
         constrained_labels: vec!["abc".to_owned()],
@@ -3446,7 +3564,7 @@ fn test_element_fields_constructible_under_both_spellings() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_set_element_json_schema() {
-    let sets = SetElementFields {
+    let sets = SetElementFieldsDraft {
         aliased_tags: HashSet::new(),
         big_ids: HashSet::from([9_i64]),
         constrained_labels: HashSet::new(),
@@ -3500,29 +3618,41 @@ fn test_set_element_json_schema() {
 /// The twin values the hasher pair is read off: the same members holding the same things, one built
 /// with the hasher named and one with it implied.
 fn hasher_named_fields() -> HasherNamedFields {
-    HasherNamedFields {
+    HasherNamedFieldsDraft {
         counts: once(("alpha".to_owned(), 1)).collect(),
-        enum_keyed_counts: once((MetricSlot::Daily, 2)).collect(),
+        enum_keyed_counts: once((MetricSlotDraft::Daily.validate().unwrap(), 2)).collect(),
         nested_ids: once(("beta".to_owned(), once(3).collect())).collect(),
         small_ids: once(4).collect(),
-        tags: once(MetricTag {
-            label: "gamma".to_owned(),
-        })
+        tags: once(
+            MetricTagDraft {
+                label: "gamma".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .collect(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn hasher_implied_fields() -> HasherImpliedFields {
-    HasherImpliedFields {
+    HasherImpliedFieldsDraft {
         counts: once(("alpha".to_owned(), 1)).collect(),
-        enum_keyed_counts: once((MetricSlot::Daily, 2)).collect(),
+        enum_keyed_counts: once((MetricSlotDraft::Daily.validate().unwrap(), 2)).collect(),
         nested_ids: once(("beta".to_owned(), once(3).collect())).collect(),
         small_ids: once(4).collect(),
-        tags: once(MetricTag {
-            label: "gamma".to_owned(),
-        })
+        tags: once(
+            MetricTagDraft {
+                label: "gamma".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .collect(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]

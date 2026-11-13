@@ -822,14 +822,26 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
     let added = own_impl(emitted.type_impl);
     // What every source's entry points run on the value serde built is in an `impl` of its own,
     // under the bounds the type's author wrote.
-    let checked: syn::ItemImpl = syn::parse2(emitted.check_messages).unwrap();
+    let checked: syn::File = syn::parse2(emitted.check_messages).unwrap();
+    let checked_items: Vec<&syn::ImplItem> = checked
+        .items
+        .iter()
+        .filter_map(|member| {
+            if let syn::Item::Impl(held) = member {
+                Some(held.items.iter())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect();
     let methods: Vec<String> = added
         .items
         .iter()
-        .chain(&checked.items)
+        .chain(checked_items.iter().copied())
         .filter_map(member_name)
         .collect();
-    assert_eq!(methods.len(), added.items.len() + checked.items.len());
+    assert_eq!(methods.len(), added.items.len() + checked_items.len());
     let mut named = vec![
         "decode_with_value_report",
         "decode_with_value_issues",
@@ -853,6 +865,7 @@ fn every_added_method_but_the_entry_point_carries_the_flags_name() {
         named.push("MONGO_FIELDS");
     }
     named.extend([
+        "decode_with_check_messages",
         "decode_with_check_messages",
         "decode_with_value_check_issues",
     ]);
@@ -892,6 +905,7 @@ fn a_type_that_lists_decode_with_alone_is_read_from_bson_and_gets_no_mongodb_lay
             "from_value_piped",
             "from_bson_with",
             "from_bson_piped",
+            "decode_with_check_messages",
             "decode_with_check_messages",
             "decode_with_value_check_issues",
             "decode_with_bson_check_issues",
@@ -3848,11 +3862,11 @@ fn an_adjacently_tagged_enum_walks_what_the_variant_holds_under_the_content_key(
 fn an_untagged_enum_is_walked_as_the_variant_serde_reads() {
     let walk = enum_json_of(UNTAGGED);
     for written in [
-        "match Self :: decode_with_read_unjudged (found) { :: core :: result :: \
-         Result :: Ok (Self :: Email { .. }) => Self :: decode_with_value_variant_email (found \
-         , path , issue , out) , :: core :: result :: Result :: Ok (Self :: Versioned (..)) => < \
+        "match :: core :: result :: Result :: map (Self :: decode_with_read_unjudged (found) . as_ref () , | read | & * * read) { :: core :: result :: \
+         Result :: Ok (ContactDraft :: Email { .. }) => Self :: decode_with_value_variant_email (found \
+         , path , issue , out) , :: core :: result :: Result :: Ok (ContactDraft :: Versioned (..)) => < \
          Inner > :: decode_with_value_issues (found , path , issue , out) , :: core :: result :: \
-         Result :: Ok (Self :: Word (..)) => Self :: decode_with_value_variant_word (found , \
+         Result :: Ok (ContactDraft :: Word (..)) => Self :: decode_with_value_variant_word (found , \
          path , issue , out) ,",
         ":: core :: result :: Result :: Err (_) => { let mut as_email = :: std :: vec :: Vec :: new \
          () ; Self :: decode_with_value_variant_email (found , path , issue , & mut as_email) ; \
@@ -4038,10 +4052,10 @@ fn the_bson_walker_of_each_enum_form_matches_the_librarys_own_types() {
         ),
         (
             UNTAGGED,
-            "match Self :: decode_with_read_unjudged (bson :: Deserializer :: new \
-             (found . clone ())) { :: core :: result :: Result :: Ok (Self :: Email { .. }) => \
+            "match :: core :: result :: Result :: map (Self :: decode_with_read_unjudged (bson :: Deserializer :: new \
+             (found . clone ())) . as_ref () , | read | & * * read) { :: core :: result :: Result :: Ok (ContactDraft :: Email { .. }) => \
              Self :: decode_with_bson_variant_email (found , path , issue , out) , :: core :: \
-             result :: Result :: Ok (Self :: Versioned (..)) => < Inner > :: \
+             result :: Result :: Ok (ContactDraft :: Versioned (..)) => < Inner > :: \
              decode_with_bson_issues (found , path , issue , out) ,",
         ),
         (
@@ -4188,9 +4202,9 @@ fn variants_lists_every_tag_serde_reads_and_none_of_a_variant_it_never_reads() {
 fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     let walk = enum_json_of(UNREAD_UNTAGGED);
     for written in [
-        ":: core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
+        ":: core :: result :: Result :: Ok (ReachDraft :: Word (..)) => Self :: \
          decode_with_value_variant_word (found , path , issue , out) , :: core :: result :: Result \
-         :: Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } :: core :: result :: Result :: Err \
+         :: Ok (ReachDraft :: Fax (..) | ReachDraft :: Pager { .. }) => { } :: core :: result :: Result :: Err \
          (_) => { let mut as_email = :: std :: vec :: Vec :: new () ;",
         "let mut as_word = :: std :: vec :: Vec :: new () ; Self :: decode_with_value_variant_word \
          (found , path , issue , & mut as_word) ; out . push (issue (\"NoVariant\" , path . \
@@ -4244,7 +4258,7 @@ fn an_untagged_variant_serde_never_reads_is_matched_and_never_walked() {
     let every_variant_read = enum_json_of(UNTAGGED);
     assert!(
         every_variant_read.contains(
-            ":: core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
+            ":: core :: result :: Result :: Ok (ContactDraft :: Word (..)) => Self :: \
              decode_with_value_variant_word (found , path , issue , out) , :: core :: result :: \
              Result :: Err (_) => {"
         ),
@@ -4287,9 +4301,9 @@ fn the_bson_walker_reads_a_variants_alias_and_skip_as_the_json_one_does() {
         ),
         (
             UNREAD_UNTAGGED,
-            ":: core :: result :: Result :: Ok (Self :: Word (..)) => Self :: \
+            ":: core :: result :: Result :: Ok (ReachDraft :: Word (..)) => Self :: \
              decode_with_bson_variant_word (found , path , issue , out) , :: core :: result :: \
-             Result :: Ok (Self :: Fax (..) | Self :: Pager { .. }) => { } :: core :: result :: \
+             Result :: Ok (ReachDraft :: Fax (..) | ReachDraft :: Pager { .. }) => { } :: core :: result :: \
              Result :: Err (_) => {",
         ),
     ] {
@@ -4994,13 +5008,13 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
         .split_once("pub fn decode_with_value_fields")
         .unwrap();
     for written in [
-        "-> :: std :: vec :: Vec < & 'a str > { match Self :: decode_with_read_unjudged (serde_json :: Value :: Object (object . clone ())) { :: core :: result :: \
-         Result :: Ok (Self :: Email { .. }) => { match object . get (\"address\") { :: core :: \
+        "-> :: std :: vec :: Vec < & 'a str > { match :: core :: result :: Result :: map (Self :: decode_with_read_unjudged (serde_json :: Value :: Object (object . clone ())) . as_ref () , | read | & * * read) { :: core :: result :: \
+         Result :: Ok (ContactDraft :: Email { .. }) => { match object . get (\"address\") { :: core :: \
          option :: Option :: Some (held) => out . extend (contact_schema :: value_leaf (held , \
          contact_schema :: deserialize_email_address ,",
-        "vec ! [\"address\"] } , :: core :: result :: Result :: Ok (Self :: Versioned (..)) => < \
+        "vec ! [\"address\"] } , :: core :: result :: Result :: Ok (ContactDraft :: Versioned (..)) => < \
          Inner > :: decode_with_value_fields (object , path , issue , out) , :: core :: result :: \
-         Result :: Ok (Self :: Word (..)) => object . keys () . map (:: std :: string :: String :: \
+         Result :: Ok (ContactDraft :: Word (..)) => object . keys () . map (:: std :: string :: String :: \
          as_str) . collect () , :: core :: result :: Result :: Err (_) => { let found = & \
          serde_json :: Value :: Object (object . clone ()) ; let mut as_email = :: std :: vec :: \
          Vec :: new () ; { let out = & mut as_email ; match object . get (\"address\") {",
@@ -5018,9 +5032,9 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
     let unread = enum_json_of(UNREAD_UNTAGGED);
     assert!(
         unread.contains(
-            ":: core :: result :: Result :: Ok (Self :: Word (..)) => object . keys () . map (:: std \
-             :: string :: String :: as_str) . collect () , :: core :: result :: Result :: Ok (Self \
-             :: Fax (..) | Self :: Pager { .. }) => :: std :: vec :: Vec :: new () , :: core :: \
+            ":: core :: result :: Result :: Ok (ReachDraft :: Word (..)) => object . keys () . map (:: std \
+             :: string :: String :: as_str) . collect () , :: core :: result :: Result :: Ok (ReachDraft \
+             :: Fax (..) | ReachDraft :: Pager { .. }) => :: std :: vec :: Vec :: new () , :: core :: \
              result :: Result :: Err (_) => { let found = & serde_json :: Value :: Object \
              (object . clone ()) ;"
         ),
@@ -5029,7 +5043,7 @@ fn an_untagged_enums_fields_walker_walks_the_variant_serde_reads_the_object_as()
     // A variant with no field to walk lists nothing, so its list is bound and never written to.
     let blank = enum_json_of("#[serde(untagged)] pub enum Sparse { Blank {}, Word(String) }");
     for written in [
-        ":: core :: result :: Result :: Ok (Self :: Blank { .. }) => { vec ! [] } ,",
+        ":: core :: result :: Result :: Ok (SparseDraft :: Blank { .. }) => { vec ! [] } ,",
         "let as_blank = :: std :: vec :: Vec :: new () ; let mut as_word = :: std :: vec :: Vec :: \
          new () ;",
     ] {
@@ -5072,8 +5086,8 @@ fn the_bson_walker_of_a_flattened_field_matches_the_librarys_own_types() {
     );
     let untagged = enum_bson_of(UNTAGGED);
     for written in [
-        "-> :: std :: vec :: Vec < & 'a str > { match Self :: decode_with_read_unjudged (bson :: Deserializer :: new (bson :: Bson :: Document (object . clone \
-         ()))) { :: core :: result :: Result :: Ok (Self :: Email { .. }) =>",
+        "-> :: std :: vec :: Vec < & 'a str > { match :: core :: result :: Result :: map (Self :: decode_with_read_unjudged (bson :: Deserializer :: new (bson :: Bson :: Document (object . clone \
+         ()))) . as_ref () , | read | & * * read) { :: core :: result :: Result :: Ok (ContactDraft :: Email { .. }) =>",
         ":: core :: result :: Result :: Err (_) => { let found = & bson :: Bson :: Document \
          (object . clone ()) ; let mut as_email = :: std :: vec :: Vec :: new () ;",
         "< Inner > :: decode_with_bson_fields (object , path , issue , & mut as_versioned) ;",

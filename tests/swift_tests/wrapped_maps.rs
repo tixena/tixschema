@@ -13,12 +13,12 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::wrapped_maps_models::{
-    AdjacentDrawer, AdjacentStowedDrawer, Cabinet, Cubby, Drawer, Latch, Satchel, StowedCabinet,
-    StowedCubby, StowedDrawer, TaggedDrawer, TaggedStowedDrawer, UntaggedDrawer,
-    UntaggedStowedDrawer, adjacent_drawer_swift, adjacent_stowed_drawer_swift, cabinet_swift,
-    cubby_swift, drawer_swift, stowed_cabinet_swift, stowed_cubby_swift, stowed_drawer_swift,
-    tagged_drawer_swift, tagged_stowed_drawer_swift, untagged_drawer_swift,
-    untagged_stowed_drawer_swift,
+    AdjacentDrawerDraft, AdjacentStowedDrawerDraft, CabinetDraft, CubbyDraft, DrawerDraft, Latch,
+    LatchDraft, Satchel, SatchelDraft, StowedCabinetDraft, StowedCubbyDraft, StowedDrawerDraft,
+    TaggedDrawerDraft, TaggedStowedDrawerDraft, UntaggedDrawerDraft, UntaggedStowedDrawerDraft,
+    adjacent_drawer_swift, adjacent_stowed_drawer_swift, cabinet_swift, cubby_swift, drawer_swift,
+    stowed_cabinet_swift, stowed_cubby_swift, stowed_drawer_swift, tagged_drawer_swift,
+    tagged_stowed_drawer_swift, untagged_drawer_swift, untagged_stowed_drawer_swift,
 };
 
 /// The JSON serde writes for `held`, read back by serde as it was written.
@@ -52,14 +52,16 @@ fn at_true<Held>(held: Held) -> HashMap<bool, Held> {
 
 /// A map of `held` under [`Latch::Inner`].
 fn at_inner<Held>(held: Held) -> HashMap<Latch, Held> {
-    HashMap::from([(Latch::Inner, held)])
+    HashMap::from([(LatchDraft::Inner.validate().unwrap(), held)])
 }
 
 /// A satchel labelled `l`.
 fn satchel() -> Satchel {
-    Satchel {
+    SatchelDraft {
         label: "l".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The text `a`.
@@ -70,7 +72,7 @@ fn text() -> String {
 #[test]
 fn each_struct_is_written_as_serde_writes_it() {
     assert_eq!(
-        read_back(&Cubby {
+        read_back(&CubbyDraft {
             flags: (at_true(text()), 1),
             flags_by_number: at_one(at_true(text())),
             latches: (at_inner(text()), 2),
@@ -83,7 +85,7 @@ fn each_struct_is_written_as_serde_writes_it() {
         r#"{"flags":[{"true":"a"},1],"flags_by_number":{"1":{"true":"a"}},"latches":[{"Inner":"a"},2],"latches_by_latch":{"Inner":{"Inner":"a"}},"numbers":[{"1":"a"},3],"numbers_by_name":{"n":{"1":"a"}},"satchels":[{"1":{"label":"l"}},4],"satchels_by_name":{"s":{"1":{"label":"l"}}}}"#
     );
     assert_eq!(
-        read_back(&StowedCubby {
+        read_back(&StowedCubbyDraft {
             flags: (at_true(text()), 1),
             flags_by_number: at_one(at_true(text())),
             latches: (at_inner(text()), 2),
@@ -97,7 +99,7 @@ fn each_struct_is_written_as_serde_writes_it() {
     );
     let written = r#"[{"1":"a"},{"true":"a"},{"Inner":"a"},{"1":{"label":"l"}}]"#;
     assert_eq!(
-        read_back(&Cabinet(
+        read_back(&CabinetDraft(
             at_one(text()),
             at_true(text()),
             at_inner(text()),
@@ -106,7 +108,7 @@ fn each_struct_is_written_as_serde_writes_it() {
         written
     );
     assert_eq!(
-        read_back(&StowedCabinet(
+        read_back(&StowedCabinetDraft(
             at_one(text()),
             at_true(text()),
             at_inner(text()),
@@ -120,15 +122,15 @@ fn each_struct_is_written_as_serde_writes_it() {
 fn each_variant_is_written_as_its_tagging_writes_it() {
     for (held, written) in [
         (
-            read_back(&Drawer::Bagged(at_one(satchel()))),
+            read_back(&DrawerDraft::Bagged(at_one(satchel()))),
             r#"{"Bagged":{"1":{"label":"l"}}}"#,
         ),
         (
-            read_back(&Drawer::Flagged(at_true(text()))),
+            read_back(&DrawerDraft::Flagged(at_true(text()))),
             r#"{"Flagged":{"true":"a"}}"#,
         ),
         (
-            read_back(&Drawer::Keyed(
+            read_back(&DrawerDraft::Keyed(
                 at_one(text()),
                 at_true(text()),
                 at_inner(text()),
@@ -136,15 +138,15 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"Keyed":[{"1":"a"},{"true":"a"},{"Inner":"a"}]}"#,
         ),
         (
-            read_back(&StowedDrawer::Numbered(at_one(text()))),
+            read_back(&StowedDrawerDraft::Numbered(at_one(text()))),
             r#"{"Numbered":{"1":"a"}}"#,
         ),
         (
-            read_back(&StowedDrawer::Packed(at_true(satchel()), text())),
+            read_back(&StowedDrawerDraft::Packed(at_true(satchel()), text())),
             r#"{"Packed":[{"true":{"label":"l"}},"a"]}"#,
         ),
         (
-            read_back(&AdjacentDrawer::Keyed(
+            read_back(&AdjacentDrawerDraft::Keyed(
                 at_one(text()),
                 at_true(text()),
                 at_inner(text()),
@@ -152,23 +154,23 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"kind":"Keyed","held":[{"1":"a"},{"true":"a"},{"Inner":"a"}]}"#,
         ),
         (
-            read_back(&AdjacentStowedDrawer::Numbered(at_one(text()))),
+            read_back(&AdjacentStowedDrawerDraft::Numbered(at_one(text()))),
             r#"{"kind":"Numbered","held":{"1":"a"}}"#,
         ),
         (
-            read_back(&UntaggedDrawer::Latched(at_inner(text()))),
+            read_back(&UntaggedDrawerDraft::Latched(at_inner(text()))),
             r#"{"Inner":"a"}"#,
         ),
         (
-            read_back(&UntaggedStowedDrawer::Paired((at_inner(text()), 1))),
+            read_back(&UntaggedStowedDrawerDraft::Paired((at_inner(text()), 1))),
             r#"[{"Inner":"a"},1]"#,
         ),
         (
-            read_back(&UntaggedDrawer::Sealed(at_inner(satchel()))),
+            read_back(&UntaggedDrawerDraft::Sealed(at_inner(satchel()))),
             r#"{"Inner":{"label":"l"}}"#,
         ),
         (
-            read_back(&TaggedDrawer::Stacked {
+            read_back(&TaggedDrawerDraft::Stacked {
                 latches_by_latch: at_inner(at_inner(text())),
                 pair: (at_inner(text()), 1),
                 sealed: (at_inner(satchel()), 2),
@@ -176,7 +178,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             r#"{"kind":"Stacked","latches_by_latch":{"Inner":{"Inner":"a"}},"pair":[{"Inner":"a"},1],"sealed":[{"Inner":{"label":"l"}},2]}"#,
         ),
         (
-            read_back(&TaggedStowedDrawer::Stacked {
+            read_back(&TaggedStowedDrawerDraft::Stacked {
                 latches_by_latch: HashMap::new(),
                 pair: (at_inner(text()), 1),
                 sealed: (HashMap::new(), 2),

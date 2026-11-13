@@ -218,13 +218,15 @@ where
 }
 
 fn tag() -> Tag {
-    Tag {
+    TagDraft {
         label: "a".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn plain_fields() -> PlainFields {
-    PlainFields {
+    PlainFieldsDraft {
         count: 7,
         labels: vec!["x".to_owned()],
         maybe_count: Some(3),
@@ -232,10 +234,12 @@ fn plain_fields() -> PlainFields {
         tag: tag(),
         text: "t".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn boxed_fields() -> BoxedFields {
-    BoxedFields {
+    BoxedFieldsDraft {
         count: Box::new(7),
         labels: vec!["x".to_owned()].into_boxed_slice(),
         maybe_count: Box::new(Some(3)),
@@ -243,10 +247,12 @@ fn boxed_fields() -> BoxedFields {
         tag: Box::new(tag()),
         text: "t".into(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn rc_fields() -> RcFields {
-    RcFields {
+    RcFieldsDraft {
         count: Rc::new(7),
         labels: Rc::from(vec!["x".to_owned()]),
         maybe_count: Rc::new(Some(3)),
@@ -254,10 +260,12 @@ fn rc_fields() -> RcFields {
         tag: Rc::new(tag()),
         text: Rc::from("t"),
     }
+    .validate()
+    .unwrap()
 }
 
 fn arc_fields() -> ArcFields {
-    ArcFields {
+    ArcFieldsDraft {
         count: Arc::new(7),
         labels: Arc::from(vec!["x".to_owned()]),
         maybe_count: Arc::new(Some(3)),
@@ -265,10 +273,12 @@ fn arc_fields() -> ArcFields {
         tag: Arc::new(tag()),
         text: Arc::from("t"),
     }
+    .validate()
+    .unwrap()
 }
 
 fn cow_fields() -> CowFields {
-    CowFields {
+    CowFieldsDraft {
         count: Cow::Owned(7),
         labels: Cow::Owned(vec!["x".to_owned()]),
         maybe_count: Cow::Owned(Some(3)),
@@ -276,10 +286,12 @@ fn cow_fields() -> CowFields {
         tag: Cow::Owned(tag()),
         text: Cow::Borrowed("t"),
     }
+    .validate()
+    .unwrap()
 }
 
 fn ref_cell_fields() -> RefCellFields {
-    RefCellFields {
+    RefCellFieldsDraft {
         count: RefCell::new(7),
         labels: RefCell::new(vec!["x".to_owned()]),
         maybe_count: RefCell::new(Some(3)),
@@ -287,10 +299,12 @@ fn ref_cell_fields() -> RefCellFields {
         tag: RefCell::new(tag()),
         text: RefCell::new("t".to_owned()),
     }
+    .validate()
+    .unwrap()
 }
 
 fn mutex_fields() -> MutexFields {
-    MutexFields {
+    MutexFieldsDraft {
         count: Mutex::new(7),
         labels: Mutex::new(vec!["x".to_owned()]),
         maybe_count: Mutex::new(Some(3)),
@@ -298,10 +312,12 @@ fn mutex_fields() -> MutexFields {
         tag: Mutex::new(tag()),
         text: Mutex::new("t".to_owned()),
     }
+    .validate()
+    .unwrap()
 }
 
 fn rwlock_fields() -> RwLockFields {
-    RwLockFields {
+    RwLockFieldsDraft {
         count: RwLock::new(7),
         labels: RwLock::new(vec!["x".to_owned()]),
         maybe_count: RwLock::new(Some(3)),
@@ -309,20 +325,26 @@ fn rwlock_fields() -> RwLockFields {
         tag: RwLock::new(tag()),
         text: RwLock::new("t".to_owned()),
     }
+    .validate()
+    .unwrap()
 }
 
 fn cell_fields() -> CellFields {
-    CellFields {
+    CellFieldsDraft {
         count: Cell::new(7),
         maybe_count: Cell::new(Some(3)),
     }
+    .validate()
+    .unwrap()
 }
 
 fn plain_copy_fields() -> PlainCopyFields {
-    PlainCopyFields {
+    PlainCopyFieldsDraft {
         count: 7,
         maybe_count: Some(3),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The field declarations of a generated `TypeScript` definition, without the `JSDoc` around them.
@@ -442,21 +464,25 @@ fn test_transparent_wrapper_structs_constructible() {
     // Not `Deref`: each reads its guarded value through its own accessor instead of `*value`.
     assert_eq!(*ref_cell_fields().count.borrow(), plain_fields().count);
     assert_eq!(
-        mutex_fields().count.into_inner().unwrap(),
+        mutex_fields().into_draft().count.into_inner().unwrap(),
         plain_fields().count
     );
     assert_eq!(
-        rwlock_fields().count.into_inner().unwrap(),
+        rwlock_fields().into_draft().count.into_inner().unwrap(),
         plain_fields().count
     );
     assert_eq!(cell_fields().count.get(), plain_copy_fields().count);
 
-    let node = TreeNode {
+    let node = TreeNodeDraft {
         label: "root".to_owned(),
-        next: Some(Box::new(TreeNode {
-            label: "leaf".to_owned(),
-            next: None,
-        })),
+        next: Some(Box::new(
+            TreeNodeDraft {
+                label: "leaf".to_owned(),
+                next: None,
+            }
+            .validate()
+            .unwrap(),
+        )),
     };
     assert_eq!(node.next.unwrap().label, "leaf");
 }
@@ -471,12 +497,12 @@ fn test_every_covered_wrapper_writes_its_inner_value() {
 
 #[test]
 fn test_a_wrapper_written_inside_another_type_writes_the_inner_value() {
-    let inside = WrappedInsideFields {
+    let inside = WrappedInsideFieldsDraft {
         counts: HashMap::from([("k".to_owned(), Rc::new(1_i64))]),
         elements: vec![Rc::new(tag())],
         maybe_tag: Some(Box::new(tag())),
     };
-    let plain_inside = PlainInsideFields {
+    let plain_inside = PlainInsideFieldsDraft {
         counts: HashMap::from([("k".to_owned(), 1_i64)]),
         elements: vec![tag()],
         maybe_tag: Some(tag()),
@@ -486,12 +512,12 @@ fn test_a_wrapper_written_inside_another_type_writes_the_inner_value() {
         serde_json::to_value(plain_inside).unwrap()
     );
 
-    let mixed = MixedBoxedFields {
+    let mixed = MixedBoxedFieldsDraft {
         boxed_tag: Box::new(tag()),
         count: 7,
         plain_tag: tag(),
     };
-    let mixed_plain = MixedPlainFields {
+    let mixed_plain = MixedPlainFieldsDraft {
         boxed_tag: tag(),
         count: 7,
         plain_tag: tag(),

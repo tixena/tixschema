@@ -46,9 +46,9 @@ impl ScalarPathBoundService<()> for ScalarBackEnd {
     async fn get(&self, _ctx: &(), id: String) -> Result<DocumentSummary, GetDocumentError> {
         ready(()).await;
         if id == "missing" {
-            return Err(GetDocumentError::NotFound);
+            return Err(GetDocumentErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(DocumentSummary { id })
+        Ok(DocumentSummaryDraft { id }.validate().unwrap())
     }
 }
 

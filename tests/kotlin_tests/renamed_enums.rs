@@ -88,18 +88,18 @@ fn an_enum_published_under_its_own_ident_writes_no_alias() {
 fn serde_writes_a_renamed_enum_by_its_variants_alone() {
     assert_eq!(
         [
-            serde_json::to_string(&Genre::Poetry).unwrap(),
-            serde_json::to_string(&Chapter::Opening {
+            serde_json::to_string(&GenreDraft::Poetry).unwrap(),
+            serde_json::to_string(&ChapterDraft::Opening {
                 line: "a".to_owned()
             })
             .unwrap(),
-            serde_json::to_string(&Act::Raised {
+            serde_json::to_string(&ActDraft::Raised {
                 line: "a".to_owned()
             })
             .unwrap(),
-            serde_json::to_string(&Cue::Sealed("a".to_owned())).unwrap(),
-            serde_json::to_string(&Scroll::Sealed("a".to_owned())).unwrap(),
-            serde_json::to_string(&Season::Autumn).unwrap(),
+            serde_json::to_string(&CueDraft::Sealed("a".to_owned())).unwrap(),
+            serde_json::to_string(&ScrollDraft::Sealed("a".to_owned())).unwrap(),
+            serde_json::to_string(&SeasonDraft::Autumn).unwrap(),
         ],
         [
             r#""Poetry""#,

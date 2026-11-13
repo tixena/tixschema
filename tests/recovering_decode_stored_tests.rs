@@ -86,17 +86,21 @@ mod tests {
     }
 
     fn invoice() -> Invoice {
-        Invoice {
+        InvoiceDraft {
             number: "INV-0042".to_owned(),
             open_lines: 3,
         }
+        .validate()
+        .unwrap()
     }
 
     fn order() -> Order {
-        Order {
+        OrderDraft {
             lines: 3,
             number: "ORD-0007".to_owned(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]

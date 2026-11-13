@@ -3,14 +3,17 @@
 
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "zod")]
+use super::models::BytesExample;
 use super::models::{
-    BytesBox, BytesCounted, BytesEither, BytesExample, BytesHolder, BytesImage, BytesLookalikes,
-    BytesOptional,
+    BytesBoxDraft, BytesCountedDraft, BytesEitherDraft, BytesExampleDraft, BytesHolder,
+    BytesHolderDraft, BytesImage, BytesImageDraft, BytesLookalikes, BytesLookalikesDraft,
+    BytesOptionalDraft,
 };
 
 #[test]
 fn serde_writes_and_reads_the_json_array() {
-    let image = BytesImage {
+    let image = BytesImageDraft {
         content_type: "image/png".to_owned(),
         data: vec![137, 80, 78, 71],
     };
@@ -19,7 +22,10 @@ fn serde_writes_and_reads_the_json_array() {
         written,
         r#"{"contentType":"image/png","data":[137,80,78,71]}"#
     );
-    assert_eq!(serde_json::from_str::<BytesImage>(&written).unwrap(), image);
+    assert_eq!(
+        serde_json::from_str::<BytesImage>(&written).unwrap(),
+        image.validate().unwrap()
+    );
     let refused =
         serde_json::from_str::<BytesImage>(r#"{"contentType":"a","data":[256]}"#).unwrap_err();
     assert!(
@@ -30,10 +36,10 @@ fn serde_writes_and_reads_the_json_array() {
 
 #[test]
 fn serde_writes_a_vec_of_u8_as_the_json_array_in_every_place_a_member_holds_one() {
-    let holder = BytesHolder {
+    let holder = BytesHolderDraft {
         aliased: vec![9],
         data: vec![137, 80, 78, 71],
-        filled: BytesBox { held: vec![0, 255] },
+        filled: BytesBoxDraft { held: vec![0, 255] }.validate().unwrap(),
         keyed: HashMap::from([("k".to_owned(), vec![1, 2])]),
         outcome: Ok(vec![4, 5]),
         paired: (vec![6], "x".to_owned()),
@@ -46,21 +52,21 @@ fn serde_writes_a_vec_of_u8_as_the_json_array_in_every_place_a_member_holds_one(
     );
     assert_eq!(
         serde_json::from_str::<BytesHolder>(&written).unwrap(),
-        holder
+        holder.validate().unwrap()
     );
     assert_eq!(
-        serde_json::to_string(&BytesEither::Bytes(vec![1, 2])).unwrap(),
+        serde_json::to_string(&BytesEitherDraft::Bytes(vec![1, 2])).unwrap(),
         "[1,2]"
     );
     assert_eq!(
-        serde_json::to_string(&BytesExample { data: vec![1] }).unwrap(),
+        serde_json::to_string(&BytesExampleDraft { data: vec![1] }).unwrap(),
         r#"{"data":[1]}"#
     );
     assert_eq!(
-        serde_json::to_string(&BytesCounted { data: vec![1] }).unwrap(),
+        serde_json::to_string(&BytesCountedDraft { data: vec![1] }).unwrap(),
         r#"{"data":[1]}"#
     );
-    let lookalikes = BytesLookalikes {
+    let lookalikes = BytesLookalikesDraft {
         boxed: Box::new([1]),
         digest: [1, 2, 3, 4],
         distinct: HashSet::from([1]),
@@ -79,11 +85,11 @@ fn serde_writes_a_vec_of_u8_as_the_json_array_in_every_place_a_member_holds_one(
 #[test]
 fn an_optional_vec_of_u8_leaves_its_key_out_when_it_is_none() {
     assert_eq!(
-        serde_json::to_string(&BytesOptional { maybe: None }).unwrap(),
+        serde_json::to_string(&BytesOptionalDraft { maybe: None }).unwrap(),
         "{}"
     );
     assert_eq!(
-        serde_json::to_string(&BytesOptional {
+        serde_json::to_string(&BytesOptionalDraft {
             maybe: Some(vec![3])
         })
         .unwrap(),
@@ -104,24 +110,23 @@ fn the_example_of_a_type_holding_bytes_is_the_array() {
 #[cfg(not(feature = "zod"))]
 #[test]
 fn the_example_type_is_declared() {
-    serde_json::to_string(&BytesExample { data: vec![1] }).unwrap();
+    serde_json::to_string(&BytesExampleDraft { data: vec![1] }).unwrap();
 }
 
 #[cfg(feature = "zod")]
 #[test]
 fn validate_counts_the_bytes_as_it_counts_a_list() {
-    assert_eq!(BytesCounted { data: vec![1, 2] }.validate(), Ok(()));
     assert_eq!(
-        BytesCounted { data: vec![1] }.validate(),
-        Err(vec![
-            "'data': too short: minimum length is 2, got 1".to_owned()
-        ])
+        BytesCountedDraft { data: vec![1, 2] }.validation_issues(),
+        Vec::<String>::new()
     );
     assert_eq!(
-        BytesCounted { data: vec![1; 5] }.validate(),
-        Err(vec![
-            "'data': too long: maximum length is 4, got 5".to_owned()
-        ])
+        BytesCountedDraft { data: vec![1] }.validation_issues(),
+        vec!["'data': too short: minimum length is 2, got 1".to_owned()]
+    );
+    assert_eq!(
+        BytesCountedDraft { data: vec![1; 5] }.validation_issues(),
+        vec!["'data': too long: maximum length is 4, got 5".to_owned()]
     );
 }
 

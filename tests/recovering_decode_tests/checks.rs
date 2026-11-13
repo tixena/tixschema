@@ -160,7 +160,7 @@ enum PlacedLift {
     Boxed(PlacedParcel),
 }
 
-fn no_x(value: &PlacedParcel) -> Result<(), Vec<String>> {
+fn no_x(value: &PlacedParcelDraft) -> Result<(), Vec<String>> {
     if value.item_label == "x" {
         return Err(vec!["'itemLabel': x is no label".to_owned()]);
     }
@@ -176,7 +176,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn within_parcel(value: &CheckedParcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &CheckedParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -200,7 +200,7 @@ fn upper_case(value: &CheckedCode) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn with_a_route(value: &CheckedRoute) -> Result<(), Vec<String>> {
+fn with_a_route(value: &CheckedRouteDraft) -> Result<(), Vec<String>> {
     if value.stops.is_empty() {
         return Err(vec!["'stops': a route makes at least one stop".to_owned()]);
     }
@@ -214,15 +214,15 @@ fn seal_in_upper_case(value: &CheckedSeal) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn with_a_code<CodeType>(value: &CheckedCrate<CodeType>) -> Result<(), Vec<String>> {
+fn with_a_code<CodeType>(value: &CheckedCrateDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
     }
     Ok(())
 }
 
-fn with_a_stop(value: &CheckedExternal) -> Result<(), Vec<String>> {
-    if let CheckedExternal::Road { road_stops } = value
+fn with_a_stop(value: &CheckedExternalDraft) -> Result<(), Vec<String>> {
+    if let CheckedExternalDraft::Road { road_stops } = value
         && road_stops.is_empty()
     {
         return Err(vec![
@@ -520,10 +520,12 @@ fn a_brands_bound_and_its_check_are_listed_in_one_read_of_the_type_that_holds_it
     });
     assert_eq!(
         kept,
-        Ok(CheckedSealed {
+        Ok(CheckedSealedDraft {
             seal: CheckedSeal::new("ABC".to_owned()).unwrap(),
             seals: Vec::new(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let upper =
         CheckedSeal::from_value_with(json!("AB"), |_, _| checked_seal_schema::Verdict::Reject);
@@ -602,7 +604,7 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
     let held = CheckedExternal::from_value_with(json!("Held"), |_, _| {
         checked_external_schema::Verdict::Reject
     });
-    assert_eq!(held, Ok(CheckedExternal::Held));
+    assert_eq!(held, Ok(CheckedExternalDraft::Held.validate().unwrap()));
 
     let internal = |stored: Value| {
         let read = CheckedInternal::from_value_with(stored, |_, _| {
@@ -621,7 +623,7 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
     let unheld = CheckedInternal::from_value_with(json!({ "kind": "Held" }), |_, _| {
         checked_internal_schema::Verdict::Reject
     });
-    assert_eq!(unheld, Ok(CheckedInternal::Held));
+    assert_eq!(unheld, Ok(CheckedInternalDraft::Held.validate().unwrap()));
 
     let adjacent = |stored: Value| {
         let read = CheckedAdjacent::from_value_with(stored, |_, _| {
@@ -684,13 +686,16 @@ fn a_bound_and_a_check_of_one_value_are_two_issues() {
 /// by `validate()`: the place serde writes it at.
 #[test]
 fn a_model_held_in_a_slot_is_named_where_serde_writes_it() {
-    let x = || PlacedParcel {
+    let x = || PlacedParcelDraft {
         item_label: "x".to_owned(),
     };
-    let sealed = PlacedSealed(x());
-    let boxed = PlacedFreight::Boxed(x());
-    let split = PlacedFreight::Split("a".to_owned(), x());
-    let lifted = PlacedLift::Boxed(x());
+    let sealed = PlacedSealedDraft(PlacedParcel::model_schema_wrap_unjudged(x()));
+    let boxed = PlacedFreightDraft::Boxed(PlacedParcel::model_schema_wrap_unjudged(x()));
+    let split = PlacedFreightDraft::Split(
+        "a".to_owned(),
+        PlacedParcel::model_schema_wrap_unjudged(x()),
+    );
+    let lifted = PlacedLiftDraft::Boxed(PlacedParcel::model_schema_wrap_unjudged(x()));
     assert_eq!(
         [
             serde_json::to_value(&sealed).unwrap(),
@@ -722,10 +727,10 @@ fn a_model_held_in_a_slot_is_named_where_serde_writes_it() {
     );
     assert_eq!(
         [
-            sealed.validate(),
-            boxed.validate(),
-            split.validate(),
-            lifted.validate(),
+            sealed.validate().map(|_| ()),
+            boxed.validate().map(|_| ()),
+            split.validate().map(|_| ()),
+            lifted.validate().map(|_| ()),
         ]
         .map(Result::unwrap_err),
         messages

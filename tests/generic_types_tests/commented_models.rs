@@ -79,44 +79,48 @@ pub fn written() -> Vec<(&'static str, String)> {
     vec![
         (
             "Glossed",
-            json(&Glossed {
+            json(&GlossedDraft {
                 bounded: "b".to_owned(),
                 closing: "c".to_owned(),
             }),
         ),
         (
             "Remarked",
-            json(&Remarked {
+            json(&RemarkedDraft {
                 note: "n".to_owned(),
             }),
         ),
-        ("Footnoted", json(&Footnoted::Bare)),
-        ("Footnoted", json(&Footnoted::Closing)),
+        ("Footnoted", json(&FootnotedDraft::Bare)),
+        ("Footnoted", json(&FootnotedDraft::Closing)),
         (
             "Marginal",
-            json(&Marginal::Noted {
+            json(&MarginalDraft::Noted {
                 remark: "r".to_owned(),
             }),
         ),
         (
             "Marginal",
-            json(&Marginal::Plain {
+            json(&MarginalDraft::Plain {
                 line: "l".to_owned(),
             }),
         ),
-        ("Rubric", json(&Rubric::Held("h".to_owned()))),
+        ("Rubric", json(&RubricDraft::Held("h".to_owned()))),
         (
             "Rubric",
-            json(&Rubric::Ruled {
+            json(&RubricDraft::Ruled {
                 mark: "m".to_owned(),
             }),
         ),
         ("Scholion", json(&Scholion::new("s".to_owned()).unwrap())),
         (
             "MarginaliaType",
-            json::<Marginalia>(&Remarked {
-                note: "a".to_owned(),
-            }),
+            json::<Marginalia>(
+                &RemarkedDraft {
+                    note: "a".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
         ),
     ]
 }

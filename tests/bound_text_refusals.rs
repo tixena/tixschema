@@ -60,7 +60,7 @@ mod tests {
             (
                 "version",
                 "minLength",
-                "Version",
+                "__tixschema_valid_version_schema::Version<VersionDraft>",
                 list_or_string,
                 "    pub version: Version,",
             ),

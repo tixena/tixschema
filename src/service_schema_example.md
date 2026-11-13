@@ -54,8 +54,10 @@ pub trait Invoicing<Ctx> {
 fn shown(answered: Result<InvoiceSummary, CallError<InvoiceError>>) -> &'static str {
     match answered {
         Ok(_summary) => "voided",
-        Err(CallError::Operation(InvoiceError::NotFound)) => "no such invoice",
-        Err(CallError::Operation(InvoiceError::AlreadyVoided)) => "already voided",
+        Err(CallError::Operation(error)) => match &*error {
+            InvoiceErrorDraft::NotFound => "no such invoice",
+            InvoiceErrorDraft::AlreadyVoided => "already voided",
+        },
         Err(CallError::Fault(_defect)) => "a defect, logged",
     }
 }

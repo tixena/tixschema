@@ -122,7 +122,7 @@ fn test_the_struct_tag_example_is_declarable_and_shows_what_it_emits() {
         ],
     );
     assert_eq!(
-        serde_json::to_value(Tagged {
+        serde_json::to_value(TaggedDraft {
             name: "x".to_owned()
         })
         .unwrap(),
@@ -200,7 +200,7 @@ fn test_the_predicate_bullet_shows_the_optional_key_it_claims() {
 #[test]
 fn test_the_skip_bullets_show_the_three_answers_they_separate() {
     assert_readme_bullet_shows(SKIP_BULLET, &FullySkipped::ts_definition(), &[]);
-    let written = serde_json::to_string(&FullySkipped {
+    let written = serde_json::to_string(&FullySkippedDraft {
         id: "1".to_owned(),
         roles: vec!["x".to_owned()],
     })
@@ -245,7 +245,7 @@ fn test_the_optional_fields_section_shows_the_slot_tuple_it_claims() {
         &[],
     );
 
-    let written = serde_json::to_string(&Pair(Some("s".to_owned()), "x".to_owned())).unwrap();
+    let written = serde_json::to_string(&PairDraft(Some("s".to_owned()), "x".to_owned())).unwrap();
     assert_eq!(written, r#"["x"]"#);
     assert_eq!(serde_json::from_str::<Pair>(r#"["x"]"#).unwrap().0, None);
     assert!(readme().contains(r#"writes `["x"]`, reads that back, and refuses `["s","x"]`"#));
@@ -482,10 +482,10 @@ fn test_the_documented_branded_newtype_example_is_declarable_and_shows_what_it_e
 fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit() {
     /// A shape
     /// ```rust example
-    /// Shape::Circle { radius: 2 }
+    /// ShapeDraft::Circle { radius: 2 }
     /// ```
     /// ```rust example
-    /// Shape::Square { side: 3 }
+    /// ShapeDraft::Square { side: 3 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -503,7 +503,7 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
 
     /// User profile
     /// ```rust example
-    /// User {
+    /// UserDraft {
     ///     name: "John Doe".to_string(),
     ///     email: "john@example.com".to_string(),
     ///     age: 25,

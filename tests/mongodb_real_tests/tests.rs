@@ -111,7 +111,7 @@ fn test_real_objectid_complex_serialization() {
     let nested_oid1 = ObjectId::new();
     let nested_oid2 = ObjectId::new();
 
-    let document = RealDocument {
+    let document = RealDocumentDraft {
         id: doc_id,
         title: "Test Document".to_owned(),
         author_id,
@@ -230,7 +230,7 @@ fn test_real_objectid_json_schema_structure() {
 #[test]
 fn test_nested_ref_maps_constructible() {
     let oid = ObjectId::new();
-    let nested = NestedRefMaps {
+    let nested = NestedRefMapsDraft {
         ids_by_group: HashMap::from([("first".to_owned(), HashMap::from([("a".to_owned(), oid)]))]),
         run_batches: HashMap::from([(
             "first".to_owned(),
@@ -243,10 +243,10 @@ fn test_nested_ref_maps_constructible() {
 
 #[test]
 fn test_slotted_refs_constructible() {
-    let slotted = SlottedRefs {
+    let slotted = SlottedRefsDraft {
         by_slot: HashMap::from([
-            (RefSlot::Author, ObjectId::new()),
-            (RefSlot::Reviewer, ObjectId::new()),
+            (RefSlotDraft::Author.validate().unwrap(), ObjectId::new()),
+            (RefSlotDraft::Reviewer.validate().unwrap(), ObjectId::new()),
         ]),
     };
     assert_eq!(slotted.by_slot.len(), 2);
@@ -386,11 +386,11 @@ fn every_serde_written_oid_payload_satisfies_the_unified_spelling() {
 
     let mut written = Vec::new();
     for _ in 0_u32..64_u32 {
-        let payload = EveryOidPosition {
+        let payload = EveryOidPositionDraft {
             by_name: HashMap::from([("a".to_owned(), ObjectId::new())]),
             by_slot: HashMap::from([
-                (RefSlot::Author, ObjectId::new()),
-                (RefSlot::Reviewer, ObjectId::new()),
+                (RefSlotDraft::Author.validate().unwrap(), ObjectId::new()),
+                (RefSlotDraft::Reviewer.validate().unwrap(), ObjectId::new()),
             ]),
             many: vec![ObjectId::new(), ObjectId::new()],
             nested: HashMap::from([(
@@ -402,7 +402,7 @@ fn every_serde_written_oid_payload_satisfies_the_unified_spelling() {
         };
         collect_oid_objects(&serde_json::to_value(&payload).unwrap(), &mut written);
         collect_oid_objects(
-            &serde_json::to_value(OidSlot(ObjectId::new())).unwrap(),
+            &serde_json::to_value(OidSlotDraft(ObjectId::new())).unwrap(),
             &mut written,
         );
     }
@@ -427,7 +427,7 @@ fn every_serde_written_oid_payload_satisfies_the_unified_spelling() {
 fn test_real_objectid_serialization() {
     let real_oid = ObjectId::new();
 
-    let user = RealUser {
+    let user = RealUserDraft {
         id: real_oid,
         name: "Test User".to_owned(),
         email: Some("test@example.com".to_owned()),
@@ -449,7 +449,7 @@ fn test_real_objectid_serialization() {
 #[cfg(all(feature = "mongodb", feature = "zod"))]
 fn a_real_object_id_hex_satisfies_the_zod_literal_and_the_json_schema_pattern_alike() {
     let real_oid = ObjectId::new();
-    let user = RealUser {
+    let user = RealUserDraft {
         id: real_oid,
         name: "Test User".to_owned(),
         email: Some("test@example.com".to_owned()),
@@ -460,7 +460,7 @@ fn a_real_object_id_hex_satisfies_the_zod_literal_and_the_json_schema_pattern_al
     assert_eq!(hex, real_oid.to_hex());
     assert_eq!(
         serde_json::from_value::<RealUser>(wire).unwrap(),
-        user,
+        user.validate().unwrap(),
         "the `$oid` object serde wrote does not read back"
     );
 

@@ -116,7 +116,7 @@ impl GuideService<()> for Stand {
         _ctx: &(),
     ) -> impl Future<Output = Result<GuideVersion, GuideError>> {
         self.reach(json!(["get-guide-version"]));
-        ready(Ok(GuideVersion { version: 3 }))
+        ready(Ok(GuideVersionDraft { version: 3 }.validate().unwrap()))
     }
 
     fn greet(&self, _ctx: &(), name: String) -> impl Future<Output = Result<String, GuideError>> {
@@ -125,7 +125,7 @@ impl GuideService<()> for Stand {
             resume_unwind(Box::new("the handler came apart"));
         }
         ready(if name == "missing" {
-            Err(GuideError::NotFound)
+            Err(GuideErrorDraft::NotFound.validate().unwrap())
         } else {
             Ok(format!("Say hello to {name}."))
         })

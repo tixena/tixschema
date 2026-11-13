@@ -159,13 +159,17 @@ impl RouteService<()> for Archive {
         finish: Waypoint,
     ) -> Result<RoutePlan, VersionError> {
         ready(()).await;
-        Ok(RoutePlan {
+        Ok(RoutePlanDraft {
             distance: 12,
-            midpoint: Waypoint {
+            midpoint: WaypointDraft {
                 latitude: f64::midpoint(start.latitude, finish.latitude),
                 longitude: f64::midpoint(start.longitude, finish.longitude),
-            },
-        })
+            }
+            .validate()
+            .unwrap(),
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -177,7 +181,7 @@ impl DocumentService<()> for Archive {
         _known_tag: Option<String>,
     ) -> Result<(VersionResponse, String), VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn get_version(
@@ -186,12 +190,12 @@ impl DocumentService<()> for Archive {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn lookup(&self, _ctx: &(), _id: DocumentId) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn rename_document(
@@ -201,7 +205,7 @@ impl DocumentService<()> for Archive {
         _title: String,
     ) -> Result<(), VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn touch_document(&self, _ctx: &(), _document_id: String, _reader: String) {
@@ -216,7 +220,7 @@ impl AnnotatedService<()> for Archive {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn retitle_document(
@@ -237,7 +241,7 @@ impl TwoTransportService<()> for Archive {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 }
 
@@ -571,17 +575,23 @@ fn a_struct_an_input_repeats_is_defined_once_under_the_input_s_own_defs() {
         "start": { "latitude": 38.7_f64 },
         "finish": { "latitude": 41.1_f64, "longitude": -8.6_f64 },
     })));
-    let planned = answered(Archive.plan_route(
-        &(),
-        Waypoint {
-            latitude: 38.0,
-            longitude: -9.0,
-        },
-        Waypoint {
-            latitude: 40.0,
-            longitude: -8.0,
-        },
-    ));
+    let planned = answered(
+        Archive.plan_route(
+            &(),
+            WaypointDraft {
+                latitude: 38.0,
+                longitude: -9.0,
+            }
+            .validate()
+            .unwrap(),
+            WaypointDraft {
+                latitude: 40.0,
+                longitude: -8.0,
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
     let written = serde_json::to_value(planned.ok().unwrap()).unwrap();
     assert!(
         jsonschema::validator_for(&tool["outputSchema"])
@@ -629,10 +639,15 @@ where
 #[test]
 fn the_stand_in_serves_every_operation_of_every_service() {
     let ctx = ();
-    let request = || GetVersionRequest {
+    let request = || GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     };
-    answered(DocumentService::get_version(&Archive, &ctx, request())).unwrap_err();
+    answered(DocumentService::get_version(
+        &Archive,
+        &ctx,
+        request().validate().unwrap(),
+    ))
+    .unwrap_err();
     answered(DocumentService::rename_document(
         &Archive,
         &ctx,
@@ -666,20 +681,30 @@ fn the_stand_in_serves_every_operation_of_every_service() {
         "Title".to_owned(),
     ))
     .unwrap();
-    answered(AnnotatedService::get_version(&Archive, &ctx, request())).unwrap_err();
-    answered(TwoTransportService::get_version(&Archive, &ctx, request())).unwrap_err();
+    answered(AnnotatedService::get_version(
+        &Archive,
+        &ctx,
+        request().validate().unwrap(),
+    ))
+    .unwrap_err();
+    answered(TwoTransportService::get_version(
+        &Archive,
+        &ctx,
+        request().validate().unwrap(),
+    ))
+    .unwrap_err();
 }
 
 #[test]
 fn a_value_each_message_writes_passes_the_schema_the_tool_lists() {
     let tools = crate::DocumentServiceSchema::mcp_tools();
-    let message = serde_json::to_value(GetVersionRequest {
+    let message = serde_json::to_value(GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     })
     .unwrap();
-    let answer = serde_json::to_value(VersionResponse { version: 7 }).unwrap();
+    let answer = serde_json::to_value(VersionResponseDraft { version: 7 }).unwrap();
     let identifier = serde_json::to_value(DocumentId::new("doc-1".to_owned()).unwrap()).unwrap();
-    let error = serde_json::to_value(VersionError::NotFound).unwrap();
+    let error = serde_json::to_value(VersionErrorDraft::NotFound).unwrap();
     assert_eq!(error, json!({ "errorCode": "not-found" }));
     for (tool, instance, field) in [
         ("get-version", &message, "inputSchema"),

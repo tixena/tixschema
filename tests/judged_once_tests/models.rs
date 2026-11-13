@@ -179,7 +179,7 @@ fn counted(check: usize) {
     });
 }
 
-fn counted_entry<IdType>(value: &Entry<IdType>) -> Result<(), Vec<String>> {
+fn counted_entry<IdType>(value: &EntryDraft<IdType>) -> Result<(), Vec<String>> {
     counted(0);
     if value.label.is_empty() {
         return Err(vec!["'label': an entry has a label".to_owned()]);
@@ -187,7 +187,7 @@ fn counted_entry<IdType>(value: &Entry<IdType>) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn counted_tag(value: &Tag) -> Result<(), Vec<String>> {
+fn counted_tag(value: &TagDraft) -> Result<(), Vec<String>> {
     counted(1);
     if value.name.is_empty() {
         return Err(vec!["'name': a tag has a name".to_owned()]);
@@ -195,17 +195,17 @@ fn counted_tag(value: &Tag) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn counted_node(value: &Node) -> Result<(), Vec<String>> {
+fn counted_node(value: &NodeDraft) -> Result<(), Vec<String>> {
     counted(2);
     at_most_two_children(value.children.len())
 }
 
-fn counted_tree<IdType>(value: &Tree<IdType>) -> Result<(), Vec<String>> {
+fn counted_tree<IdType>(value: &TreeDraft<IdType>) -> Result<(), Vec<String>> {
     counted(2);
     at_most_two_children(value.children.len())
 }
 
-fn counted_defaulted_tree<IdType>(value: &DefaultedTree<IdType>) -> Result<(), Vec<String>> {
+fn counted_defaulted_tree<IdType>(value: &DefaultedTreeDraft<IdType>) -> Result<(), Vec<String>> {
     counted(2);
     at_most_two_children(value.children.len())
 }

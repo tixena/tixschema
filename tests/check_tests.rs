@@ -25,3 +25,8 @@ mod table;
 #[cfg(test)]
 #[path = "check_tests/unchecked.rs"]
 mod unchecked;
+
+/// What a draft's issues answer as a `validate()` that makes no value.
+pub(crate) fn judged_issues(found: Vec<String>) -> Result<(), Vec<String>> {
+    if found.is_empty() { Ok(()) } else { Err(found) }
+}

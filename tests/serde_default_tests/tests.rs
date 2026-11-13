@@ -3,9 +3,9 @@
 //! of the Zod schemas under node in `generic_types_tests`.
 
 #[cfg(feature = "serde")]
-use super::models::{Basin, Config, Fleet, Gangway, Logbook, report};
+use super::models::{Basin, Config, Fleet, Gangway, GangwayDraft, Logbook, PontoonDraft, report};
 use super::models::{
-    Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, Marina, PREPROCESSED,
+    Bollard, CASES, FILLED, FILLED_REPORT, Harbour, Jetty, JettyDraft, Marina, PREPROCESSED,
     PREPROCESSED_REPORT, Pontoon, REPORT, REQUIRED, REQUIRED_REPORT, Wharf, filled_expected,
     filled_report, preprocessed_values, read_values, unwritten_defaults,
 };
@@ -13,7 +13,9 @@ use super::models::{
 use super::models::{IndexedFleet, IndexedLogbook};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use super::omitted::OMITTED_WRITTEN;
-use super::omitted::{Muster, OMITTED, OMITTED_REPORT, Roster, Squad};
+use super::omitted::{
+    Muster, MusterDraft, OMITTED, OMITTED_REPORT, Roster, RosterDraft, Squad, SquadDraft,
+};
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
 
@@ -65,7 +67,7 @@ fn serde_reads_a_key_left_out_as_its_default_in_every_build() {
     );
     assert_eq!(
         serde_json::from_str::<Jetty>("{}").unwrap(),
-        Jetty::default()
+        JettyDraft::default().validate().unwrap()
     );
 }
 
@@ -124,12 +126,12 @@ fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
         refused.to_string(),
         "'dock': too short: minimum length is 1, got 0"
     );
-    let built = Pontoon {
+    let built = PontoonDraft {
         dock: String::new(),
         label: "p".to_owned(),
     };
     assert_eq!(
-        built.validate().unwrap_err(),
+        built.validation_issues(),
         ["'dock': too short: minimum length is 1, got 0"]
     );
 }
@@ -207,7 +209,7 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
     );
     assert_eq!(
         wharf["properties"]["gangway"]["default"],
-        serde_json::to_value(Gangway::default()).unwrap()
+        serde_json::to_value(GangwayDraft::default()).unwrap()
     );
     assert!(
         wharf["properties"]["label"].get("default").is_none(),
@@ -216,7 +218,7 @@ fn the_json_schema_states_each_default_and_requires_no_key_it_answers() {
 
     let jetty = Jetty::json_schema();
     assert_eq!(jetty["required"], serde_json::json!([]));
-    let whole = serde_json::to_value(Jetty::default()).unwrap();
+    let whole = serde_json::to_value(JettyDraft::default()).unwrap();
     for key in ["berths", "dock", "moorings"] {
         assert_eq!(jetty["properties"][key]["default"], whole[key], "{jetty}");
     }
@@ -616,24 +618,30 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
     let roles = |held: &[&str]| held.iter().map(|&role| role.to_owned()).collect::<Vec<_>>();
     assert_eq!(
         serde_json::from_str::<Roster>(r#"{"id":"1"}"#).unwrap(),
-        Roster {
+        RosterDraft {
             id: "1".to_owned(),
             roles: roles(&[])
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Muster>(r#"{"id":"1"}"#).unwrap(),
-        Muster {
+        MusterDraft {
             id: "1".to_owned(),
             roles: roles(&[])
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Squad>(r#"{"id":"1"}"#).unwrap(),
-        Squad {
+        SquadDraft {
             id: "1".to_owned(),
             roles: roles(&["guest"])
         }
+        .validate()
+        .unwrap()
     );
     let reports = [
         OMITTED_REPORT,

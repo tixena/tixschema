@@ -738,13 +738,15 @@ impl PacketClientService<()> for PacketBackEnd {
     async fn sent(&self, _ctx: &(), req: PacketRequest) -> Result<Packet, PacketError> {
         ready(()).await;
         if req.dock.is_empty() {
-            return Err(PacketError::Closed);
+            return Err(PacketErrorDraft::Closed.validate().unwrap());
         }
-        Ok(Packet {
+        Ok(PacketDraft {
             fragile_item_codes: Vec::new(),
             item_code_list: Vec::new(),
-            label: req.dock,
-        })
+            label: req.dock.clone(),
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -847,7 +849,7 @@ fn with_its_keys(mut payload: Value) -> Value {
     payload
 }
 
-fn within_limit(value: &Scaled) -> Result<(), Vec<String>> {
+fn within_limit(value: &ScaledDraft) -> Result<(), Vec<String>> {
     if value.grams > 1000 {
         Err(vec![format!(
             "'grams': {} is over the limit of 1000",
@@ -1322,7 +1324,7 @@ fn where_the_kotlin_read_answers_in_its_own_words_it_is_this() {
         serde_json::from_str::<Logged>(payload).unwrap();
     }
     assert_eq!(NOTED.take(), ["null", "\"a\""]);
-    let written = Packet {
+    let written = PacketDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "  A  ".to_owned(),
@@ -1475,11 +1477,15 @@ fn a_preprocess_with_no_kotlin_function_does_not_compile() {
 #[test]
 fn a_variant_under_a_tag_alone_reads_what_it_holds_through_its_functions() {
     assert_eq!(
-        serde_json::to_value(Handoff::Held(Packet {
-            fragile_item_codes: Vec::new(),
-            item_code_list: Vec::new(),
-            label: "A".to_owned(),
-        }))
+        serde_json::to_value(HandoffDraft::Held(
+            PacketDraft {
+                fragile_item_codes: Vec::new(),
+                item_code_list: Vec::new(),
+                label: "A".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        ))
         .unwrap(),
         json!({ "kind": "Held", "fragileItemCodes": [], "itemCodeList": [], "label": "A" })
     );
@@ -1535,15 +1541,19 @@ where
 #[test]
 fn the_backend_answers_the_contract() {
     let asked = |dock: &str| {
-        poll_once(PacketBackEnd.sent(
-            &(),
-            PacketRequest {
-                dock: dock.to_owned(),
-            },
-        ))
+        poll_once(
+            PacketBackEnd.sent(
+                &(),
+                PacketRequestDraft {
+                    dock: dock.to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        )
         .unwrap()
-        .map(|sent| sent.label)
-        .map_err(|refused| matches!(refused, PacketError::Closed))
+        .map(|sent| sent.label.clone())
+        .map_err(|refused| matches!(&*refused, PacketErrorDraft::Closed))
     };
     assert_eq!(asked("north"), Ok("north".to_owned()));
     assert_eq!(asked(""), Err(true));

@@ -256,223 +256,341 @@ fn stacked_low(value: &[Package]) -> Result<(), Vec<String>> {
 }
 
 fn sound() -> Package {
-    Package {
+    PackageDraft {
         item_label: "A".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn unlabelled() -> Package {
-    Package {
+    Package::model_schema_wrap_unjudged(PackageDraft {
         item_label: String::new(),
-    }
+    })
 }
 
 /// The cases of the structs: a named field, a slot among several, and the one slot of a struct,
 /// held by itself and by a field.
 fn struct_cases() -> Vec<Case> {
-    let docket = Docket(String::new(), 0);
-    let filled = Docket("a".to_owned(), 1);
-    let bundle = Bundle(String::new(), unlabelled());
-    let bundled = Bundle("a".to_owned(), sound());
-    let measured = Measured(7, String::new(), unlabelled());
-    let weighed = Measured(measured.0, "a".to_owned(), sound());
-    let crane = Crane {
-        strapped_load: Strapped(unlabelled()),
+    let docket = DocketDraft(String::new(), 0);
+    let filled = DocketDraft("a".to_owned(), 1);
+    let bundle = BundleDraft(String::new(), unlabelled());
+    let bundled = BundleDraft("a".to_owned(), sound());
+    let measured = MeasuredDraft(7, String::new(), unlabelled());
+    let weighed = MeasuredDraft(measured.0, "a".to_owned(), sound());
+    let crane = CraneDraft {
+        strapped_load: Strapped::model_schema_wrap_unjudged(StrappedDraft(unlabelled())),
     };
-    let loaded = Crane {
-        strapped_load: Strapped(sound()),
+    let loaded = CraneDraft {
+        strapped_load: StrappedDraft(sound()).validate().unwrap(),
     };
-    let hoist = Hoist {
-        code: Lone(String::new()),
+    let hoist = HoistDraft {
+        code: Lone::model_schema_wrap_unjudged(LoneDraft(String::new())),
     };
-    let coded = Hoist {
-        code: Lone("a".to_owned()),
+    let coded = HoistDraft {
+        code: Lone::model_schema_wrap_unjudged(LoneDraft("a".to_owned())),
     };
     vec![
         case(
             "Package, unlabelled",
             &unlabelled(),
-            unlabelled().validate(),
+            crate::judged_issues(unlabelled().validation_issues()),
         ),
-        case("Package", &sound(), sound().validate()),
+        case(
+            "Package",
+            &sound(),
+            crate::judged_issues(sound().validation_issues()),
+        ),
         case(
             "Docket, empty and numbered zero",
             &docket,
-            docket.validate(),
+            crate::judged_issues(docket.validation_issues()),
         ),
-        case("Docket", &filled, filled.validate()),
-        case("Bundle, unnamed and unlabelled", &bundle, bundle.validate()),
-        case("Bundle", &bundled, bundled.validate()),
+        case(
+            "Docket",
+            &filled,
+            crate::judged_issues(filled.validation_issues()),
+        ),
+        case(
+            "Bundle, unnamed and unlabelled",
+            &bundle,
+            crate::judged_issues(bundle.validation_issues()),
+        ),
+        case(
+            "Bundle",
+            &bundled,
+            crate::judged_issues(bundled.validation_issues()),
+        ),
         case(
             "Measured, unnamed and unlabelled after a skipped slot",
             &measured,
-            measured.validate(),
+            crate::judged_issues(measured.validation_issues()),
         ),
-        case("Measured", &weighed, weighed.validate()),
+        case(
+            "Measured",
+            &weighed,
+            crate::judged_issues(weighed.validation_issues()),
+        ),
         case(
             "Lone, empty",
-            &Lone(String::new()),
-            Lone(String::new()).validate(),
+            &LoneDraft(String::new()),
+            crate::judged_issues(LoneDraft(String::new()).validation_issues()),
         ),
         case(
             "Lone",
-            &Lone("a".to_owned()),
-            Lone("a".to_owned()).validate(),
+            &LoneDraft("a".to_owned()),
+            crate::judged_issues(LoneDraft("a".to_owned()).validation_issues()),
         ),
         case(
             "Strapped, an unlabelled parcel",
-            &Strapped(unlabelled()),
-            Strapped(unlabelled()).validate(),
+            &StrappedDraft(unlabelled()),
+            crate::judged_issues(StrappedDraft(unlabelled()).validation_issues()),
         ),
-        case("Strapped", &Strapped(sound()), Strapped(sound()).validate()),
+        case(
+            "Strapped",
+            &StrappedDraft(sound()),
+            crate::judged_issues(StrappedDraft(sound()).validation_issues()),
+        ),
         case(
             "Crane, an unlabelled strapped load",
             &crane,
-            crane.validate(),
+            crate::judged_issues(crane.validation_issues()),
         ),
-        case("Crane", &loaded, loaded.validate()),
-        case("Hoist, an empty code", &hoist, hoist.validate()),
-        case("Hoist", &coded, coded.validate()),
+        case(
+            "Crane",
+            &loaded,
+            crate::judged_issues(loaded.validation_issues()),
+        ),
+        case(
+            "Hoist, an empty code",
+            &hoist,
+            crate::judged_issues(hoist.validation_issues()),
+        ),
+        case(
+            "Hoist",
+            &coded,
+            crate::judged_issues(coded.validation_issues()),
+        ),
     ]
 }
 
 /// The cases of the enums serde writes under the variant's name.
 fn named_variant_cases() -> Vec<Case> {
-    let boxed = Freight::Boxed(unlabelled());
-    let crated = Freight::Crated {
+    let boxed = FreightDraft::Boxed(unlabelled());
+    let crated = FreightDraft::Crated {
         crated_parcel: unlabelled(),
     };
-    let loose = Freight::Loose {
+    let loose = FreightDraft::Loose {
         freight_label: String::new(),
     };
-    let split = Freight::Split(String::new(), unlabelled());
-    let stacked = Freight::Stacked(vec![sound(), unlabelled()]);
-    let high = Freight::Stacked(vec![sound(), sound(), sound()]);
-    let kept = Freight::Boxed(sound());
-    let stamped = Seal::Stamped(String::new());
-    let signed = Seal::Signed {
+    let split = FreightDraft::Split(String::new(), unlabelled());
+    let stacked = FreightDraft::Stacked(vec![sound(), unlabelled()]);
+    let high = FreightDraft::Stacked(vec![sound(), sound(), sound()]);
+    let kept = FreightDraft::Boxed(sound());
+    let stamped = SealDraft::Stamped(String::new());
+    let signed = SealDraft::Signed {
         signed_by: String::new(),
     };
-    let inked = Seal::Stamped("a".to_owned());
+    let inked = SealDraft::Stamped("a".to_owned());
     vec![
-        case("Freight, boxed unlabelled", &boxed, boxed.validate()),
-        case("Freight, crated unlabelled", &crated, crated.validate()),
-        case("Freight, loose and unlabelled", &loose, loose.validate()),
+        case(
+            "Freight, boxed unlabelled",
+            &boxed,
+            crate::judged_issues(boxed.validation_issues()),
+        ),
+        case(
+            "Freight, crated unlabelled",
+            &crated,
+            crate::judged_issues(crated.validation_issues()),
+        ),
+        case(
+            "Freight, loose and unlabelled",
+            &loose,
+            crate::judged_issues(loose.validation_issues()),
+        ),
         case(
             "Freight, split unnamed and unlabelled",
             &split,
-            split.validate(),
+            crate::judged_issues(split.validation_issues()),
         ),
         case(
             "Freight, stacked with one unlabelled",
             &stacked,
-            stacked.validate(),
+            crate::judged_issues(stacked.validation_issues()),
         ),
-        case("Freight, stacked three high", &high, high.validate()),
-        case("Freight, boxed", &kept, kept.validate()),
-        case("Seal, stamped with nothing", &stamped, stamped.validate()),
-        case("Seal, signed by no one", &signed, signed.validate()),
-        case("Seal, stamped", &inked, inked.validate()),
+        case(
+            "Freight, stacked three high",
+            &high,
+            crate::judged_issues(high.validation_issues()),
+        ),
+        case(
+            "Freight, boxed",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+        ),
+        case(
+            "Seal, stamped with nothing",
+            &stamped,
+            crate::judged_issues(stamped.validation_issues()),
+        ),
+        case(
+            "Seal, signed by no one",
+            &signed,
+            crate::judged_issues(signed.validation_issues()),
+        ),
+        case(
+            "Seal, stamped",
+            &inked,
+            crate::judged_issues(inked.validation_issues()),
+        ),
     ]
 }
 
 /// The cases of the enums under a tag: with a content key, and with none.
 fn tagged_cases() -> Vec<Case> {
-    let boxed = Haul::Boxed(unlabelled());
-    let crated = Haul::Crated {
+    let boxed = HaulDraft::Boxed(unlabelled());
+    let crated = HaulDraft::Crated {
         crated_parcel: unlabelled(),
     };
-    let loose = Haul::Loose {
+    let loose = HaulDraft::Loose {
         haul_label: String::new(),
     };
-    let split = Haul::Split(String::new(), unlabelled());
-    let stamped = Haul::Stamped(String::new());
-    let kept = Haul::Boxed(sound());
-    let lifted = Lift::Boxed(unlabelled());
-    let lifted_crate = Lift::Crated {
+    let split = HaulDraft::Split(String::new(), unlabelled());
+    let stamped = HaulDraft::Stamped(String::new());
+    let kept = HaulDraft::Boxed(sound());
+    let lifted = LiftDraft::Boxed(unlabelled());
+    let lifted_crate = LiftDraft::Crated {
         crated_parcel: unlabelled(),
     };
-    let lifted_loose = Lift::Loose {
+    let lifted_loose = LiftDraft::Loose {
         lift_label: String::new(),
     };
-    let lifted_whole = Lift::Boxed(sound());
+    let lifted_whole = LiftDraft::Boxed(sound());
     vec![
-        case("Haul, boxed unlabelled", &boxed, boxed.validate()),
-        case("Haul, crated unlabelled", &crated, crated.validate()),
-        case("Haul, loose and unlabelled", &loose, loose.validate()),
+        case(
+            "Haul, boxed unlabelled",
+            &boxed,
+            crate::judged_issues(boxed.validation_issues()),
+        ),
+        case(
+            "Haul, crated unlabelled",
+            &crated,
+            crate::judged_issues(crated.validation_issues()),
+        ),
+        case(
+            "Haul, loose and unlabelled",
+            &loose,
+            crate::judged_issues(loose.validation_issues()),
+        ),
         case(
             "Haul, split unnamed and unlabelled",
             &split,
-            split.validate(),
+            crate::judged_issues(split.validation_issues()),
         ),
-        case("Haul, stamped with nothing", &stamped, stamped.validate()),
-        case("Haul, boxed", &kept, kept.validate()),
-        case("Lift, boxed unlabelled", &lifted, lifted.validate()),
+        case(
+            "Haul, stamped with nothing",
+            &stamped,
+            crate::judged_issues(stamped.validation_issues()),
+        ),
+        case(
+            "Haul, boxed",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+        ),
+        case(
+            "Lift, boxed unlabelled",
+            &lifted,
+            crate::judged_issues(lifted.validation_issues()),
+        ),
         case(
             "Lift, crated unlabelled",
             &lifted_crate,
-            lifted_crate.validate(),
+            crate::judged_issues(lifted_crate.validation_issues()),
         ),
         case(
             "Lift, loose and unlabelled",
             &lifted_loose,
-            lifted_loose.validate(),
+            crate::judged_issues(lifted_loose.validation_issues()),
         ),
-        case("Lift, boxed", &lifted_whole, lifted_whole.validate()),
+        case(
+            "Lift, boxed",
+            &lifted_whole,
+            crate::judged_issues(lifted_whole.validation_issues()),
+        ),
     ]
 }
 
 /// The cases of the untagged enum, of the variants serde writes under another name, and of a
 /// variant that flattens a member.
 fn untagged_and_renamed_cases() -> Vec<Case> {
-    let labelled = Load::Labelled {
+    let labelled = LoadDraft::Labelled {
         load_label: String::new(),
         load_parcels: vec![sound(), unlabelled()],
     };
-    let text = Load::Text(String::new());
-    let whole = Load::Whole(unlabelled());
-    let kept = Load::Whole(sound());
-    let anchored = Mooring::Anchored {
+    let text = LoadDraft::Text(String::new());
+    let whole = LoadDraft::Whole(unlabelled());
+    let kept = LoadDraft::Whole(sound());
+    let anchored = MooringDraft::Anchored {
         anchor_code: String::new(),
     };
-    let docked = Mooring::DryDock(unlabelled());
-    let dry = Mooring::DryDock(sound());
-    let unnamed = Departure::ByRoad {
-        starting_origin: Origin {
+    let docked = MooringDraft::DryDock(unlabelled());
+    let dry = MooringDraft::DryDock(sound());
+    let unnamed = DepartureDraft::ByRoad {
+        starting_origin: Origin::model_schema_wrap_unjudged(OriginDraft {
             origin_name: String::new(),
-        },
+        }),
     };
-    let named = Departure::ByRoad {
-        starting_origin: Origin {
+    let named = DepartureDraft::ByRoad {
+        starting_origin: Origin::model_schema_wrap_unjudged(OriginDraft {
             origin_name: "north".to_owned(),
-        },
+        }),
     };
     vec![
         case(
             "Load, labelled with nothing",
             &labelled,
-            labelled.validate(),
+            crate::judged_issues(labelled.validation_issues()),
         ),
-        case("Load, an empty text", &text, text.validate()),
-        case("Load, an unlabelled whole", &whole, whole.validate()),
-        case("Load, a whole", &kept, kept.validate()),
+        case(
+            "Load, an empty text",
+            &text,
+            crate::judged_issues(text.validation_issues()),
+        ),
+        case(
+            "Load, an unlabelled whole",
+            &whole,
+            crate::judged_issues(whole.validation_issues()),
+        ),
+        case(
+            "Load, a whole",
+            &kept,
+            crate::judged_issues(kept.validation_issues()),
+        ),
         case(
             "Mooring, anchored with no code",
             &anchored,
-            anchored.validate(),
+            crate::judged_issues(anchored.validation_issues()),
         ),
         case(
             "Mooring, an unlabelled parcel in dry dock",
             &docked,
-            docked.validate(),
+            crate::judged_issues(docked.validation_issues()),
         ),
-        case("Mooring, in dry dock", &dry, dry.validate()),
+        case(
+            "Mooring, in dry dock",
+            &dry,
+            crate::judged_issues(dry.validation_issues()),
+        ),
         case(
             "Departure, by road from an unnamed origin",
             &unnamed,
-            unnamed.validate(),
+            crate::judged_issues(unnamed.validation_issues()),
         ),
-        case("Departure, by road", &named, named.validate()),
+        case(
+            "Departure, by road",
+            &named,
+            crate::judged_issues(named.validation_issues()),
+        ),
     ]
 }
 

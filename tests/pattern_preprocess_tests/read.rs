@@ -9,10 +9,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
+#[cfg(not(feature = "serde"))]
+use super::models::LabelDraft;
 use super::models::{
-    Carrier, ClosedDock, Consigned, Crate, Crated, Delivery, Either, Grade, Handover, Label,
-    Manifest, Node, Parcel, Pinned, Reference, Routed, SAMPLE_ROWS, Shelf, Shipment, Slot, Stack,
-    Tagged, Transfer, Unnamed, Weighed, Wrapped, sample_report,
+    CarrierDraft, ClosedDockDraft, Consigned, ConsignedDraft, CrateDraft, Crated, CratedDraft,
+    Delivery, DeliveryDraft, Either, EitherDraft, GradeDraft, HandoverDraft, Label, Manifest,
+    ManifestDraft, Node, NodeDraft, Parcel, ParcelDraft, Pinned, PinnedDraft, ReferenceDraft,
+    Routed, RoutedDraft, SAMPLE_ROWS, Shelf, ShipmentDraft, Slot, SlotDraft, StackDraft,
+    TaggedDraft, TransferDraft, Unnamed, UnnamedDraft, Weighed, WeighedDraft, Wrapped,
+    WrappedDraft, sample_report,
 };
 #[cfg(feature = "serde")]
 use super::models::{POSITIONS, positions};
@@ -53,11 +58,11 @@ fn texts(written: &[&str]) -> Vec<String> {
 }
 
 fn parcel(label: &str, fragile: &[&str]) -> Parcel {
-    Parcel {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: texts(fragile),
         item_code_list: texts(&["x"]),
         label: label.to_owned(),
-    }
+    })
 }
 
 /// Holds the read of `value` to `value`, from the payload serde writes for it and from that
@@ -95,7 +100,7 @@ fn row_2_is_refused_with_what_validate_answers_of_the_parcel_its_function_left()
         serde_json::from_str::<Parcel>(row_2)
             .unwrap_err()
             .to_string(),
-        parcel("", &["x"]).validate().unwrap_err().join("; ")
+        parcel("", &["x"]).validation_issues().join("; ")
     );
 }
 
@@ -124,9 +129,11 @@ fn a_parcel_is_corrected_wherever_another_type_holds_it() {
     let read = parcel("A", &[]);
     assert_eq!(
         serde_json::from_value::<Manifest>(json!({ "parcel": held })).unwrap(),
-        Manifest {
+        ManifestDraft {
             parcel: read.clone()
         }
+        .validate()
+        .unwrap()
     );
     let shelf: Shelf = serde_json::from_value(json!({
         "by_dock": { "north": held },
@@ -139,32 +146,34 @@ fn a_parcel_is_corrected_wherever_another_type_holds_it() {
     assert_eq!(shelf.spare.as_ref(), Some(&read));
     assert_eq!(
         serde_json::from_value::<Slot>(json!({ "Held": held })).unwrap(),
-        Slot::Held(read.clone())
+        SlotDraft::Held(read.clone()).validate().unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Consigned>(json!({ "kind": "Held", "detail": held })).unwrap(),
-        Consigned::Held(read.clone())
+        ConsignedDraft::Held(read.clone()).validate().unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Either>(held).unwrap(),
-        Either::Parcel(read.clone())
+        EitherDraft::Parcel(read.clone()).validate().unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Crated>(
             json!({ "dock": "north", "label": "  A  ", "itemCodeList": ["x"] })
         )
         .unwrap(),
-        Crated {
+        CratedDraft {
             dock: "north".to_owned(),
             parcel: read.clone()
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_value::<Delivery>(
             json!({ "kind": "Held", "label": "  A  ", "itemCodeList": ["x"] })
         )
         .unwrap(),
-        Delivery::Held(read)
+        DeliveryDraft::Held(read).validate().unwrap()
     );
 }
 
@@ -175,61 +184,75 @@ fn a_type_that_reaches_itself_is_corrected_at_every_depth() {
         "children": [{ "id": "b" }, { "id": "c", "children": [{ "id": "d" }] }],
     }))
     .unwrap();
-    let leaf = |id: &str| Node {
+    let leaf = |id: &str| NodeDraft {
         children: Vec::new(),
         id: id.to_owned(),
     };
     assert_eq!(
         read,
-        Node {
+        NodeDraft {
             children: vec![
-                leaf("b"),
-                Node {
-                    children: vec![leaf("d")],
+                leaf("b").validate().unwrap(),
+                NodeDraft {
+                    children: vec![leaf("d").validate().unwrap()],
                     id: "c".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
             ],
             id: "a".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
+}
+
+#[cfg(feature = "serde")]
+fn label(text: &str) -> Label {
+    Label::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn label(text: &str) -> Label {
+    LabelDraft::of(text).validate().unwrap()
 }
 
 #[test]
 fn every_shape_takes_the_key_on_the_type() {
-    read_out_of_its_envelope(&Stack(texts(&["a", "b"]), 2));
-    read_out_of_its_envelope(&ClosedDock);
-    read_out_of_its_envelope(&Label::new("A".to_owned()).unwrap());
-    for grade in [Grade::Express, Grade::Standard] {
+    read_out_of_its_envelope(&StackDraft(texts(&["a", "b"]), 2));
+    read_out_of_its_envelope(&ClosedDockDraft);
+    read_out_of_its_envelope(&label("A"));
+    for grade in [GradeDraft::Express, GradeDraft::Standard] {
         read_out_of_its_envelope(&grade);
     }
     for transfer in [
-        Transfer::Held,
-        Transfer::Rail("north".to_owned()),
-        Transfer::Road {
+        TransferDraft::Held,
+        TransferDraft::Rail("north".to_owned()),
+        TransferDraft::Road {
             stops: texts(&["a"]),
         },
     ] {
         read_out_of_its_envelope(&transfer);
     }
     for shipment in [
-        Shipment::Air {
+        ShipmentDraft::Air {
             flight: "F1".to_owned(),
         },
-        Shipment::Ground,
+        ShipmentDraft::Ground,
     ] {
         read_out_of_its_envelope(&shipment);
     }
     for handover in [
-        Handover::Left("porch".to_owned()),
-        Handover::Signed { by: "A".to_owned() },
+        HandoverDraft::Left("porch".to_owned()),
+        HandoverDraft::Signed { by: "A".to_owned() },
     ] {
         read_out_of_its_envelope(&handover);
     }
     for reference in [
-        Reference::Named {
+        ReferenceDraft::Named {
             name: "north".to_owned(),
         },
-        Reference::Numbered(7),
+        ReferenceDraft::Numbered(7),
     ] {
         read_out_of_its_envelope(&reference);
     }
@@ -237,11 +260,11 @@ fn every_shape_takes_the_key_on_the_type() {
 
 #[test]
 fn a_type_with_a_parameter_takes_the_key_at_each_filling() {
-    read_out_of_its_envelope(&Crate {
+    read_out_of_its_envelope(&CrateDraft {
         codes: texts(&["a"]),
         label: "c".to_owned(),
     });
-    read_out_of_its_envelope(&Crate {
+    read_out_of_its_envelope(&CrateDraft {
         codes: vec![7_u32],
         label: "c".to_owned(),
     });
@@ -252,14 +275,16 @@ fn a_type_with_a_parameter_takes_the_key_at_each_filling() {
 fn the_functions_of_a_type_run_in_the_order_written() {
     assert_eq!(
         serde_json::from_value::<Label>(json!({ "payload": "  A  " })).unwrap(),
-        Label::new("A".to_owned()).unwrap()
+        label("A")
     );
     assert_eq!(
         serde_json::from_value::<Wrapped>(json!({ "payload": { "label": "A" } })).unwrap(),
-        Wrapped {
+        WrappedDraft {
             fragile_item_codes: Vec::new(),
             label: "A".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -301,13 +326,17 @@ fn every_position_and_every_shape_reads_the_corrected_payload() {
 fn the_function_of_a_flattened_type_is_handed_what_its_holder_does_not_take() {
     assert_eq!(
         serde_json::from_str::<Pinned>(r#"{"dock":"north","tag":"t"}"#).unwrap(),
-        Pinned {
+        PinnedDraft {
             dock: "north".to_owned(),
-            tagged: Tagged {
+            tagged: TaggedDraft {
                 keys: texts(&["tag"]),
                 tag: "t".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -317,12 +346,16 @@ fn the_function_of_a_flattened_type_is_handed_what_its_holder_does_not_take() {
 fn a_flattened_choice_is_corrected_by_its_own_function() {
     assert_eq!(
         serde_json::from_str::<Routed>(r#"{"dock":"north","plate":"  AB 1  "}"#).unwrap(),
-        Routed {
+        RoutedDraft {
             dock: "north".to_owned(),
-            via: Carrier::Road {
+            via: CarrierDraft::Road {
                 plate: "AB 1".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -331,12 +364,12 @@ fn a_flattened_choice_is_corrected_by_its_own_function() {
 fn a_check_judges_what_the_function_answered() {
     assert_eq!(
         serde_json::from_str::<Weighed>(r#"{"payload":{"grams":900}}"#).unwrap(),
-        Weighed { grams: 900 }
+        WeighedDraft { grams: 900 }.validate().unwrap()
     );
     let refused = serde_json::from_str::<Weighed>(r#"{"payload":{"grams":2000}}"#).unwrap_err();
     assert_eq!(
         refused.to_string(),
-        Weighed { grams: 2000 }.validate().unwrap_err().join("; ")
+        WeighedDraft { grams: 2000 }.validation_issues().join("; ")
     );
 }
 
@@ -345,9 +378,11 @@ fn a_check_judges_what_the_function_answered() {
 fn the_function_of_a_field_is_handed_a_null_the_payload_holds() {
     assert_eq!(
         serde_json::from_str::<Unnamed>(r#"{"label":null}"#).unwrap(),
-        Unnamed {
+        UnnamedDraft {
             label: "unnamed".to_owned()
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Unnamed>("{}")

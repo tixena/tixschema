@@ -15,7 +15,7 @@ use tixschema::model_schema;
 /// A ledger row.
 ///
 /// ```rust example
-/// Ledger { carried: far(), count: 3, signed: 12 }
+/// LedgerDraft { carried: far(), count: 3, signed: 12 }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -29,7 +29,7 @@ pub struct Ledger {
 /// The extremes of an `i64`.
 ///
 /// ```rust example
-/// Extremes { greatest: i64::MAX, least: i64::MIN }
+/// ExtremesDraft { greatest: i64::MAX, least: i64::MIN }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -41,7 +41,7 @@ pub struct Extremes {
 /// A list of an `i64` with two values.
 ///
 /// ```rust example
-/// Lines { lines: vec![12, 240] }
+/// LinesDraft { lines: vec![12, 240] }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -53,7 +53,7 @@ pub struct Lines {
 /// A list of an `i64` with no value.
 ///
 /// ```rust example
-/// NoLines { lines: vec![] }
+/// NoLinesDraft { lines: vec![] }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -65,7 +65,7 @@ pub struct NoLines {
 /// An `i64` in a list beyond what a JavaScript `number` holds exactly.
 ///
 /// ```rust example
-/// FarLines { lines: vec![12, far()] }
+/// FarLinesDraft { lines: vec![12, far()] }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -76,7 +76,7 @@ pub struct FarLines {
 /// Numbers that publish a `number`.
 ///
 /// ```rust example
-/// Narrow { byte: 7, half: 1.5, whole: 2.25, wide: 4_000_000_000 }
+/// NarrowDraft { byte: 7, half: 1.5, whole: 2.25, wide: 4_000_000_000 }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -90,7 +90,7 @@ pub struct Narrow {
 /// A date under `as_number`, which publishes a `number`.
 ///
 /// ```rust example
-/// Stamped { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap() }
+/// StampedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap() }
 /// ```
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -103,7 +103,7 @@ pub struct Stamped {
 /// A date written by a function of its author's, as the milliseconds of its epoch.
 ///
 /// ```rust example
-/// Hooked { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap(), text: "123".to_owned() }
+/// HookedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap(), text: "123".to_owned() }
 /// ```
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -153,19 +153,19 @@ pub struct Deep {
 /// An `i64` in each position serde writes one in.
 ///
 /// ```rust example
-/// Positions {
-///     adjacent: Adjacent::Held(9),
+/// PositionsDraft {
+///     adjacent: AdjacentDraft::Held(9).validate().unwrap(),
 ///     boxed: Box::new(10),
 ///     counted: Rc::new(14),
-///     deep: Deep { deep: 13 },
+///     deep: DeepDraft { deep: 13 }.validate().unwrap(),
 ///     keyed: BTreeMap::from([("a".to_owned(), 1)]),
 ///     maybe: Some(5),
-///     named: Wrapper::Named { n: 5 },
-///     pair: Wrapper::Pair(3, 4),
+///     named: WrapperDraft::Named { n: 5 }.validate().unwrap(),
+///     pair: WrapperDraft::Pair(3, 4).validate().unwrap(),
 ///     plain: Plain::new(8).unwrap(),
 ///     shared: Arc::new(15),
-///     tag: Tag(6),
-///     wrapped: Wrapper::Wrapped(2),
+///     tag: TagDraft(6).validate().unwrap(),
+///     wrapped: WrapperDraft::Wrapped(2).validate().unwrap(),
 /// }
 /// ```
 #[model_schema()]
@@ -190,7 +190,7 @@ pub struct Positions {
 /// An untagged enum's `Many` over a list beyond what a JavaScript `number` holds exactly.
 ///
 /// ```rust example
-/// EitherMany::Many(vec![12, far()])
+/// EitherManyDraft::Many(vec![12, far()])
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -203,7 +203,7 @@ pub enum EitherMany {
 /// An untagged enum's `One`.
 ///
 /// ```rust example
-/// EitherOne::One(240)
+/// EitherOneDraft::One(240)
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -239,7 +239,7 @@ pub enum Entry {
 /// A `usize` and an `isize`, which publish a `number` up to what it holds exactly.
 ///
 /// ```rust example
-/// Sizes { count: 3, far: 9_007_199_254_740_993, step: -3 }
+/// SizesDraft { count: 3, far: 9_007_199_254_740_993, step: -3 }
 /// ```
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

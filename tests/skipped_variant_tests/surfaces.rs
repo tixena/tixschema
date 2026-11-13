@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use super::documents::admits;
 use super::models::{
-    Berthage, Cartage, Dockage, Keelage, Lighterage, Pilotage, ROWS, Tonnage, Wharfage,
-    unread_writes,
+    Berthage, BerthageDraft, Cartage, Dockage, Keelage, Lighterage, Pilotage, ROWS, Tonnage,
+    Wharfage, unread_writes,
 };
 
 /// The name of each variant serde neither writes nor reads.
@@ -131,7 +131,7 @@ fn serde_reads_and_writes_each_enum_as_the_table_states() {
         "serde writes a variant it never reads"
     );
     assert_eq!(
-        serde_json::to_string(&Berthage::Open {
+        serde_json::to_string(&BerthageDraft::Open {
             note: "a".to_owned()
         })
         .unwrap(),

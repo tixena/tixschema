@@ -10,7 +10,7 @@ use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
 use super::preprocess_models::{
-    Parcel, Pinned, Tagged, or_unnamed, trimmed, unwrapped, with_its_keys,
+    Parcel, ParcelDraft, Pinned, Tagged, or_unnamed, trimmed, unwrapped, with_its_keys,
 };
 
 thread_local! {
@@ -356,13 +356,15 @@ impl ShippingClientService<()> for ShippingBackEnd {
     async fn shipped(&self, _ctx: &(), parcel_label: String) -> Result<Parcel, ShippingError> {
         ready(()).await;
         if parcel_label.is_empty() {
-            return Err(ShippingError::NotFound);
+            return Err(ShippingErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(Parcel {
+        Ok(ParcelDraft {
             fragile_item_codes: Vec::new(),
             item_code_list: Vec::new(),
             label: parcel_label,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

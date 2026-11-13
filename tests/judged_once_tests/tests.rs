@@ -6,8 +6,9 @@ use core::fmt::Debug;
 use serde::de::DeserializeOwned;
 
 use super::models::{
-    Book, BoundedPair, Corrected, DefaultedPair, DefaultedTree, DisplayedLedger, Entry, Index,
-    Ledger, Node, Pair, Posting, Shelf, StringLedger, Tag, TiedPair, Tree, Wrapped,
+    Book, BoundedPair, Corrected, DefaultedPair, DefaultedPairDraft, DefaultedTree,
+    DefaultedTreeDraft, DisplayedLedger, Entry, EntryDraft, Index, Ledger, LedgerDraft, Node, Pair,
+    Posting, Shelf, StringLedger, Tag, TagDraft, TiedPair, Tree, Wrapped, WrappedDraft,
     corrections_taken, taken,
 };
 
@@ -51,10 +52,10 @@ where
 }
 
 fn entry(id: &str, label: &str) -> Entry<String> {
-    Entry {
+    Entry::model_schema_wrap_unjudged(EntryDraft {
         id: id.to_owned(),
         label: label.to_owned(),
-    }
+    })
 }
 
 #[test]
@@ -95,7 +96,7 @@ fn a_broken_model_held_under_the_holders_type_parameter_is_named_at_its_full_pat
 
 #[test]
 fn a_model_held_through_every_wrapper_is_judged_once_and_named_at_its_full_path() {
-    let sound = Wrapped {
+    let sound = WrappedDraft {
         boxed: Box::new(entry("a", "x")),
         by_key: [("north".to_owned(), entry("b", "x"))].into(),
         listed: vec![Some(entry("c", "x")), None, Some(entry("d", "x"))],
@@ -105,10 +106,10 @@ fn a_model_held_through_every_wrapper_is_judged_once_and_named_at_its_full_path(
     assert_eq!(checks_of_reading::<Wrapped<String>>(&written), [5, 0, 0]);
     assert_eq!(
         serde_json::from_str::<Wrapped<String>>(&written).unwrap(),
-        sound
+        sound.validate().unwrap()
     );
 
-    let broken = Wrapped {
+    let broken = WrappedDraft {
         boxed: Box::new(entry("a", "")),
         by_key: [("north".to_owned(), entry("b", ""))].into(),
         listed: vec![Some(entry("c", "x")), None, Some(entry("d", ""))],
@@ -120,7 +121,7 @@ fn a_model_held_through_every_wrapper_is_judged_once_and_named_at_its_full_path(
         "'boxed.label': an entry has a label; 'byKey.north.label': an entry has a label; \
          'listed.2.label': an entry has a label; 'spare.label': an entry has a label"
     );
-    assert_eq!(refused, broken.validate().unwrap_err().join("; "));
+    assert_eq!(refused, broken.validation_issues().join("; "));
 }
 
 #[test]
@@ -151,7 +152,7 @@ fn a_container_default_does_not_keep_a_member_from_the_unjudged_read() {
         BROKEN_ENTRIES
     );
     let defaulted = serde_json::from_str::<DefaultedPair<String, String>>("{}").unwrap();
-    assert_eq!(defaulted, DefaultedPair::default());
+    assert_eq!(defaulted, DefaultedPairDraft::default().validate().unwrap());
 }
 
 #[test]
@@ -175,7 +176,7 @@ fn a_type_that_holds_itself_under_a_container_default_is_judged_once_per_node() 
         [0, 0, 3]
     );
     let defaulted = serde_json::from_str::<DefaultedTree<u32>>("{}").unwrap();
-    assert_eq!(defaulted, DefaultedTree::default());
+    assert_eq!(defaulted, DefaultedTreeDraft::default().validate().unwrap());
 }
 
 #[test]
@@ -269,16 +270,20 @@ fn a_variant_that_holds_a_model_under_the_enums_parameter_reads_it_unjudged() {
 /// `validate()` still walks every member of a value built in code, which nothing judged before.
 #[test]
 fn a_value_built_in_code_is_judged_by_validate() {
-    let ledger = Ledger {
+    let ledger = LedgerDraft {
         entries: vec![entry("a", ""), entry("b", "x")],
-        tags: vec![Tag {
-            name: "x".to_owned(),
-        }],
+        tags: vec![
+            TagDraft {
+                name: "x".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ],
     };
     taken();
     assert_eq!(
-        ledger.validate(),
-        Err(vec!["'entries.0.label': an entry has a label".to_owned()])
+        ledger.validation_issues(),
+        vec!["'entries.0.label': an entry has a label".to_owned()]
     );
     assert_eq!(taken(), [2, 1, 0]);
 }

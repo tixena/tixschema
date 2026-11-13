@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
+#[cfg(feature = "serde")]
 use super::read::{DECODED, judged};
 use super::read::{judged_over, kept};
 
@@ -91,7 +91,7 @@ fn without_fragile(mut payload: Value) -> Value {
 fn every_fixture_is_read_through_its_functions_and_written_as_serde_writes_it() {
     let packet: Packet =
         serde_json::from_value(json!({ "label": " A ", "itemCodeList": ["x"] })).unwrap();
-    let lading = Lading { packet };
+    let lading = LadingDraft { packet };
     assert_eq!(
         serde_json::to_value(&lading).unwrap(),
         json!({ "packet": { "fragileItemCodes": [], "itemCodeList": ["x"], "label": "A" } })
@@ -105,7 +105,7 @@ fn every_fixture_is_read_through_its_functions_and_written_as_serde_writes_it() 
         json!({ "codes": [7_u32] })
     );
     assert_eq!(
-        serde_json::to_value(Tier::Standard).unwrap(),
+        serde_json::to_value(TierDraft::Standard).unwrap(),
         json!("Standard")
     );
 }

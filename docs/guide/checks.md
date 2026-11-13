@@ -38,7 +38,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
 }
 
 // A type's check takes the whole value, and leads each message with the path of what it refuses.
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -52,39 +52,47 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
 }
 
 fn main() {
-    let parcel = |label: &str, codes: &[&str], fragile: &[&str]| Parcel {
+    let parcel = |label: &str, codes: &[&str], fragile: &[&str]| ParcelDraft {
         label: label.to_string(),
         item_code_list: codes.iter().map(|code| code.to_string()).collect(),
         fragile_item_codes: fragile.iter().map(|code| code.to_string()).collect(),
     };
-    let lines = |answered: Result<(), Vec<String>>| answered.err().unwrap_or_default();
+    let lines = |answered: Vec<String>| answered;
 
-    assert!(parcel("A", &["x"], &["x"]).validate().is_ok());
+    // The draft is what is built, and `validate()` makes the valid `Parcel` of it.
+    let valid: Parcel = parcel("A", &["x"], &["x"]).validate().unwrap();
+    assert_eq!(valid.label, "A");
+    assert!(parcel("A", &["x"], &["x"]).validation_issues().is_empty());
     assert_eq!(
-        lines(parcel("", &["x"], &["x"]).validate()),
+        lines(parcel("", &["x"], &["x"]).validation_issues()),
         ["'label': too short: minimum length is 1, got 0"]
     );
     assert_eq!(
-        lines(parcel("A", &["x", "x"], &["x"]).validate()),
+        lines(parcel("A", &["x", "x"], &["x"]).validation_issues()),
         ["'itemCodeList': duplicate item code x"]
     );
     assert_eq!(
-        lines(parcel("A", &["x"], &["x", "y"]).validate()),
+        lines(parcel("A", &["x"], &["x", "y"]).validation_issues()),
         ["'fragileItemCodes.1': y is outside of itemCodeList"]
     );
     // Every bound and every check runs, and none stops another.
     assert_eq!(
-        lines(parcel("", &["x", "x"], &["y"]).validate()),
+        lines(parcel("", &["x", "x"], &["y"]).validation_issues()),
         [
             "'label': too short: minimum length is 1, got 0",
             "'itemCodeList': duplicate item code x",
             "'fragileItemCodes.0': y is outside of itemCodeList",
         ]
     );
-    // A holder runs the `validate()` of what it holds, under the key it holds it at.
-    let manifest = Manifest { parcel: parcel("A", &["x"], &["x", "y"]) };
+    // A holder runs the `validation_issues()` of what it holds, under the key it holds it at. A
+    // value that breaks a rule is a valid `Parcel` only as it is read with no check.
+    let held = Parcel::model_schema_read_unjudged(
+        json!({ "label": "A", "itemCodeList": ["x"], "fragileItemCodes": ["x", "y"] }),
+    )
+    .unwrap();
+    let manifest = ManifestDraft { parcel: held };
     assert_eq!(
-        lines(manifest.validate()),
+        lines(manifest.validation_issues()),
         ["'parcel.fragileItemCodes.1': y is outside of itemCodeList"]
     );
 
@@ -110,7 +118,7 @@ A Rust function is in scope where the type is declared, a type declared inside a
 | | Rust | TypeScript |
 |---|---|---|
 | A field's check | `fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>` | `function withoutDuplicates(value: Array<string>, ctx: ParsePayload<Array<string>>): void` |
-| A type's check | `fn within_parcel(value: &Parcel) -> Result<(), Vec<String>>` | `function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void` |
+| A type's check | `fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>` | `function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void` |
 
 `ParsePayload` is zod's own type, `z.core.ParsePayload`, which `zod/v4/core` exports. The two functions of the example in TypeScript:
 
@@ -144,7 +152,7 @@ export function withinParcel(value: Parcel, ctx: ParsePayload<Parcel>): void {
 
 - **A field's check takes the field's own value**, read as a [bound reads it](validation.md#constraints-under-option-and-wrappers): under an `Option` it is called only where a value is held, under `Box`, `Rc`, `Arc`, `Cow` and a reference it takes what they hold, and a list or a map is taken whole. The call passes a reference, so `&[String]` and `&Vec<String>` both take a `Vec<String>`, and `&str` takes a `String`.
 - **A type's check takes the whole value**, `&Parcel`, and an enum's takes the enum, whichever variant it holds.
-- **A type with a parameter writes its function once, over every filling**: `fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>>`, and `function withACode<CodeType>(value: Crate<CodeType>, ctx: ParsePayload<Crate<CodeType>>): void`.
+- **A type with a parameter writes its function once, over every filling**: `fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>>`, and `function withACode<CodeType>(value: Crate<CodeType>, ctx: ParsePayload<Crate<CodeType>>): void`.
 - **The check of a [branded newtype](generics-and-brands.md#branded-newtypes)** takes the brand in Rust, `&Code`, and the value the brand is written over in TypeScript, a `string` for a brand over a `String`: the Zod schema writes the check ahead of `.brand()`.
 
 #### The messages

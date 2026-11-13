@@ -8,13 +8,17 @@ use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
 use super::kotlin_flattened::FLATTENED;
+#[cfg(feature = "serde")]
 use super::kotlin_inner::INNER;
+#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
+#[cfg(feature = "serde")]
 use super::kotlin_plain_enum::plain_enum_unjudged;
-use super::read::{DECODED, judged, kept_inline};
+#[cfg(feature = "serde")]
 use super::read::{
-    brand_companion, brand_serializers, judged_over, kept, mapped, mapped_over_a_brand, serializers,
+    DECODED, brand_companion, brand_serializers, judged, kept_inline, mapped, mapped_over_a_brand,
 };
+use super::read::{judged_over, kept, serializers};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -141,7 +145,7 @@ fn without_duplicates(value: &[String]) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()
@@ -159,11 +163,11 @@ fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
 }
 
 fn parcel() -> Parcel {
-    Parcel {
+    Parcel::model_schema_wrap_unjudged(ParcelDraft {
         fragile_item_codes: vec!["y".to_owned()],
         item_code_list: vec!["x".to_owned(), "x".to_owned()],
         label: String::new(),
-    }
+    })
 }
 
 /// The statement that holds the text the declared type `read` answers to `least` characters,
@@ -199,7 +203,7 @@ fn split_statements(place: &str) -> String {
 fn every_fixture_is_written_as_serde_writes_it() {
     let held = parcel();
     assert_eq!(
-        serde_json::to_value(Manifest {
+        serde_json::to_value(ManifestDraft {
             parcel: held.clone()
         })
         .unwrap(),
@@ -208,21 +212,26 @@ fn every_fixture_is_written_as_serde_writes_it() {
         })
     );
     assert_eq!(
-        serde_json::to_value(Shelf {
-            later: Later {
+        serde_json::to_value(ShelfDraft {
+            later: LaterDraft {
                 label: "a".to_owned()
             }
+            .validate()
+            .unwrap()
         })
         .unwrap(),
         serde_json::json!({ "later": { "label": "a" } })
     );
     assert_eq!(
-        serde_json::to_value([Freight::Held, Freight::Split("a".to_owned(), held.clone())])
-            .unwrap()[0],
+        serde_json::to_value([
+            FreightDraft::Held,
+            FreightDraft::Split("a".to_owned(), held.clone())
+        ])
+        .unwrap()[0],
         serde_json::json!("Held")
     );
     assert_eq!(
-        serde_json::to_value([Haul::Held, Haul::Split("a".to_owned(), held)]).unwrap()[0],
+        serde_json::to_value([HaulDraft::Held, HaulDraft::Split("a".to_owned(), held)]).unwrap()[0],
         serde_json::json!({ "kind": "Held" })
     );
     #[cfg(feature = "serde")]
@@ -231,7 +240,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
     assert_eq!(
         serde_json::to_value((
             Badge::new(Slug::new("b".to_owned()).unwrap()).unwrap(),
-            Entry {
+            EntryDraft {
                 late: LateSlug::new("l".to_owned()).unwrap(),
                 slug: Slug::new("s".to_owned()).unwrap(),
                 titled,
@@ -262,14 +271,14 @@ fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
             .map(|message| format!("'{place}.{}", &message[1..]))
             .collect()
     };
-    assert_eq!(parcel().validate().unwrap_err(), parcel_messages);
+    assert_eq!(parcel().validation_issues(), parcel_messages);
     assert_eq!(
-        Manifest { parcel: parcel() }.validate().unwrap_err(),
+        ManifestDraft { parcel: parcel() }.validation_issues(),
         under("parcel")
     );
     #[cfg(feature = "serde")]
     assert_eq!(
-        Entry {
+        EntryDraft {
             late: LateSlug::new("l".to_owned()).unwrap(),
             slug: Slug::new("s".to_owned()).unwrap(),
             titled: "t".to_owned(),
@@ -290,13 +299,13 @@ fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
         messages
     };
     assert_eq!(
-        Freight::Split(String::new(), parcel())
+        FreightDraft::Split(String::new(), parcel())
             .validate()
             .unwrap_err(),
         split("Split")
     );
     assert_eq!(
-        Haul::Split(String::new(), parcel()).validate().unwrap_err(),
+        HaulDraft::Split(String::new(), parcel()).validation_issues(),
         split(held_slots)
     );
 }
@@ -655,6 +664,7 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
 }
 
 /// `written`, a serializer the emitter writes, behind the private functions its read calls.
+#[cfg(feature = "serde")]
 fn with_helpers(written: &str) -> String {
     let pathed = written.contains("kotlinSchemaAt(")
         || written.contains("kotlinSchemaInner(")

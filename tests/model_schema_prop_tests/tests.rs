@@ -203,7 +203,7 @@ fn omitted_member(name: &str, ts_type: &str) -> String {
 #[cfg(feature = "serde")]
 #[test]
 fn test_model_schema_prop_structs_constructible() {
-    let account = AccountContext {
+    let account = AccountContextDraft {
         aud: String::new(),
         exp: 0,
         iat: 0,
@@ -213,24 +213,24 @@ fn test_model_schema_prop_structs_constructible() {
         sub: String::new(),
     };
     assert_eq!(account.aud, String::new());
-    let array_literal = ArrayLiteral {
+    let array_literal = ArrayLiteralDraft {
         id: String::new(),
         literal_array: Vec::new(),
     };
     assert_eq!(array_literal.id, String::new());
-    let non_string_literals = NonStringLiterals {
+    let non_string_literals = NonStringLiteralsDraft {
         id: String::new(),
         is_active: true,
         is_disabled: false,
         priority: 214,
     };
     assert!(non_string_literals.is_active);
-    let combined = CombinedTest {
+    let combined = CombinedTestDraft {
         fixed_field: String::new(),
         normal_field: String::new(),
     };
     assert_eq!(combined.fixed_field, String::new());
-    let min_length = MinLengthTest {
+    let min_length = MinLengthTestDraft {
         description: String::new(),
         name: String::new(),
         nickname: None,
@@ -239,35 +239,35 @@ fn test_model_schema_prop_structs_constructible() {
         username: String::new(),
     };
     assert_eq!(min_length.description, String::new());
-    let multiple = MultipleLiterals {
+    let multiple = MultipleLiteralsDraft {
         id: String::new(),
         name: String::new(),
         type_field: String::new(),
         version: String::new(),
     };
     assert_eq!(multiple.id, String::new());
-    let optional_literal = OptionalLiteral {
+    let optional_literal = OptionalLiteralDraft {
         id: String::new(),
         optional_type: None,
     };
     assert_eq!(optional_literal.id, String::new());
-    let inner = Inner {
+    let inner = InnerDraft {
         value: String::new(),
     };
     assert_eq!(inner.value, String::new());
-    let ts_optional = TsOptionalStruct {
+    let ts_optional = TsOptionalStructDraft {
         f: None,
         g: None,
         h: None,
     };
     assert!(ts_optional.f.is_none());
-    let nullable = NullableStruct {
+    let nullable = NullableStructDraft {
         f: None,
         g: None,
         h: None,
     };
     assert!(nullable.f.is_none());
-    let nullable_generic = NullableGeneric {
+    let nullable_generic = NullableGenericDraft {
         name: String::new(),
         id: None::<String>,
     };
@@ -277,17 +277,17 @@ fn test_model_schema_prop_structs_constructible() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_ts_optional_variant_constructible() {
-    let variant = TsOptionalVariant::FilterPart { filter: None };
+    let variant = TsOptionalVariantDraft::FilterPart { filter: None };
     assert!(matches!(
         variant,
-        TsOptionalVariant::FilterPart { filter: _filter }
+        TsOptionalVariantDraft::FilterPart { filter: _filter }
     ));
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn test_labelled_literal_constructible() {
-    let LabelledLiteral::Fixed { word, note } = LabelledLiteral::Fixed {
+    let LabelledLiteralDraft::Fixed { word, note } = LabelledLiteralDraft::Fixed {
         word: "x".to_owned(),
         note: String::new(),
     };
@@ -632,25 +632,23 @@ fn test_combined_literal_minlength_json_schema() {
 #[test]
 #[cfg(feature = "serde")]
 fn an_enums_check_leaves_a_literal_field_alone_in_validate_and_the_read() {
-    let fixed = LabelledLiteral::Fixed {
+    let fixed = LabelledLiteralDraft::Fixed {
         word: "x".to_owned(),
         note: "ab".to_owned(),
     };
-    assert_eq!(fixed.validate(), Ok(()));
+    assert_eq!(fixed.validation_issues(), Vec::<String>::new());
     assert_eq!(
         serde_json::from_str::<LabelledLiteral>(r#"{"kind":"Fixed","word":"x","note":"ab"}"#)
             .map_err(|error| error.to_string()),
-        Ok(fixed)
+        Ok(fixed.validate().unwrap())
     );
-    let short = LabelledLiteral::Fixed {
+    let short = LabelledLiteralDraft::Fixed {
         word: "x".to_owned(),
         note: "a".to_owned(),
     };
     assert_eq!(
-        short.validate(),
-        Err(vec![
-            "'note': too short: minimum length is 2, got 1".to_owned()
-        ])
+        short.validation_issues(),
+        vec!["'note': too short: minimum length is 2, got 1".to_owned()]
     );
 }
 
@@ -856,10 +854,10 @@ fn a_numeric_literal_refuses_every_other_value_of_its_type() {
         "the Zod schema no longer writes the literal"
     );
 
-    let seven = Fixed { value: 7 };
+    let seven = FixedDraft { value: 7 };
     assert_eq!(
-        seven.validate(),
-        Err(vec!["'value': not the literal 214, got 7".to_owned()])
+        seven.validation_issues(),
+        vec!["'value': not the literal 214, got 7".to_owned()]
     );
     assert_eq!(
         serde_json::from_str::<Fixed>(r#"{"value":7}"#)
@@ -868,7 +866,10 @@ fn a_numeric_literal_refuses_every_other_value_of_its_type() {
         "'value': not the literal 214, got 7"
     );
 
-    assert_eq!(Fixed { value: 214 }.validate(), Ok(()));
+    assert_eq!(
+        FixedDraft { value: 214 }.validation_issues(),
+        Vec::<String>::new()
+    );
     assert_eq!(
         serde_json::from_str::<Fixed>(r#"{"value":214}"#)
             .unwrap()
@@ -888,17 +889,17 @@ fn a_string_and_a_bool_literal_refuse_every_other_value_too() {
         "the Zod schema no longer writes the literals: {zod}"
     );
 
-    let other = Tagged {
+    let other = TaggedDraft {
         count: 1,
         kind: "other".to_owned(),
         on: false,
     };
     assert_eq!(
-        other.validate(),
-        Err(vec![
+        other.validation_issues(),
+        vec![
             "'kind': not the literal \"fixed\", got other".to_owned(),
             "'on': not the literal true, got false".to_owned(),
-        ])
+        ]
     );
     assert_eq!(
         serde_json::from_str::<Tagged>(r#"{"kind":"other","on":false,"count":1}"#)
@@ -909,5 +910,5 @@ fn a_string_and_a_bool_literal_refuse_every_other_value_too() {
 
     let read = serde_json::from_str::<Tagged>(r#"{"kind":"fixed","on":true,"count":1}"#).unwrap();
     assert_eq!((read.kind.as_str(), read.on), ("fixed", true));
-    assert_eq!(read.validate(), Ok(()));
+    assert_eq!(read.validation_issues(), Vec::<String>::new());
 }

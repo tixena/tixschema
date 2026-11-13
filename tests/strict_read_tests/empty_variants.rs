@@ -111,10 +111,12 @@ where
 fn a_variant_whose_every_member_serde_skips_builds_each_from_its_default_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Counted>(r#"{"Reset":{}}"#).unwrap(),
-        Counted::Reset { start: 7, total: 0 }
+        CountedDraft::Reset { start: 7, total: 0 }
+            .validate()
+            .unwrap()
     );
     assert_eq!(
-        serde_json::to_string(&Counted::Reset { start: 1, total: 2 }).unwrap(),
+        serde_json::to_string(&CountedDraft::Reset { start: 1, total: 2 }).unwrap(),
         r#"{"Reset":{}}"#
     );
     for (json, named) in [
@@ -136,12 +138,14 @@ fn a_variant_whose_every_member_serde_skips_builds_each_from_its_default_and_ref
 fn a_generic_enum_reads_its_variant_of_no_member_under_the_bounds_serde_asks() {
     assert_eq!(
         serde_json::from_str::<Kept<String>>(r#"{"Cleared":{}}"#).unwrap(),
-        Kept::Cleared {
+        KeptDraft::Cleared {
             held: String::new()
         }
+        .validate()
+        .unwrap()
     );
     let shelved = serde_json::from_str::<Shelved<Unmade>>(r#"{"Cleared":{}}"#).unwrap();
-    assert!(matches!(shelved, Shelved::Cleared { items } if items.is_empty()));
+    assert!(matches!(&*shelved, ShelvedDraft::Cleared { items } if items.is_empty()));
     for told in [
         refusal::<Kept<u32>>(r#"{"Cleared":{"stray":1}}"#),
         refusal::<Kept<u32>>(r#"{"Stored":{"count":1,"stray":1}}"#),
@@ -155,11 +159,11 @@ fn a_generic_enum_reads_its_variant_of_no_member_under_the_bounds_serde_asks() {
 fn an_enum_that_borrows_reads_its_variant_of_no_member_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Labelled<'_>>(r#"{"Blank":{}}"#).unwrap(),
-        Labelled::Blank { note: None }
+        LabelledDraft::Blank { note: None }.validate().unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Labelled<'_>>(r#"{"Named":{"label":"dock"}}"#).unwrap(),
-        Labelled::Named { label: "dock" }
+        LabelledDraft::Named { label: "dock" }.validate().unwrap()
     );
     for json in [
         r#"{"Blank":{"stray":1}}"#,
@@ -177,7 +181,7 @@ fn an_enum_that_borrows_reads_its_variant_of_no_member_and_refuses_a_key() {
 fn an_enum_that_publishes_validate_reads_its_variant_of_no_member_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Dimmer>(r#"{"kind":"Off"}"#).unwrap(),
-        Dimmer::Off { since: 0 }
+        DimmerDraft::Off { since: 0 }.validate().unwrap()
     );
     let beside_off = refusal::<Dimmer>(r#"{"kind":"Off","stray":1}"#);
     assert!(
@@ -196,7 +200,7 @@ fn an_enum_that_publishes_validate_reads_its_variant_of_no_member_and_refuses_a_
 fn an_enum_its_author_closed_reads_its_variant_of_no_member_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Switch>(r#"{"kind":"Off","body":{}}"#).unwrap(),
-        Switch::Off { since: 0 }
+        SwitchDraft::Off { since: 0 }.validate().unwrap()
     );
     for (json, named) in [
         (

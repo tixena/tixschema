@@ -58,7 +58,7 @@ pub fn pairs<const N: usize>(expected: [(&str, &str); N]) -> [(String, String); 
 #[test]
 fn a_list_form_whose_directions_agree_names_the_key_serde_stores() {
     let parcel = Parcel::MONGO_FIELDS;
-    let row = stored(&Parcel {
+    let row = stored(&ParcelDraft {
         reference: "P-1".to_owned(),
         weight_grams: 450_u32,
     });
@@ -74,7 +74,7 @@ fn a_list_form_whose_directions_agree_names_the_key_serde_stores() {
 #[test]
 fn a_variant_and_its_fields_are_under_the_names_their_list_forms_write() {
     let carriage = Carriage::MONGO_FIELDS;
-    let air = stored(&Carriage::Air {
+    let air = stored(&CarriageDraft::Air {
         flight_code: "IB6500".to_owned(),
     });
     assert_eq!(
@@ -87,7 +87,7 @@ fn a_variant_and_its_fields_are_under_the_names_their_list_forms_write() {
         ],
         pairs([("mode", r#""byAir""#), ("flightCode", r#""IB6500""#)])
     );
-    let land = stored(&Carriage::OverLand {
+    let land = stored(&CarriageDraft::OverLand {
         road_name: "DR-1".to_owned(),
     });
     assert_eq!(
@@ -100,7 +100,7 @@ fn a_variant_and_its_fields_are_under_the_names_their_list_forms_write() {
         ],
         pairs([("mode", r#""over-land""#), ("roadName", r#""DR-1""#)])
     );
-    let sea = stored(&Carriage::Sea {
+    let sea = stored(&CarriageDraft::Sea {
         ship_name: "Caribe".to_owned(),
     });
     assert_eq!(

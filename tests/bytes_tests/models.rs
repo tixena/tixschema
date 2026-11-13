@@ -69,7 +69,7 @@ pub enum BytesEither {
 /// A `Vec<u8>` in the example the schema publishes.
 ///
 /// ```rust example
-/// BytesExample {
+/// BytesExampleDraft {
 ///     data: vec![137, 80, 78, 71],
 /// }
 /// ```

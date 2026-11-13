@@ -97,14 +97,16 @@ impl GranaryClientService<()> for Granary {
         ready(()).await;
         let mut held = [0_u8; 8];
         let pulled = grain.pull(&mut held).unwrap_or_default();
-        Ok(GranaryReceipt {
+        Ok(GranaryReceiptDraft {
             label: format!("{title}{note}{pulled}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn sift(&self, _ctx: &(), bin: String) -> Result<u32, GranaryError> {
         ready(()).await;
-        u32::try_from(bin.len()).or(Err(GranaryError::Empty))
+        u32::try_from(bin.len()).map_err(|_overflow| GranaryErrorDraft::Empty.validate().unwrap())
     }
 }
 
@@ -116,7 +118,7 @@ impl SiloClientService<()> for Granary {
     ) -> Result<silo_client_service_schema::StreamedAnswer, GranaryError> {
         ready(()).await;
         if bin.is_empty() {
-            return Err(GranaryError::Empty);
+            return Err(GranaryErrorDraft::Empty.validate().unwrap());
         }
         Ok(silo_client_service_schema::StreamedAnswer::Full {
             source: Box::new(Cursor::new(bin.into_bytes())),
@@ -170,9 +172,11 @@ fn both_services_are_implementable_and_callable() {
     ));
     assert_eq!(
         poured,
-        Some(Ok(GranaryReceipt {
+        Some(Ok(GranaryReceiptDraft {
             label: "tn3".to_owned()
-        })),
+        }
+        .validate()
+        .unwrap())),
         "the pour answers another value"
     );
     let drawn = poll_once(GranaryClientService::draw(&Granary, &(), "b".to_owned()));
@@ -182,7 +186,10 @@ fn both_services_are_implementable_and_callable() {
     );
     let empty = poll_once(SiloClientService::draw(&Granary, &(), String::new()));
     assert!(
-        matches!(empty, Some(Err(GranaryError::Empty))),
+        matches!(
+            empty,
+            Some(Err(error)) if matches!(&*error, GranaryErrorDraft::Empty)
+        ),
         "the silo's draw answers no refusal"
     );
 }

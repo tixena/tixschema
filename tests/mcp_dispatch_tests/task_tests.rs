@@ -157,7 +157,7 @@ use crate::JobServiceSchema;
 use crate::counsel::Counsels;
 use crate::counsel_mcp;
 use crate::http_tests::post;
-use crate::job::{ExportRequest, FINISHED, JobError, Jobs, STARTED};
+use crate::job::{ExportRequestDraft, FINISHED, JobErrorDraft, Jobs, STARTED};
 use crate::job_client::{JobServiceClient, McpMessage, Transport};
 use crate::job_mcp::{self, McpEndpoint, McpHost, McpInFlight};
 use crate::job_service_schema::CallError;
@@ -587,9 +587,15 @@ fn the_client_reads_the_handle_and_the_state_as_ordinary_successes() {
     let client = JobServiceClient::new(Dispatching {
         sent: Mutex::new(Vec::new()),
     });
-    let handle = block_on(client.start_export(ExportRequest {
-        folder: "reports".to_owned(),
-    }))
+    let handle = block_on(
+        client.start_export(
+            ExportRequestDraft {
+                folder: "reports".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(handle.task_id, "7f3a");
     assert_eq!(handle.created_at, STARTED);
@@ -625,26 +631,28 @@ fn the_client_reads_a_declared_error_and_a_fault() {
     let client = JobServiceClient::new(Dispatching {
         sent: Mutex::new(Vec::new()),
     });
-    assert!(matches!(
-        block_on(client.export_status("gone".to_owned())),
-        Err(CallError::Operation(JobError::NotFound))
-    ));
-    let missing = block_on(client.start_export(ExportRequest {
-        folder: "missing".to_owned(),
-    }));
-    assert!(matches!(
-        missing,
-        Err(CallError::Operation(JobError::NotFound))
-    ));
-    assert!(matches!(
-        block_on(client.export_status(String::new())),
-        Err(CallError::Operation(JobError::NotFound))
-    ));
+    assert!(
+        matches!(block_on(client.export_status("gone".to_owned())), Err(CallError::Operation(error)) if matches!(&*error, JobErrorDraft::NotFound))
+    );
+    let missing = block_on(
+        client.start_export(
+            ExportRequestDraft {
+                folder: "missing".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    );
+    assert!(
+        matches!(missing, Err(CallError::Operation(error)) if matches!(&*error, JobErrorDraft::NotFound))
+    );
+    assert!(
+        matches!(block_on(client.export_status(String::new())), Err(CallError::Operation(error)) if matches!(&*error, JobErrorDraft::NotFound))
+    );
     let faulted = block_on(client.cancel_export("gone".to_owned()));
-    assert!(matches!(
-        faulted,
-        Err(CallError::Operation(JobError::NotFound))
-    ));
+    assert!(
+        matches!(faulted, Err(CallError::Operation(error)) if matches!(&*error, JobErrorDraft::NotFound))
+    );
 }
 
 #[test]

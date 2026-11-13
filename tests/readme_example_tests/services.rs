@@ -151,18 +151,22 @@ impl BillingService<BillingContext> for BillingBackEnd {
     ) -> Result<OpenBalanceResponse, BalanceError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(BalanceError::InsufficientBalance { shortfall: 1 })
+            Err(BalanceErrorDraft::InsufficientBalance { shortfall: 1 }
+                .validate()
+                .unwrap())
         } else {
-            Ok(OpenBalanceResponse {
+            Ok(OpenBalanceResponseDraft {
                 open_invoices: u32::try_from(seen).unwrap_or(0),
                 is_post_paid: true,
-            })
+            }
+            .validate()
+            .unwrap())
         }
     }
 
     async fn sweep(&self, _ctx: &BillingContext) -> Result<OpenBalanceResponse, BalanceError> {
         ready(()).await;
-        Err(BalanceError::DbError)
+        Err(BalanceErrorDraft::DbError.validate().unwrap())
     }
 
     async fn void_invoice(
@@ -172,10 +176,12 @@ impl BillingService<BillingContext> for BillingBackEnd {
         invoice_id: String,
     ) -> Result<OpenBalanceResponse, BalanceError> {
         let seen = ready(customer_id.len() + invoice_id.len()).await;
-        Ok(OpenBalanceResponse {
+        Ok(OpenBalanceResponseDraft {
             open_invoices: u32::try_from(seen).unwrap_or(0),
             is_post_paid: false,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -491,9 +497,11 @@ where
 
 /// The customer the sample calls are made for.
 fn asking() -> OpenBalanceRequest {
-    OpenBalanceRequest {
+    OpenBalanceRequestDraft {
         customer_id: "acme".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The invoices an operation answered with, and `u32::MAX` where it answered its declared error.

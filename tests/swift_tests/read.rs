@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use crate::swift_key_number::integer_key_bound;
 use crate::swift_plain_enum::{plain_enum_read, plain_enum_reads};
 use crate::tests::{
-    FlattenedExtra, adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift,
-    by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
+    FlattenedExtra, FlattenedExtraDraft, adjacent_tagged_swift, all_widths_swift, by_bool_swift,
+    by_enum_swift, by_u32_swift, correlation_id_swift, envelope_swift, external_tagged_swift,
     flattened_extra_swift, internal_tagged_swift, reserved_member_swift, reserved_members_swift,
     status_swift, tuple_point_swift, untagged_swift, user_data_swift, window_request_swift,
     with_flatten_swift, with_nullable_swift,
 };
 use crate::validate::{
-    Parcel, freight_swift, inspection_swift, manifest_swift, parcel_swift, pier_swift,
+    Parcel, ParcelDraft, freight_swift, inspection_swift, manifest_swift, parcel_swift, pier_swift,
     reading_swift, sealed_swift,
 };
 use crate::validate::{Slug, marker_swift, routing_swift, sealed_slug_swift, slug_swift};
@@ -178,8 +178,8 @@ pub struct Jaws {
     pub pair: [u8; 2],
 }
 
-fn with_a_rating(value: &Rating) -> Result<(), Vec<String>> {
-    if matches!(value, Rating::Low) {
+fn with_a_rating(value: &RatingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RatingDraft::Low) {
         return Err(vec!["a low rating is not carried".to_owned()]);
     }
     Ok(())
@@ -862,16 +862,18 @@ fn a_plain_enum_reads_a_string_or_an_object_of_one_key_and_one_with_a_check_judg
 
 #[test]
 fn every_read_struct_is_built_and_written_by_serde() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "A".to_owned(),
-    };
-    let flattened = FlattenedExtra {
+    }
+    .validate()
+    .unwrap();
+    let flattened = FlattenedExtraDraft {
         reason: "r".to_owned(),
     };
     assert_eq!(
-        serde_json::to_value(Mooring {
+        serde_json::to_value(MooringDraft {
             berth_note: None,
             held_parcel: None,
             spare_note: None,
@@ -881,15 +883,15 @@ fn every_read_struct_is_built_and_written_by_serde() {
         serde_json::json!({ "berthNote": null, "heldParcel": null })
     );
     assert_eq!(
-        serde_json::to_value(Anchorage {
+        serde_json::to_value(AnchorageDraft {
             anchor_note: None,
-            flattened,
+            flattened: flattened.validate().unwrap(),
             held_parcel: None,
         })
         .unwrap(),
         serde_json::json!({ "anchorNote": null, "reason": "r", "heldParcel": null })
     );
-    let stowage = Stowage {
+    let stowage = StowageDraft {
         by_deck: HashMap::from([(-1, parcel.clone())]),
         by_number: HashMap::from([(7, parcel.clone())]),
         deck_pair: ("port".to_owned(), parcel.clone()),
@@ -904,7 +906,7 @@ fn every_read_struct_is_built_and_written_by_serde() {
     assert_eq!(written["deckPair"][1]["label"], "A");
     assert_eq!(written["maybeEach"][0], serde_json::Value::Null);
     assert_eq!(
-        serde_json::to_value(Berthed {
+        serde_json::to_value(BerthedDraft {
             parcel: parcel.clone(),
             quay: "north".to_owned(),
         })
@@ -912,11 +914,11 @@ fn every_read_struct_is_built_and_written_by_serde() {
         "A"
     );
     assert_eq!(
-        serde_json::to_value(Consigned("c".to_owned(), parcel)).unwrap()[1]["label"],
+        serde_json::to_value(ConsignedDraft("c".to_owned(), parcel)).unwrap()[1]["label"],
         "A"
     );
     assert_eq!(
-        serde_json::to_value(Idle).unwrap(),
+        serde_json::to_value(IdleDraft).unwrap(),
         serde_json::json!({}),
         "a unit struct is written as an empty object"
     );
@@ -924,69 +926,69 @@ fn every_read_struct_is_built_and_written_by_serde() {
 
 #[test]
 fn every_read_enum_is_built_and_written_by_serde() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "A".to_owned(),
     };
     assert_eq!(
         serde_json::to_value([
-            Carried::Boxed(parcel.clone()),
-            Carried::Listed(Vec::new()),
-            Carried::Loose {
+            CarriedDraft::Boxed(parcel.clone().validate().unwrap()),
+            CarriedDraft::Listed(Vec::new()),
+            CarriedDraft::Loose {
                 loose_label: "l".to_owned(),
             },
-            Carried::Split("s".to_owned(), parcel.clone()),
-            Carried::Unladen,
+            CarriedDraft::Split("s".to_owned(), parcel.clone().validate().unwrap()),
+            CarriedDraft::Unladen,
         ])
         .unwrap()[2],
         serde_json::json!({ "Loose": { "looseLabel": "l" } })
     );
     assert_eq!(
         serde_json::to_value([
-            Lifted::Boxed(parcel.clone()),
-            Lifted::Loose {
+            LiftedDraft::Boxed(parcel.clone().validate().unwrap()),
+            LiftedDraft::Loose {
                 loose_label: "l".to_owned(),
             },
-            Lifted::Unladen,
+            LiftedDraft::Unladen,
         ])
         .unwrap()[2],
         serde_json::json!({ "kind": "Unladen" })
     );
     assert_eq!(
         serde_json::to_value([
-            Hauled::Boxed(parcel.clone()),
-            Hauled::Loose {
+            HauledDraft::Boxed(parcel.clone().validate().unwrap()),
+            HauledDraft::Loose {
                 loose_label: "l".to_owned(),
             },
-            Hauled::Split("s".to_owned(), parcel),
-            Hauled::Unladen,
+            HauledDraft::Split("s".to_owned(), parcel.validate().unwrap()),
+            HauledDraft::Unladen,
         ])
         .unwrap()[1],
         serde_json::json!({ "kind": "Loose", "held": { "looseLabel": "l" } })
     );
-    assert_eq!(Rating::High.validate(), Ok(()));
+    assert_eq!(RatingDraft::High.validation_issues(), Vec::<String>::new());
     assert_eq!(
-        Rating::Low.validate(),
-        Err(vec!["a low rating is not carried".to_owned()])
+        RatingDraft::Low.validation_issues(),
+        vec!["a low rating is not carried".to_owned()]
     );
 }
 
 #[test]
 fn the_untagged_enum_that_holds_a_bounded_brand_is_built_and_written_by_serde() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: vec!["x".to_owned()],
         label: "A".to_owned(),
     };
     assert_eq!(
         serde_json::to_value([
-            Sorted::Brief("abc".to_owned()),
-            Sorted::Coded(Slug::new("abcd".to_owned()).unwrap()),
-            Sorted::Counted { sorted_count: 1 },
-            Sorted::Listed(vec![parcel.clone()]),
-            Sorted::Whole(parcel),
-            Sorted::Wordy("ABCDEF".to_owned()),
+            SortedDraft::Brief("abc".to_owned()),
+            SortedDraft::Coded(Slug::new("abcd".to_owned()).unwrap()),
+            SortedDraft::Counted { sorted_count: 1 },
+            SortedDraft::Listed(vec![parcel.clone().validate().unwrap()]),
+            SortedDraft::Whole(parcel.validate().unwrap()),
+            SortedDraft::Wordy("ABCDEF".to_owned()),
         ])
         .unwrap()[5],
         "ABCDEF"
@@ -997,7 +999,7 @@ fn the_untagged_enum_that_holds_a_bounded_brand_is_built_and_written_by_serde() 
 /// items, at each level, at the coding path of the array. A list of any length is read as it was.
 #[test]
 fn a_fixed_array_is_read_from_an_array_of_its_length() {
-    let jaws = Jaws {
+    let jaws = JawsDraft {
         grid: [[1, 2]; 3],
         listed: vec![3],
         pair: [4, 5],

@@ -19,15 +19,16 @@ use super::corrected_options_models::{
 #[cfg(feature = "zod")]
 use super::flattened_models::Ensign;
 use super::flattened_models::{
-    BELTING, BOWLINING, BROACHING, Belting, Bending, Bowlining, Brailing, Broaching, CHAFING,
-    CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING, DRESSING_TAGS,
-    Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag, Fraying, GAFFING,
-    GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching, Jibing, Knotting,
-    LOCKER, Lanyarding, Luffing, MARLINE, Netting, PAYLOAD, PENNANT_TAGS, Pennant, Quaying,
-    Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING, STROPPING, STRUCK, SWAYING, Scarfing,
-    Scudding, Seizing, Semaphore, Sheeting, Snubbing, Splicing, Stowing, Striking, Stropping,
-    Swaying, Tacking, UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping,
-    Yawing, read_of,
+    BELTING, BOWLINING, BROACHING, Belting, BeltingDraft, Bending, Bowlining, Brailing, Broaching,
+    CHAFING, CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING,
+    DRESSING_TAGS, Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag,
+    Fraying, GAFFING, GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching,
+    JibingDraft, KnottingDraft, LOCKER, Lanyarding, Luffing, MARLINE, NettingDraft, PAYLOAD,
+    PENNANT_TAGS, Pennant, QuayingDraft, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING,
+    STROPPING, STRUCK, SWAYING, Scarfing, Scudding, SeizingDraft, Semaphore, SheetingDraft,
+    Snubbing, SplicingDraft, Stowing, StowingDraft, Striking, Stropping, Swaying, Tacking,
+    TackingDraft, UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping,
+    YawingDraft, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
@@ -40,10 +41,11 @@ use super::flattened_models::{
     stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
     yawing_kotlin,
 };
+#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::kotlin_plain_enum::plain_enum_unjudged;
 use super::read::{kept, serializers};
-use super::tuple_variants_models::Labelling;
+use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
     bridling_kotlin, clapping_kotlin, fiddling_kotlin, grommeting_kotlin, slipping_kotlin,
@@ -298,13 +300,13 @@ pub enum ReservedMember {
 
 #[test]
 fn test_every_declared_type_is_constructible() {
-    let window_request = WindowRequest {
+    let window_request = WindowRequestDraft {
         conversation_id: "abc".to_owned(),
         limit: Some(10_i32),
     };
     assert_eq!(window_request.limit, Some(10_i32));
 
-    let widths = Widths {
+    let widths = WidthsDraft {
         arch_signed: 0,
         double: 0.0,
         flag: true,
@@ -323,133 +325,152 @@ fn test_every_declared_type_is_constructible() {
     };
     assert_eq!(widths.text, "");
 
-    let statuses = [Status::Active, Status::Inactive, Status::Pending];
+    let statuses = [
+        StatusDraft::Active,
+        StatusDraft::Inactive,
+        StatusDraft::Pending,
+    ];
     assert_eq!(statuses.len(), 3);
 
     let errors = [
-        WindowError::NotFound,
-        WindowError::RateLimited {
+        WindowErrorDraft::NotFound,
+        WindowErrorDraft::RateLimited {
             retry_after_ms: 500,
         },
     ];
     assert_eq!(errors.len(), 2);
 
     let dynamic_values = [
-        DynamicValue::Flag(true),
-        DynamicValue::Nothing,
-        DynamicValue::Number(7),
+        DynamicValueDraft::Flag(true),
+        DynamicValueDraft::Nothing,
+        DynamicValueDraft::Number(7),
     ];
     assert_eq!(dynamic_values.len(), 3);
 
     let external_tagged = [
-        ExternalTagged::Ping { nonce: 1_i32 },
-        ExternalTagged::Pong { nonce: 2_i32 },
+        ExternalTaggedDraft::Ping { nonce: 1_i32 },
+        ExternalTaggedDraft::Pong { nonce: 2_i32 },
     ];
     assert_eq!(external_tagged.len(), 2);
 
-    let date_values = [DateValue::Epoch(0), DateValue::Iso(String::new())];
+    let date_values = [DateValueDraft::Epoch(0), DateValueDraft::Iso(String::new())];
     assert_eq!(date_values.len(), 2);
 
-    let holds_tuple = HoldsTuple {
+    let holds_tuple = HoldsTupleDraft {
         coords: ("a".to_owned(), 7),
     };
     assert_eq!(holds_tuple.coords.1, 7);
 
-    let slots = [Slot::North, Slot::South];
+    let slots = [SlotDraft::North, SlotDraft::South];
     assert_eq!(slots.len(), 2);
+}
 
-    let alias_key: SlotAliasKey = Slot::North;
-    assert_eq!(alias_key, Slot::North);
+#[test]
+fn test_every_declared_type_is_constructible_under_a_key_a_choice_and_an_audit() {
+    let alias_key: SlotAliasKey = SlotDraft::North.validate().unwrap();
+    assert_eq!(alias_key, SlotDraft::North.validate().unwrap());
 
-    let map_keys = MapKeys {
+    let map_keys = MapKeysDraft {
         by_number: HashMap::from([(1_i32, "one".to_owned())]),
-        by_slot: HashMap::from([(Slot::North, "n".to_owned())]),
+        by_slot: HashMap::from([(SlotDraft::North.validate().unwrap(), "n".to_owned())]),
     };
     assert_eq!(map_keys.by_number.len(), 1);
 
-    let correlation_id = CorrelationId::new("abc-123".to_owned()).unwrap();
-    assert_eq!(correlation_id.as_inner(), "abc-123");
+    let correlation_id = correlation_id("abc-123");
+    assert_eq!(correlation_id_text(&correlation_id), "abc-123");
 
-    let widget = Widget {
+    let widget = WidgetDraft {
         label: "a widget".to_owned(),
     };
     assert_eq!(widget.label, "a widget");
 
-    let wrapper = Wrapper {
+    let wrapper = WrapperDraft {
         value: "wrapped".to_owned(),
     };
     assert_eq!(wrapper.value, "wrapped");
 
-    let choices = [Choice::Value("x".to_owned()), Choice::<String>::None];
+    let choices = [
+        ChoiceDraft::Value("x".to_owned()),
+        ChoiceDraft::<String>::None,
+    ];
     assert_eq!(choices.len(), 2);
 
-    let audit = Audit {
+    let audit = AuditDraft {
         id: "a".to_owned(),
-        stamp: Stamp {
+        stamp: StampDraft {
             created_at: "2026-09-21T13:45:30Z".to_owned(),
             updated_at: None,
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(audit.id, "a");
 
-    let optional_audit = OptionalAudit {
+    let optional_audit = OptionalAuditDraft {
         id: "a".to_owned(),
         stamp: None,
     };
     assert_eq!(optional_audit.stamp, None);
 
-    let tagged_record = TaggedRecord {
+    let tagged_record = TaggedRecordDraft {
         tags: HashMap::from([("color".to_owned(), "red".to_owned())]),
     };
     assert_eq!(tagged_record.tags.len(), 1);
 
-    let simple_choices = [SimpleChoice::Value("x".to_owned()), SimpleChoice::None];
+    let simple_choices = [
+        SimpleChoiceDraft::Value("x".to_owned()),
+        SimpleChoiceDraft::None,
+    ];
     assert_eq!(simple_choices.len(), 2);
 }
 
 #[test]
 fn test_every_generic_enum_variant_is_constructible() {
     let adjacent_choices = [
-        AdjacentChoice::Value("y".to_owned()),
-        AdjacentChoice::<String>::None,
+        AdjacentChoiceDraft::Value("y".to_owned()),
+        AdjacentChoiceDraft::<String>::None,
     ];
     assert_eq!(adjacent_choices.len(), 2);
 
     let untagged_choices = [
-        UntaggedChoice::Text("t".to_owned()),
-        UntaggedChoice::Value("z".to_owned()),
+        UntaggedChoiceDraft::Text("t".to_owned()),
+        UntaggedChoiceDraft::Value("z".to_owned()),
     ];
     assert_eq!(untagged_choices.len(), 2);
 
     let eithers = [
-        Either::Left("l".to_owned()),
-        Either::<String, i64>::Right(7),
+        EitherDraft::Left("l".to_owned()),
+        EitherDraft::<String, i64>::Right(7),
     ];
     assert_eq!(eithers.len(), 2);
 
     let many_choices = [
-        ManyChoice::List(vec!["a".to_owned()]),
-        ManyChoice::Maybe(Some("b".to_owned())),
+        ManyChoiceDraft::List(vec!["a".to_owned()]),
+        ManyChoiceDraft::Maybe(Some("b".to_owned())),
     ];
     assert_eq!(many_choices.len(), 2);
 
-    let pair = GenericPair("p".to_owned(), 3_u32);
+    let pair = GenericPairDraft("p".to_owned(), 3_u32);
     assert_eq!(pair.1, 3_u32);
 
-    let tagged = Tagged {
+    let tagged = TaggedDraft {
         id: "a".to_owned(),
-        stamp: Stamp {
+        stamp: StampDraft {
             created_at: "2026-09-21T13:45:30Z".to_owned(),
             updated_at: None,
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(tagged.id, "a");
 
-    let envelope = Envelope {
+    let envelope = EnvelopeDraft {
         id: "e".to_owned(),
-        body: Wrapper {
+        body: WrapperDraft {
             value: "wrapped".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(envelope.body.value, "wrapped");
 }
@@ -457,7 +478,7 @@ fn test_every_generic_enum_variant_is_constructible() {
 #[test]
 #[cfg(feature = "chrono")]
 fn test_chrono_type_is_constructible() {
-    let dates = Dates {
+    let dates = DatesDraft {
         plain_date: chrono::NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
         zoned_ms: chrono::DateTime::from_timestamp(0, 0).unwrap(),
     };
@@ -467,7 +488,7 @@ fn test_chrono_type_is_constructible() {
 #[test]
 #[cfg(feature = "mongodb")]
 fn test_object_id_type_is_constructible() {
-    let has_id = HasId {
+    let has_id = HasIdDraft {
         id: ObjectId::new(),
     };
     assert_ne!(has_id.id.to_hex(), String::new());
@@ -544,7 +565,7 @@ fn test_struct_rename_and_optional() {
 
 #[test]
 fn test_unit_struct_is_an_object() {
-    let ping = Ping;
+    let ping = PingDraft;
     assert_eq!(ping, ping.clone());
     let kotlin = renumbered(&ping_kotlin::kotlin_definition());
     assert!(
@@ -891,35 +912,35 @@ fn test_flatten_map() {
 /// optional member beside a flattened one with that member absent.
 #[test]
 fn every_flattened_fixture_is_written_as_serde_writes_it() {
-    let labelling = || Labelling {
+    let labelling = || LabellingDraft {
         label: "n".to_owned(),
     };
     assert_eq!(
-        serde_json::to_string(&Netting {
+        serde_json::to_string(&NettingDraft {
             rest: HashMap::from([("north".to_owned(), 2)]),
         })
         .unwrap(),
         r#"{"north":2}"#
     );
     assert_eq!(
-        serde_json::to_string(&Knotting {
-            labelling: labelling(),
+        serde_json::to_string(&KnottingDraft {
+            labelling: labelling().validate().unwrap(),
             note: "a".to_owned(),
         })
         .unwrap(),
         r#"{"label":"n","note":"a"}"#
     );
     assert_eq!(
-        serde_json::to_string(&Splicing {
-            labelling: labelling(),
+        serde_json::to_string(&SplicingDraft {
+            labelling: labelling().validate().unwrap(),
             spare: None
         })
         .unwrap(),
         r#"{"label":"n"}"#
     );
     assert_eq!(
-        serde_json::to_string(&Seizing {
-            labelling: labelling(),
+        serde_json::to_string(&SeizingDraft {
+            labelling: labelling().validate().unwrap(),
             spare: None
         })
         .unwrap(),
@@ -1147,6 +1168,7 @@ fn serde_reads_an_optional_flattened_map_under_a_function_from_what_it_answers()
         serde_json::from_str::<EmptiedLocker>(payload)
             .unwrap()
             .counts
+            .clone()
     });
     assert_eq!(emptied, [None, None, None, None, None]);
 }
@@ -1378,12 +1400,21 @@ fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
 /// from the object, and as `None` wherever it does not.
 #[test]
 fn serde_reads_an_optional_struct_with_a_flattened_member_wherever_it_reads() {
-    let read = |json: &str| serde_json::from_str::<Scarfing>(json).unwrap().sheeting;
-    let held = Sheeting {
-        labelling: Labelling {
-            label: "n".to_owned(),
-        },
+    let read = |json: &str| {
+        serde_json::from_str::<Scarfing>(json)
+            .unwrap()
+            .sheeting
+            .clone()
     };
+    let held = SheetingDraft {
+        labelling: LabellingDraft {
+            label: "n".to_owned(),
+        }
+        .validate()
+        .unwrap(),
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         SCARFING.map(read),
         [Some(held), None, None],
@@ -1592,7 +1623,7 @@ where
 fn assert_belted(bay: &Tacking) {
     let belted = BELTING.map(|payload| {
         serde_json::from_str::<Belting>(payload)
-            .map(|read| read.tacking)
+            .map(|read| read.tacking.clone())
             .map_err(|refused| refused.to_string())
     });
     assert_eq!(
@@ -1612,15 +1643,9 @@ fn assert_belted(bay: &Tacking) {
 /// variant's entry among them; an optional enum reads no value.
 #[test]
 fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
-    let bay = || Tacking::Bay {
-        label: "n".to_owned(),
-    };
-    let dock = || Tacking::Dock {
-        label: "s".to_owned(),
-    };
     let stowed: Vec<_> = STOWING
         .iter()
-        .map(|payload| serde_json::from_str::<Stowing>(payload).map(|read| read.tacking))
+        .map(|payload| serde_json::from_str::<Stowing>(payload).map(|read| read.tacking.clone()))
         .collect();
     assert_eq!(
         stowed[..6]
@@ -1632,8 +1657,8 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
             Some(&bay()),
             None,
             None,
-            Some(&Tacking::Calm),
-            Some(&Tacking::Held("x".to_owned()))
+            Some(&TackingDraft::Calm.validate().unwrap()),
+            Some(&TackingDraft::Held("x".to_owned()).validate().unwrap())
         ]
     );
     assert_refused_keys(&stowed, &[(2, "north"), (3, "Dock")]);
@@ -1644,7 +1669,7 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
     assert_belted(&bay());
     let heaved = HEAVING.map(|payload| {
         let read: Heaving = serde_json::from_str(payload).unwrap();
-        (read.tacking, read.tally.keys)
+        (read.tacking.clone(), read.tally.keys.clone())
     });
     assert_eq!(
         heaved,
@@ -1656,9 +1681,9 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
         ]
     );
     let cleated = CLEATING.map(|payload| {
-        serde_json::from_str::<Cleating>(payload).map(|read| (read.jibing, read.tally.keys))
+        serde_json::from_str::<Cleating>(payload)
+            .map(|read| (read.jibing.clone(), read.tally.keys.clone()))
     });
-    let north = || vec!["north".to_owned()];
     assert_eq!(
         cleated[..2]
             .iter()
@@ -1666,15 +1691,19 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
             .collect::<Vec<_>>(),
         [
             Some(&(
-                Jibing::Jetty {
+                JibingDraft::Jetty {
                     label: "n".to_owned()
-                },
+                }
+                .validate()
+                .unwrap(),
                 north()
             )),
             Some(&(
-                Jibing::OpenBay {
+                JibingDraft::OpenBay {
                     label: "n".to_owned()
-                },
+                }
+                .validate()
+                .unwrap(),
                 north()
             )),
         ]
@@ -1683,25 +1712,34 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
         cleated[2].as_ref().unwrap_err().to_string(),
         "no variant of enum Jibing found in flattened data at line 1 column 35"
     );
+}
+
+#[test]
+fn serde_hands_a_flattened_enum_under_an_alias_and_a_holder_its_entry() {
     let scudding: Scudding = serde_json::from_str(SCUDDING).unwrap();
     assert_eq!(
         (
-            scudding.hatch,
-            scudding.labelling.label,
-            scudding.tally.keys
+            scudding.hatch.clone(),
+            scudding.labelling.label.clone(),
+            scudding.tally.keys.clone()
         ),
         (bay(), "m".to_owned(), north())
     );
     let stowing: Stowing = serde_json::from_str(UNDER_AN_ALIAS[0]).unwrap();
     assert_eq!(stowing.tacking, dock());
     let heaving: Heaving = serde_json::from_str(UNDER_AN_ALIAS[1]).unwrap();
-    assert_eq!((heaving.tacking, heaving.tally.keys), (dock(), north()));
+    assert_eq!(
+        (heaving.tacking.clone(), heaving.tally.keys.clone()),
+        (dock(), north())
+    );
     let luffing: Luffing = serde_json::from_str(STOWING[0]).unwrap();
     assert_eq!(
         luffing.quaying,
-        Quaying::Bay {
+        QuayingDraft::Bay {
             label: "n".to_owned()
         }
+        .validate()
+        .unwrap()
     );
 }
 
@@ -1715,7 +1753,7 @@ fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_o
     assert_eq!(chafing.tally.keys, ["north"]);
     let frayed = FRAYING.map(|payload| {
         serde_json::from_str::<Fraying>(payload)
-            .map(|read| read.labelling.label)
+            .map(|read| read.labelling.label.clone())
             .map_err(|refused| refused.to_string())
     });
     assert_eq!(
@@ -1877,38 +1915,41 @@ fn serde_writes_a_flattened_enums_unit_variant_as_its_name_over_null() {
     let note = || "a".to_owned();
     for (tacking, expected) in [
         (
-            Tacking::Bay {
+            TackingDraft::Bay {
                 label: "n".to_owned(),
             },
             r#"{"note":"a","Bay":{"label":"n"}}"#,
         ),
-        (Tacking::Calm, r#"{"note":"a","Calm":null}"#),
+        (TackingDraft::Calm, r#"{"note":"a","Calm":null}"#),
         (
-            Tacking::Dock {
+            TackingDraft::Dock {
                 label: "s".to_owned(),
             },
             r#"{"note":"a","Dock":{"label":"s"}}"#,
         ),
-        (Tacking::Held("x".to_owned()), r#"{"note":"a","Held":"x"}"#),
+        (
+            TackingDraft::Held("x".to_owned()),
+            r#"{"note":"a","Held":"x"}"#,
+        ),
     ] {
         let written = [
-            serde_json::to_string(&Stowing {
+            serde_json::to_string(&StowingDraft {
                 note: note(),
-                tacking: tacking.clone(),
+                tacking: tacking.clone().validate().unwrap(),
             }),
-            serde_json::to_string(&Belting {
+            serde_json::to_string(&BeltingDraft {
                 note: note(),
-                tacking: Some(tacking.clone()),
+                tacking: Some(tacking.clone().validate().unwrap()),
             }),
-            serde_json::to_string(&Yawing {
+            serde_json::to_string(&YawingDraft {
                 note: note(),
-                tacking,
+                tacking: tacking.validate().unwrap(),
             }),
         ]
         .map(Result::unwrap);
         assert_eq!(written, [expected; 3]);
     }
-    let belting = Belting {
+    let belting = BeltingDraft {
         note: note(),
         tacking: None,
     };
@@ -2327,7 +2368,7 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
         )
     );
     assert_eq!(
-        serde_json::to_value(ReservedMembers {
+        serde_json::to_value(ReservedMembersDraft {
             class: "c".to_owned(),
             r#in: "i".to_owned(),
             r#type: "t".to_owned(),
@@ -2338,11 +2379,51 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMember::Default,
-            ReservedMember::In,
-            ReservedMember::Other
+            ReservedMemberDraft::Default,
+            ReservedMemberDraft::In,
+            ReservedMemberDraft::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])
     );
+}
+
+fn bay() -> Tacking {
+    TackingDraft::Bay {
+        label: "n".to_owned(),
+    }
+    .validate()
+    .unwrap()
+}
+
+fn dock() -> Tacking {
+    TackingDraft::Dock {
+        label: "s".to_owned(),
+    }
+    .validate()
+    .unwrap()
+}
+
+fn north() -> Vec<String> {
+    vec!["north".to_owned()]
+}
+
+#[cfg(feature = "serde")]
+fn correlation_id(text: &str) -> CorrelationId {
+    CorrelationId::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn correlation_id(text: &str) -> CorrelationId {
+    CorrelationIdDraft(text.to_owned()).validate().unwrap()
+}
+
+#[cfg(feature = "serde")]
+const fn correlation_id_text(held: &CorrelationId) -> &str {
+    held.as_inner().as_str()
+}
+
+#[cfg(not(feature = "serde"))]
+fn correlation_id_text(held: &CorrelationId) -> &str {
+    held.0.as_str()
 }

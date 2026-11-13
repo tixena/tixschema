@@ -156,31 +156,39 @@ where
 }
 
 fn external_value() -> ExternalFieldCasing {
-    ExternalFieldCasing::Made {
+    ExternalFieldCasingDraft::Made {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 fn internal_value() -> InternalFieldCasing {
-    InternalFieldCasing::Made {
+    InternalFieldCasingDraft::Made {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 fn adjacent_value() -> AdjacentFieldCasing {
-    AdjacentFieldCasing::Made {
+    AdjacentFieldCasingDraft::Made {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 fn untagged_value() -> UntaggedFieldCasing {
-    UntaggedFieldCasing::Made {
+    UntaggedFieldCasingDraft::Made {
         another_one: 2,
         my_field: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -230,15 +238,15 @@ fn untagged_members_reach_the_wire_cased() {
 #[test]
 fn precedence_reaches_the_wire_as_serde_resolves_it() {
     assert_eq!(
-        serde_json::to_value(PrecedenceFieldCasing::Marked { my_field: 1 }).unwrap(),
+        serde_json::to_value(PrecedenceFieldCasingDraft::Marked { my_field: 1 }).unwrap(),
         serde_json::json!({ "Marked": { "MyField": 1_i64 } })
     );
     assert_eq!(
-        serde_json::to_value(PrecedenceFieldCasing::Plain { my_field: 1 }).unwrap(),
+        serde_json::to_value(PrecedenceFieldCasingDraft::Plain { my_field: 1 }).unwrap(),
         serde_json::json!({ "Plain": { "myField": 1_i64 } })
     );
     assert_eq!(
-        serde_json::to_value(PrecedenceFieldCasing::Renamed { my_field: 1 }).unwrap(),
+        serde_json::to_value(PrecedenceFieldCasingDraft::Renamed { my_field: 1 }).unwrap(),
         serde_json::json!({ "Renamed": { "explicit_key": 1_i64 } })
     );
 }
@@ -246,7 +254,7 @@ fn precedence_reaches_the_wire_as_serde_resolves_it() {
 #[test]
 fn the_two_container_rules_reach_the_wire_independently() {
     assert_eq!(
-        serde_json::to_value(IndependentCasing::MadeVariant { my_field: 1 }).unwrap(),
+        serde_json::to_value(IndependentCasingDraft::MadeVariant { my_field: 1 }).unwrap(),
         serde_json::json!({ "MADE_VARIANT": { "myField": 1_i64 } })
     );
 }
@@ -254,7 +262,7 @@ fn the_two_container_rules_reach_the_wire_independently() {
 #[test]
 fn variant_name_casing_leaves_members_at_their_idents_on_the_wire() {
     assert_eq!(
-        serde_json::to_value(VariantNameCasingOnly::MadeVariant { my_field: 1 }).unwrap(),
+        serde_json::to_value(VariantNameCasingOnlyDraft::MadeVariant { my_field: 1 }).unwrap(),
         serde_json::json!({ "madeVariant": { "my_field": 1_i64 } })
     );
 }
@@ -262,7 +270,7 @@ fn variant_name_casing_leaves_members_at_their_idents_on_the_wire() {
 #[test]
 fn a_tuple_variant_carries_no_member_to_case() {
     assert_eq!(
-        serde_json::to_value(TupleSlotCasing::Made(1)).unwrap(),
+        serde_json::to_value(TupleSlotCasingDraft::Made(1)).unwrap(),
         serde_json::json!({ "Made": 1_i64 })
     );
 }
@@ -270,7 +278,7 @@ fn a_tuple_variant_carries_no_member_to_case() {
 #[test]
 fn a_plain_variant_carries_no_member_to_case() {
     assert_eq!(
-        serde_json::to_value(PlainVariantCasing::AlphaOne).unwrap(),
+        serde_json::to_value(PlainVariantCasingDraft::AlphaOne).unwrap(),
         serde_json::json!("AlphaOne")
     );
     assert_eq!(
@@ -458,9 +466,9 @@ fn untagged_json_schema_names_the_keys_serde_wrote() {
 fn precedence_json_schema_matches_serde() {
     let schema = PrecedenceFieldCasing::json_schema();
     for value in [
-        PrecedenceFieldCasing::Marked { my_field: 1 },
-        PrecedenceFieldCasing::Plain { my_field: 1 },
-        PrecedenceFieldCasing::Renamed { my_field: 1 },
+        PrecedenceFieldCasingDraft::Marked { my_field: 1 },
+        PrecedenceFieldCasingDraft::Plain { my_field: 1 },
+        PrecedenceFieldCasingDraft::Renamed { my_field: 1 },
     ] {
         let payload = serde_json::to_value(&value).unwrap();
         assert!(
@@ -473,7 +481,7 @@ fn precedence_json_schema_matches_serde() {
 #[test]
 fn variant_name_casing_json_schema_leaves_members_at_their_idents() {
     let schema = VariantNameCasingOnly::json_schema();
-    let value = VariantNameCasingOnly::MadeVariant { my_field: 1 };
+    let value = VariantNameCasingOnlyDraft::MadeVariant { my_field: 1 };
     assert!(closed_document_accepts(
         &schema,
         &serde_json::to_value(&value).unwrap()

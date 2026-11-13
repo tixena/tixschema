@@ -20,12 +20,7 @@ use crate::features::model_schema_prop::LiteralValue;
 use crate::features::model_schema_prop::ModelSchemaPropMeta;
 #[cfg(feature = "zod")]
 use crate::features::model_schema_prop::{FunctionName, limit_number, limit_text};
-#[cfg(any(
-    feature = "zod",
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift"
-))]
+#[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
 use crate::utils::NumberKey;
 #[cfg(any(
     feature = "zod",
@@ -311,9 +306,8 @@ pub enum VariantKind {
 }
 
 #[cfg(any(
-    feature = "zod",
+    all(feature = "serde", feature = "zod"),
     feature = "dart",
-    feature = "kotlin",
     feature = "swift"
 ))]
 impl VariantKind {
@@ -447,12 +441,7 @@ impl FieldDefType {
 
     /// The least and the most value of an integer type, as decimal digits, and `None` for every
     /// other type.
-    #[cfg(any(
-        feature = "zod",
-        feature = "dart",
-        feature = "kotlin",
-        feature = "swift"
-    ))]
+    #[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
     const fn integer_text_range(&self) -> Option<(&'static str, &'static str)> {
         const I64: (&str, &str) = ("-9223372036854775808", "9223372036854775807");
         const U64: (&str, &str) = ("0", "18446744073709551615");
@@ -514,12 +503,7 @@ impl FieldDefType {
     }
 
     /// The number serde reads a map key of this type as, where it is a number type.
-    #[cfg(any(
-        feature = "zod",
-        feature = "dart",
-        feature = "kotlin",
-        feature = "swift"
-    ))]
+    #[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
     pub const fn number_key(&self) -> Option<NumberKey> {
         match self.number_name() {
             Some(expected) => Some(NumberKey {
@@ -3120,7 +3104,7 @@ pub fn zod_buffered_issue() -> String {
 
 /// The check that reads the issues of a value serde reads from buffered content through
 /// [`zod_buffered_issue`], and leaves every other issue as it is.
-#[cfg(feature = "zod")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 pub fn zod_buffered() -> String {
     format!(
         ".superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, \

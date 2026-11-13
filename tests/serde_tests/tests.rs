@@ -193,26 +193,26 @@ fn member_rendering(surface: &str, key: &str) -> String {
 
 #[test]
 fn test_serde_types_constructible() {
-    let color = Color::Red;
-    assert!(matches!(color, Color::Red));
-    let event = Event::Deleted {
+    let color = ColorDraft::Red;
+    assert!(matches!(color, ColorDraft::Red));
+    let event = EventDraft::Deleted {
         user_id: String::new(),
     };
-    assert!(matches!(event, Event::Deleted { user_id: _user_id }));
-    let lowercase = Lowercase {
+    assert!(matches!(event, EventDraft::Deleted { user_id: _user_id }));
+    let lowercase = LowercaseDraft {
         field_one: String::new(),
         field_two: String::new(),
     };
     assert_eq!(lowercase.field_one, String::new());
-    let optional = OptionalFields {
+    let optional = OptionalFieldsDraft {
         another_optional: None,
         optional_field: None,
         required_field: String::new(),
     };
     assert_eq!(optional.required_field, String::new());
-    let status = Status::Active;
-    assert!(matches!(status, Status::Active));
-    let user = UserWithSerde {
+    let status = StatusDraft::Active;
+    assert!(matches!(status, StatusDraft::Active));
+    let user = UserWithSerdeDraft {
         created_at: String::new(),
         email: String::new(),
         first_name: String::new(),
@@ -221,28 +221,33 @@ fn test_serde_types_constructible() {
         user_id: String::new(),
     };
     assert_eq!(user.user_id, String::new());
-    let message = Message {
+    let message = MessageDraft {
         id: String::new(),
         reply_to: None,
     };
     assert!(message.reply_to.is_none());
-    let delivery = Delivery::Sent {
+    let delivery = DeliveryDraft::Sent {
         sent_at: String::new(),
     };
-    assert!(matches!(delivery, Delivery::Sent { sent_at: _sent_at }));
-    let envelope = Envelope {
-        body: Body::Reply {
+    assert!(matches!(
+        delivery,
+        DeliveryDraft::Sent { sent_at: _sent_at }
+    ));
+    let envelope = EnvelopeDraft {
+        body: BodyDraft::Reply {
             reply_to: String::new(),
-        },
+        }
+        .validate()
+        .unwrap(),
         id: String::new(),
     };
     assert!(matches!(
-        envelope.body,
-        Body::Reply {
+        &*envelope.body,
+        BodyDraft::Reply {
             reply_to: _reply_to
         }
     ));
-    let plain = PlainKeys {
+    let plain = PlainKeysDraft {
         reference: String::new(),
         user_id: String::new(),
     };
@@ -460,7 +465,7 @@ fn test_compliant_optionals_zod_keeps_undefined_union() {
 /// The guard exists so the wire form matches the schema: `None` must leave the key out.
 #[test]
 fn test_compliant_optionals_serialize_absent_and_parse_absent() {
-    let none = CompliantOptionals {
+    let none = CompliantOptionalsDraft {
         name: "n".to_owned(),
         note: None,
         tag: None,
@@ -469,9 +474,9 @@ fn test_compliant_optionals_serialize_absent_and_parse_absent() {
     assert_eq!(json, r#"{"name":"n"}"#);
 
     let parsed: CompliantOptionals = serde_json::from_str(r#"{"name":"n"}"#).unwrap();
-    assert_eq!(parsed, none);
+    assert_eq!(parsed, none.validate().unwrap());
 
-    let some = CompliantOptionals {
+    let some = CompliantOptionalsDraft {
         name: "n".to_owned(),
         note: Some("here".to_owned()),
         tag: None,
@@ -484,11 +489,13 @@ fn test_compliant_optionals_serialize_absent_and_parse_absent() {
 
 #[test]
 fn test_each_option_flavor_writes_one_shape_and_reads_both() {
-    let entry = IndexEntry {
+    let entry = IndexEntryDraft {
         name: "invoice.pdf".to_owned(),
         generation_token: None,
         template_id: None,
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         serde_json::to_string(&entry).unwrap(),
         r#"{"name":"invoice.pdf","templateId":null}"#
@@ -506,7 +513,7 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
     let both_keys_absent: IndexEntry = serde_json::from_str(r#"{"name":"invoice.pdf"}"#).unwrap();
     assert_eq!(both_keys_absent, entry);
 
-    let both_some = IndexEntry {
+    let both_some = IndexEntryDraft {
         name: "invoice.pdf".to_owned(),
         generation_token: Some("tok".to_owned()),
         template_id: Some("tmpl-1".to_owned()),
@@ -517,7 +524,7 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
     );
     let round_tripped: IndexEntry =
         serde_json::from_str(&serde_json::to_string(&both_some).unwrap()).unwrap();
-    assert_eq!(round_tripped, both_some);
+    assert_eq!(round_tripped, both_some.validate().unwrap());
 }
 
 #[test]
@@ -618,7 +625,7 @@ fn test_a_renamed_untagged_member_field_reaches_the_json_schema() {
 
 #[test]
 fn test_a_renamed_untagged_member_round_trips_through_its_closed_schema() {
-    let value = Body::Reply {
+    let value = BodyDraft::Reply {
         reply_to: "x".to_owned(),
     };
     let payload = serde_json::to_value(&value).unwrap();
@@ -646,7 +653,7 @@ fn test_a_renamed_untagged_member_round_trips_through_its_closed_schema() {
     );
 
     let back: Body = serde_json::from_value(payload).unwrap();
-    assert_eq!(back, value);
+    assert_eq!(back, value.validate().unwrap());
 }
 
 #[test]
@@ -680,12 +687,12 @@ fn test_identifier_legal_renamed_keys_stay_bare() {
 /// The key serde writes for a list-form `rename`, which the surfaces below all describe.
 #[test]
 fn test_a_list_form_rename_writes_the_name_both_directions_share() {
-    let value = ListFormRename { value: 5 };
+    let value = ListFormRenameDraft { value: 5 };
     let payload = serde_json::to_value(&value).unwrap();
     assert_eq!(payload, serde_json::json!({ "same_name": 5_u32 }));
 
     let back: ListFormRename = serde_json::from_value(payload).unwrap();
-    assert_eq!(back, value);
+    assert_eq!(back, value.validate().unwrap());
 }
 
 #[test]
@@ -720,7 +727,7 @@ fn test_a_list_form_rename_reaches_the_zod_schema() {
 
 #[test]
 fn test_a_list_form_rename_document_accepts_what_serde_writes() {
-    let payload = serde_json::to_value(ListFormRename { value: 5 }).unwrap();
+    let payload = serde_json::to_value(ListFormRenameDraft { value: 5 }).unwrap();
     let schema = ListFormRename::json_schema();
     let named = schema["properties"].as_object().unwrap();
     let required = schema["required"].as_array().unwrap();
@@ -742,12 +749,12 @@ fn test_a_list_form_rename_document_accepts_what_serde_writes() {
 /// The same, for the rule a list-form `rename_all` names.
 #[test]
 fn test_a_list_form_rename_all_writes_the_rule_both_directions_share() {
-    let value = ListFormRenameAll { my_field: 5 };
+    let value = ListFormRenameAllDraft { my_field: 5 };
     let payload = serde_json::to_value(&value).unwrap();
     assert_eq!(payload, serde_json::json!({ "myField": 5_u32 }));
 
     let back: ListFormRenameAll = serde_json::from_value(payload).unwrap();
-    assert_eq!(back, value);
+    assert_eq!(back, value.validate().unwrap());
 }
 
 #[test]
@@ -782,7 +789,7 @@ fn test_a_list_form_rename_all_reaches_the_zod_schema() {
 
 #[test]
 fn test_a_list_form_rename_all_document_accepts_what_serde_writes() {
-    let payload = serde_json::to_value(ListFormRenameAll { my_field: 5 }).unwrap();
+    let payload = serde_json::to_value(ListFormRenameAllDraft { my_field: 5 }).unwrap();
     let schema = ListFormRenameAll::json_schema();
     let named = schema["properties"].as_object().unwrap();
     let required = schema["required"].as_array().unwrap();
@@ -803,7 +810,7 @@ fn test_a_list_form_rename_all_document_accepts_what_serde_writes() {
 
 #[test]
 fn test_a_bound_carrying_member_is_on_the_wire_as_its_plain_sibling_is() {
-    let value = BoundCarrying {
+    let value = BoundCarryingDraft {
         reading: 1,
         writing: 2,
     };
@@ -814,7 +821,7 @@ fn test_a_bound_carrying_member_is_on_the_wire_as_its_plain_sibling_is() {
     );
 
     let back: BoundCarrying = serde_json::from_value(payload).unwrap();
-    assert_eq!(back, value);
+    assert_eq!(back, value.validate().unwrap());
 }
 
 #[test]

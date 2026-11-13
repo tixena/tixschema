@@ -6,6 +6,8 @@
 
 All validation constraints generate checks in **Zod, JSON Schema, Rust, Dart, Swift and Kotlin**. In Rust the check runs in `validate()`, which the type's own `Deserialize` calls on the value it read, so a serde read refuses what `validate()` refuses ("A read refuses what `validate()` refuses", below), and in the recovering decode of a type whose `enable` list holds `"decode_with"`, which lists the violations of each value as one issue. While the members are still being read it runs in one position only: a member of an untagged enum, where the check decides which variant the payload is. In Dart, Swift and Kotlin the check runs in the `validate()` every emitted type carries, which the type's read calls on the value it read: `fromJson`, `init(from:)` and `{Type}Serializer`.
 
+In the Rust column, `validate()` is the draft's. A model type is emitted as `{Name}Draft`, with the members as written, and `{Name}` is the valid type that wraps a draft which passed its rules (`docs/guide/models.md`, "A Draft and a Valid Type"). `{Name}Draft::validation_issues(&self) -> Vec<String>` runs every rule of the members, in the order declared, and then each check of the type, and answers every message; `{Name}Draft::validate(self) -> Result<{Name}, Vec<String>>` calls it and wraps the draft where it answered none. The valid type's own `Deserialize` reads the draft as the draft's `model_schema_read_unjudged` does, calls `validation_issues()` and refuses with the messages joined by `; `, so every message a read gave before the split is the message it gives now. A holder reads each model it holds through that model's `model_schema_read_unjudged`, which wraps the draft's read with no check, and calls `validation_issues()` once, on the whole value. A function a `check` names takes `&{Name}Draft`, the type the rules run on: `fn ends_after_start(window: &WindowDraft) -> Result<(), String>`.
+
 A function a `preprocess` names is called by the read alone of each language, ahead of the value, so the read that judges calls it too: `model_schema_read_unjudged` in Rust, `z.preprocess(fn, ...)` in the Zod schema, `fromJsonUnjudged` in Dart, `init(swiftSchemaUnjudged:)` in Swift and `{Type}Unjudged` in Kotlin. A function a `check` names is called by `validate()` in the four that have one, and by one `.check(...)` on the Zod schema. Rust calls the snake case of a name, and every other language the name as written:
 
 | Attribute | Field Type | Zod | JSON Schema | Rust | Dart | Swift | Kotlin |
@@ -791,5 +793,5 @@ this is what a change has to keep.
 - The macro adds no bound to a brand's declaration, and a brand's read asks of a parameter what
   serde's derive asks (`read_bounds`). Nothing asks `Display` of a parameter, on the read or in
   `validate()`.
-- A consumer's own `validate` on one filling is a duplicate definition (E0592).
+- A consumer's own `validation_issues` on one filling of the draft is a duplicate definition (E0592).
   `struct_validate_method`'s doc comment holds the run.

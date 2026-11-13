@@ -10,6 +10,7 @@ use super::parse::{
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
+use crate::utils::is_recorded_drafted_unit_struct_type;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Ident, Type, parse_quote};
@@ -583,9 +584,9 @@ pub fn exhaustiveness(non_exhaustive: bool) -> TokenStream {
 /// asked for `openapi` or `mcp`, whose documents read each generated type's schema.
 pub fn model_schema_attribute(jsonschema: bool) -> TokenStream {
     if jsonschema {
-        quote! { #[::tixschema::model_schema(enable = ["jsonschema"])] }
+        quote! { #[::tixschema::model_schema(enable = ["jsonschema"], __tixschema_undrafted)] }
     } else {
-        quote! { #[::tixschema::model_schema()] }
+        quote! { #[::tixschema::model_schema(__tixschema_undrafted)] }
     }
 }
 
@@ -733,13 +734,14 @@ fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
         };
         let error = error_declared_type(binding.error_header_out.len(), raw_error);
         let summary = http_binding_summary(binding);
+        let drafted = draft_type_path(error);
         let arms = binding
             .error_status
             .iter()
-            .map(|(variant, code)| quote! { #error::#variant { .. } => #code, });
+            .map(|(variant, code)| quote! { #drafted::#variant { .. } => #code, });
         Some(quote! {
             #[doc = #summary]
-            const _: fn(&#error) -> u16 = |reported| match reported {
+            const _: fn(&#error) -> u16 = |reported| match &**reported {
                 #(#arms)*
             };
         })
@@ -1074,21 +1076,20 @@ fn answered_envelope() -> TokenStream {
     }
 }
 
-/// What a message answers when it publishes no `validate()` of its own.
+/// What a message answers when it lists no `validation_issues()` of its own.
 fn message_validation() -> TokenStream {
     quote! {
         pub mod message_validation {
             /// The answer a message with no declared constraints gives when asked to validate
             /// itself.
             ///
-            /// `#[model_schema()]` writes an inherent `validate()` onto a type with constrained
-            /// fields and none onto a type without one, and an inherent method takes precedence
-            /// over a trait's — so a message that declared constraints runs them, and one that
-            /// declared none passes here.
+            /// `#[model_schema()]` writes an inherent `validation_issues()` onto every type it
+            /// declares, and an inherent method takes precedence over a trait's — so a message
+            /// that declared constraints runs them, and one that is no model passes here.
             pub trait MessageValidation {
-                /// `Ok(())`, there being nothing declared to check.
-                fn validate(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
-                    ::core::result::Result::Ok(())
+                /// No issue, there being nothing declared to check.
+                fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
+                    ::std::vec::Vec::new()
                 }
             }
 
@@ -1102,6 +1103,28 @@ fn message_validation() -> TokenStream {
 pub fn message_validation_in_scope() -> TokenStream {
     quote! {
         use message_validation::MessageValidation;
+    }
+}
+
+/// The draft of the model type `ty` names, which a pattern over the variants and the members of
+/// the declared type is written against: the last segment of its path, with `Draft` after it.
+pub fn draft_type_path(ty: &Type) -> TokenStream {
+    let Type::Path(path) = ty else {
+        return quote! { #ty };
+    };
+    let mut drafted = path.clone();
+    if let Some(last) = drafted.path.segments.last_mut() {
+        last.ident = format_ident!("{}Draft", last.ident, span = last.ident.span());
+    }
+    quote! { #drafted }
+}
+
+/// The value of the unit type `ty`: `()`, or a recorded unit struct.
+pub fn unit_value(ty: &Type) -> TokenStream {
+    if is_recorded_drafted_unit_struct_type(ty) {
+        quote! { <#ty>::model_schema_unit() }
+    } else {
+        quote! { #ty }
     }
 }
 
@@ -1243,7 +1266,16 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
         );
         let in_scope = message_validation_in_scope();
         let body = collection_shape(operation).map_or_else(
-            || quote! { received.validate() },
+            || {
+                quote! {
+                    let found = received.validation_issues();
+                    if found.is_empty() {
+                        ::core::result::Result::Ok(())
+                    } else {
+                        ::core::result::Result::Err(found)
+                    }
+                }
+            },
             |shape| {
                 let walked = shape.validated(&quote! { received });
                 quote! {

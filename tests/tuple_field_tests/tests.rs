@@ -174,7 +174,7 @@ fn test_tuple_field_serde_roundtrip() {
         pub values: (String, String),
     }
 
-    let original = S {
+    let original = SDraft {
         output: "out".to_owned(),
         values: ("a".to_owned(), "b".to_owned()),
     };
@@ -187,7 +187,7 @@ fn test_tuple_field_serde_roundtrip() {
     );
 
     let back: S = serde_json::from_value(json).unwrap();
-    assert_eq!(back, original);
+    assert_eq!(back, original.validate().unwrap());
 }
 
 /// Test: an optional tuple field gets the optional wrapping.

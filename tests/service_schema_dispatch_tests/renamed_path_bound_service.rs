@@ -241,7 +241,7 @@ pub struct BoundBackEnd;
 impl RenamedPathBoundService<()> for BoundBackEnd {
     async fn aliased(&self, _ctx: &(), req: BoundAliased) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn beside_flatten(
@@ -250,7 +250,7 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
         req: BoundBesideFlatten,
     ) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn gen_labelled(
@@ -289,12 +289,12 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
         req: BoundGeneric<String>,
     ) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn keyword(&self, _ctx: &(), req: BoundKeyword) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.r#type)
+        answered(req.r#type.clone())
     }
 
     async fn labelled(&self, _ctx: &(), req: BoundLabelled) -> Result<BoundAnswer, BoundRefused> {
@@ -309,23 +309,23 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
 
     async fn own_key(&self, _ctx: &(), req: BoundOwnKey) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn plain(&self, _ctx: &(), req: BoundPlain) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn renamed(&self, _ctx: &(), req: BoundRenamed) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        answered(req.document_id)
+        answered(req.document_id.clone())
     }
 
     async fn tagged(&self, _ctx: &(), req: BoundTagged) -> Result<BoundAnswer, BoundRefused> {
         ready(()).await;
-        let BoundTagged::Only { document_id } = req;
-        answered(document_id)
+        let BoundTaggedDraft::Only { document_id } = &*req;
+        answered(document_id.clone())
     }
 
     async fn two_placeholders(
@@ -344,7 +344,7 @@ impl RenamedPathBoundService<()> for BoundBackEnd {
             req.page_size,
             req.pinned,
             req.tally,
-            req.berth.map(BoundBerth::into_inner)
+            req.berth.as_ref().map(|berth| *berth.as_inner())
         ))
     }
 
@@ -394,11 +394,19 @@ impl FaultHandler for Noted {
     }
 }
 
+fn refused() -> BoundRefused {
+    BoundRefusedDraft::Nope.validate().unwrap()
+}
+
+fn answer(id: String) -> BoundAnswer {
+    BoundAnswerDraft { id }.validate().unwrap()
+}
+
 fn answered(id: String) -> Result<BoundAnswer, BoundRefused> {
     if id == "refused" {
-        return Err(BoundRefused::Nope);
+        return Err(refused());
     }
-    Ok(BoundAnswer { id })
+    Ok(answer(id))
 }
 
 /// The back end never suspends, so one poll answers it.
@@ -604,76 +612,130 @@ fn an_enum_and_a_brand_publish_no_member() {
 fn the_rust_client_and_dispatcher_round_trip_each_member() {
     let client = RenamedPathBoundServiceClient::new(Dispatched::default());
     let (id, title) = ("d1".to_owned(), "t".to_owned());
-    let renamed = || BoundRenamed {
+    let renamed = || BoundRenamedDraft {
         document_id: id.clone(),
         title: title.clone(),
     };
     let called = [
-        poll_once(client.plain(BoundPlain {
-            document_id: id.clone(),
-            title: title.clone(),
-        })),
-        poll_once(client.renamed(renamed())),
-        poll_once(client.own_key(BoundOwnKey {
-            document_id: id.clone(),
-            title: title.clone(),
-        })),
-        poll_once(client.generic(BoundGeneric {
-            document_id: id.clone(),
-            held: title.clone(),
-        })),
-        poll_once(client.aliased(renamed())),
-        poll_once(client.beside_flatten(BoundBesideFlatten {
-            document_id: id.clone(),
-            extra: BoundExtra {
-                title: title.clone(),
-            },
-        })),
-        poll_once(client.keyword(BoundKeyword {
-            title: title.clone(),
-            r#type: id.clone(),
-        })),
+        poll_once(
+            client.plain(
+                BoundPlainDraft {
+                    document_id: id.clone(),
+                    title: title.clone(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        ),
+        poll_once(client.renamed(renamed().validate().unwrap())),
+        poll_once(
+            client.own_key(
+                BoundOwnKeyDraft {
+                    document_id: id.clone(),
+                    title: title.clone(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        ),
+        poll_once(
+            client.generic(
+                BoundGenericDraft {
+                    document_id: id.clone(),
+                    held: title.clone(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        ),
+        poll_once(client.aliased(renamed().validate().unwrap())),
+        poll_once(
+            client.beside_flatten(
+                BoundBesideFlattenDraft {
+                    document_id: id.clone(),
+                    extra: BoundExtraDraft {
+                        title: title.clone(),
+                    }
+                    .validate()
+                    .unwrap(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        ),
+        poll_once(
+            client.keyword(
+                BoundKeywordDraft {
+                    title: title.clone(),
+                    r#type: id.clone(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        ),
         poll_once(client.unlisted(BoundUnlisted {
             document_id: id.clone(),
             title: title.clone(),
         })),
-        poll_once(client.tagged(BoundTagged::Only {
-            document_id: id.clone(),
-        })),
+        poll_once(
+            client.tagged(
+                BoundTaggedDraft::Only {
+                    document_id: id.clone(),
+                }
+                .validate()
+                .unwrap(),
+            ),
+        ),
         poll_once(client.generated(id.clone(), title.clone())),
     ];
     for answer in called {
         assert_eq!(
             answer.unwrap().ok(),
-            Some(BoundAnswer { id: id.clone() }),
+            Some(BoundAnswerDraft { id: id.clone() }.validate().unwrap()),
             "a client call answered another id"
         );
     }
     assert_eq!(
-        poll_once(client.two_placeholders(renamed())).unwrap().ok(),
-        Some(BoundAnswer {
-            id: "d1|t".to_owned()
-        })
+        poll_once(client.two_placeholders(renamed().validate().unwrap()))
+            .unwrap()
+            .ok(),
+        Some(
+            BoundAnswerDraft {
+                id: "d1|t".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
 }
 
 #[test]
 fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
     let client = RenamedPathBoundServiceClient::new(Dispatched::default());
-    let answer = poll_once(client.typed(BoundTyped {
-        berth: Some(BoundBerth::new(12_u32).unwrap()),
-        label: "l".to_owned(),
-        page_size: 7,
-        pages: Vec::new(),
-        pinned: true,
-        tally: -9_123_456_789_012_345,
-    }))
+    let answer = poll_once(
+        client.typed(
+            BoundTypedDraft {
+                berth: Some(BoundBerth::new(12_u32).unwrap()),
+                label: "l".to_owned(),
+                page_size: 7,
+                pages: Vec::new(),
+                pinned: true,
+                tally: -9_123_456_789_012_345,
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(
         answer.ok(),
-        Some(BoundAnswer {
-            id: "7|true|-9123456789012345|Some(12)".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "7|true|-9123456789012345|Some(12)".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     assert_eq!(
         *client.transport().carried.lock().unwrap(),
@@ -682,7 +744,7 @@ fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
 }
 
 fn typed_with_pages(pages: Vec<u16>) -> BoundTyped {
-    BoundTyped {
+    BoundTypedDraft {
         berth: None,
         label: "l".to_owned(),
         page_size: 7,
@@ -690,6 +752,8 @@ fn typed_with_pages(pages: Vec<u16>) -> BoundTyped {
         pinned: true,
         tally: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -698,27 +762,45 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
     let listed = poll_once(client.listed(typed_with_pages(vec![1, 2, 3]))).unwrap();
     assert_eq!(
         listed.ok(),
-        Some(BoundAnswer {
-            id: "[1, 2, 3]".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "[1, 2, 3]".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     let generated = poll_once(client.gen_list(vec![1, 2, 3], "t".to_owned())).unwrap();
     assert_eq!(
         generated.ok(),
-        Some(BoundAnswer {
-            id: "[1, 2, 3]".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "[1, 2, 3]".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
-    let labelled = poll_once(client.labelled(BoundLabelled {
-        labels: vec!["a b".to_owned(), "c/d".to_owned()],
-        title: "t".to_owned(),
-    }))
+    let labelled = poll_once(
+        client.labelled(
+            BoundLabelledDraft {
+                labels: vec!["a b".to_owned(), "c/d".to_owned()],
+                title: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(
         labelled.ok(),
-        Some(BoundAnswer {
-            id: "a b|c/d".to_owned()
-        })
+        Some(
+            BoundAnswerDraft {
+                id: "a b|c/d".to_owned()
+            }
+            .validate()
+            .unwrap()
+        )
     );
     assert_eq!(
         *client.transport().carried.lock().unwrap(),
@@ -733,10 +815,16 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
 #[test]
 fn the_rust_client_refuses_a_list_item_holding_a_comma_before_sending() {
     let client = RenamedPathBoundServiceClient::new(Dispatched::default());
-    let declared = poll_once(client.labelled(BoundLabelled {
-        labels: vec!["a,b".to_owned(), "c".to_owned()],
-        title: "t".to_owned(),
-    }))
+    let declared = poll_once(
+        client.labelled(
+            BoundLabelledDraft {
+                labels: vec!["a,b".to_owned(), "c".to_owned()],
+                title: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     let generated =
         poll_once(client.gen_labelled(vec!["a,b".to_owned(), "c".to_owned()], "t".to_owned()))
@@ -763,10 +851,16 @@ fn the_rust_client_refuses_a_list_item_holding_a_comma_before_sending() {
 fn a_renamed_member_still_answers_the_declared_error() {
     assert_eq!(put("/renamed/refused", r#"{"title":"t"}"#).0, 409);
     let client = RenamedPathBoundServiceClient::new(Dispatched::default());
-    let answer = poll_once(client.renamed(BoundRenamed {
-        document_id: "refused".to_owned(),
-        title: "t".to_owned(),
-    }))
+    let answer = poll_once(
+        client.renamed(
+            BoundRenamedDraft {
+                document_id: "refused".to_owned(),
+                title: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert!(answer.is_err(), "the declared error did not come back");
     assert_eq!(

@@ -21,9 +21,11 @@ fn the_schema_module_holds_the_librarys_path_and_the_author_keeps_theirs() {
         });
     assert_eq!(
         read,
-        Ok(paths::InvoiceLookup {
+        Ok(paths::InvoiceLookupDraft {
             number: "INV-1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -45,9 +47,11 @@ fn a_stored_type_beside_the_authors_filter_reads_in_every_build() {
     });
     assert_eq!(
         read,
-        Ok(filters::Invoice {
+        Ok(filters::InvoiceDraft {
             number: "INV-1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

@@ -45,11 +45,13 @@ mod tests {
             Result::<u32, String>::json_schema(),
             "{document}"
         );
-        let value = Shelved {
-            outcome: Result {
+        let value = ShelvedDraft {
+            outcome: ResultDraft {
                 held: 13_u32,
                 refused: "late".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         };
         assert_eq!(
             serde_json::to_value(&value).unwrap(),

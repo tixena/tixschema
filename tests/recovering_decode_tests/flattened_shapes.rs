@@ -12,7 +12,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::{Version, lines};
+use super::{Version, VersionDraft, lines};
 
 /// What `from_value_with` lists for `$stored`, read as `$model` by a decider that rejects it.
 macro_rules! listed {
@@ -357,7 +357,7 @@ struct Draft {
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct Unpicked {
-    #[serde(flatten, skip_deserializing)]
+    #[serde(flatten, skip_deserializing, default = "pages_by_default")]
     draft: Draft,
     id: String,
 }
@@ -699,13 +699,13 @@ fn no_copy_is_made_of_what_is_left_where_serde_takes_nothing() {
 /// The type an internally tagged variant holds is handed the object without the tag's key.
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
-    let filled = Filled::Counted(Tallies { a: 1_i32 });
+    let filled = FilledDraft::Counted(TalliesDraft { a: 1_i32 }.validate().unwrap());
     let written = serde_json::to_value(&filled).unwrap();
     assert_eq!(written, json!({ "a": 1_i32, "kind": "Counted" }));
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Filled, filled_schema, written, calls),
-        Ok(filled)
+        Ok(filled.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -713,33 +713,40 @@ fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
 #[test]
 fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     let mut calls = 0_u32;
-    let bag = Bag {
-        extras: Extras(HashMap::from([("a".to_owned(), 1_i32)])),
+    let bag = BagDraft {
+        extras: ExtrasDraft(HashMap::from([("a".to_owned(), 1_i32)]))
+            .validate()
+            .unwrap(),
     };
     let bag_written = serde_json::to_value(&bag).unwrap();
     assert_eq!(bag_written, json!({ "a": 1_i32 }));
-    assert_eq!(read_counting!(Bag, bag_schema, bag_written, calls), Ok(bag));
+    assert_eq!(
+        read_counting!(Bag, bag_schema, bag_written, calls),
+        Ok(bag.validate().unwrap())
+    );
 
-    let paper = Paper {
-        newest: Newest(Some(Version { number: 3_i32 })),
+    let paper = PaperDraft {
+        newest: NewestDraft(Some(VersionDraft { number: 3_i32 }.validate().unwrap()))
+            .validate()
+            .unwrap(),
         title: "t".to_owned(),
     };
     let paper_written = serde_json::to_value(&paper).unwrap();
     assert_eq!(paper_written, json!({ "number": 3_i32, "title": "t" }));
     assert_eq!(
         read_counting!(Paper, paper_schema, paper_written, calls),
-        Ok(paper)
+        Ok(paper.validate().unwrap())
     );
 
-    let outer = Outer {
-        body: Wrap::new(Version { number: 3_i32 }).unwrap(),
+    let outer = OuterDraft {
+        body: Wrap::new(VersionDraft { number: 3_i32 }.validate().unwrap()).unwrap(),
         id: "i".to_owned(),
     };
     let outer_written = serde_json::to_value(&outer).unwrap();
     assert_eq!(outer_written, json!({ "id": "i", "number": 3_i32 }));
     assert_eq!(
         read_counting!(Outer, outer_schema, outer_written, calls),
-        Ok(outer)
+        Ok(outer.validate().unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -787,10 +794,12 @@ fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_v
     let number_as_text = json!({ "number": "3", "title": "t" });
     assert_eq!(
         Paper::deserialize(&number_as_text).unwrap(),
-        Paper {
-            newest: Newest(None),
+        PaperDraft {
+            newest: NewestDraft(None).validate().unwrap(),
             title: "t".to_owned(),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         listed!(Paper, paper_schema, number_as_text),
@@ -867,10 +876,12 @@ fn a_flattened_option_behind_a_hook_that_is_absent_is_no_issue() {
 fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
     let mut calls = 0_u32;
     let number_as_text = json!({ "id": "i", "number": "3" });
-    let maybe = DirectMaybe {
+    let maybe = DirectMaybeDraft {
         id: "i".to_owned(),
         version: None,
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(DirectMaybe::deserialize(&number_as_text).unwrap(), maybe);
     assert_eq!(
         read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
@@ -906,16 +917,18 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
 
 #[test]
 fn a_flattened_field_serde_never_reads_is_read_past() {
-    let written = serde_json::to_value(NeverRead {
+    let written = serde_json::to_value(NeverReadDraft {
         id: "i".to_owned(),
-        version: Some(Version { number: 3_i32 }),
+        version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
     })
     .unwrap();
     assert_eq!(written, json!({ "id": "i", "number": 3_i32 }));
-    let unread = NeverRead {
+    let unread = NeverReadDraft {
         id: "i".to_owned(),
         version: None,
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(NeverRead::deserialize(&written).unwrap(), unread);
     let mut calls = 0_u32;
     assert_eq!(
@@ -923,20 +936,26 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
         Ok(unread)
     );
 
-    let paged = serde_json::to_value(Unpicked {
-        draft: Draft { pages: 3_i32 },
+    let paged = serde_json::to_value(UnpickedDraft {
+        draft: DraftDraft { pages: 3_i32 }.validate().unwrap(),
         id: "i".to_owned(),
     })
     .unwrap();
     assert_eq!(paged, json!({ "id": "i", "pages": 3_i32 }));
-    let unpicked = Unpicked {
-        draft: Draft::default(),
+    let unpicked = UnpickedDraft {
+        draft: DraftDraft::default().validate().unwrap(),
         id: "i".to_owned(),
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(Unpicked::deserialize(&paged).unwrap(), unpicked);
     assert_eq!(
         read_counting!(Unpicked, unpicked_schema, paged, calls),
         Ok(unpicked)
     );
     assert_eq!(calls, 0);
+}
+
+fn pages_by_default() -> Draft {
+    DraftDraft::default().validate().unwrap()
 }

@@ -89,9 +89,11 @@ fn each_type_answers_its_callback_as_it_did_with_a_library_of_its_own() {
         ),
         (
             Vec::new(),
-            Ok(InvoiceLookup {
+            Ok(InvoiceLookupDraft {
                 number: "INV-1".to_owned()
-            })
+            }
+            .validate()
+            .unwrap())
         )
     );
     let (missing, unnamed) = rejected!(CustomerLookup, customer_lookup_schema, json!({}));
@@ -119,20 +121,26 @@ fn one_resolver_serves_the_reads_of_every_type_of_the_crate() {
     let settled: &[invoice_lookup_schema::Resolver<'_, Value, Value>] = &[&number_as_text];
     assert_eq!(
         InvoiceLookup::from_value_piped(json!({ "number": 42_i32 }), settled),
-        Ok(InvoiceLookup {
+        Ok(InvoiceLookupDraft {
             number: "42".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         ParcelLookup::from_value_piped(json!({ "label": 7_i32 }), settled),
-        Ok(ParcelLookup {
+        Ok(ParcelLookupDraft {
             label: "7".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         CustomerLookup::from_value_piped(json!({ "name": "Ada" }), settled),
-        Ok(CustomerLookup {
+        Ok(CustomerLookupDraft {
             name: "Ada".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }

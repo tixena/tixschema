@@ -20,17 +20,26 @@ use super::swift_read_models::tracking_client_service_schema::{
     tracking_client_service_fault_fields_swift, tracking_client_service_fault_kind_swift,
 };
 use super::swift_read_models::{
-    Anchorage, Decking, Manifest, Mooring, Pin, Signet, Sorted, Towed, TrackingBackEnd,
-    TrackingClientService as _, TrackingClientServiceSchema, TrackingError, Urgency, Vetted,
-    anchorage_swift, decking_swift, manifest_swift, mooring_swift, pin_swift, signet_swift,
-    sorted_swift, towed_swift, tracking_error_swift, urgency_swift, vetted_swift,
+    Anchorage, AnchorageDraft, DeckingDraft, Manifest, Mooring, MooringDraft, Pin, Signet, Sorted,
+    TowedDraft, TrackingBackEnd, TrackingClientService as _, TrackingClientServiceSchema,
+    TrackingErrorDraft, UrgencyDraft, Vetted, anchorage_swift, decking_swift, manifest_swift,
+    mooring_swift, pin_swift, signet_swift, sorted_swift, towed_swift, tracking_error_swift,
+    urgency_swift, vetted_swift,
 };
 use super::swift_validate_models::{
-    Base, Berth, Cargo, ClosedDock, Code, Consignment, Crate, Docket, Freight, Grade, Haul,
-    Inspection, LaterCode, Ledger, Lift, Nameplate, Parcel, SealedCode, Title, Waybill, Yard,
+    Base, BaseDraft, BerthDraft, CargoDraft, ClosedDockDraft, Code, ConsignmentDraft, CrateDraft,
+    Docket, FreightDraft, GradeDraft, HaulDraft, InspectionDraft, LaterCode, LedgerDraft,
+    LiftDraft, NameplateDraft, Parcel, SealedCode, Title, Waybill, WaybillDraft, YardDraft,
     parcel_swift,
 };
 use super::tests::poll_once;
+
+/// A row for the draft `$held`, whose rules answer what the row's Rust column states.
+macro_rules! drafted_row {
+    ($name:literal, $read_as:literal, $held:ident, $accepts:expr) => {
+        row($name, $read_as, &$held, $held.clone().validate(), $accepts)
+    };
+}
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
@@ -237,17 +246,19 @@ struct Row {
 
 /// One row of a value both sides read, with what the Rust read answers for its payload where
 /// `reads_alike` holds the two reads to one answer.
-fn row<Held>(
+fn row<Draft, Held>(
     name: &'static str,
     swift_type: &'static str,
-    held: &Held,
-    answered: Result<(), Vec<String>>,
+    held: &Draft,
+    validated: Result<Held, Vec<String>>,
     reads_alike: bool,
 ) -> Row
 where
-    Held: Serialize + DeserializeOwned,
+    Draft: Serialize,
+    Held: DeserializeOwned,
 {
     let payload = serde_json::to_string(held).unwrap();
+    let answered = validated.map(drop);
     if reads_alike {
         assert_eq!(
             rust_read::<Held>(&payload),
@@ -518,12 +529,15 @@ Manifest with no spareParcel key, all good: read
 /// A struct of bounds, and each holder of a model: in a field, a list of lists, a map under each
 /// kind of key, an optional, a tuple and a flattened member.
 fn struct_rows() -> Vec<Row> {
-    let below = gauge(0.25, 0, 0, "a", true);
-    let within = gauge(2.5, 2, 40, "abc", false);
-    let unlabelled = depot(&broken, "");
-    let kept = depot(&|| package("A", "ab"), "home");
-    let yard = Yard {
-        by_grade: BTreeMap::from([(Grade::Standard, broken()), (Grade::Express, broken())]),
+    let below = gauge(0.25, 0, 0, "a", true).into_draft();
+    let within = gauge(2.5, 2, 40, "abc", false).into_draft();
+    let unlabelled = depot(&broken, "").into_draft();
+    let kept = depot(&|| package("A", "ab"), "home").into_draft();
+    let yard = YardDraft {
+        by_grade: BTreeMap::from([
+            (GradeDraft::Standard.validate().unwrap(), broken()),
+            (GradeDraft::Express.validate().unwrap(), broken()),
+        ]),
         docks_in_order: vec![
             BTreeMap::new(),
             BTreeMap::from([("north".to_owned(), broken())]),
@@ -532,64 +546,46 @@ fn struct_rows() -> Vec<Row> {
         maybe_each: vec![None, Some(broken())],
         spare_list: Some(vec![broken()]),
     };
-    let ledger = Ledger {
+    let ledger = LedgerDraft {
         parcel_list: vec![broken(), package("", "ab")],
     };
-    let waybill = Waybill {
+    let waybill = WaybillDraft {
         later_code: LaterCode::new("a".to_owned()).unwrap(),
         short_code: Code::new("abcd".to_owned()).unwrap(),
         titled: Title::from("t"),
     };
-    let inspection = Inspection {
+    let inspection = InspectionDraft {
         errors: Vec::new(),
         validate: "v".to_owned(),
     };
-    let decking = Decking {
+    let decking = DeckingDraft {
         by_deck: BTreeMap::from([(-1, broken()), (4, package("A", "ab"))]),
     };
-    let mooring = Mooring {
+    let mooring = MooringDraft {
         berth_note: None,
         held_package: Some(broken()),
         spare_note: Some("s".to_owned()),
         spare_package: Some(package("", "ab")),
     };
-    let anchorage = Anchorage {
+    let anchorage = AnchorageDraft {
         anchor_note: Some("a".to_owned()),
         held_package: Some(broken()),
-        starting_base: Base {
+        starting_base: Base::model_schema_wrap_unjudged(BaseDraft {
             base_name: String::new(),
-        },
+        }),
     };
     vec![
-        row("Gauge, below", "Gauge", &below, below.validate(), true),
-        row("Gauge, held", "Gauge", &within, within.validate(), true),
-        row(
-            "Depot, every package broken",
-            "Depot",
-            &unlabelled,
-            unlabelled.validate(),
-            false,
-        ),
-        row("Depot, held", "Depot", &kept, kept.validate(), true),
-        row("Yard", "Yard", &yard, yard.validate(), true),
-        row("Ledger", "Ledger", &ledger, ledger.validate(), true),
-        row("Waybill", "Waybill", &waybill, waybill.validate(), true),
-        row(
-            "Inspection",
-            "Inspection",
-            &inspection,
-            inspection.validate(),
-            true,
-        ),
-        row("Decking", "Decking", &decking, decking.validate(), true),
-        row("Mooring", "Mooring", &mooring, mooring.validate(), true),
-        row(
-            "Anchorage",
-            "Anchorage",
-            &anchorage,
-            anchorage.validate(),
-            true,
-        ),
+        drafted_row!("Gauge, below", "Gauge", below, true),
+        drafted_row!("Gauge, held", "Gauge", within, true),
+        drafted_row!("Depot, every package broken", "Depot", unlabelled, false),
+        drafted_row!("Depot, held", "Depot", kept, true),
+        drafted_row!("Yard", "Yard", yard, true),
+        drafted_row!("Ledger", "Ledger", ledger, true),
+        drafted_row!("Waybill", "Waybill", waybill, true),
+        drafted_row!("Inspection", "Inspection", inspection, true),
+        drafted_row!("Decking", "Decking", decking, true),
+        drafted_row!("Mooring", "Mooring", mooring, true),
+        drafted_row!("Anchorage", "Anchorage", anchorage, true),
     ]
 }
 
@@ -607,10 +603,10 @@ fn code_point_rows() -> Vec<Row> {
     ]
     .into_iter()
     .map(|(name, engraved)| {
-        let held = Nameplate {
+        let held = NameplateDraft {
             engraved: engraved.to_owned(),
         };
-        row(name, "Nameplate", &held, held.validate(), true)
+        row(name, "Nameplate", &held, held.clone().validate(), true)
     })
     .collect()
 }
@@ -628,161 +624,149 @@ fn wrapper_rows() -> Vec<Row> {
         Docket::<String>::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
             .unwrap();
     let numbered = Docket::new(7_u32).unwrap();
-    let empty: Crate<String> = Crate {
+    let empty = CrateDraft::<String> {
         codes: Vec::new(),
         label: String::new(),
     };
-    let consignment = Consignment(String::new(), package("", "ab"));
+    let consignment = ConsignmentDraft(String::new(), package("", "ab"));
     vec![
-        row("Code", "Code", &short, short.validate(), true),
-        row("SealedCode", "SealedCode", &sealed, sealed.validate(), true),
+        row(
+            "Code",
+            "Code",
+            &short,
+            short.validate().map(|()| short.clone()),
+            true,
+        ),
+        row(
+            "SealedCode",
+            "SealedCode",
+            &sealed,
+            sealed.validate().map(|()| sealed.clone()),
+            true,
+        ),
         row(
             "Docket<String>",
             "Docket<String>",
             &named,
-            named.validate(),
+            named.validate().map(|()| named.clone()),
             true,
         ),
         row(
             "Docket<UInt32>",
             "Docket<UInt32>",
             &numbered,
-            numbered.validate(),
+            numbered.validate().map(|()| numbered.clone()),
             true,
         ),
-        row(
-            "Crate<String>",
-            "Crate<String>",
-            &empty,
-            empty.validate(),
-            true,
-        ),
-        row(
-            "ClosedDock",
-            "ClosedDock",
-            &ClosedDock,
-            ClosedDock.validate(),
-            true,
-        ),
-        row(
-            "Consignment",
-            "Consignment",
-            &consignment,
-            consignment.validate(),
-            true,
-        ),
+        drafted_row!("Crate<String>", "Crate<String>", empty, true),
+        drafted_row!("ClosedDock", "ClosedDock", ClosedDockDraft, true),
+        drafted_row!("Consignment", "Consignment", consignment, true),
     ]
 }
 
 /// An enum under each tagging, with a slot, a named member, several slots and a model.
 fn enum_rows() -> Vec<Row> {
-    let boxed = Freight::Boxed(String::new());
-    let loose = Freight::Loose {
+    let boxed = FreightDraft::Boxed(String::new());
+    let loose = FreightDraft::Loose {
         freight_label: String::new(),
     };
-    let split = Freight::Split(String::new(), 0);
-    let cargo = Cargo::Boxed(package("", "ab"));
-    let berth = Berth::Named {
+    let split = FreightDraft::Split(String::new(), 0);
+    let cargo = CargoDraft::Boxed(package("", "ab"));
+    let berth = BerthDraft::Named {
         quay_name: "a".to_owned(),
         quay_number: 0,
     };
-    let haul_boxed = Haul::Boxed(String::new());
-    let haul_loose = Haul::Loose {
+    let haul_boxed = HaulDraft::Boxed(String::new());
+    let haul_loose = HaulDraft::Loose {
         haul_label: String::new(),
     };
-    let haul_split = Haul::Split(String::new(), 0);
-    let lift_loose = Lift::Loose {
+    let haul_split = HaulDraft::Split(String::new(), 0);
+    let lift_loose = LiftDraft::Loose {
         lift_label: String::new(),
     };
-    let lift_boxed = Lift::Boxed(package("", "ab"));
-    let towed = Towed::Boxed(broken());
+    let lift_boxed = LiftDraft::Boxed(package("", "ab"));
+    let towed = TowedDraft::Boxed(broken());
     vec![
-        row("Freight, a slot", "Freight", &boxed, boxed.validate(), true),
         row(
-            "Freight, a member",
+            "Freight, a slot",
             "Freight",
-            &loose,
-            loose.validate(),
+            &boxed,
+            boxed.clone().validate(),
             true,
         ),
+        drafted_row!("Freight, a member", "Freight", loose, true),
         row(
             "Freight, two slots",
             "Freight",
             &split,
-            split.validate(),
+            split.clone().validate(),
             true,
         ),
         row(
             "Freight, no member",
             "Freight",
-            &Freight::Unladen,
-            Freight::Unladen.validate(),
+            &FreightDraft::Unladen,
+            FreightDraft::Unladen.validate(),
             true,
         ),
-        row("Cargo", "Cargo", &cargo, cargo.validate(), true),
-        row("Berth", "Berth", &berth, berth.validate(), true),
+        row("Cargo", "Cargo", &cargo, cargo.clone().validate(), true),
+        drafted_row!("Berth", "Berth", berth, true),
         row(
             "Haul, a slot",
             "Haul",
             &haul_boxed,
-            haul_boxed.validate(),
+            haul_boxed.clone().validate(),
             true,
         ),
-        row(
-            "Haul, a member",
-            "Haul",
-            &haul_loose,
-            haul_loose.validate(),
-            true,
-        ),
+        drafted_row!("Haul, a member", "Haul", haul_loose, true),
         row(
             "Haul, two slots",
             "Haul",
             &haul_split,
-            haul_split.validate(),
+            haul_split.clone().validate(),
             true,
         ),
-        row(
-            "Lift, a member",
-            "Lift",
-            &lift_loose,
-            lift_loose.validate(),
-            true,
-        ),
+        drafted_row!("Lift, a member", "Lift", lift_loose, true),
         row(
             "Lift, a model",
             "Lift",
             &lift_boxed,
-            lift_boxed.validate(),
+            lift_boxed.clone().validate(),
             true,
         ),
         row(
             "Lift, its own check",
             "Lift",
-            &Lift::Unladen,
-            Lift::Unladen.validate(),
+            &LiftDraft::Unladen,
+            LiftDraft::Unladen.validate(),
             true,
         ),
-        row("Towed", "Towed", &towed, towed.validate(), true),
+        drafted_row!("Towed", "Towed", towed, true),
     ]
 }
 
 /// A plain enum that names no check, and one that names one.
 fn plain_enum_rows() -> Vec<Row> {
     vec![
-        row("Grade", "Grade", &Grade::Express, Ok(()), true),
+        row(
+            "Grade",
+            "Grade",
+            &GradeDraft::Express,
+            GradeDraft::Express.validate(),
+            true,
+        ),
         row(
             "Urgency, low",
             "Urgency",
-            &Urgency::Low,
-            Urgency::Low.validate(),
+            &UrgencyDraft::Low,
+            UrgencyDraft::Low.validate(),
             true,
         ),
         row(
             "Urgency, high",
             "Urgency",
-            &Urgency::High,
-            Urgency::High.validate(),
+            &UrgencyDraft::High,
+            UrgencyDraft::High.validate(),
             true,
         ),
     ]
@@ -814,23 +798,21 @@ fn every_shape_refuses_what_its_validate_refuses_and_builds_it_unjudged() {
 /// holder does not walk, the value a brand wraps, judges itself as it is read.
 #[test]
 fn a_model_its_holder_does_not_walk_judges_itself() {
-    let waybill = Waybill {
+    let waybill = WaybillDraft {
         later_code: LaterCode::new("ab".to_owned()).unwrap(),
         short_code: Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
             .unwrap(),
         titled: Title::from("ti"),
     };
     assert_eq!(
-        waybill.validate(),
-        Err(vec![
-            "'shortCode': too short: minimum length is 2, got 1".to_owned()
-        ])
+        waybill.validation_issues(),
+        vec!["'shortCode': too short: minimum length is 2, got 1".to_owned()]
     );
     let sealed = SealedCode::new(
         Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap()).unwrap(),
     )
     .unwrap();
-    assert_eq!(sealed.validate(), Ok(()));
+    assert_eq!(sealed.validation_issues(), Vec::<String>::new());
     let reads = [
         (
             "Waybill",
@@ -1176,8 +1158,8 @@ fn the_http_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
     assert_eq!(
         poll_once(TrackingBackEnd.track(&(), String::new()))
             .unwrap()
-            .map(|parcel| parcel.label),
-        Err(TrackingError::NotFound)
+            .map(|parcel| parcel.label.clone()),
+        Err(TrackingErrorDraft::NotFound.validate().unwrap())
     );
     let Some(swift) = answered_by(String::new(), HTTP_DRIVER) else {
         return;

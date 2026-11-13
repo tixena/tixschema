@@ -142,7 +142,7 @@ pub mod refusals {
         async fn admit(&self, _ctx: &Ctx, req: AdmitRequest) -> Result<Admitted, String> {
             ready(()).await;
             self.reached.lock().unwrap().push(format!("{req:?}"));
-            Ok(Admitted { admitted: true })
+            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
         }
     }
 
@@ -376,10 +376,10 @@ fn typescript_report(schema: &str, path: &str, rendered: &str) -> Vec<String> {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_value_breaking_two_of_a_fields_bounds_reads_the_same_in_both_languages() {
-    let broken = declarations::Direct {
+    let broken = declarations::DirectDraft {
         customer_id: "A!".to_owned(),
     };
-    let rust = broken.validate().unwrap_err();
+    let rust = broken.validation_issues();
 
     assert_eq!(
         rust,
@@ -398,10 +398,10 @@ fn a_value_breaking_two_of_a_fields_bounds_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
-    let broken = declarations::Capped {
+    let broken = declarations::CappedDraft {
         bio: "ABCDEFG".to_owned(),
     };
-    let rust = broken.validate().unwrap_err();
+    let rust = broken.validation_issues();
 
     assert_eq!(
         rust,
@@ -421,7 +421,7 @@ fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
 #[test]
 fn a_length_over_non_ascii_text_reads_the_same_in_both_languages() {
     let rendered = "\u{1f600}".repeat(6);
-    let rust = declarations::Capped {
+    let rust = declarations::CappedDraft {
         bio: rendered.clone(),
     }
     .validate()
@@ -468,12 +468,16 @@ fn a_brands_two_bounds_read_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
-    let broken = declarations::Held {
-        account: declarations::Account {
-            claims: declarations::Claims {
+    let broken = declarations::HeldDraft {
+        account: declarations::AccountDraft {
+            claims: declarations::ClaimsDraft {
                 jti: "ok".to_owned(),
-            },
-        },
+            }
+            .validate()
+            .unwrap(),
+        }
+        .validate()
+        .unwrap(),
         customer_id: declarations::CustomerId::model_schema_read_unjudged(
             serde_json::to_value("A!".to_owned()).unwrap(),
         )
@@ -481,7 +485,7 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
     };
 
     assert_eq!(
-        broken.validate().unwrap_err(),
+        broken.validation_issues(),
         typescript_report(&declarations::CustomerId::zod_schema(), "customer_id", "A!"),
     );
 }
@@ -490,13 +494,15 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
-    let broken = declarations::Held {
-        account: declarations::Account {
-            claims: declarations::Claims { jti: String::new() },
-        },
+    let broken = declarations::HeldDraft {
+        account: declarations::Account::model_schema_wrap_unjudged(declarations::AccountDraft {
+            claims: declarations::Claims::model_schema_wrap_unjudged(declarations::ClaimsDraft {
+                jti: String::new(),
+            }),
+        }),
         customer_id: declarations::CustomerId::new("acme".to_owned()).unwrap(),
     };
-    let rust = broken.validate().unwrap_err();
+    let rust = broken.validation_issues();
 
     assert_eq!(
         rust,
@@ -512,7 +518,7 @@ fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_numeric_bound_reads_the_same_in_both_languages() {
-    let under_the_floor = declarations::Floor { invoice_count: 2 }
+    let under_the_floor = declarations::FloorDraft { invoice_count: 2 }
         .validate()
         .unwrap_err();
     assert_eq!(
@@ -524,7 +530,7 @@ fn a_numeric_bound_reads_the_same_in_both_languages() {
         typescript_report(&declarations::Floor::zod_schema(), "invoice_count", "2"),
     );
 
-    let over_the_ceiling = declarations::Ceiling { invoice_count: 150 }
+    let over_the_ceiling = declarations::CeilingDraft { invoice_count: 150 }
         .validate()
         .unwrap_err();
     assert_eq!(
@@ -541,7 +547,7 @@ fn a_numeric_bound_reads_the_same_in_both_languages() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn a_literal_reads_the_same_in_both_languages() {
-    let channel = declarations::Channel {
+    let channel = declarations::ChannelDraft {
         channel: "beta".to_owned(),
     }
     .validate()
@@ -555,7 +561,7 @@ fn a_literal_reads_the_same_in_both_languages() {
         typescript_report(&declarations::Channel::zod_schema(), "channel", "beta"),
     );
 
-    let current = declarations::Current { current: false }
+    let current = declarations::CurrentDraft { current: false }
         .validate()
         .unwrap_err();
     assert_eq!(current, vec!["'current': not the literal true, got false"]);
@@ -564,7 +570,7 @@ fn a_literal_reads_the_same_in_both_languages() {
         typescript_report(&declarations::Current::zod_schema(), "current", "false"),
     );
 
-    let major = declarations::Major { major: 3 }.validate().unwrap_err();
+    let major = declarations::MajorDraft { major: 3 }.validation_issues();
     assert_eq!(major, vec!["'major': not the literal 2, got 3"]);
     assert_eq!(
         major,

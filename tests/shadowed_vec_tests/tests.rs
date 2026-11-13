@@ -32,13 +32,13 @@ fn a_struct_declared_beside_it_builds_reads_and_validates() {
         serde_json::json!({ "inner": { "number": 1_i32 }, "level": 1_i32, "queued": [1_i32] }),
     )
     .unwrap();
-    assert_eq!(read.validate(), Ok(()));
-    let broken = Holder {
-        inner: Inner { number: 1 },
+    assert_eq!(read.validation_issues().len(), 0);
+    let broken = HolderDraft {
+        inner: InnerDraft { number: 1 }.validate().unwrap(),
         level: 0,
         queued: VecDeque::new(),
     };
-    let reported = broken.validate().unwrap_err();
+    let reported = broken.validation_issues();
     assert_eq!(reported.len(), 2);
     assert_eq!(
         serde_json::from_value::<Holder>(

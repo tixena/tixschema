@@ -104,7 +104,7 @@ pub struct Stencil {
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Wrapping {
-    #[serde(default)]
+    #[serde(default = "blank_pair")]
     pub pair: (Stencil, u8),
 }
 
@@ -177,4 +177,11 @@ pub struct Heaping {
 /// The function [`Heaping`] names: the payload as it was handed.
 const fn unchanged(payload: serde_json::Value) -> serde_json::Value {
     payload
+}
+
+fn blank_pair() -> (Stencil, u8) {
+    (
+        Stencil::model_schema_wrap_unjudged(StencilDraft::default()),
+        0,
+    )
 }

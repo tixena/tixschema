@@ -8,7 +8,9 @@ mod texts;
 
 use proc_macro2::{Span, TokenTree};
 
-use super::read::{DECODED, INNER};
+use super::read::DECODED;
+#[cfg(feature = "serde")]
+use super::read::INNER;
 use super::validate::jvm_pattern;
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
@@ -22,6 +24,7 @@ const UNDER: &str = "private fun kotlinSchemaUnder(place: String, violation: Str
 
 /// The read of an entry's value in the serializer of a map keyed by a brand: from its text under
 /// the key's text.
+#[cfg(feature = "serde")]
 const MAPPED_VALUE: &str =
     "kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \".\" + entry.key)";
 
@@ -49,6 +52,7 @@ fn generated(named: &str) -> String {
 
 /// The companion `of` of the sealed brand `named` over `value`, which `declared` lists the type
 /// parameters of.
+#[cfg(feature = "serde")]
 fn factory(named: &str, declared: &str, value: &str) -> String {
     let (parameters, arguments) = if declared.is_empty() {
         (String::new(), String::new())
@@ -105,6 +109,7 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
 }
 
 /// The serializer of a map keyed by the brand `named`, which reads each entry as `entry` says.
+#[cfg(feature = "serde")]
 fn mapped_reading(named: &str, entry: &str) -> String {
     format!(
         "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
@@ -123,6 +128,7 @@ fn mapped_reading(named: &str, entry: &str) -> String {
 
 /// The serializer of a map keyed by the brand `named`, which has a key serializer of its own: each
 /// key read by it from its text at the map's path, which judges it.
+#[cfg(feature = "serde")]
 fn mapped(named: &str) -> String {
     mapped_reading(
         named,
@@ -135,6 +141,7 @@ fn mapped(named: &str) -> String {
 
 /// The serializer of a map keyed by the brand `named`, which has no key serializer: each key read
 /// unjudged from its text at the map's path, then judged, each message under the key's text.
+#[cfg(feature = "serde")]
 fn mapped_judging(named: &str) -> String {
     mapped_reading(
         named,
@@ -150,6 +157,7 @@ fn mapped_judging(named: &str) -> String {
 /// The serializer of a map keyed by the brand `named`, which holds a brand over a text: each key
 /// read as [`mapped_judging`] reads it, where the refusal of the brand it holds is thrown under the
 /// key's text as well.
+#[cfg(feature = "serde")]
 fn mapped_over_a_brand(named: &str) -> String {
     mapped_reading(
         named,

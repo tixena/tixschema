@@ -13,8 +13,9 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::text_map_keys_models::{
-    AdjacentBulletin, AdjacentTidings, Almanac, Bulletin, Datebook, Ephemeris, Gazetteer, Hourbook,
-    Logsheet, Moorage, TaggedBulletin, TaggedTidings, Tidings, UntaggedBulletin, UntaggedTidings,
+    AdjacentBulletinDraft, AdjacentTidingsDraft, AlmanacDraft, BulletinDraft, Datebook,
+    EphemerisDraft, GazetteerDraft, Hourbook, Logsheet, MoorageDraft, TaggedBulletinDraft,
+    TaggedTidingsDraft, TidingsDraft, UntaggedBulletinDraft, UntaggedTidingsDraft,
     adjacent_bulletin_swift, adjacent_tidings_swift, almanac_swift, bulletin_swift, datebook_swift,
     day, ephemeris_swift, gazetteer_swift, hour, hourbook_swift, logsheet_swift, moment,
     tagged_bulletin_swift, tagged_tidings_swift, tidings_swift, untagged_bulletin_swift,
@@ -130,12 +131,14 @@ where
 fn each_struct_and_brand_is_written_as_serde_writes_it() {
     let (days, hours, moments) = dated(&"d".to_owned());
     assert_eq!(
-        read_back(&Almanac {
+        read_back(&AlmanacDraft {
             berths: HashMap::from([(
                 day(),
-                Moorage {
+                MoorageDraft {
                     label: "m".to_owned()
                 }
+                .validate()
+                .unwrap()
             )]),
             days: days.clone(),
             hours: hours.clone(),
@@ -144,7 +147,7 @@ fn each_struct_and_brand_is_written_as_serde_writes_it() {
         r#"{"berths":{"2024-01-02":{"label":"m"}},"days":{"2024-01-02":"d"},"hours":{"03:04:05.678":"h"},"moments":{"2024-01-02T03:04:05.678":"d"}}"#
     );
     assert_eq!(
-        read_back(&Ephemeris {
+        read_back(&EphemerisDraft {
             days: days.clone(),
             hours: hours.clone(),
             moments: moments.clone(),
@@ -152,13 +155,13 @@ fn each_struct_and_brand_is_written_as_serde_writes_it() {
         DATED
     );
     assert_eq!(
-        read_back(&Gazetteer {
+        read_back(&GazetteerDraft {
             by_stowed: HashMap::from([("s".to_owned(), 1)]),
         }),
         r#"{"by_stowed":{"s":1}}"#
     );
     assert_eq!(
-        read_back(&Gazetteer {
+        read_back(&GazetteerDraft {
             by_stowed: HashMap::from([(7_u32, 1)]),
         }),
         r#"{"by_stowed":{"7":1}}"#
@@ -186,7 +189,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
     let untagged = DATED.to_owned();
     for (written, expected) in [
         (
-            read_back(&Tidings::Dated {
+            read_back(&TidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -194,7 +197,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &external,
         ),
         (
-            read_back(&TaggedTidings::Dated {
+            read_back(&TaggedTidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -202,7 +205,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &internal,
         ),
         (
-            read_back(&AdjacentTidings::Dated {
+            read_back(&AdjacentTidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -210,7 +213,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &adjacent,
         ),
         (
-            read_back(&UntaggedTidings::Dated {
+            read_back(&UntaggedTidingsDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -218,7 +221,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &untagged,
         ),
         (
-            read_back(&Bulletin::Dated {
+            read_back(&BulletinDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -226,7 +229,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &external,
         ),
         (
-            read_back(&TaggedBulletin::Dated {
+            read_back(&TaggedBulletinDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -234,7 +237,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &internal,
         ),
         (
-            read_back(&AdjacentBulletin::Dated {
+            read_back(&AdjacentBulletinDraft::Dated {
                 days: days.clone(),
                 hours: hours.clone(),
                 moments: moments.clone(),
@@ -242,7 +245,7 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
             &adjacent,
         ),
         (
-            read_back(&UntaggedBulletin::Dated {
+            read_back(&UntaggedBulletinDraft::Dated {
                 days,
                 hours,
                 moments,
@@ -257,28 +260,28 @@ fn each_variant_is_written_as_serde_writes_it_under_each_tagging() {
 #[test]
 fn each_variant_beside_the_maps_is_written_as_serde_writes_it() {
     for plain in [
-        read_back(&Tidings::Plain {
+        read_back(&TidingsDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&TaggedTidings::Plain {
+        read_back(&TaggedTidingsDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&AdjacentTidings::Plain {
+        read_back(&AdjacentTidingsDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&UntaggedTidings::Plain {
+        read_back(&UntaggedTidingsDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&Bulletin::Plain {
+        read_back(&BulletinDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&TaggedBulletin::Plain {
+        read_back(&TaggedBulletinDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&AdjacentBulletin::Plain {
+        read_back(&AdjacentBulletinDraft::Plain {
             note: "n".to_owned(),
         }),
-        read_back(&UntaggedBulletin::Plain {
+        read_back(&UntaggedBulletinDraft::Plain {
             note: "n".to_owned(),
         }),
     ] {
@@ -361,8 +364,8 @@ fn a_key_parsed_from_its_text_keeps_its_guard() {
         holds(&swift, &[&guarded(parsed)]);
     }
     assert_eq!(text_keys(&swift), 0, "{swift}");
-    let keyring = Keyring {
-        bells: HashMap::from([(Bell::First, "b".to_owned())]),
+    let keyring = KeyringDraft {
+        bells: HashMap::from([(BellDraft::First.validate().unwrap(), "b".to_owned())]),
         counts: HashMap::from([(1, "c".to_owned())]),
         flags: HashMap::from([(true, "f".to_owned())]),
         offsets: HashMap::from([(-1, "o".to_owned())]),

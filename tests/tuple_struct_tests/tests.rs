@@ -97,7 +97,7 @@ fn binds(zod: &str, expression: &str) -> bool {
 #[test]
 fn test_serde_writes_a_newtype_struct_as_the_inner_value_alone() {
     assert_eq!(
-        serde_json::to_value(Plain("hello".to_owned())).unwrap(),
+        serde_json::to_value(PlainDraft("hello".to_owned())).unwrap(),
         serde_json::json!("hello")
     );
 }
@@ -106,7 +106,7 @@ fn test_serde_writes_a_newtype_struct_as_the_inner_value_alone() {
 #[test]
 fn test_serde_writes_a_wider_tuple_struct_as_a_fixed_array() {
     assert_eq!(
-        serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(PairDraft("hello".to_owned(), 1_u32)).unwrap(),
         serde_json::json!(["hello", 1_u32])
     );
 }
@@ -114,11 +114,11 @@ fn test_serde_writes_a_wider_tuple_struct_as_a_fixed_array() {
 #[test]
 fn test_serde_writes_a_none_slot_as_null() {
     assert_eq!(
-        serde_json::to_value(MaybeName(None)).unwrap(),
+        serde_json::to_value(MaybeNameDraft(None)).unwrap(),
         serde_json::json!(null)
     );
     assert_eq!(
-        serde_json::to_value(MaybeName(Some("ada".to_owned()))).unwrap(),
+        serde_json::to_value(MaybeNameDraft(Some("ada".to_owned()))).unwrap(),
         serde_json::json!("ada")
     );
 }
@@ -126,7 +126,7 @@ fn test_serde_writes_a_none_slot_as_null() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_typescript() {
-    let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
+    let wire = serde_json::to_value(PlainDraft("hello".to_owned())).unwrap();
     assert!(wire.is_string(), "wire: {wire}");
 
     let ts = Plain::ts_definition();
@@ -137,7 +137,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_typescript() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_zod() {
-    let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
+    let wire = serde_json::to_value(PlainDraft("hello".to_owned())).unwrap();
     assert!(wire.is_string(), "wire: {wire}");
 
     let zod = Plain::zod_schema();
@@ -150,7 +150,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_zod() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_newtype_struct_describes_the_bare_inner_type_in_json_schema() {
-    let wire = serde_json::to_value(Plain("hello".to_owned())).unwrap();
+    let wire = serde_json::to_value(PlainDraft("hello".to_owned())).unwrap();
     assert!(wire.is_string(), "wire: {wire}");
 
     assert_eq!(
@@ -162,7 +162,7 @@ fn test_a_newtype_struct_describes_the_bare_inner_type_in_json_schema() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_typescript() {
-    let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
+    let wire = serde_json::to_value(PairDraft("hello".to_owned(), 1_u32)).unwrap();
     assert!(wire.is_array(), "wire: {wire}");
 
     let ts = Pair::ts_definition();
@@ -176,7 +176,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_typescript() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_zod() {
-    let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
+    let wire = serde_json::to_value(PairDraft("hello".to_owned(), 1_u32)).unwrap();
     assert!(wire.is_array(), "wire: {wire}");
 
     let zod = Pair::zod_schema();
@@ -208,7 +208,7 @@ fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_json_schema() {
-    let wire = serde_json::to_value(Pair("hello".to_owned(), 1_u32)).unwrap();
+    let wire = serde_json::to_value(PairDraft("hello".to_owned(), 1_u32)).unwrap();
     assert!(wire.is_array(), "wire: {wire}");
 
     assert_eq!(
@@ -226,7 +226,7 @@ fn test_a_wider_tuple_struct_describes_a_fixed_tuple_in_json_schema() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_typescript() {
-    let wire = serde_json::to_value(MaybeName(None)).unwrap();
+    let wire = serde_json::to_value(MaybeNameDraft(None)).unwrap();
     assert!(wire.is_null(), "wire: {wire}");
 
     let ts = MaybeName::ts_definition();
@@ -239,7 +239,7 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_typescript() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_zod() {
-    let wire = serde_json::to_value(MaybeName(None)).unwrap();
+    let wire = serde_json::to_value(MaybeNameDraft(None)).unwrap();
     assert!(wire.is_null(), "wire: {wire}");
 
     let zod = MaybeName::zod_schema();
@@ -250,7 +250,7 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_zod() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_slot_describes_the_null_it_writes_in_json_schema() {
-    let wire = serde_json::to_value(MaybeName(None)).unwrap();
+    let wire = serde_json::to_value(MaybeNameDraft(None)).unwrap();
     assert!(wire.is_null(), "wire: {wire}");
 
     assert_eq!(
@@ -262,12 +262,14 @@ fn test_an_optional_slot_describes_the_null_it_writes_in_json_schema() {
 #[test]
 fn test_serde_writes_and_reads_a_dropped_slot_in_neither_direction() {
     let written =
-        serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
+        serde_json::to_value(SkippedLeadSlotDraft(Some("s".to_owned()), "x".to_owned())).unwrap();
     assert_eq!(written, serde_json::json!(["x"]));
 
     assert_eq!(
         serde_json::from_value::<SkippedLeadSlot>(written).unwrap(),
-        SkippedLeadSlot(None, "x".to_owned())
+        SkippedLeadSlotDraft(None, "x".to_owned())
+            .validate()
+            .unwrap()
     );
     assert!(
         serde_json::from_str::<SkippedLeadSlot>(r#"["s","x"]"#).is_err(),
@@ -279,7 +281,11 @@ fn test_serde_writes_and_reads_a_dropped_slot_in_neither_direction() {
 #[test]
 fn test_the_two_halves_written_together_are_the_same_slot_wire() {
     assert_eq!(
-        serde_json::to_value(BothHalvesDroppedSlot(Some("s".to_owned()), "x".to_owned())).unwrap(),
+        serde_json::to_value(BothHalvesDroppedSlotDraft(
+            Some("s".to_owned()),
+            "x".to_owned()
+        ))
+        .unwrap(),
         serde_json::json!(["x"])
     );
     assert!(
@@ -291,11 +297,11 @@ fn test_the_two_halves_written_together_are_the_same_slot_wire() {
 #[test]
 fn test_serde_writes_the_slots_it_still_carries_in_their_new_places() {
     assert_eq!(
-        serde_json::to_value(SkippedTrailingSlot("s".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(SkippedTrailingSlotDraft("s".to_owned(), 1_u32)).unwrap(),
         serde_json::json!(["s"])
     );
     assert_eq!(
-        serde_json::to_value(SkippedMiddleSlot(
+        serde_json::to_value(SkippedMiddleSlotDraft(
             "a".to_owned(),
             Some("s".to_owned()),
             7_u32
@@ -304,7 +310,7 @@ fn test_serde_writes_the_slots_it_still_carries_in_their_new_places() {
         serde_json::json!(["a", 7_u32])
     );
     assert_eq!(
-        serde_json::to_value(EverySlotSkipped("s".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(EverySlotSkippedDraft("s".to_owned(), 1_u32)).unwrap(),
         serde_json::json!([])
     );
 }
@@ -312,19 +318,20 @@ fn test_serde_writes_the_slots_it_still_carries_in_their_new_places() {
 #[test]
 fn test_serde_writes_a_lone_slot_whatever_the_skip_says() {
     assert_eq!(
-        serde_json::to_value(SkippedLoneSlot("s".to_owned())).unwrap(),
+        serde_json::to_value(SkippedLoneSlotDraft("s".to_owned())).unwrap(),
         serde_json::json!("s")
     );
     assert_eq!(
         serde_json::from_str::<SkippedLoneSlot>(r#""s""#).unwrap(),
-        SkippedLoneSlot("s".to_owned())
+        SkippedLoneSlotDraft("s".to_owned()).validate().unwrap()
     );
 }
 
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn test_a_dropped_slot_is_no_element_of_the_typescript_tuple() {
-    let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
+    let wire =
+        serde_json::to_value(SkippedLeadSlotDraft(Some("s".to_owned()), "x".to_owned())).unwrap();
     assert_eq!(wire, serde_json::json!(["x"]));
 
     let ts = SkippedLeadSlot::ts_definition();
@@ -364,7 +371,8 @@ fn test_typescript_describes_the_arity_each_drop_leaves() {
 #[cfg(all(feature = "serde", feature = "zod"))]
 #[test]
 fn test_a_dropped_slot_is_no_element_of_the_zod_tuple() {
-    let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
+    let wire =
+        serde_json::to_value(SkippedLeadSlotDraft(Some("s".to_owned()), "x".to_owned())).unwrap();
     assert_eq!(wire, serde_json::json!(["x"]));
 
     let zod = SkippedLeadSlot::zod_schema();
@@ -393,7 +401,8 @@ fn test_zod_describes_the_arity_each_drop_leaves() {
 #[cfg(feature = "serde")]
 #[test]
 fn test_a_dropped_slot_leaves_the_json_schema_prefix_and_its_bounds() {
-    let wire = serde_json::to_value(SkippedLeadSlot(Some("s".to_owned()), "x".to_owned())).unwrap();
+    let wire =
+        serde_json::to_value(SkippedLeadSlotDraft(Some("s".to_owned()), "x".to_owned())).unwrap();
     assert_eq!(wire, serde_json::json!(["x"]));
 
     assert_eq!(

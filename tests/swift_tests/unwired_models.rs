@@ -32,7 +32,7 @@ pub enum BallastLoad {
 /// serde writes neither member nor the variant, and reads none of them: a key a payload holds for
 /// either member is refused, and the variant's name is no variant it reads.
 pub fn assert_serde_neither_writes_nor_reads() {
-    let ballast = Ballast {
+    let ballast = BallastDraft {
         note: "aft".to_owned(),
         tonnage: 7,
         weight: 3,
@@ -55,7 +55,7 @@ pub fn assert_serde_neither_writes_nor_reads() {
             .starts_with("unknown field `tonnage`"),
         "the key of a member taken off the wire is a key no member reads"
     );
-    let open = BallastLoad::Open {
+    let open = BallastLoadDraft::Open {
         note: "aft".to_owned(),
     };
     assert_eq!(
@@ -63,13 +63,13 @@ pub fn assert_serde_neither_writes_nor_reads() {
         r#"{"Open":{"note":"aft"}}"#,
         "serde writes the variant on the wire"
     );
-    let shifted = BallastLoad::Shifted { weight: 3 };
+    let shifted = BallastLoadDraft::Shifted { weight: 3 };
     assert!(
         serde_json::to_string(&shifted).is_err(),
         "serde writes no value of the variant taken off the wire"
     );
     assert!(
-        matches!(shifted, BallastLoad::Shifted { weight: 3 }),
+        matches!(shifted, BallastLoadDraft::Shifted { weight: 3 }),
         "the variant holds its member in Rust"
     );
     assert!(

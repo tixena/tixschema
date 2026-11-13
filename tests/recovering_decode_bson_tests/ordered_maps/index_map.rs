@@ -143,7 +143,10 @@ fn a_fixed_row_keeps_each_maps_keys_in_the_order_it_stored_them() {
     .unwrap();
     let piped = Ranking::from_bson_piped(stored_as_text(), &[&number_as_text]).unwrap();
     assert_eq!(fixed, piped);
-    assert_eq!(piped.by_name.get("zeta"), Some(&Tracked { number: 1_i32 }));
+    assert_eq!(
+        piped.by_name.get("zeta"),
+        Some(&TrackedDraft { number: 1_i32 }.validate().unwrap())
+    );
     let back = written(&piped);
     assert_eq!(keys_under(&back, "aliased"), ["zeta", "alpha"]);
     assert_eq!(keys_under(&back, "byName"), ["zeta", "alpha"]);

@@ -59,7 +59,7 @@ mod a_check_on_a_slot {
         low: u32,
         high: u32,
     ) -> Result<(), Vec<String>> {
-        EachAlone(
+        EachAloneDraft(
             least.to_owned(),
             most.to_owned(),
             matched.to_owned(),
@@ -67,6 +67,7 @@ mod a_check_on_a_slot {
             high,
         )
         .validate()
+        .map(|_valid| ())
     }
 
     #[test]
@@ -75,10 +76,13 @@ mod a_check_on_a_slot {
             "'0': too short: minimum length is 1, got 0".to_owned(),
             "'1': too small: minimum is 1, got 0".to_owned(),
         ];
-        assert_eq!(Pair(String::new(), 0).validate().unwrap_err(), both);
-        assert_eq!(Pair(String::new(), 1).validate().unwrap_err(), both[..1]);
-        assert_eq!(Pair("a".to_owned(), 0).validate().unwrap_err(), both[1..]);
-        assert_eq!(Pair("a".to_owned(), 1).validate(), Ok(()));
+        assert_eq!(PairDraft(String::new(), 0).validation_issues(), both);
+        assert_eq!(PairDraft(String::new(), 1).validation_issues(), both[..1]);
+        assert_eq!(PairDraft("a".to_owned(), 0).validation_issues(), both[1..]);
+        assert_eq!(
+            PairDraft("a".to_owned(), 1).validation_issues(),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -112,9 +116,12 @@ mod a_check_on_a_slot {
 
     #[test]
     fn the_five_keys_are_enforced_together() {
-        assert_eq!(Together("abc".to_owned(), 9).validate(), Ok(()));
         assert_eq!(
-            Together("A".to_owned(), 0).validate().unwrap_err(),
+            TogetherDraft("abc".to_owned(), 9).validation_issues(),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            TogetherDraft("A".to_owned(), 0).validation_issues(),
             vec![
                 "'0': too short: minimum length is 2, got 1".to_owned(),
                 "'0': does not match pattern '^[a-z]+$'".to_owned(),
@@ -122,7 +129,7 @@ mod a_check_on_a_slot {
             ]
         );
         assert_eq!(
-            Together("abcd".to_owned(), 10).validate().unwrap_err(),
+            TogetherDraft("abcd".to_owned(), 10).validation_issues(),
             vec![
                 "'0': too long: maximum length is 3, got 4".to_owned(),
                 "'1': too large: maximum is 9, got 10".to_owned(),
@@ -132,17 +139,20 @@ mod a_check_on_a_slot {
 
     #[test]
     fn serde_refuses_what_a_slots_bound_refuses_and_the_wire_is_unchanged() {
-        let broken = Pair(String::new(), 0);
+        let broken = PairDraft(String::new(), 0);
         assert_eq!(serde_json::to_string(&broken).unwrap(), r#"["",0]"#);
         assert_eq!(
             serde_json::from_str::<Pair>(r#"["",0]"#)
                 .unwrap_err()
                 .to_string(),
-            broken.validate().unwrap_err().join("; ")
+            broken.validation_issues().join("; ")
         );
-        let kept = Pair("a".to_owned(), 1);
+        let kept = PairDraft("a".to_owned(), 1);
         assert_eq!(serde_json::to_string(&kept).unwrap(), r#"["a",1]"#);
-        assert_eq!(serde_json::from_str::<Pair>(r#"["a",1]"#).unwrap(), kept);
+        assert_eq!(
+            serde_json::from_str::<Pair>(r#"["a",1]"#).unwrap(),
+            kept.validate().unwrap()
+        );
     }
 
     /// serde writes a struct of one slot as the slot's value, so its bound is reported under no
@@ -150,15 +160,15 @@ mod a_check_on_a_slot {
     #[test]
     fn the_one_slot_of_a_struct_is_checked_under_no_name() {
         assert_eq!(
-            Lone(String::new()).validate().unwrap_err(),
+            LoneDraft(String::new()).validation_issues(),
             vec!["too short: minimum length is 1, got 0".to_owned()]
         );
-        let held = Coded {
-            code: Lone(String::new()),
+        let held = CodedDraft {
+            code: Lone::model_schema_wrap_unjudged(LoneDraft(String::new())),
         };
         assert_eq!(serde_json::to_string(&held).unwrap(), r#"{"code":""}"#);
         assert_eq!(
-            held.validate().unwrap_err(),
+            held.validation_issues(),
             vec!["'code': too short: minimum length is 1, got 0".to_owned()]
         );
         let readme = include_str!("../../docs/guide/validation.md");
@@ -169,19 +179,22 @@ mod a_check_on_a_slot {
         ] {
             assert!(readme.contains(shown), "the README no longer shows {shown}");
         }
-        assert_eq!(Lone("a".to_owned()).validate(), Ok(()));
+        assert_eq!(
+            LoneDraft("a".to_owned()).validation_issues(),
+            Vec::<String>::new()
+        );
         assert_eq!(
             serde_json::from_str::<Lone>(r#""""#)
                 .unwrap_err()
                 .to_string(),
-            Lone(String::new()).validate().unwrap_err().join("; ")
+            LoneDraft(String::new()).validation_issues().join("; ")
         );
         assert_eq!(
             serde_json::from_str::<Lone>(r#""a""#).unwrap(),
-            Lone("a".to_owned())
+            LoneDraft("a".to_owned()).validate().unwrap()
         );
         assert_eq!(
-            serde_json::to_string(&Lone("a".to_owned())).unwrap(),
+            serde_json::to_string(&LoneDraft("a".to_owned())).unwrap(),
             r#""a""#
         );
     }
@@ -189,7 +202,7 @@ mod a_check_on_a_slot {
     #[test]
     fn a_slot_is_reached_through_an_option_and_a_list_is_counted() {
         assert_eq!(
-            Wrapped(Some("a".to_owned()), vec!["long enough".to_owned()], true)
+            WrappedDraft(Some("a".to_owned()), vec!["long enough".to_owned()], true)
                 .validate()
                 .unwrap_err(),
             vec![
@@ -198,15 +211,15 @@ mod a_check_on_a_slot {
             ]
         );
         assert_eq!(
-            Wrapped(None, vec!["a".to_owned(), "b".to_owned()], true).validate(),
-            Ok(())
+            WrappedDraft(None, vec!["a".to_owned(), "b".to_owned()], true).validation_issues(),
+            Vec::<String>::new()
         );
     }
 
     #[test]
     fn a_generic_tuple_struct_validates_at_its_declared_default() {
         assert_eq!(
-            Labelled::<String>(String::new(), "x".to_owned())
+            LabelledDraft::<String>(String::new(), "x".to_owned())
                 .validate()
                 .unwrap_err(),
             vec!["'0': too short: minimum length is 1, got 0".to_owned()]
@@ -231,14 +244,14 @@ mod a_check_on_a_slot {
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_slot() {
         let readme = include_str!("../../docs/guide/validation.md");
-        let reported = Pair(String::new(), 0).validate();
+        let reported = PairDraft(String::new(), 0).validate();
         reported.as_ref().unwrap_err();
         let shown = format!("// {reported:?}");
         assert!(
             readme.contains(&shown),
             "the README no longer shows {shown}"
         );
-        let wire = serde_json::to_string(&Pair("a".to_owned(), 1)).unwrap();
+        let wire = serde_json::to_string(&PairDraft("a".to_owned(), 1)).unwrap();
         assert!(readme.contains(&wire), "the README no longer shows {wire}");
     }
 

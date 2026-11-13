@@ -50,10 +50,12 @@ fn a_range_that_does_not_read_is_one_issue_at_its_key() {
     let sound = json!({ "label": "a", "span": { "start": 8_u32, "end": 13_u32 } });
     assert_eq!(
         Voyage::from_value_with(sound, |_raw, _found| voyage_schema::Verdict::Reject),
-        Ok(Voyage {
+        Ok(VoyageDraft {
             label: "a".to_owned(),
             span: 8..13,
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

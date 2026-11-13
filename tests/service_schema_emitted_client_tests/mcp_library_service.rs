@@ -134,9 +134,9 @@ pub struct Stand;
 impl Stand {
     fn book_of(book_id: &str) -> Result<BookInfo, BookError> {
         match book_id {
-            "book-1" => Ok(BookInfo { pages: 7 }),
+            "book-1" => Ok(seven_pages()),
             "panic" => came_apart(),
-            _ => Err(BookError::NotFound),
+            _ => Err(not_found()),
         }
     }
 }
@@ -153,7 +153,7 @@ impl LibraryService<()> for Stand {
             "book-1" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
             "book-2" => Ok((vec![0, 255, 128, 1, 2, 3, 4], "image/png".to_owned())),
             "panic" => came_apart(),
-            _ => Err(BookError::NotFound),
+            _ => Err(BookErrorDraft::NotFound.validate().unwrap()),
         })
     }
 
@@ -196,7 +196,7 @@ impl LibraryService<()> for Stand {
                 next_cursor: None,
             }),
             Some("panic") => came_apart(),
-            Some(_) => Err(BookError::NotFound),
+            Some(_) => Err(BookErrorDraft::NotFound.validate().unwrap()),
         })
     }
 
@@ -209,7 +209,7 @@ impl LibraryService<()> for Stand {
         ready(match typed.as_str() {
             "many" => Ok((0..150).map(|at| format!("many-{at}")).collect()),
             "panic" => came_apart(),
-            "none" => Err(BookError::NotFound),
+            "none" => Err(BookErrorDraft::NotFound.validate().unwrap()),
             "kind" => Ok(vec![chosen.get("kind").cloned().unwrap_or_default()]),
             _ => Ok(["book-1", "book-2"]
                 .into_iter()
@@ -238,7 +238,7 @@ impl DepotService<()> for Stand {
         ready(if crate_id == "crate-1" {
             Ok("{\"total\":120}".to_owned())
         } else {
-            Err(BookError::NotFound)
+            Err(BookErrorDraft::NotFound.validate().unwrap())
         })
     }
 
@@ -259,7 +259,7 @@ impl DepotService<()> for Stand {
                 }],
                 next_cursor: None,
             }),
-            Some(_) => Err(BookError::NotFound),
+            Some(_) => Err(BookErrorDraft::NotFound.validate().unwrap()),
         })
     }
 }
@@ -291,4 +291,12 @@ impl BareService<()> for Stand {
 /// A handler that panics with the sentence the other samples' handlers say.
 fn came_apart() -> ! {
     resume_unwind(Box::new("the handler came apart"))
+}
+
+fn not_found() -> BookError {
+    BookErrorDraft::NotFound.validate().unwrap()
+}
+
+fn seven_pages() -> BookInfo {
+    BookInfoDraft { pages: 7 }.validate().unwrap()
 }

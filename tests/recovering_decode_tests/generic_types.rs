@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use super::{Version, lines};
+use super::{Version, VersionDraft, lines};
 
 #[model_schema(enable = ["decode_with"], default_types(T = String))]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -101,17 +101,25 @@ struct Listing {
 }
 
 fn listing() -> Listing {
-    Listing {
-        page: Page {
-            items: vec![Version { number: 1 }],
+    ListingDraft {
+        page: PageDraft {
+            items: vec![VersionDraft { number: 1 }.validate().unwrap()],
             total: 1,
-        },
-        pages: vec![Page {
-            items: vec!["a".to_owned()],
-            total: 1,
-        }],
+        }
+        .validate()
+        .unwrap(),
+        pages: vec![
+            PageDraft {
+                items: vec!["a".to_owned()],
+                total: 1,
+            }
+            .validate()
+            .unwrap(),
+        ],
         wrapped: Wrapped::new("w".to_owned()).unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -141,12 +149,18 @@ fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
 
 #[test]
 fn a_model_type_filling_a_parameter_needs_no_flag() {
-    let page = Page {
-        items: vec![Plain {
-            label: "a".to_owned(),
-        }],
+    let page = PageDraft {
+        items: vec![
+            PlainDraft {
+                label: "a".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ],
         total: 1,
-    };
+    }
+    .validate()
+    .unwrap();
     let mut calls = 0_u32;
     let read =
         Page::<Plain>::from_value_with(serde_json::to_value(&page).unwrap(), |_raw, _found| {
@@ -178,10 +192,12 @@ fn a_value_of_a_parameters_type_is_never_mistyped_in_a_json_value() {
     });
     assert_eq!(
         read,
-        Ok(Pairing {
-            left: Version { number: 3 },
-            right: vec![Version { number: 4 }],
-        })
+        Ok(PairingDraft {
+            left: VersionDraft { number: 3 }.validate().unwrap(),
+            right: vec![VersionDraft { number: 4 }.validate().unwrap()],
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -195,10 +211,12 @@ fn a_generic_type_held_in_another_shape_is_listed_only_where_serde_refuses_it() 
     });
     assert_eq!(
         read,
-        Ok(Page {
+        Ok(PageDraft {
             items: vec!["a".to_owned()],
             total: 1,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -247,10 +265,12 @@ fn a_struct_with_two_parameters_reads_each_under_its_own_name() {
     });
     assert_eq!(
         read,
-        Ok(Pairing {
+        Ok(PairingDraft {
             left: "one".to_owned(),
             right: 2_i32,
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -263,10 +283,12 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
     });
     assert_eq!(
         read,
-        Ok(Lenient {
+        Ok(LenientDraft {
             extra: String::new(),
             total: 1,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -413,10 +435,12 @@ fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
         Keyed::<u32, String>::from_value_with(stored, |_raw, _found| keyed_schema::Verdict::Reject);
     assert_eq!(
         read,
-        Ok(Keyed {
+        Ok(KeyedDraft {
             format: "csv".to_owned(),
             id: 7,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let refused =
         Keyed::<u32, String>::from_value_with(json!({ "id": "seven" }), |_raw, _found| {
@@ -441,18 +465,29 @@ fn an_untagged_member_bounded_over_the_parameter_reads_at_a_filling_with_no_defa
     });
     assert_eq!(
         read,
-        Ok(ProbeStowed::Pile {
-            pile: Some(vec![Plain {
-                label: "a".to_owned()
-            }]),
+        Ok(ProbeStowedDraft::Pile {
+            pile: Some(vec![
+                PlainDraft {
+                    label: "a".to_owned()
+                }
+                .validate()
+                .unwrap()
+            ]),
             tag: 1,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let absent = ProbeStowed::<Plain>::from_value_with(json!({ "tag": 1_i32 }), |_raw, _found| {
         calls += 1;
         probe_stowed_schema::Verdict::Reject
     });
-    assert_eq!(absent, Ok(ProbeStowed::Pile { pile: None, tag: 1 }));
+    assert_eq!(
+        absent,
+        Ok(ProbeStowedDraft::Pile { pile: None, tag: 1 }
+            .validate()
+            .unwrap())
+    );
     assert_eq!(calls, 0);
 }
 

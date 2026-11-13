@@ -103,11 +103,13 @@ fn without_fragile(mut payload: Value) -> Value {
 }
 
 fn parcel(label: &str, fragile: &[&str]) -> StoredParcel {
-    StoredParcel {
+    StoredParcelDraft {
         fragile_item_codes: fragile.iter().map(|&code| code.to_owned()).collect(),
         item_code_list: vec!["x".to_owned()],
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Row 1 of the sample: a label with spaces at its ends.
@@ -153,9 +155,11 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
     });
     assert_eq!(
         held.map_err(|refused| lines(&refused)),
-        Ok(StoredManifest {
+        Ok(StoredManifestDraft {
             parcel: parcel("A", &[])
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let flattened = StoredCrated::from_value_with(
         json!({ "dock": "north", "label": "A", "itemCodeList": ["x"] }),
@@ -163,10 +167,12 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
     );
     assert_eq!(
         flattened.map_err(|refused| lines(&refused)),
-        Ok(StoredCrated {
+        Ok(StoredCratedDraft {
             dock: "north".to_owned(),
             parcel: parcel("A", &[])
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -296,9 +302,11 @@ fn an_enum_is_taken_out_of_its_envelope_by_the_recovering_read() {
         StoredShipment::from_value_with(enveloped, |_, _| stored_shipment_schema::Verdict::Reject);
     assert_eq!(
         read.map_err(|refused| lines(&refused)),
-        Ok(StoredShipment::Air {
+        Ok(StoredShipmentDraft::Air {
             flight: "F1".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -311,7 +319,10 @@ fn a_recovering_read_calls_the_function_of_the_type_once() {
     let read = CountedParcel::from_value_with(json!({ "label": "A" }), |_, _| {
         counted_parcel_schema::Verdict::Reject
     });
-    assert_eq!(read.map(|held| held.label).ok().as_deref(), Some("A"));
+    assert_eq!(
+        read.map(|held| held.label.clone()).ok().as_deref(),
+        Some("A")
+    );
     assert_eq!(
         (PARCEL_CALLS.get(), LABEL_CALLS.get()),
         (before.0 + 1, before.1 + 2)
@@ -321,7 +332,10 @@ fn a_recovering_read_calls_the_function_of_the_type_once() {
         *value = json!({ "label": "A" });
         counted_parcel_schema::Verdict::Fixed
     });
-    assert_eq!(repaired.map(|held| held.label).ok().as_deref(), Some("A"));
+    assert_eq!(
+        repaired.map(|held| held.label.clone()).ok().as_deref(),
+        Some("A")
+    );
     assert_eq!(PARCEL_CALLS.get(), before.0 + 2);
 }
 

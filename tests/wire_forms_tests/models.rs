@@ -753,7 +753,7 @@ fn payload(places: Places, value: &str, key: &str) -> String {
 /// What serde answers of the model holding `handed`, where `held_by` names it.
 fn serde_told(held_by: &str, handed: &str) -> String {
     if handed == "NaN" {
-        let written = serde_json::to_string(&ConveyedF64 {
+        let written = serde_json::to_string(&ConveyedF64Draft {
             value: f64::NAN,
             values: vec![f64::NAN],
         })

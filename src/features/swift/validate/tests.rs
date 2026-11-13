@@ -4,7 +4,9 @@
 use syn::Item;
 
 use super::{property_read, swift_pattern};
-use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
+#[cfg(feature = "serde")]
+use crate::features::model_schema_prop::FunctionName;
+use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 use crate::features::swift::{SwiftTypeArgs, swift_schema_dispatch};
 
 /// The arguments of an item that writes none: each member's own `model_schema_prop`, as written.

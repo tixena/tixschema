@@ -8,11 +8,12 @@ use invoice_schema::DecodeWith as _;
 use bson::{Bson, doc};
 use invoice_lookup_schema::DecodeWith as _;
 use invoice_lookups::{
-    InvoiceLookup, Parcel, ParcelRecipient, ParcelSender, invoice_lookup_schema,
+    InvoiceLookup, InvoiceLookupDraft, ParcelDraft, ParcelRecipient, ParcelRecipientDraft,
+    ParcelSender, ParcelSenderDraft, invoice_lookup_schema,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use stored_customers::Customer;
+use stored_customers::{Customer, CustomerDraft};
 use tixschema::model_schema;
 
 /// The manifest of the crate whose types list `"decode_with"` alone.
@@ -144,13 +145,19 @@ fn a_value_holding_a_type_of_another_crate_reads_where_nothing_is_wrong() {
     );
     assert_eq!(
         read.ok(),
-        Some(Invoice {
-            customer: Customer {
-                name: "Ada".to_owned(),
-                open_invoices: 3,
-            },
-            number: "INV-1".to_owned(),
-        })
+        Some(
+            InvoiceDraft {
+                customer: CustomerDraft {
+                    name: "Ada".to_owned(),
+                    open_invoices: 3,
+                }
+                .validate()
+                .unwrap(),
+                number: "INV-1".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
     );
 }
 
@@ -177,15 +184,25 @@ fn a_stored_type_reads_a_type_of_a_crate_whose_types_list_decode_with_alone_from
     let read = LookupLog::from_bson_with(row, |_raw, _found| lookup_log_schema::Verdict::Reject);
     assert_eq!(
         read.ok(),
-        Some(LookupLog {
-            lookup: InvoiceLookup {
-                number: "INV-1".to_owned(),
-                parcels: vec![Parcel {
-                    label: "fragile".to_owned(),
-                }],
-            },
-            number: "L-1".to_owned(),
-        })
+        Some(
+            LookupLogDraft {
+                lookup: InvoiceLookupDraft {
+                    number: "INV-1".to_owned(),
+                    parcels: vec![
+                        ParcelDraft {
+                            label: "fragile".to_owned(),
+                        }
+                        .validate()
+                        .unwrap()
+                    ],
+                }
+                .validate()
+                .unwrap(),
+                number: "L-1".to_owned(),
+            }
+            .validate()
+            .unwrap()
+        )
     );
     let mut handed: Vec<lookup_log_schema::Issue<Bson>> = Vec::new();
     let broken = doc! {
@@ -215,12 +232,20 @@ fn a_type_of_a_crate_that_names_no_bson_is_read_through_that_crates_library() {
     );
     assert_eq!(
         read.ok(),
-        Some(InvoiceLookup {
-            number: "INV-1".to_owned(),
-            parcels: vec![Parcel {
-                label: "fragile".to_owned(),
-            }],
-        })
+        Some(
+            InvoiceLookupDraft {
+                number: "INV-1".to_owned(),
+                parcels: vec![
+                    ParcelDraft {
+                        label: "fragile".to_owned(),
+                    }
+                    .validate()
+                    .unwrap()
+                ],
+            }
+            .validate()
+            .unwrap()
+        )
     );
 }
 
@@ -298,13 +323,17 @@ fn a_type_of_another_crate_named_by_its_path_is_flattened_through_its_crates_sch
 
 #[test]
 fn generic_members_of_another_crate_flattened_at_the_holders_parameter_read_back() {
-    let parties = ParcelParties {
-        recipient: ParcelRecipient {
+    let parties = ParcelPartiesDraft {
+        recipient: ParcelRecipientDraft {
             recipient_id: "rcp-7".to_owned(),
-        },
-        sender: ParcelSender {
+        }
+        .validate()
+        .unwrap(),
+        sender: ParcelSenderDraft {
             sender_id: "snd-2".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     let written = serde_json::to_value(&parties).map_err(|error| error.to_string());
     assert_eq!(
@@ -314,5 +343,5 @@ fn generic_members_of_another_crate_flattened_at_the_holders_parameter_read_back
     let read = written.and_then(|value| {
         serde_json::from_value::<ParcelParties<String>>(value).map_err(|error| error.to_string())
     });
-    assert_eq!(read, Ok(parties));
+    assert_eq!(read, Ok(parties.validate().unwrap()));
 }

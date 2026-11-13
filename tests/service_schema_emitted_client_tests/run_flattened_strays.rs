@@ -10,10 +10,13 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
 use super::flattened_stray_models::{
-    BillingAddress, BillingContact, BillingCustomer, BoxSize, CheckoutOrder, CheckoutPayment,
-    Consignment, ConsignmentLabel, CourierDelivery, CourierShipment, DoorFinish, GiftBox,
-    GiftOrder, GiftWrap, GuestCustomer, PackageWeight, PaintedDoor, ShopEvent, SizedCarton,
-    SizedPallet, WeighedPackage, WeighedParcel,
+    BillingAddressDraft, BillingContactDraft, BillingCustomer, BillingCustomerDraft, BoxSizeDraft,
+    CheckoutOrder, CheckoutOrderDraft, CheckoutPaymentDraft, Consignment, ConsignmentDraft,
+    ConsignmentLabelDraft, CourierDeliveryDraft, CourierShipment, CourierShipmentDraft,
+    DoorFinishDraft, GiftBox, GiftBoxDraft, GiftOrder, GiftOrderDraft, GiftWrapDraft,
+    GuestCustomer, GuestCustomerDraft, PackageWeightDraft, PaintedDoor, PaintedDoorDraft,
+    ShopEvent, ShopEventDraft, SizedCarton, SizedCartonDraft, SizedPallet, SizedPalletDraft,
+    WeighedPackageDraft, WeighedParcel, WeighedParcelDraft,
 };
 #[cfg(feature = "dart")]
 use super::flattened_stray_models::{
@@ -58,100 +61,132 @@ where
 
 /// Each holder's name and a payload serde writes of it, for the holders of a struct.
 fn struct_payloads() -> Vec<(&'static str, String)> {
-    let address = || BillingAddress {
+    let address = || BillingAddressDraft {
         city: "Lima".to_owned(),
     };
     vec![
         written(
             "BillingCustomer",
-            &BillingCustomer {
+            &BillingCustomerDraft {
                 name: "Ana".to_owned(),
-                contact: BillingContact {
+                contact: BillingContactDraft {
                     phone: "555".to_owned(),
-                    address: address(),
-                },
+                    address: address().validate().unwrap(),
+                }
+                .validate()
+                .unwrap(),
             },
         ),
         written(
             "Consignment",
-            &Consignment::Labelled(ConsignmentLabel {
-                code: "f1".to_owned(),
-            }),
+            &ConsignmentDraft::Labelled(
+                ConsignmentLabelDraft {
+                    code: "f1".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            ),
         ),
         written(
             "GiftOrder",
-            &GiftOrder {
+            &GiftOrderDraft {
                 label: "g1".to_owned(),
-                wrap: GiftWrap {
+                wrap: GiftWrapDraft {
                     paper: "red".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
             },
         ),
         written(
             "GiftBox",
-            &GiftBox {
+            &GiftBoxDraft {
                 label: "g2".to_owned(),
-                wrap: Some(GiftWrap {
-                    paper: "blue".to_owned(),
-                }),
+                wrap: Some(
+                    GiftWrapDraft {
+                        paper: "blue".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                ),
             },
         ),
         written(
             "GiftBox",
-            &GiftBox {
+            &GiftBoxDraft {
                 label: "g3".to_owned(),
                 wrap: None,
             },
         ),
         written(
             "GuestCustomer",
-            &GuestCustomer {
+            &GuestCustomerDraft {
                 name: "Ben".to_owned(),
-                contact: BillingContact {
+                contact: BillingContactDraft {
                     phone: "556".to_owned(),
-                    address: address(),
-                },
+                    address: address().validate().unwrap(),
+                }
+                .validate()
+                .unwrap(),
             },
         ),
+    ]
+    .into_iter()
+    .chain(delivery_payloads())
+    .collect()
+}
+
+/// Each holder's name and a payload serde writes of it, for the holders of a struct that hold a
+/// payment, a delivery or a weight.
+fn delivery_payloads() -> Vec<(&'static str, String)> {
+    vec![
         written(
             "CheckoutOrder",
-            &CheckoutOrder {
+            &CheckoutOrderDraft {
                 label: "o1".to_owned(),
-                payment: CheckoutPayment::Card {
+                payment: CheckoutPaymentDraft::Card {
                     last4: "4242".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
             },
         ),
         written(
             "CheckoutOrder",
-            &CheckoutOrder {
+            &CheckoutOrderDraft {
                 label: "o2".to_owned(),
-                payment: CheckoutPayment::Cash,
+                payment: CheckoutPaymentDraft::Cash.validate().unwrap(),
             },
         ),
         written(
             "CourierShipment",
-            &CourierShipment {
+            &CourierShipmentDraft {
                 label: "s1".to_owned(),
-                delivery: CourierDelivery::Courier {
+                delivery: CourierDeliveryDraft::Courier {
                     courier: "DHL".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
             },
         ),
         written(
             "CourierShipment",
-            &CourierShipment {
+            &CourierShipmentDraft {
                 label: "s2".to_owned(),
-                delivery: CourierDelivery::Pickup {
+                delivery: CourierDeliveryDraft::Pickup {
                     store: "Centro".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
             },
         ),
         written(
             "WeighedParcel",
-            &WeighedParcel {
+            &WeighedParcelDraft {
                 label: "p1".to_owned(),
-                weight: WeighedPackage(PackageWeight { grams: 500 }),
+                weight: WeighedPackageDraft(PackageWeightDraft { grams: 500 }.validate().unwrap())
+                    .validate()
+                    .unwrap(),
             },
         ),
     ]
@@ -159,59 +194,63 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
 
 /// Each holder's name and a payload serde writes of it, for the holders of an enum.
 fn enum_payloads() -> Vec<(&'static str, String)> {
-    let address = || BillingAddress {
+    let address = || BillingAddressDraft {
         city: "Lima".to_owned(),
     };
     vec![
         written(
             "SizedCarton",
-            &SizedCarton {
+            &SizedCartonDraft {
                 label: "c1".to_owned(),
-                size: BoxSize::Small { width: 3 },
+                size: BoxSizeDraft::Small { width: 3 }.validate().unwrap(),
             },
         ),
         written(
             "SizedCarton",
-            &SizedCarton {
+            &SizedCartonDraft {
                 label: "c2".to_owned(),
-                size: BoxSize::Large(PackageWeight { grams: 2 }),
+                size: BoxSizeDraft::Large(PackageWeightDraft { grams: 2 }.validate().unwrap())
+                    .validate()
+                    .unwrap(),
             },
         ),
         written(
             "SizedPallet",
-            &SizedPallet {
+            &SizedPalletDraft {
                 label: "l1".to_owned(),
-                size: Some(BoxSize::Small { width: 3 }),
+                size: Some(BoxSizeDraft::Small { width: 3 }.validate().unwrap()),
             },
         ),
         written(
             "SizedPallet",
-            &SizedPallet {
+            &SizedPalletDraft {
                 label: "l2".to_owned(),
                 size: None,
             },
         ),
         written(
             "ShopEvent",
-            &ShopEvent::Moved {
+            &ShopEventDraft::Moved {
                 label: "e1".to_owned(),
-                address: address(),
+                address: address().validate().unwrap(),
             },
         ),
-        written("ShopEvent", &ShopEvent::Counted { count: 2 }),
+        written("ShopEvent", &ShopEventDraft::Counted { count: 2 }),
         written(
             "PaintedDoor",
-            &PaintedDoor {
-                finish: DoorFinish::Bare { gloss: Some(2) },
+            &PaintedDoorDraft {
+                finish: DoorFinishDraft::Bare { gloss: Some(2) }.validate().unwrap(),
                 label: "f1".to_owned(),
             },
         ),
         written(
             "PaintedDoor",
-            &PaintedDoor {
-                finish: DoorFinish::Painted {
+            &PaintedDoorDraft {
+                finish: DoorFinishDraft::Painted {
                     colour: "red".to_owned(),
-                },
+                }
+                .validate()
+                .unwrap(),
                 label: "f2".to_owned(),
             },
         ),

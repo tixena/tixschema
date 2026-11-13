@@ -15,17 +15,18 @@ use serde::de::DeserializeOwned;
 
 use super::runtime::ran_kotlin;
 use super::tuple_variants_models::{
-    Banding, Bundling, Crating, Grading, Lashing, Palleting, Piling, Racking, Ranking, Slotting,
-    Spooling, Stacking, Strapping, Wrapping, banding_kotlin, bundling_kotlin, crating_kotlin,
+    Banding, BandingDraft, Bundling, Crating, Grading, GradingDraft, Lashing, LashingDraft,
+    Palleting, Piling, Racking, Ranking, Slotting, SlottingDraft, Spooling, SpoolingDraft,
+    Stacking, Strapping, Wrapping, WrappingDraft, banding_kotlin, bundling_kotlin, crating_kotlin,
     grading_kotlin, labelling_kotlin, lashing_kotlin, palleting_kotlin, piling_kotlin,
     racking_kotlin, ranking_kotlin, slotting_kotlin, spooling_kotlin, stacking_kotlin,
     stencil_kotlin, strapping_kotlin, wrapping_kotlin,
 };
 use super::tuple_variants_models::{
-    Binning, Coiling, Heaping, Tallying, binning_kotlin, coiling_kotlin, heaping_kotlin,
-    tallying_kotlin,
+    Binning, BinningDraft, Coiling, CoilingDraft, Heaping, HeapingDraft, Tallying, binning_kotlin,
+    coiling_kotlin, heaping_kotlin, tallying_kotlin,
 };
-use super::tuple_variants_models::{Labelling, Stencil};
+use super::tuple_variants_models::{LabellingDraft, Stencil, StencilDraft};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.json.*\n\
@@ -653,20 +654,27 @@ fn a_preprocessed_map_of_tuples_holding_a_model_is_refused_at_the_entrys_path_in
 /// Rust, the read of a payload that leaves the key out included.
 #[test]
 fn the_refusals_held_here_are_what_the_holders_validate_answers() {
-    let broken = || (Stencil::default(), 2);
+    let broken = || {
+        (
+            Stencil::model_schema_wrap_unjudged(StencilDraft::default()),
+            2,
+        )
+    };
     assert_eq!(
-        Wrapping { pair: broken() }.validate(),
-        Err(vec![PAIR_REFUSED.to_owned()])
+        WrappingDraft { pair: broken() }.validation_issues(),
+        vec![PAIR_REFUSED.to_owned()]
     );
     assert_eq!(
-        Banding {
-            labelling: Labelling {
+        BandingDraft {
+            labelling: LabellingDraft {
                 label: "north".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             pair: broken()
         }
-        .validate(),
-        Err(vec![PAIR_REFUSED.to_owned()])
+        .validation_issues(),
+        vec![PAIR_REFUSED.to_owned()]
     );
     assert_eq!(
         serde_json::from_str::<Wrapping>("{}")
@@ -675,51 +683,53 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
         PAIR_REFUSED
     );
     assert_eq!(
-        Binning::Counts(HashMap::from([("north".to_owned(), broken())])).validate(),
-        Err(vec![COUNT_REFUSED.to_owned()])
+        BinningDraft::Counts(HashMap::from([("north".to_owned(), broken())])).validation_issues(),
+        vec![COUNT_REFUSED.to_owned()]
     );
     assert_eq!(
-        Slotting(broken(), 3).validate(),
-        Err(vec![SLOT_REFUSED.to_owned()])
+        SlottingDraft(broken(), 3).validation_issues(),
+        vec![SLOT_REFUSED.to_owned()]
     );
     assert_eq!(
-        Grading {
+        GradingDraft {
             pair: (Ok(broken()), 3)
         }
-        .validate(),
-        Err(vec![ARM_REFUSED.to_owned()])
+        .validation_issues(),
+        vec![ARM_REFUSED.to_owned()]
     );
     assert_eq!(
-        Spooling {
-            labelling: Labelling {
+        SpoolingDraft {
+            labelling: LabellingDraft {
                 label: "north".to_owned()
-            },
+            }
+            .validate()
+            .unwrap(),
             maybe: Some(broken()),
             pairs: vec![broken()]
         }
-        .validate(),
-        Err(vec![OPTION_REFUSED.to_owned(), LIST_REFUSED.to_owned()])
+        .validation_issues(),
+        vec![OPTION_REFUSED.to_owned(), LIST_REFUSED.to_owned()]
     );
     assert_eq!(
-        Coiling {
+        CoilingDraft {
             pair: (HashMap::from([("north".to_owned(), broken())]), 3)
         }
-        .validate(),
-        Err(vec![KEYED_PAIR_REFUSED.to_owned()])
+        .validation_issues(),
+        vec![KEYED_PAIR_REFUSED.to_owned()]
     );
     assert_eq!(
-        Lashing {
+        LashingDraft {
             dock: "south".to_owned(),
             extra: HashMap::from([("north".to_owned(), broken())])
         }
-        .validate(),
-        Err(vec![OWN_KEY_REFUSED.to_owned()])
+        .validation_issues(),
+        vec![OWN_KEY_REFUSED.to_owned()]
     );
     assert_eq!(
-        Heaping {
+        HeapingDraft {
             counts: HashMap::from([("north".to_owned(), broken())])
         }
-        .validate(),
-        Err(vec![PREPROCESSED_REFUSED.to_owned()])
+        .validation_issues(),
+        vec![PREPROCESSED_REFUSED.to_owned()]
     );
 }

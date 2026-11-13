@@ -58,7 +58,7 @@ mod on_a_schema_surface {
 
     #[test]
     fn a_raw_identifier_field_publishes_the_key_serde_writes() {
-        let keyed = RawKeyed {
+        let keyed = RawKeyedDraft {
             r#match: "ab".to_owned(),
             r#type: "x".to_owned(),
         };
@@ -100,23 +100,26 @@ mod on_a_schema_surface {
 
     #[test]
     fn a_constraint_on_a_raw_identifier_field_is_checked_under_the_key() {
-        let keyed = RawKeyed {
+        let keyed = RawKeyedDraft {
             r#match: "a".to_owned(),
             r#type: "x".to_owned(),
         };
         assert_eq!(
-            keyed.validate().unwrap_err(),
+            keyed.validation_issues(),
             ["'match': too short: minimum length is 2, got 1"]
         );
         assert_eq!(
-            RawHolder { r#struct: keyed }.validate().unwrap_err(),
+            RawHolderDraft {
+                r#struct: RawKeyed::model_schema_wrap_unjudged(keyed)
+            }
+            .validation_issues(),
             ["'struct.match': too short: minimum length is 2, got 1"]
         );
-        let held = RawChoice::Held {
+        let held = RawChoiceDraft::Held {
             r#type: "x".to_owned(),
         };
         assert_eq!(
-            held.validate().unwrap_err(),
+            held.validation_issues(),
             ["'type': too short: minimum length is 2, got 1"]
         );
     }
@@ -171,7 +174,7 @@ mod on_a_mobile_surface {
 
     #[test]
     fn serde_writes_the_keys_the_three_languages_name() {
-        let written = serde_json::to_value(RawMobile {
+        let written = serde_json::to_value(RawMobileDraft {
             r#match: "a".to_owned(),
             r#type: "b".to_owned(),
         })

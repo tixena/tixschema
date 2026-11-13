@@ -323,12 +323,16 @@ fn test_integer_types_use_int_modifier() {
 fn test_float_types_do_not_use_int_modifier() {
     let zod = AllNumericTypes::zod_schema();
 
+    let read_as_its_number =
+        "z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number()";
     assert!(
-        zod.contains("f32: z.number()") && !zod.contains("f32: z.number().int()"),
+        zod.contains(&format!("f32: {read_as_its_number}"))
+            && !zod.contains("f32: z.number().int()"),
         "f32 should not use .int(). Got: {zod}"
     );
     assert!(
-        zod.contains("f64: z.number()") && !zod.contains("f64: z.number().int()"),
+        zod.contains(&format!("f64: {read_as_its_number})"))
+            && !zod.contains("f64: z.number().int()"),
         "f64 should not use .int(). Got: {zod}"
     );
 }

@@ -11,13 +11,14 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::held_maps_models::{
-    Currents, Haversack, Leadline, Plumbline, Pocketing, Rucksack, StowedHaversack,
-    StowedPocketing, beaconing_swift, captioning_swift, currents_swift, haversack_swift,
-    leadline_swift, plumbline_swift, pocketing_swift, rucksack_swift, sequencing_swift,
-    soundings_swift, stowed_haversack_swift, stowed_pocketing_swift, tabulation_swift,
+    Currents, CurrentsDraft, HaversackDraft, LeadlineDraft, PlumblineDraft, PocketingDraft,
+    RucksackDraft, StowedHaversackDraft, StowedPocketingDraft, beaconing_swift, captioning_swift,
+    currents_swift, haversack_swift, leadline_swift, plumbline_swift, pocketing_swift,
+    rucksack_swift, sequencing_swift, soundings_swift, stowed_haversack_swift,
+    stowed_pocketing_swift, tabulation_swift,
 };
 #[cfg(feature = "chrono")]
-use super::held_maps_models::{Moonlit, at, moonlit_swift, moonrise_swift};
+use super::held_maps_models::{MoonlitDraft, at, moonlit_swift, moonrise_swift};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 
@@ -81,8 +82,8 @@ where
     Held: Clone,
 {
     HashMap::from([
-        (Currents::East, held.clone()),
-        (Currents::West, held.clone()),
+        (CurrentsDraft::East.validate().unwrap(), held.clone()),
+        (CurrentsDraft::West.validate().unwrap(), held.clone()),
     ])
 }
 
@@ -105,54 +106,76 @@ fn argument_rows() -> Vec<Row> {
         read_row(
             "a map as a type argument",
             "Haversack",
-            &Haversack {
-                by_current: Rucksack {
+            &HaversackDraft {
+                by_current: RucksackDraft {
                     held: currents(&text()),
-                },
-                by_flag: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                by_flag: RucksackDraft {
                     held: flagged(&text()),
-                },
-                by_name: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                by_name: RucksackDraft {
                     held: HashMap::from([("n".to_owned(), text())]),
-                },
-                by_number: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                by_number: RucksackDraft {
                     held: numbered(&text()),
-                },
-                listed: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                listed: RucksackDraft {
                     held: vec![numbered(&text()), HashMap::new()],
-                },
-                maybe: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                maybe: RucksackDraft {
                     held: Some(numbered(&text())),
-                },
+                }
+                .validate()
+                .unwrap(),
             },
         ),
         read_row(
             "a map as a type argument, none",
             "Haversack",
-            &Haversack {
-                by_current: Rucksack {
+            &HaversackDraft {
+                by_current: RucksackDraft {
                     held: HashMap::new(),
-                },
-                by_flag: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                by_flag: RucksackDraft {
                     held: HashMap::new(),
-                },
-                by_name: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                by_name: RucksackDraft {
                     held: HashMap::new(),
-                },
-                by_number: Rucksack {
+                }
+                .validate()
+                .unwrap(),
+                by_number: RucksackDraft {
                     held: HashMap::new(),
-                },
-                listed: Rucksack { held: Vec::new() },
-                maybe: Rucksack { held: None },
+                }
+                .validate()
+                .unwrap(),
+                listed: RucksackDraft { held: Vec::new() }.validate().unwrap(),
+                maybe: RucksackDraft { held: None }.validate().unwrap(),
             },
         ),
         read_row(
             "a map as a type argument that declares a parameter",
             "StowedHaversack<String>",
-            &StowedHaversack {
-                by_number: Rucksack {
+            &StowedHaversackDraft {
+                by_number: RucksackDraft {
                     held: numbered(&text()),
-                },
+                }
+                .validate()
+                .unwrap(),
                 held: text(),
             },
         ),
@@ -161,14 +184,16 @@ fn argument_rows() -> Vec<Row> {
 
 /// The payload of a map of models a rule judges, held as a type argument and named by an alias.
 fn judged_rows() -> Vec<Row> {
-    let kept = Leadline { label: text() };
+    let kept = LeadlineDraft { label: text() }.validate().unwrap();
     vec![read_row(
         "a map of models held",
         "Plumbline",
-        &Plumbline {
-            argument: Rucksack {
+        &PlumblineDraft {
+            argument: RucksackDraft {
                 held: numbered(&kept),
-            },
+            }
+            .validate()
+            .unwrap(),
             sounded: numbered(&kept),
         },
     )]
@@ -200,7 +225,7 @@ fn alias_rows() -> Vec<Row> {
         read_row(
             "fields typed with an alias",
             "Pocketing",
-            &Pocketing {
+            &PocketingDraft {
                 beaconing: flagged(&text()),
                 captioning: HashMap::from([("n".to_owned(), text())]),
                 sequencing: currents(&text()),
@@ -210,7 +235,7 @@ fn alias_rows() -> Vec<Row> {
         read_row(
             "fields typed with an alias that declares a parameter",
             "StowedPocketing<String>",
-            &StowedPocketing {
+            &StowedPocketingDraft {
                 tabulation: numbered(&text()),
             },
         ),
@@ -220,7 +245,7 @@ fn alias_rows() -> Vec<Row> {
         read_row(
             "a field typed with an alias of a date",
             "Moonlit",
-            &Moonlit { moonrise: at() },
+            &MoonlitDraft { moonrise: at() },
         ),
     ]
 }

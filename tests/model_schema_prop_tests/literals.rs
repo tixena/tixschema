@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::literal_models::{
-    Answered, Assay, Hallmark, Ingot, LITERAL_READS, literal_report, names_each_violation,
-    serde_read,
+    Answered, AssayDraft, HallmarkDraft, Ingot, IngotDraft, LITERAL_READS, literal_report,
+    names_each_violation, serde_read,
 };
 
 /// A literal through each wrapper a member reaches it by: a fixed array, a box, a borrow, a path,
@@ -68,7 +68,7 @@ fn the_read_refuses_each_value_other_than_its_literal() {
 /// `validate()` reports of a value built in code what the read refuses the payload with.
 #[test]
 fn validate_refuses_a_value_built_with_another_value() {
-    let other = Hallmark {
+    let other = HallmarkDraft {
         fineness: 916,
         grade: "britannia".to_owned(),
         marks: vec!["lion".to_owned(), "anchor".to_owned()],
@@ -81,9 +81,9 @@ fn validate_refuses_a_value_built_with_another_value() {
         Answered::Refused(said) => said.iter().map(|line| (*line).to_owned()).collect(),
         Answered::Read | Answered::Unmatched => Vec::new(),
     };
-    assert_eq!(other.validate(), Err(said));
+    assert_eq!(other.validation_issues(), said);
 
-    let declared = Hallmark {
+    let declared = HallmarkDraft {
         fineness: 925,
         grade: "sterling".to_owned(),
         marks: Vec::new(),
@@ -92,13 +92,13 @@ fn validate_refuses_a_value_built_with_another_value() {
         stamped: true,
         weight: 1.25,
     };
-    assert_eq!(declared.validate(), Ok(()));
+    assert_eq!(declared.validation_issues(), Vec::<String>::new());
     assert_eq!(
-        Assay::Weighed(30, false).validate(),
-        Err(vec![
+        AssayDraft::Weighed(30, false).validation_issues(),
+        vec![
             "'Weighed.0': not the literal 31, got 30".to_owned(),
             "'Weighed.1': not the literal true, got false".to_owned(),
-        ])
+        ]
     );
 }
 
@@ -108,24 +108,28 @@ fn validate_refuses_a_value_built_with_another_value() {
 fn a_literal_chooses_the_variant_of_an_untagged_enum() {
     assert_eq!(
         serde_json::from_str::<Ingot>(r#"{"metal":"silver","weight":1}"#).unwrap(),
-        Ingot::Silver {
+        IngotDraft::Silver {
             metal: "silver".to_owned(),
             weight: 1,
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         serde_json::from_str::<Ingot>(r#"{"metal":"gold","weight":1}"#).unwrap(),
-        Ingot::Gold {
+        IngotDraft::Gold {
             metal: "gold".to_owned(),
             weight: 1,
         }
+        .validate()
+        .unwrap()
     );
 }
 
 /// A literal is reached through every wrapper, and each item of a list holds it under its index.
 #[test]
 fn a_literal_is_held_through_each_wrapper_and_by_each_item() {
-    let other = Reached {
+    let other = ReachedDraft {
         boxed: "y".into(),
         cow: Cow::Borrowed("z"),
         grid: vec![vec![3, 4]],
@@ -134,17 +138,17 @@ fn a_literal_is_held_through_each_wrapper_and_by_each_item() {
         path: PathBuf::from("p"),
     };
     assert_eq!(
-        other.validate(),
-        Err(vec![
+        other.validation_issues(),
+        vec![
             "'boxed': not the literal \"x\", got y".to_owned(),
             "'cow': not the literal \"x\", got z".to_owned(),
             "'grid.0.1': not the literal 3, got 4".to_owned(),
             "'nested.1': not the literal \"x\", got w".to_owned(),
             "'pair.1': not the literal \"x\", got v".to_owned(),
             "'path': not the literal \"x\", got p".to_owned(),
-        ])
+        ]
     );
-    let held = Reached {
+    let held = ReachedDraft {
         boxed: "x".into(),
         cow: Cow::Borrowed("x"),
         grid: vec![vec![3], Vec::new()],
@@ -152,7 +156,7 @@ fn a_literal_is_held_through_each_wrapper_and_by_each_item() {
         pair: ["x".to_owned(), "x".to_owned()],
         path: PathBuf::from("x"),
     };
-    assert_eq!(held.validate(), Ok(()));
+    assert_eq!(held.validation_issues(), Vec::<String>::new());
     assert_eq!(
         serde_json::from_str::<Reached<'_>>(
             r#"{"boxed":"x","cow":"x","grid":[[3]],"nested":[null,"y"],"pair":["x","x"],"path":"x"}"#

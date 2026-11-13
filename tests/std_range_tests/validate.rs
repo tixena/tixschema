@@ -2,7 +2,9 @@
 //! walked and reported under the key serde writes it under. The read refuses what `validate()`
 //! refuses, the model in a range read unjudged so that the whole value is judged once.
 
-use super::models::{Frontier, Signposted, Spanned, Stride, frontier, signposted, spanned};
+use super::models::{
+    Frontier, Signposted, Spanned, Stride, StrideDraft, frontier, signposted, spanned,
+};
 
 /// What `validate()` answers of a broken [`Signposted`].
 pub const SIGNPOSTED_REPORTS: [&str; 3] = [
@@ -20,15 +22,15 @@ pub const FRONTIER_REPORTS: [&str; 2] = [
 #[test]
 fn each_bound_of_a_range_is_reported_under_its_key() {
     assert_eq!(
-        signposted(true).validate(),
-        Err(SIGNPOSTED_REPORTS.map(str::to_owned).to_vec())
+        signposted(true).validation_issues(),
+        SIGNPOSTED_REPORTS.map(str::to_owned).to_vec()
     );
     assert_eq!(
-        frontier(true).validate(),
-        Err(FRONTIER_REPORTS.map(str::to_owned).to_vec())
+        frontier(true).validation_issues(),
+        FRONTIER_REPORTS.map(str::to_owned).to_vec()
     );
-    assert_eq!(signposted(false).validate(), Ok(()));
-    assert_eq!(frontier(false).validate(), Ok(()));
+    assert_eq!(signposted(false).validation_issues(), Vec::<String>::new());
+    assert_eq!(frontier(false).validation_issues(), Vec::<String>::new());
 }
 
 #[test]
@@ -61,8 +63,8 @@ fn the_read_refuses_what_validate_refuses_and_judges_the_value_once() {
 fn a_range_of_a_number_or_a_parameter_reads_as_serde_writes_it() {
     let spans: Spanned = serde_json::from_str(&serde_json::to_string(&spanned()).unwrap()).unwrap();
     assert_eq!(spans, spanned());
-    let stride = Stride { span: 8_u32..13 };
+    let stride = StrideDraft { span: 8_u32..13 };
     let strides: Stride<u32> =
         serde_json::from_str(&serde_json::to_string(&stride).unwrap()).unwrap();
-    assert_eq!(strides, stride);
+    assert_eq!(strides, stride.validate().unwrap());
 }

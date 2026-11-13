@@ -2,7 +2,7 @@
 //! that answer canned text.
 
 use contract::document_service_schema::{CallError, ServiceFault, ServiceFaultKind};
-use contract::{GetVersionRequest, VersionError, VersionResponse};
+use contract::{GetVersionRequest, GetVersionRequestDraft, VersionError, VersionErrorDraft, VersionResponse};
 use std::future::Future;
 use std::pin::pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -53,7 +53,9 @@ fn kebab(fault: &ServiceFault) -> &'static str {
 fn outcome(answered: Result<VersionResponse, CallError<VersionError>>) -> String {
     match answered {
         Ok(version) => format!("ok version={}", version.version),
-        Err(CallError::Operation(VersionError::NotFound)) => "declared not-found".to_owned(),
+        Err(CallError::Operation(error)) => match &*error {
+            VersionErrorDraft::NotFound => "declared not-found".to_owned(),
+        },
         Err(CallError::Fault(fault)) => format!("fault {}", kebab(&fault)),
     }
 }
@@ -63,9 +65,11 @@ fn call(answer: Result<String, String>, document_id: &str) -> (String, usize) {
         answer,
         sent: AtomicUsize::new(0),
     });
-    let answered = block_on(client.get_version(GetVersionRequest {
-        document_id: document_id.to_owned(),
-    }));
+    let answered = block_on(client.get_version(GetVersionRequest::model_schema_wrap_unjudged(
+        GetVersionRequestDraft {
+            document_id: document_id.to_owned(),
+        },
+    )));
     (
         outcome(answered),
         client.transport().sent.load(Ordering::Relaxed),

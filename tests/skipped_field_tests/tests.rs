@@ -97,10 +97,12 @@ enum SkippedVariants {
 }
 
 fn skipped_field() -> SkippedField {
-    SkippedField {
+    SkippedFieldDraft {
         id: "1".to_owned(),
         internal: vec!["secret".to_owned()],
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -126,7 +128,7 @@ fn the_skipped_key_is_written_in_no_payload_and_read_out_of_none() {
 /// what they hold sits beside no tag, so the enum builds.
 #[test]
 fn a_skipped_variant_is_written_in_no_payload_and_read_out_of_none() {
-    let open = SkippedVariants::Open {
+    let open = SkippedVariantsDraft::Open {
         note: "a".to_owned(),
     };
     assert_eq!(
@@ -136,17 +138,21 @@ fn a_skipped_variant_is_written_in_no_payload_and_read_out_of_none() {
     );
     assert_eq!(
         serde_json::from_str::<SkippedVariants>(r#"{"kind":"Open","note":"a"}"#).unwrap(),
-        open,
+        open.validate().unwrap(),
         "serde reads the variant it does not skip"
     );
     let skipped = [
-        SkippedVariants::Hidden("h".to_owned()),
-        SkippedVariants::Spare {
+        SkippedVariantsDraft::Hidden("h".to_owned()),
+        SkippedVariantsDraft::Spare {
             counts: BTreeMap::from([("north".to_owned(), 2)]),
         },
-        SkippedVariants::Counted(SkippedTally {
-            counts: BTreeMap::new(),
-        }),
+        SkippedVariantsDraft::Counted(
+            SkippedTallyDraft {
+                counts: BTreeMap::new(),
+            }
+            .validate()
+            .unwrap(),
+        ),
     ];
     for value in skipped {
         assert!(
@@ -176,7 +182,7 @@ fn a_skipped_variant_is_written_in_no_payload_and_read_out_of_none() {
 #[test]
 fn the_two_halves_written_together_are_the_same_wire() {
     assert_eq!(
-        serde_json::to_string(&BothHalvesDropped {
+        serde_json::to_string(&BothHalvesDroppedDraft {
             id: "1".to_owned(),
             internal: vec!["secret".to_owned()],
         })
@@ -198,7 +204,7 @@ fn the_two_halves_written_together_are_the_same_wire() {
 #[test]
 fn the_write_half_alone_still_reads_a_supplied_key() {
     assert_eq!(
-        serde_json::to_string(&WriteHalfDropped {
+        serde_json::to_string(&WriteHalfDroppedDraft {
             id: "1".to_owned(),
             roles: vec!["admin".to_owned()],
         })
@@ -214,7 +220,7 @@ fn the_write_half_alone_still_reads_a_supplied_key() {
 #[test]
 fn the_read_half_alone_writes_the_key_in_every_payload() {
     assert_eq!(
-        serde_json::to_string(&ReadHalfDropped {
+        serde_json::to_string(&ReadHalfDroppedDraft {
             id: "1".to_owned(),
             roles: vec!["admin".to_owned()],
         })

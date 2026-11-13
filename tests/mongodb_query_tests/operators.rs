@@ -4,15 +4,18 @@ use bson::doc;
 use bson::oid::ObjectId;
 
 use super::{
-    Address, Customer, Invoice, InvoiceId, InvoiceStatus, LineItem, Point, invoice_schema, shown,
+    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatusDraft, LineItem,
+    LineItemDraft, Point, PointDraft, invoice_schema, shown,
 };
 
 fn line_item() -> LineItem {
-    LineItem {
+    LineItemDraft {
         article: "C-3".to_owned(),
         price: 4.0_f64,
         quantity: 9_u32,
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -24,7 +27,12 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         r#"{ "_id": { "$eq": ObjectId(507f1f77bcf86cd799439011) } }"#
     );
     assert_eq!(
-        shown(invoice.status().ne(InvoiceStatus::Draft).unwrap()),
+        shown(
+            invoice
+                .status()
+                .ne(InvoiceStatusDraft::Draft.validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "status": { "$ne": "draft" } }"#
     );
     assert_eq!(
@@ -52,7 +60,10 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         shown(
             invoice
                 .status()
-                .not_in([InvoiceStatus::Draft, InvoiceStatus::Paid])
+                .not_in([
+                    InvoiceStatusDraft::Draft.validate().unwrap(),
+                    InvoiceStatusDraft::Paid.validate().unwrap()
+                ])
                 .unwrap()
         ),
         r#"{ "status": { "$nin": ["draft", "paid"] } }"#
@@ -183,10 +194,14 @@ fn a_model_a_row_may_leave_out_is_tested_for_removed_and_set_whole() {
         shown(
             invoice
                 .billing()
-                .set(Address {
-                    city: "Moca".to_owned(),
-                    postal_code: "56000".to_owned(),
-                })
+                .set(
+                    AddressDraft {
+                        city: "Moca".to_owned(),
+                        postal_code: "56000".to_owned(),
+                    }
+                    .validate()
+                    .unwrap()
+                )
                 .unwrap()
         ),
         r#"{ "$set": { "billing": { "city": "Moca", "postalCode": "56000" } } }"#
@@ -213,7 +228,12 @@ fn a_nested_model_is_compared_whole_and_by_each_path_below_it() {
         r#"{ "origin.1": { "$lt": Double(-69.0) } }"#
     );
     assert_eq!(
-        shown(invoice.origin().eq(Point(18.47_f64, -69.9_f64)).unwrap()),
+        shown(
+            invoice
+                .origin()
+                .eq(PointDraft(18.47_f64, -69.9_f64).validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "origin": { "$eq": [Double(18.47), Double(-69.9)] } }"#
     );
 }
@@ -242,7 +262,7 @@ fn an_update_writes_its_operator_and_several_merge_into_one() {
         shown(
             invoice
                 .status()
-                .set(InvoiceStatus::Paid)
+                .set(InvoiceStatusDraft::Paid.validate().unwrap())
                 .unwrap()
                 .and(invoice.total().set(0.0_f64).unwrap())
                 .and(
@@ -360,31 +380,49 @@ fn a_list_of_plain_values_is_tested_by_value_and_changed_by_element_or_whole() {
 fn a_nested_model_is_tested_and_set_as_one_whole_value() {
     let invoice = Invoice::MONGO_FIELDS;
     assert_eq!(
-        shown(invoice.origin().ne(Point(0.0_f64, 0.0_f64)).unwrap()),
+        shown(
+            invoice
+                .origin()
+                .ne(PointDraft(0.0_f64, 0.0_f64).validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "origin": { "$ne": [Double(0.0), Double(0.0)] } }"#
     );
     assert_eq!(
         shown(
             invoice
                 .origin()
-                .is_in([Point(18.47_f64, -69.9_f64), Point(0.0_f64, 0.0_f64)])
+                .is_in([
+                    PointDraft(18.47_f64, -69.9_f64).validate().unwrap(),
+                    PointDraft(0.0_f64, 0.0_f64).validate().unwrap()
+                ])
                 .unwrap()
         ),
         r#"{ "origin": { "$in": [[Double(18.47), Double(-69.9)], [Double(0.0), Double(0.0)]] } }"#
     );
     assert_eq!(
-        shown(invoice.origin().not_in([Point(0.0_f64, 0.0_f64)]).unwrap()),
+        shown(
+            invoice
+                .origin()
+                .not_in([PointDraft(0.0_f64, 0.0_f64).validate().unwrap()])
+                .unwrap()
+        ),
         r#"{ "origin": { "$nin": [[Double(0.0), Double(0.0)]] } }"#
     );
     assert_eq!(
-        shown(invoice.origin().set(Point(1.5_f64, 2.5_f64)).unwrap()),
+        shown(
+            invoice
+                .origin()
+                .set(PointDraft(1.5_f64, 2.5_f64).validate().unwrap())
+                .unwrap()
+        ),
         r#"{ "$set": { "origin": [Double(1.5), Double(2.5)] } }"#
     );
     assert_eq!(
         shown(
             invoice
                 .origin()
-                .set_on_insert(Point(1.5_f64, 2.5_f64))
+                .set_on_insert(PointDraft(1.5_f64, 2.5_f64).validate().unwrap())
                 .unwrap()
         ),
         r#"{ "$setOnInsert": { "origin": [Double(1.5), Double(2.5)] } }"#

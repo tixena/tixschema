@@ -12,11 +12,11 @@ use tixschema::model_schema;
 
 use super::lone_slot_rows::{Row, held_to_rows, rows};
 use super::lone_slots_models::{
-    Bale, adjacent_stow_kotlin, bale_kotlin, bale_pair_kotlin, baled_kotlin, bales_by_name_kotlin,
-    bales_by_number_kotlin, bales_kotlin, clipped_kotlin, count_kotlin, girth_kotlin,
-    girthed_kotlin, labels_by_number_kotlin, laden_kotlin, maybe_bale_kotlin, moniker_kotlin,
-    rigger_kotlin, sack_kotlin, sacked_kotlin, single_kotlin, sling_kotlin, slung_kotlin,
-    stow_kotlin, stowed_by_name_kotlin, stowed_by_number_kotlin, stowed_list_kotlin,
+    BaleDraft, adjacent_stow_kotlin, bale_kotlin, bale_pair_kotlin, baled_kotlin,
+    bales_by_name_kotlin, bales_by_number_kotlin, bales_kotlin, clipped_kotlin, count_kotlin,
+    girth_kotlin, girthed_kotlin, labels_by_number_kotlin, laden_kotlin, maybe_bale_kotlin,
+    moniker_kotlin, rigger_kotlin, sack_kotlin, sacked_kotlin, single_kotlin, sling_kotlin,
+    slung_kotlin, stow_kotlin, stowed_by_name_kotlin, stowed_by_number_kotlin, stowed_list_kotlin,
     stowed_maybe_kotlin, stowed_pair_kotlin, strop_kotlin, tagged_stow_kotlin, tote_kotlin,
     twine_kotlin, twined_kotlin, unskipped_kotlin, untagged_stow_kotlin,
 };
@@ -138,15 +138,15 @@ fn a_struct_of_one_slot_reads_and_writes_in_kotlin_as_serde_does_wherever_it_is_
 /// length, as serde refuses it.
 #[test]
 fn a_tuple_that_reaches_a_type_parameter_reads_and_writes_in_kotlin_as_serde_does() {
-    let label = |written: &str| Bale {
+    let label = |written: &str| BaleDraft {
         label: written.to_owned(),
     };
-    let text = serde_json::to_string(&Yoked {
+    let text = serde_json::to_string(&YokedDraft {
         maybe: (None, 3),
         pair: (1, "a".to_owned()),
     })
     .unwrap();
-    let model = serde_json::to_string(&Yoked {
+    let model = serde_json::to_string(&YokedDraft {
         maybe: (Some(label("m")), 3),
         pair: (1, label("l")),
     })

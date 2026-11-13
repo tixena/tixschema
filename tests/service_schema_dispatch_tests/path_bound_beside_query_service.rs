@@ -63,11 +63,13 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
     ) -> Result<PathBoundDocument, PathBoundError> {
         ready(()).await;
         if id == "missing" {
-            return Err(PathBoundError::NotFound);
+            return Err(PathBoundErrorDraft::NotFound.validate().unwrap());
         }
-        Ok(PathBoundDocument {
+        Ok(PathBoundDocumentDraft {
             title: format!("{org}/{id}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn list_documents(
@@ -77,9 +79,11 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
         limit: Option<i64>,
     ) -> Result<PathBoundDocument, PathBoundError> {
         ready(()).await;
-        Ok(PathBoundDocument {
+        Ok(PathBoundDocumentDraft {
             title: format!("{org} limit={limit:?}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

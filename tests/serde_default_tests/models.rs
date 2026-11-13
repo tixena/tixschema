@@ -426,7 +426,7 @@ pub struct Gangway {
 pub struct Wharf {
     #[serde(default)]
     pub dock: String,
-    #[serde(default)]
+    #[serde(default = "main_gangway")]
     pub gangway: Gangway,
     #[serde(default = "north_dock")]
     pub gate: String,
@@ -559,7 +559,7 @@ pub struct IndexedLogbook<IdType> {
     pub index_map: indexmap::IndexMap<String, Link<IdType>>,
 }
 
-impl Default for Gangway {
+impl Default for GangwayDraft {
     fn default() -> Self {
         Self {
             label: "main".to_owned(),
@@ -568,7 +568,7 @@ impl Default for Gangway {
     }
 }
 
-impl Default for Jetty {
+impl Default for JettyDraft {
     fn default() -> Self {
         Self {
             berths: 4,
@@ -588,6 +588,10 @@ where
 }
 
 /// What `gate` is read as where the payload leaves its key out.
+pub fn main_gangway() -> Gangway {
+    GangwayDraft::default().validate().unwrap()
+}
+
 pub fn north_dock() -> String {
     "north".to_owned()
 }
@@ -618,10 +622,12 @@ pub fn trimmed_dock(payload: serde_json::Value) -> serde_json::Value {
 /// What serde reads of each payload of [`PREPROCESSED`], in its order.
 pub fn preprocessed_values() -> [Bollard; 2] {
     [
-        Bollard { dock: spare_dock() },
-        Bollard {
+        BollardDraft { dock: spare_dock() }.validate().unwrap(),
+        BollardDraft {
             dock: "east".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     ]
 }
 
@@ -629,16 +635,20 @@ pub fn preprocessed_values() -> [Bollard; 2] {
 /// a `Pontoon` that holds both keys.
 pub fn read_values() -> (Wharf, Pontoon) {
     (
-        Wharf {
+        WharfDraft {
             dock: String::new(),
-            gangway: Gangway::default(),
+            gangway: GangwayDraft::default().validate().unwrap(),
             gate: north_dock(),
             label: "w".to_owned(),
-        },
-        Pontoon {
+        }
+        .validate()
+        .unwrap(),
+        PontoonDraft {
             dock: "d".to_owned(),
             label: "p".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     )
 }
 
@@ -648,26 +658,34 @@ pub fn read_values() -> (Wharf, Pontoon) {
 pub fn unwritten_defaults() -> (Marina, [Harbour<String>; 3]) {
     let held = |text: &str| vec![text.to_owned()];
     (
-        Marina {
+        MarinaDraft {
             dock: String::new(),
             label: "m".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         [
-            Harbour {
+            HarbourDraft {
                 berths: held("b"),
                 flagship: String::new(),
                 slips: held("s"),
-            },
-            Harbour {
+            }
+            .validate()
+            .unwrap(),
+            HarbourDraft {
                 berths: two_berths(),
                 flagship: "f".to_owned(),
                 slips: held("s"),
-            },
-            Harbour {
+            }
+            .validate()
+            .unwrap(),
+            HarbourDraft {
                 berths: held("b"),
                 flagship: "f".to_owned(),
                 slips: Vec::new(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ],
     )
 }

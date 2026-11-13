@@ -150,56 +150,62 @@ mod a_message_names_the_path_in_the_payload {
     }
 
     fn sound() -> Package {
-        Package {
+        PackageDraft {
             item_label: "A".to_owned(),
             listed_item_codes: vec!["x".to_owned()],
             parcel_code: Code::new("ab".to_owned()).unwrap(),
         }
+        .validate()
+        .unwrap()
     }
 
     /// A package that breaks one bound, so its report is one line.
     fn unlabelled() -> Package {
-        Package {
+        Package::model_schema_wrap_unjudged(PackageDraft {
             item_label: String::new(),
-            ..sound()
-        }
+            ..sound().into()
+        })
     }
 
     fn broken() -> Package {
-        Package {
+        Package::model_schema_wrap_unjudged(PackageDraft {
             item_label: String::new(),
             listed_item_codes: Vec::new(),
             parcel_code: Code::model_schema_read_unjudged(
                 serde_json::to_value("a".to_owned()).unwrap(),
             )
             .unwrap(),
-        }
+        })
     }
 
     fn sound_manifest() -> Manifest {
-        Manifest {
+        ManifestDraft {
             first_parcel: sound(),
             parcel_list: Vec::new(),
             spare_parcel: None,
-            starting_base: Base {
+            starting_base: BaseDraft {
                 base_name: "north".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         }
+        .validate()
+        .unwrap()
     }
 
     fn broken_manifest() -> Manifest {
-        Manifest {
+        Manifest::model_schema_wrap_unjudged(ManifestDraft {
             first_parcel: broken(),
             parcel_list: vec![broken(), broken()],
             spare_parcel: Some(broken()),
-            starting_base: Base {
+            starting_base: Base::model_schema_wrap_unjudged(BaseDraft {
                 base_name: String::new(),
-            },
-        }
+            }),
+        })
     }
 
     fn sound_hold() -> Hold {
-        Hold {
+        HoldDraft {
             code_list: Vec::new(),
             grid: Vec::new(),
             parcel_list: vec![sound()],
@@ -207,21 +213,23 @@ mod a_message_names_the_path_in_the_payload {
             spare_list: None,
             spares: Vec::new(),
         }
+        .validate()
+        .unwrap()
     }
 
     #[test]
     fn a_manifest_reports_each_broken_value_at_its_path_in_the_payload() {
         assert_eq!(
-            broken_manifest().validate().unwrap_err().join("\n"),
+            broken_manifest().validation_issues().join("\n"),
             MANIFEST_REPORT
         );
-        assert_eq!(sound_manifest().validate(), Ok(()));
+        assert_eq!(sound_manifest().validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn a_fields_own_rename_wins_over_the_casing_of_its_struct() {
         assert_eq!(
-            broken().validate().unwrap_err(),
+            broken().validation_issues(),
             vec![
                 "'itemLabel': too short: minimum length is 1, got 0",
                 "'codes': too short: minimum length is 1, got 0",
@@ -232,49 +240,47 @@ mod a_message_names_the_path_in_the_payload {
 
     #[test]
     fn a_variants_field_is_named_as_the_enum_cases_its_fields() {
-        let by_air = Dispatch::ByAir {
+        let by_air = DispatchDraft::ByAir {
             flight_number: String::new(),
         };
         assert_eq!(
-            by_air.validate(),
-            Err(vec![
-                "'flightNumber': too short: minimum length is 1, got 0".to_owned()
-            ])
+            by_air.validation_issues(),
+            vec!["'flightNumber': too short: minimum length is 1, got 0".to_owned()]
         );
-        let by_road = Dispatch::ByRoad {
+        let by_road = DispatchDraft::ByRoad {
             road_parcel: unlabelled(),
         };
         assert_eq!(
-            by_road.validate().unwrap_err(),
+            by_road.validation_issues(),
             vec!["'roadParcel.itemLabel': too short: minimum length is 1, got 0"]
         );
     }
 
     #[test]
     fn a_variants_own_casing_wins_over_the_enums_and_a_fields_own_rename_over_both() {
-        let docked = Vessel::Docked {
+        let docked = VesselDraft::Docked {
             berth_number: 0,
             vessel_name: String::new(),
         };
         assert_eq!(
-            docked.validate().unwrap_err(),
+            docked.validation_issues(),
             vec![
                 "'berth': too small: minimum is 1, got 0",
                 "'VESSEL_NAME': too short: minimum length is 1, got 0",
             ]
         );
-        let sailing = Vessel::Sailing {
+        let sailing = VesselDraft::Sailing {
             vessel_name: String::new(),
         };
         assert_eq!(
-            sailing.validate().unwrap_err(),
+            sailing.validation_issues(),
             vec!["'vesselName': too short: minimum length is 1, got 0"]
         );
     }
 
     #[test]
     fn an_item_of_a_list_is_named_by_its_index_at_each_level_of_the_list() {
-        let hold = Hold {
+        let hold = HoldDraft {
             code_list: vec![
                 Code::new("ab".to_owned()).unwrap(),
                 Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
@@ -284,10 +290,10 @@ mod a_message_names_the_path_in_the_payload {
             parcel_pair: [sound(), unlabelled()],
             spare_list: Some(vec![unlabelled()]),
             spares: vec![None, None, Some(unlabelled())],
-            ..sound_hold()
+            ..sound_hold().into()
         };
         assert_eq!(
-            hold.validate().unwrap_err(),
+            hold.validation_issues(),
             vec![
                 "'codeList.1': too short: minimum length is 2, got 1",
                 "'grid.0.1.itemLabel': too short: minimum length is 1, got 0",
@@ -297,37 +303,37 @@ mod a_message_names_the_path_in_the_payload {
                 "'spares.2.itemLabel': too short: minimum length is 1, got 0",
             ]
         );
-        assert_eq!(sound_hold().validate(), Ok(()));
+        assert_eq!(sound_hold().validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn a_lists_own_count_is_reported_at_the_list_and_its_items_under_their_indexes() {
-        let empty = Hold {
+        let empty = HoldDraft {
             parcel_list: Vec::new(),
-            ..sound_hold()
+            ..sound_hold().into()
         };
         assert_eq!(
-            empty.validate().unwrap_err(),
+            empty.validation_issues(),
             vec!["'parcelList': too short: minimum length is 1, got 0"]
         );
-        let counted = Hold {
+        let counted = HoldDraft {
             parcel_list: vec![sound(), unlabelled()],
-            ..sound_hold()
+            ..sound_hold().into()
         };
         assert_eq!(
-            counted.validate().unwrap_err(),
+            counted.validation_issues(),
             vec!["'parcelList.1.itemLabel': too short: minimum length is 1, got 0"]
         );
     }
 
     #[test]
     fn a_raw_identifier_is_named_without_its_prefix() {
-        let customs = Customs {
+        let customs = CustomsDraft {
             r#box: unlabelled(),
             r#type: String::new(),
         };
         assert_eq!(
-            customs.validate().unwrap_err(),
+            customs.validation_issues(),
             vec![
                 "'box.itemLabel': too short: minimum length is 1, got 0",
                 "'type': too short: minimum length is 1, got 0",
@@ -338,47 +344,47 @@ mod a_message_names_the_path_in_the_payload {
     #[test]
     fn a_slot_among_several_is_named_by_its_position_and_a_variant_by_its_name() {
         assert_eq!(
-            Docket(String::new(), 0).validate().unwrap_err(),
+            DocketDraft(String::new(), 0).validation_issues(),
             vec![
                 "'0': too short: minimum length is 1, got 0",
                 "'1': too small: minimum is 1, got 0",
             ]
         );
         assert_eq!(
-            Seal::Stamped(String::new()).validate().unwrap_err(),
+            SealDraft::Stamped(String::new()).validation_issues(),
             vec!["'Stamped': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            serde_json::to_string(&Seal::Stamped(String::new())).unwrap(),
+            serde_json::to_string(&SealDraft::Stamped(String::new())).unwrap(),
             r#"{"Stamped":""}"#
         );
-        let signed = Seal::Signed {
+        let signed = SealDraft::Signed {
             signed_by: String::new(),
         };
         assert_eq!(
-            signed.validate().unwrap_err(),
+            signed.validation_issues(),
             vec!["'Signed.signedBy': too short: minimum length is 1, got 0"]
         );
     }
 
     #[test]
     fn a_flattened_member_and_an_option_add_no_segment() {
-        let unnamed = Manifest {
-            starting_base: Base {
+        let unnamed = ManifestDraft {
+            starting_base: Base::model_schema_wrap_unjudged(BaseDraft {
                 base_name: String::new(),
-            },
-            ..sound_manifest()
+            }),
+            ..sound_manifest().into()
         };
         assert_eq!(
-            unnamed.validate().unwrap_err(),
+            unnamed.validation_issues(),
             vec!["'baseName': too short: minimum length is 1, got 0"]
         );
-        let spare = Manifest {
+        let spare = ManifestDraft {
             spare_parcel: Some(unlabelled()),
-            ..sound_manifest()
+            ..sound_manifest().into()
         };
         assert_eq!(
-            spare.validate().unwrap_err(),
+            spare.validation_issues(),
             vec!["'spareParcel.itemLabel': too short: minimum length is 1, got 0"]
         );
     }
@@ -386,15 +392,15 @@ mod a_message_names_the_path_in_the_payload {
     #[test]
     fn the_lone_slot_of_an_untagged_variant_is_reported_under_no_name() {
         assert_eq!(
-            Load::Text(String::new()).validate().unwrap_err(),
+            LoadDraft::Text(String::new()).validation_issues(),
             vec!["too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Load::Whole(unlabelled()).validate().unwrap_err(),
+            LoadDraft::Whole(unlabelled()).validation_issues(),
             vec!["'itemLabel': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
-            Load::Loose(vec![sound(), unlabelled()])
+            LoadDraft::Loose(vec![sound(), unlabelled()])
                 .validate()
                 .unwrap_err(),
             vec!["'1.itemLabel': too short: minimum length is 1, got 0"],
@@ -404,12 +410,12 @@ mod a_message_names_the_path_in_the_payload {
 
     #[test]
     fn a_field_of_an_untagged_variant_is_named_by_the_key_serde_writes() {
-        let labelled = Load::Labelled {
+        let labelled = LoadDraft::Labelled {
             load_label: String::new(),
             load_parcels: vec![sound(), unlabelled()],
         };
         assert_eq!(
-            labelled.validate().unwrap_err(),
+            labelled.validation_issues(),
             vec![
                 "'loadLabel': too short: minimum length is 1, got 0",
                 "'loadParcels.1.itemLabel': too short: minimum length is 1, got 0",
@@ -434,18 +440,18 @@ mod a_message_names_the_path_in_the_payload {
             manifest.unwrap_err().to_string(),
             "'firstParcel.parcelCode': too short: minimum length is 2, got 1"
         );
-        let held = Manifest {
-            first_parcel: Package {
+        let held = ManifestDraft {
+            first_parcel: Package::model_schema_wrap_unjudged(PackageDraft {
                 parcel_code: Code::model_schema_read_unjudged(
                     serde_json::to_value("a".to_owned()).unwrap(),
                 )
                 .unwrap(),
-                ..sound()
-            },
-            ..sound_manifest()
+                ..sound().into()
+            }),
+            ..sound_manifest().into()
         };
         assert_eq!(
-            held.validate().unwrap_err(),
+            held.validation_issues(),
             vec!["'firstParcel.parcelCode': too short: minimum length is 2, got 1"]
         );
     }
@@ -459,25 +465,25 @@ mod a_message_names_the_path_in_the_payload {
             "the README no longer shows the manifest's report"
         );
         let reported: Vec<String> = [
-            Hold {
+            HoldDraft {
                 grid: vec![vec![sound(), unlabelled()]],
-                ..sound_hold()
+                ..sound_hold().into()
             },
-            Hold {
+            HoldDraft {
                 parcel_list: Vec::new(),
-                ..sound_hold()
+                ..sound_hold().into()
             },
-            Hold {
+            HoldDraft {
                 code_list: vec![
                     Code::new("ab".to_owned()).unwrap(),
                     Code::model_schema_read_unjudged(serde_json::to_value("a".to_owned()).unwrap())
                         .unwrap(),
                 ],
-                ..sound_hold()
+                ..sound_hold().into()
             },
         ]
         .iter()
-        .flat_map(|hold| hold.validate().unwrap_err())
+        .flat_map(HoldDraft::validation_issues)
         .collect();
         assert_eq!(
             reported,
@@ -494,21 +500,21 @@ mod a_message_names_the_path_in_the_payload {
             );
         }
 
-        let labelled = Load::Labelled {
+        let labelled = LoadDraft::Labelled {
             load_label: String::new(),
             load_parcels: Vec::new(),
         };
-        let stamped = Seal::Stamped(String::new());
+        let stamped = SealDraft::Stamped(String::new());
         for (written, answered, shown) in [
             (
                 serde_json::to_string(&stamped).unwrap(),
-                stamped.validate(),
+                crate::judged(stamped.validation_issues()),
                 "`'Stamped': too short: minimum length is 1, got 0` for the payload \
                  `{\"Stamped\":\"\"}`",
             ),
             (
                 serde_json::to_string(&labelled).unwrap(),
-                labelled.validate(),
+                crate::judged(labelled.validation_issues()),
                 "| `{\"loadLabel\":\"\",\"loadParcels\":[]}` | `'loadLabel'` | `'itemLabel'` |",
             ),
         ] {
@@ -521,15 +527,15 @@ mod a_message_names_the_path_in_the_payload {
             assert!(readme.contains(shown), "the README no longer shows {shown}");
         }
         assert_eq!(
-            Load::Whole(unlabelled()).validate().unwrap_err(),
+            LoadDraft::Whole(unlabelled()).validation_issues(),
             ["'itemLabel': too short: minimum length is 1, got 0"]
         );
 
-        let counted = Hold {
+        let counted = HoldDraft {
             parcel_list: vec![sound(), unlabelled()],
-            ..sound_hold()
+            ..sound_hold().into()
         };
-        let in_the_rustdoc = counted.validate().unwrap_err().concat();
+        let in_the_rustdoc = counted.validation_issues().concat();
         assert_eq!(
             in_the_rustdoc,
             "'parcelList.1.itemLabel': too short: minimum length is 1, got 0"

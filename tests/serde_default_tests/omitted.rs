@@ -75,7 +75,7 @@ pub struct Squad {
     pub roles: Vec<String>,
 }
 
-impl Default for Squad {
+impl Default for SquadDraft {
     fn default() -> Self {
         Self {
             id: String::new(),

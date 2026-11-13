@@ -244,9 +244,9 @@ pub struct Archive;
 impl Archive {
     fn version_of(document_id: &str) -> Result<VersionResponse, VersionError> {
         match document_id {
-            "doc-1" => Ok(VersionResponse { version: 7 }),
+            "doc-1" => Ok(version_seven()),
             "panic" => came_apart(),
-            _ => Err(VersionError::NotFound),
+            _ => Err(not_found()),
         }
     }
 }
@@ -261,9 +261,9 @@ impl MobileBillingService<()> for Archive {
         _ledger: String,
     ) -> impl Future<Output = Result<BalanceResponse, BalanceError>> {
         ready(if account_id == "acct-1" {
-            Ok(BalanceResponse { cents: 1250 })
+            Ok(BalanceResponseDraft { cents: 1250 }.validate().unwrap())
         } else {
-            Err(BalanceError::UnknownAccount)
+            Err(BalanceErrorDraft::UnknownAccount.validate().unwrap())
         })
     }
 }
@@ -284,9 +284,11 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: DraftBatch,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponse {
+        ready(Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
-        }))
+        }
+        .validate()
+        .unwrap()))
     }
 
     fn check_many(
@@ -294,9 +296,10 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: Vec<GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(req.first().map_or(Err(VersionError::NotFound), |first| {
-            Self::version_of(&first.document_id)
-        }))
+        ready(req.first().map_or_else(
+            || Err(VersionErrorDraft::NotFound.validate().unwrap()),
+            |first| Self::version_of(&first.document_id),
+        ))
     }
 
     fn check_maybe(
@@ -304,9 +307,10 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: Option<GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(req.map_or(Err(VersionError::NotFound), |found| {
-            Self::version_of(&found.document_id)
-        }))
+        ready(req.map_or_else(
+            || Err(VersionErrorDraft::NotFound.validate().unwrap()),
+            |found| Self::version_of(&found.document_id),
+        ))
     }
 
     fn check_named(
@@ -314,12 +318,10 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: HashMap<String, GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(
-            req.get("first")
-                .map_or(Err(VersionError::NotFound), |first| {
-                    Self::version_of(&first.document_id)
-                }),
-        )
+        ready(req.get("first").map_or_else(
+            || Err(VersionErrorDraft::NotFound.validate().unwrap()),
+            |first| Self::version_of(&first.document_id),
+        ))
     }
 
     fn check_pair(
@@ -362,7 +364,7 @@ impl MobileDocumentService<()> for Archive {
         _mcp_source: String,
         _carried: String,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponse { version: 10 }))
+        ready(Ok(VersionResponseDraft { version: 10 }.validate().unwrap()))
     }
 
     fn lookup(
@@ -391,7 +393,7 @@ impl MobileDocumentService<()> for Archive {
         _outcome: String,
         _members: String,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponse { version: 9 }))
+        ready(Ok(VersionResponseDraft { version: 9 }.validate().unwrap()))
     }
 
     fn touch_document(
@@ -410,4 +412,12 @@ impl MobileDocumentService<()> for Archive {
 /// A handler that panics with the sentence the handler of the document's own sample says.
 fn came_apart() -> ! {
     resume_unwind(Box::new("the handler came apart"))
+}
+
+fn not_found() -> VersionError {
+    VersionErrorDraft::NotFound.validate().unwrap()
+}
+
+fn version_seven() -> VersionResponse {
+    VersionResponseDraft { version: 7 }.validate().unwrap()
 }

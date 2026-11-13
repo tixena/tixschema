@@ -73,21 +73,25 @@ fn omitted_member(name: &str, ts_type: &str) -> String {
 }
 
 fn element_null_fields() -> ElementNullFields {
-    ElementNullFields {
+    ElementNullFieldsDraft {
         set_items: BTreeSet::from([None]),
         vec_items: vec![None],
     }
+    .validate()
+    .unwrap()
 }
 
 fn slot_null_fields() -> SlotNullFields {
-    SlotNullFields {
+    SlotNullFieldsDraft {
         set_items: None,
         vec_items: None,
     }
+    .validate()
+    .unwrap()
 }
 
 fn null_nesting_slots() -> NullNestingSlots {
-    NullNestingSlots {
+    NullNestingSlotsDraft {
         map_both: HashMap::from([("k".to_owned(), Some(vec![None]))]),
         map_set_element: HashMap::from([("k".to_owned(), BTreeSet::from([None]))]),
         map_set_slot: HashMap::from([("k".to_owned(), None)]),
@@ -100,6 +104,8 @@ fn null_nesting_slots() -> NullNestingSlots {
         tuple_vec_element: ("t".to_owned(), vec![None]),
         tuple_vec_slot: ("t".to_owned(), None),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A `None` the wrapper holds is a `null` inside the array, and the array is written either way.

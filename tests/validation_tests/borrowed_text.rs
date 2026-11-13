@@ -100,7 +100,7 @@ mod a_bound_on_a_borrowed_str {
     #[test]
     fn the_readme_shows_what_validate_reports_for_a_borrowed_str() {
         assert_eq!(
-            Greeting { name: "al" }.validate().unwrap_err(),
+            GreetingDraft { name: "al" }.validation_issues(),
             vec!["'name': too short: minimum length is 3, got 2"]
         );
         let readme = include_str!("../../docs/guide/validation.md");
@@ -110,14 +110,14 @@ mod a_bound_on_a_borrowed_str {
 
     #[test]
     fn validate_reports_each_borrowed_value_that_breaks_its_bound() {
-        let broken = Account {
+        let broken = AccountDraft {
             alias: Some("al"),
             name: "Al",
             region: "north",
             tags: vec!["only"],
         };
         assert_eq!(
-            broken.validate().unwrap_err(),
+            broken.validation_issues(),
             vec![
                 "'alias': too short: minimum length is 3, got 2",
                 "'name': too short: minimum length is 3, got 2",
@@ -127,7 +127,7 @@ mod a_bound_on_a_borrowed_str {
             ]
         );
 
-        let kept = Account {
+        let kept = AccountDraft {
             alias: None,
             name: "alice",
             region: "east",
@@ -152,24 +152,21 @@ mod a_bound_on_a_borrowed_str {
         )
         .unwrap();
         assert_eq!(read.alias, Some("alf"));
-        read.validate().unwrap();
+        assert_eq!(read.validation_issues(), Vec::<String>::new());
 
         let without_alias: Account<'_> =
             serde_json::from_str(r#"{"name":"alice","region":"east","tags":["a","b"]}"#).unwrap();
         assert_eq!(without_alias.alias, None);
-        without_alias.validate().unwrap();
+        assert_eq!(without_alias.validation_issues(), Vec::<String>::new());
     }
 
     #[test]
     fn validate_answers_a_borrowed_str_in_the_words_it_answers_a_string() {
-        let borrowed = Named { name: "A!" };
-        let owned = NamedOwned {
+        let borrowed = NamedDraft { name: "A!" };
+        let owned = NamedOwnedDraft {
             name: "A!".to_owned(),
         };
-        assert_eq!(
-            borrowed.validate().unwrap_err(),
-            owned.validate().unwrap_err()
-        );
+        assert_eq!(borrowed.validation_issues(), owned.validation_issues());
     }
 
     #[cfg(feature = "zod")]
@@ -212,21 +209,21 @@ mod a_bound_on_a_borrowed_str {
         let typescript = Named::ts_definition();
         assert!(typescript.contains("Minimum length: 3"), "{typescript}");
         assert!(typescript.contains("Maximum length: 8"), "{typescript}");
-        Named { name: "al" }.validate().unwrap_err();
+        NamedDraft { name: "al" }.validation_issues();
     }
 
     #[test]
     fn a_tagged_variants_borrowed_member_is_held_as_it_is_read() {
-        let built = Step::Rename { to: "ALICE" };
+        let built = StepDraft::Rename { to: "ALICE" };
         assert_eq!(
-            built.validate().unwrap_err(),
+            built.validation_issues(),
             vec!["'to': does not match pattern '^[a-z]+$'"]
         );
         assert_eq!(
             serde_json::from_str::<Step<'_>>(r#"{"kind":"Rename","to":"ALICE"}"#)
                 .unwrap_err()
                 .to_string(),
-            built.validate().unwrap_err().join("; ")
+            built.validation_issues().join("; ")
         );
     }
 
@@ -236,16 +233,16 @@ mod a_bound_on_a_borrowed_str {
 
         // The variant is chosen by shape alone, a borrowed member being read through no hook, and
         // the value read is then refused with what `validate()` answers of it.
-        let built = Handle::Long { text: "al" };
+        let built = HandleDraft::Long { text: "al" };
         assert_eq!(
-            built.validate().unwrap_err(),
+            built.validation_issues(),
             vec!["'text': too short: minimum length is 3, got 2"]
         );
         assert_eq!(
             serde_json::from_str::<Handle<'_>>(BREAKS_LONG)
                 .unwrap_err()
                 .to_string(),
-            built.validate().unwrap_err().join("; ")
+            built.validation_issues().join("; ")
         );
         assert_eq!(
             serde_json::from_str::<HandleUnbounded<'_>>(BREAKS_LONG).unwrap(),
@@ -253,8 +250,11 @@ mod a_bound_on_a_borrowed_str {
         );
 
         let kept: Handle<'_> = serde_json::from_str(r#"{"text":"alice"}"#).unwrap();
-        assert_eq!(kept, Handle::Long { text: "alice" });
-        kept.validate().unwrap();
+        assert_eq!(
+            kept,
+            HandleDraft::Long { text: "alice" }.validate().unwrap()
+        );
+        assert_eq!(kept.validation_issues(), Vec::<String>::new());
     }
 
     /// Nothing is hung beside a reader of the author's own, which serde admits one of per field.
@@ -265,13 +265,16 @@ mod a_bound_on_a_borrowed_str {
             serde_json::from_str::<Trimmed<'_>>(r#"{"text":" a "}"#)
                 .unwrap_err()
                 .to_string(),
-            Trimmed::Text { text: "a" }
+            TrimmedDraft::Text { text: "a" }
                 .validate()
                 .unwrap_err()
                 .join("; ")
         );
         let kept: Trimmed<'_> = serde_json::from_str(r#"{"text":" alice "}"#).unwrap();
-        assert_eq!(kept, Trimmed::Text { text: "alice" });
+        assert_eq!(
+            kept,
+            TrimmedDraft::Text { text: "alice" }.validate().unwrap()
+        );
     }
 }
 
@@ -340,22 +343,24 @@ mod a_bound_beside_a_reader_of_the_authors_own {
         let kept: Nickname = serde_json::from_str(r#"{"v":" alice "}"#).unwrap();
         assert_eq!(
             kept,
-            Nickname::Long {
+            NicknameDraft::Long {
                 v: "alice".to_owned()
             }
+            .validate()
+            .unwrap()
         );
 
         // `got 1`: the author's reader trimmed the text before the read held it to its bound.
-        let broken = Nickname::Long { v: "a".to_owned() };
+        let broken = NicknameDraft::Long { v: "a".to_owned() };
         assert_eq!(
-            broken.validate().unwrap_err(),
+            broken.validation_issues(),
             vec!["'v': too short: minimum length is 3, got 1"]
         );
         assert_eq!(
             serde_json::from_str::<Nickname>(r#"{"v":" a "}"#)
                 .unwrap_err()
                 .to_string(),
-            broken.validate().unwrap_err().join("; ")
+            broken.validation_issues().join("; ")
         );
     }
 
@@ -364,21 +369,23 @@ mod a_bound_beside_a_reader_of_the_authors_own {
         let kept: NicknameWith = serde_json::from_str(r#"{"v":" alice "}"#).unwrap();
         assert_eq!(
             kept,
-            NicknameWith::Long {
+            NicknameWithDraft::Long {
                 v: "alice".to_owned()
             }
+            .validate()
+            .unwrap()
         );
 
-        let broken = NicknameWith::Long { v: "a".to_owned() };
+        let broken = NicknameWithDraft::Long { v: "a".to_owned() };
         assert_eq!(
-            broken.validate().unwrap_err(),
+            broken.validation_issues(),
             vec!["'v': too short: minimum length is 3, got 1"]
         );
         assert_eq!(
             serde_json::from_str::<NicknameWith>(r#"{"v":" a "}"#)
                 .unwrap_err()
                 .to_string(),
-            broken.validate().unwrap_err().join("; ")
+            broken.validation_issues().join("; ")
         );
     }
 }

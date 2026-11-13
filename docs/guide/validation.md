@@ -1,6 +1,6 @@
 ## Field Validation (`model_schema_prop`)
 
-Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](checks.md#checks-check) of your own, override types, or correct a payload before it is read ([`preprocess`](preprocess.md#preprocessing-preprocess)). A constraint written once is held in five languages: the Zod schema checks it in TypeScript, a generated `validate()` method checks it in Rust, and the `validate()` of each emitted [Dart](dart.md#validate-in-dart), [Swift](swift.md#validate-in-the-swift-client) and [Kotlin](kotlin.md#validate-in-the-kotlin-client) type checks it there. The JSON Schema states it. In Rust, Dart, Swift and Kotlin the read of a type runs its `validate()` on the value it read, and refuses a payload that breaks a rule. [Preprocess and check](preprocess-and-check.md#preprocess-and-check) states the two keys that name functions of your own, for the five languages side by side.
+Use `#[model_schema_prop(...)]` on individual fields to add validation constraints, name [checks](checks.md#checks-check) of your own, override types, or correct a payload before it is read ([`preprocess`](preprocess.md#preprocessing-preprocess)). A constraint written once is held in five languages: the Zod schema checks it in TypeScript, a generated `validate()` method checks it in Rust, and the `validate()` of each emitted [Dart](dart.md#validate-in-dart), [Swift](swift.md#validate-in-the-swift-client) and [Kotlin](kotlin.md#validate-in-the-kotlin-client) type checks it there. The JSON Schema states it. In Rust, Dart, Swift and Kotlin the read of a type runs its `validate()` on the value it read, and refuses a payload that breaks a rule. In Rust the type you declare is emitted as `{Name}Draft`: its `validate(self)` answers the valid `{Name}` or every message, and its `validation_issues(&self)` lists the same messages without consuming the draft ([A Draft and a Valid Type](models.md#a-draft-and-a-valid-type)). [Preprocess and check](preprocess-and-check.md#preprocess-and-check) states the two keys that name functions of your own, for the five languages side by side.
 
 ### String Constraints (minLength, maxLength, pattern)
 
@@ -343,7 +343,7 @@ assert_eq!(
 assert!(Action::Upload { note: "abc".to_string() }.validate().is_ok());
 ```
 
-Parity with structs runs both ways: an enum no member of which carries a constraint publishes no `validate()`, exactly as a constraint-free struct publishes none. A set, a deque and a heap are walked only where they hold a declared type, so a struct whose only member is a `HashSet<String>` holds no rule and publishes none either: a direct call of its `validate()` stops building, and a `validate` of your own on it builds.
+Parity with structs runs both ways: an enum no member of which carries a constraint has the `validate()` of its draft as a struct holding no rule has, and a set, a deque and a heap are walked only where they hold a declared type, so a struct whose only member is a `HashSet<String>` holds no rule and its `validate()` answers `Ok` for every value. A `validate` of your own on the draft stops building, as `E0592` names the two.
 
 #### A type that declares a parameter
 
@@ -381,33 +381,35 @@ A [branded newtype](generics-and-brands.md#branded-newtype-validation-constraint
 **`validate()` reads nothing behind a type parameter.** The `validate()` of a `Crate<CodeType>` runs nothing on its `codes`, whatever fills `CodeType`, a type that has a `validate()` of its own included. A read of the same payload is refused: what fills the parameter is read by its own `Deserialize`, and judges itself [as it is read](#a-read-refuses-what-validate-refuses), with its own messages and no place of the holder in front of them:
 
 ```rust
-let outer = Crate {
-    codes: vec![Crate::<u32> { codes: vec![], label: String::new() }],
+let outer = CrateDraft {
+    codes: vec![Crate::<u32>::model_schema_wrap_unjudged(CrateDraft { codes: vec![], label: String::new() })],
     label: "outer".to_string(),
 };
 outer.validate();
-// Ok(())
+// Ok(Crate { codes: [Crate { codes: [], label: "" }], label: "outer" })
 
 serde_json::from_str::<Crate<Crate<u32>>>(r#"{"codes":[{"codes":[],"label":""}],"label":"outer"}"#);
 // Err: 'label': too short: minimum length is 1, got 0 at line 1 column 34
 ```
 
-**A `validate` of your own on one filling does not build.** A type has one inherent function under a name, and the generated one is there at every filling:
+**A `validation_issues` of your own on one filling does not build.** A type has one inherent function under a name, and the generated one is there at every filling:
 
 ```rust,compile_fail
-impl Crate<u32> {
-    pub fn validate(&self) -> Result<(), Vec<String>> {
+impl CrateDraft<u32> {
+    pub fn validation_issues(&self) -> Vec<String> {
         if self.codes.contains(&0) {
-            return Err(vec!["'codes': no code is zero".to_owned()]);
+            return vec!["'codes': no code is zero".to_owned()];
         }
-        Ok(())
+        Vec::new()
     }
 }
 ```
 
 ```text
-error[E0592]: duplicate definitions with name `validate`
+error[E0592]: duplicate definitions with name `validation_issues`
 ```
+
+A `validate` of your own on the valid type, `impl Crate<u32> { pub fn validate(&self) -> .. }`, builds: `validate` is a function of the draft, and the valid type has none.
 
 #### The path a message names
 

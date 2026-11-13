@@ -12,10 +12,12 @@ use super::fixed_arrays_models::{
     bitter_kotlin, bunt_kotlin, buntline_kotlin, cringling_kotlin, fishing_kotlin, reefband_kotlin,
     sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
 };
+#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself, each part from its text, placed under its step.
+#[cfg(feature = "serde")]
 pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
      element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
      while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
@@ -157,6 +159,7 @@ pub fn serializers(named: &str) -> String {
 }
 
 /// The two serializers of the brand `named`, whose unjudged read is private to the file.
+#[cfg(feature = "serde")]
 pub fn brand_serializers(named: &str) -> String {
     format!(
         "{} {}",
@@ -166,6 +169,7 @@ pub fn brand_serializers(named: &str) -> String {
 }
 
 /// The companion of the brand `named` over `value`, which builds a value only through `of`.
+#[cfg(feature = "serde")]
 pub fn brand_companion(named: &str, value: &str) -> String {
     format!(
         "companion object {{ fun of(value: {value}): {named} {{ val read = {named}(value); val \
@@ -178,6 +182,7 @@ pub fn brand_companion(named: &str, value: &str) -> String {
 /// The serializer of a map keyed by the brand `named`, a brand over a text: each key read
 /// unjudged from its text at the map's path, then judged, each message under the key's text, and
 /// each value from its text under the key's text.
+#[cfg(feature = "serde")]
 pub fn mapped(named: &str) -> String {
     mapped_reading(
         named,
@@ -190,6 +195,7 @@ pub fn mapped(named: &str) -> String {
 
 /// [`mapped`] of a brand over a brand over a text, which throws the refusal of the brand it holds
 /// under the key's text as well.
+#[cfg(feature = "serde")]
 pub fn mapped_over_a_brand(named: &str) -> String {
     mapped_reading(
         named,
@@ -204,6 +210,7 @@ pub fn mapped_over_a_brand(named: &str) -> String {
 
 /// The serializer of a map keyed by the brand `named`, which reads each key with `key` and then
 /// judges it.
+#[cfg(feature = "serde")]
 fn mapped_reading(named: &str, key: &str) -> String {
     format!(
         "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
@@ -224,21 +231,25 @@ fn mapped_reading(named: &str, key: &str) -> String {
 }
 
 fn pallet(label: &str) -> Pallet {
-    Pallet {
+    PalletDraft {
         label: label.to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn every_fixture_is_written_as_serde_writes_it() {
-    let bay = Bay {
+    let bay = BayDraft {
         first: pallet("a"),
         listed: vec![pallet("b")],
         spare: None,
         stored: HashMap::from([("north".to_owned(), pallet("c"))]),
-        trailer: Trailer {
+        trailer: TrailerDraft {
             plate: "p".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(
         serde_json::to_value(bay).unwrap(),
@@ -249,15 +260,21 @@ fn every_fixture_is_written_as_serde_writes_it() {
             "trailer": { "plate": "p" }
         })
     );
-    let cellar = Cellar {
-        cask: Cask {
+    let cellar = CellarDraft {
+        cask: CaskDraft {
             held: vec![pallet("d")],
             label: "e".to_owned(),
-        },
-        casks: vec![Cask {
-            held: vec![7],
-            label: "f".to_owned(),
-        }],
+        }
+        .validate()
+        .unwrap(),
+        casks: vec![
+            CaskDraft {
+                held: vec![7],
+                label: "f".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ],
     };
     assert_eq!(
         serde_json::to_value(cellar).unwrap(),
@@ -267,12 +284,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
         })
     );
     assert_eq!(
-        serde_json::to_value((
-            Seal::new("s".to_owned()).unwrap(),
-            Load::Boxed(pallet("g")),
-            Load::Empty
-        ))
-        .unwrap(),
+        serde_json::to_value((seal("s"), LoadDraft::Boxed(pallet("g")), LoadDraft::Empty)).unwrap(),
         serde_json::json!(["s", { "Boxed": { "label": "g" } }, "Empty"])
     );
 }
@@ -510,4 +522,14 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
         let plain = super::tests::without_number_readers(kotlin);
         assert!(plain.contains(&held), "no `{held}` in: {kotlin}");
     }
+}
+
+#[cfg(feature = "serde")]
+fn seal(text: &str) -> Seal {
+    Seal::new(text.to_owned()).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn seal(text: &str) -> Seal {
+    SealDraft(text.to_owned()).validate().unwrap()
 }

@@ -202,12 +202,12 @@ fn rows() -> Vec<Row> {
         read_row(
             "a struct that declares no parameter",
             "Plotted",
-            &Plotted { at: first },
+            &PlottedDraft { at: first },
         ),
         read_row(
             "every date of a struct",
             "Reckoning<String>",
-            &Reckoning {
+            &ReckoningDraft {
                 at: first,
                 held: held(),
                 marks: vec![first, second],
@@ -217,7 +217,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "a struct with no optional date",
             "Reckoning<String>",
-            &Reckoning {
+            &ReckoningDraft {
                 at: first,
                 held: held(),
                 marks: Vec::new(),
@@ -237,7 +237,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name the parameter, no tag attribute",
             "Ebb<String>",
-            &Ebb::Logged {
+            &EbbDraft::Logged {
                 at: first,
                 held: held(),
             },
@@ -245,12 +245,12 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, no tag attribute",
             "Ebb<String>",
-            &Ebb::<String>::Noted { at: second },
+            &EbbDraft::<String>::Noted { at: second },
         ),
         read_row(
             "named members that name the parameter, a tag alone",
             "TaggedEbb<String>",
-            &TaggedEbb::Logged {
+            &TaggedEbbDraft::Logged {
                 at: first,
                 held: held(),
             },
@@ -258,12 +258,12 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, a tag alone",
             "TaggedEbb<String>",
-            &TaggedEbb::<String>::Noted { at: second },
+            &TaggedEbbDraft::<String>::Noted { at: second },
         ),
         read_row(
             "named members that name the parameter, a tag and a content key",
             "AdjacentEbb<String>",
-            &AdjacentEbb::Logged {
+            &AdjacentEbbDraft::Logged {
                 at: first,
                 held: held(),
             },
@@ -271,12 +271,12 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, a tag and a content key",
             "AdjacentEbb<String>",
-            &AdjacentEbb::<String>::Noted { at: second },
+            &AdjacentEbbDraft::<String>::Noted { at: second },
         ),
         read_row(
             "named members that name the parameter, untagged",
             "UntaggedEbb<String>",
-            &UntaggedEbb::Logged {
+            &UntaggedEbbDraft::Logged {
                 at: first,
                 held: held(),
             },
@@ -284,7 +284,7 @@ fn rows() -> Vec<Row> {
         read_row(
             "named members that name none, untagged",
             "UntaggedEbb<String>",
-            &UntaggedEbb::<String>::Noted { at: second },
+            &UntaggedEbbDraft::<String>::Noted { at: second },
         ),
     ]
 }
@@ -299,12 +299,12 @@ fn held_rows() -> Vec<Row> {
         read_row(
             "a tuple struct that declares a parameter",
             "Leg<String>",
-            &Leg(first, held()),
+            &LegDraft(first, held()),
         ),
         read_row(
             "a date in a tuple and as a map's value",
             "Plot<String>",
-            &Plot {
+            &PlotDraft {
                 by_name: HashMap::from([("n".to_owned(), first), ("m".to_owned(), second)]),
                 by_number: HashMap::from([(1, first), (2, second)]),
                 pair: (first, held()),
@@ -314,27 +314,27 @@ fn held_rows() -> Vec<Row> {
         read_row(
             "several slots, no tag attribute",
             "Ebb<String>",
-            &Ebb::Paired(first, held()),
+            &EbbDraft::Paired(first, held()),
         ),
         read_row(
             "one slot, no tag attribute",
             "Ebb<String>",
-            &Ebb::<String>::Stamped(second),
+            &EbbDraft::<String>::Stamped(second),
         ),
         read_row(
             "several slots, a tag and a content key",
             "AdjacentEbb<String>",
-            &AdjacentEbb::Paired(first, held()),
+            &AdjacentEbbDraft::Paired(first, held()),
         ),
         read_row(
             "one slot, a tag and a content key",
             "AdjacentEbb<String>",
-            &AdjacentEbb::<String>::Stamped(second),
+            &AdjacentEbbDraft::<String>::Stamped(second),
         ),
         read_row(
             "one slot, untagged",
             "UntaggedEbb<String>",
-            &UntaggedEbb::<String>::Stamped(second),
+            &UntaggedEbbDraft::<String>::Stamped(second),
         ),
     ]
 }
@@ -398,7 +398,7 @@ fn each_date_of_a_type_that_declares_a_parameter_reads_and_writes_in_swift_as_se
 /// and not read is left out of the run for.
 #[test]
 fn a_date_left_out_of_the_run_is_written_as_serde_writes_it() {
-    let written = serde_json::to_string(&Clocked {
+    let written = serde_json::to_string(&ClockedDraft {
         at: at(1_704_164_645_678),
         held: "a".to_owned(),
     });

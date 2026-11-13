@@ -693,7 +693,7 @@ fn element_items() -> TokenStream {
 /// const TOTAL: Field<Invoice, f64> = Field::plain(MongoPath::at("total"));
 ///
 /// fn main() -> Result<(), WriteError> {
-///     let _ = STATUS.eq(InvoiceStatus::PastDue)?;
+///     let _ = STATUS.eq(InvoiceStatusDraft::PastDue.validate().unwrap())?;
 ///     let _ = OPEN_INVOICES.lte(3)?;
 ///     let _ = TOTAL.gt(1000.0)?;
 ///     let _ = PAID_AT.unset();

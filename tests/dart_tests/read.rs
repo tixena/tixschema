@@ -131,32 +131,39 @@ fn assert_written(definition: &str, fragment: &str) {
 
 #[test]
 fn every_declared_type_is_constructible() {
-    let item = Item {
+    let item = ItemDraft {
         label: "A".to_owned(),
-    };
-    let hold = Hold {
-        by_dock: HashMap::from([(Dock::North, item.clone()), (Dock::South, item.clone())]),
-        filled: Bin {
+    }
+    .validate()
+    .unwrap();
+    let hold = HoldDraft {
+        by_dock: HashMap::from([
+            (DockDraft::North.validate().unwrap(), item.clone()),
+            (DockDraft::South.validate().unwrap(), item.clone()),
+        ]),
+        filled: BinDraft {
             held: vec![item.clone()],
-        },
+        }
+        .validate()
+        .unwrap(),
     };
     assert_eq!(hold.by_dock.len(), 2);
     assert_eq!(hold.filled.held.len(), 1);
     assert_eq!(Wrapped::new(item.clone()).unwrap().as_inner().label, "A");
-    assert_eq!(Lot("a".to_owned(), item.clone()).1.label, "A");
+    assert_eq!(LotDraft("a".to_owned(), item.clone()).1.label, "A");
     let load: Load = vec![item];
     assert_eq!(load.len(), 1);
     let shelfmarks = [
-        Shelfmark::Coded(Slip::new("AB".to_owned()).unwrap()),
-        Shelfmark::Listed(vec![Slip::new("AB".to_owned()).unwrap()]),
-        Shelfmark::Shelved(true),
+        ShelfmarkDraft::Coded(Slip::new("AB".to_owned()).unwrap()),
+        ShelfmarkDraft::Listed(vec![Slip::new("AB".to_owned()).unwrap()]),
+        ShelfmarkDraft::Shelved(true),
     ];
     assert_eq!(shelfmarks.len(), 3);
     assert_eq!(
-        serde_json::to_string(&[Reading::FromJsonUnjudged, Reading::Judged]).unwrap(),
+        serde_json::to_string(&[ReadingDraft::FromJsonUnjudged, ReadingDraft::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#
     );
-    let vise = Vise {
+    let vise = ViseDraft {
         grid: [[1, 2]; 3],
         listed: vec![3],
         pair: [4, 5],

@@ -13,11 +13,12 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::renamed_generics_models::{
-    AdjacentScroll, Catalog, Diptych, Folio, Leaves, Lectern, Library, Margin, Quire, Scroll,
-    Shelfmark, Spread, TaggedScroll, Tome, UntaggedScroll, Volume, adjacent_scroll_swift,
-    catalog_swift, diptych_swift, folio_swift, leaves_swift, lectern_swift, library_swift,
-    margin_swift, quire_swift, scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift,
-    tome_swift, untagged_scroll_swift, volume_swift,
+    AdjacentScrollDraft, Catalog, DiptychDraft, Folio, FolioDraft, Leaves, LecternDraft,
+    LibraryDraft, Margin, Quire, ScrollDraft, Shelfmark, Spread, TaggedScrollDraft, Tome,
+    TomeDraft, UntaggedScrollDraft, Volume, adjacent_scroll_swift, catalog_swift, diptych_swift,
+    folio_swift, leaves_swift, lectern_swift, library_swift, margin_swift, quire_swift,
+    scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift, tome_swift,
+    untagged_scroll_swift, volume_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -87,10 +88,12 @@ where
 
 /// A folio of `leaf` at page 1.
 fn folio(leaf: &str) -> Folio<String> {
-    Folio {
+    FolioDraft {
         leaf: leaf.to_owned(),
         page: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 /// `leaf` as a `String`.
@@ -100,10 +103,12 @@ fn owned(leaf: &str) -> String {
 
 /// A tome of folio `a` and leaf `b`.
 fn tome() -> Tome<String> {
-    Tome {
+    TomeDraft {
         folio: folio("a"),
         leaf: owned("b"),
     }
+    .validate()
+    .unwrap()
 }
 
 /// The payloads of each alias, through each of its names.
@@ -139,7 +144,7 @@ fn struct_rows() -> Vec<Row> {
             "a tuple struct",
             "Diptych",
             "Twofold",
-            &Diptych(owned("a"), 1),
+            &DiptychDraft(owned("a"), 1),
         ),
         both(
             "a brand",
@@ -160,19 +165,19 @@ fn variant_rows() -> Vec<Row> {
             "several slots, no tag attribute",
             "Scroll",
             "Parchment",
-            &Scroll::Paired(owned("a"), 1),
+            &ScrollDraft::Paired(owned("a"), 1),
         ),
         both(
             "one slot, no tag attribute",
             "Scroll",
             "Parchment",
-            &Scroll::Sealed(owned("a")),
+            &ScrollDraft::Sealed(owned("a")),
         ),
         both(
             "named members, no tag attribute",
             "Scroll",
             "Parchment",
-            &Scroll::Unrolled {
+            &ScrollDraft::Unrolled {
                 folio: folio("a"),
                 leaf: owned("b"),
             },
@@ -181,13 +186,13 @@ fn variant_rows() -> Vec<Row> {
             "one slot, a tag alone",
             "TaggedScroll",
             "TaggedParchment",
-            &TaggedScroll::Bound(folio("a")),
+            &TaggedScrollDraft::Bound(folio("a")),
         ),
         both(
             "named members, a tag alone",
             "TaggedScroll",
             "TaggedParchment",
-            &TaggedScroll::Unrolled {
+            &TaggedScrollDraft::Unrolled {
                 folio: folio("a"),
                 leaf: owned("b"),
             },
@@ -196,19 +201,19 @@ fn variant_rows() -> Vec<Row> {
             "several slots, a tag and a content key",
             "AdjacentScroll",
             "AdjacentParchment",
-            &AdjacentScroll::Paired(owned("a"), 1),
+            &AdjacentScrollDraft::Paired(owned("a"), 1),
         ),
         both(
             "one slot, a tag and a content key",
             "AdjacentScroll",
             "AdjacentParchment",
-            &AdjacentScroll::Sealed(owned("a")),
+            &AdjacentScrollDraft::Sealed(owned("a")),
         ),
         both(
             "named members, a tag and a content key",
             "AdjacentScroll",
             "AdjacentParchment",
-            &AdjacentScroll::Unrolled {
+            &AdjacentScrollDraft::Unrolled {
                 folio: folio("a"),
                 leaf: owned("b"),
             },
@@ -217,13 +222,13 @@ fn variant_rows() -> Vec<Row> {
             "one slot, untagged",
             "UntaggedScroll",
             "UntaggedParchment",
-            &UntaggedScroll::Sealed(owned("a")),
+            &UntaggedScrollDraft::Sealed(owned("a")),
         ),
         both(
             "named members, untagged",
             "UntaggedScroll",
             "UntaggedParchment",
-            &UntaggedScroll::Unrolled {
+            &UntaggedScrollDraft::Unrolled {
                 folio: folio("a"),
                 leaf: owned("b"),
             },
@@ -236,38 +241,46 @@ fn variant_rows() -> Vec<Row> {
 
 /// The payloads of the holder declared above the types it holds and of the one declared below.
 fn holder_rows() -> Vec<Row> {
-    let lectern = Lectern {
-        adjacent_scroll: AdjacentScroll::Paired(owned("a"), 1),
-        diptych: Diptych(owned("b"), 2),
-        scroll: Scroll::Unrolled {
+    let lectern = LecternDraft {
+        adjacent_scroll: AdjacentScrollDraft::Paired(owned("a"), 1)
+            .validate()
+            .unwrap(),
+        diptych: DiptychDraft(owned("b"), 2).validate().unwrap(),
+        scroll: ScrollDraft::Unrolled {
             folio: folio("c"),
             leaf: owned("d"),
-        },
+        }
+        .validate()
+        .unwrap(),
         shelfmark: Shelfmark::new(owned("e")).unwrap(),
         spread: (owned("f"), 3),
-        tagged_scroll: TaggedScroll::Bound(folio("g")),
+        tagged_scroll: TaggedScrollDraft::Bound(folio("g")).validate().unwrap(),
         tome: tome(),
-        untagged_scroll: UntaggedScroll::Sealed(owned("h")),
+        untagged_scroll: UntaggedScrollDraft::Sealed(owned("h")).validate().unwrap(),
         volume: folio("i"),
     };
-    let library = Library {
-        adjacent_scroll: AdjacentScroll::Sealed(owned("a")),
+    let library = LibraryDraft {
+        adjacent_scroll: AdjacentScrollDraft::Sealed(owned("a")).validate().unwrap(),
         catalog: HashMap::from([(owned("b"), owned("c"))]),
-        diptych: Diptych(owned("d"), 2),
+        diptych: DiptychDraft(owned("d"), 2).validate().unwrap(),
         leaves: vec![owned("e")],
         margin: Some(owned("f")),
-        scroll: Scroll::Paired(owned("g"), 3),
+        scroll: ScrollDraft::Paired(owned("g"), 3).validate().unwrap(),
         shelfmark: Shelfmark::new(owned("h")).unwrap(),
         spread: (owned("i"), 4),
-        tagged_scroll: TaggedScroll::Unrolled {
+        tagged_scroll: TaggedScrollDraft::Unrolled {
             folio: folio("j"),
             leaf: owned("k"),
-        },
+        }
+        .validate()
+        .unwrap(),
         tome: tome(),
-        untagged_scroll: UntaggedScroll::Unrolled {
+        untagged_scroll: UntaggedScrollDraft::Unrolled {
             folio: folio("l"),
             leaf: owned("m"),
-        },
+        }
+        .validate()
+        .unwrap(),
         volume: folio("n"),
     };
     vec![

@@ -77,12 +77,14 @@ impl DocumentService<()> for DocumentBackEnd {
             .unwrap()
             .push((document_id.clone(), byte_range));
         if document_id == "missing" {
-            return Err(DocumentError::NotFound);
+            return Err(DocumentErrorDraft::NotFound.validate().unwrap());
         }
         Ok((
-            VersionResponse {
+            VersionResponseDraft {
                 content: "hello".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             "abc123".to_owned(),
         ))
     }
@@ -382,9 +384,11 @@ fn the_client_encodes_a_claimed_header_outbound_and_decodes_a_declared_one_from_
     assert_eq!(
         answered,
         (
-            VersionResponse {
+            VersionResponseDraft {
                 content: "hello".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             "abc123".to_owned(),
         ),
         "the response rides in the payload and the header_out value is rejoined from the reply's \

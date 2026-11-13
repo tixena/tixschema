@@ -168,6 +168,13 @@ pub enum Handover {
 #[serde(transparent)]
 pub struct Label(String);
 
+#[cfg(not(feature = "serde"))]
+impl LabelDraft {
+    pub fn of(text: &str) -> Self {
+        Self(text.to_owned())
+    }
+}
+
 /// The type that holds the parcel of the documents under a key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -449,7 +456,7 @@ pub fn with_its_keys(mut payload: Value) -> Value {
 }
 
 /// Refuses a weight over a kilogram.
-pub fn within_limit(value: &Weighed) -> Result<(), Vec<String>> {
+pub fn within_limit(value: &WeighedDraft) -> Result<(), Vec<String>> {
     if value.grams > 1000 {
         Err(vec![format!(
             "'grams': {} is over the limit of 1000",

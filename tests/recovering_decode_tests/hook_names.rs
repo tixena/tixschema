@@ -172,7 +172,7 @@ where
 }
 
 fn bound() -> Bound {
-    Bound {
+    BoundDraft {
         found: "a".to_owned(),
         held: "b".to_owned(),
         issue: "c".to_owned(),
@@ -183,6 +183,8 @@ fn bound() -> Bound {
         path: "g".to_owned(),
         stored: "h".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -191,9 +193,11 @@ fn a_read_hook_named_like_the_value_a_key_holds_is_the_authors_function() {
     let read = read_counting!(Named, named_schema, json!({ "name": "x" }), calls);
     assert_eq!(
         read,
-        Ok(Named {
+        Ok(NamedDraft {
             name: "x".to_owned()
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -261,7 +265,12 @@ fn a_value_held_in_another_form_than_a_writer_named_like_a_binding_writes_is_mis
 fn a_hook_named_like_a_value_a_positions_walker_binds_is_the_authors_function() {
     let mut calls = 0_u32;
     let read = read_counting!(Placed, placed_schema, json!(["a", "b"]), calls);
-    assert_eq!(read, Ok(Placed("a".to_owned(), "b".to_owned())));
+    assert_eq!(
+        read,
+        Ok(PlacedDraft("a".to_owned(), "b".to_owned())
+            .validate()
+            .unwrap())
+    );
     assert_eq!(calls, 0);
     assert_eq!(
         listed!(Placed, placed_schema, json!(["", ""])),
@@ -280,31 +289,37 @@ fn a_hook_named_like_a_value_an_enum_walker_binds_reads_a_variants_field() {
     let internal = json!({ "kind": "Note", "content": "a", "inner": "b", "tag": "c" });
     assert_eq!(
         read_counting!(Internal, internal_schema, internal, calls),
-        Ok(Internal::Note {
+        Ok(InternalDraft::Note {
             content: "a".to_owned(),
             inner: "b".to_owned(),
             tag: "c".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let adjacent = json!({ "kind": "Note", "body": fields });
     assert_eq!(
         read_counting!(Adjacent, adjacent_schema, adjacent, calls),
-        Ok(Adjacent::Note {
+        Ok(AdjacentDraft::Note {
             content: "a".to_owned(),
             inner: "b".to_owned(),
             tag: "c".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     for name in ["Note", "Memo"] {
         let mut external = serde_json::Map::new();
         external.insert(name.to_owned(), fields.clone());
         assert_eq!(
             read_counting!(External, external_schema, external.into(), calls),
-            Ok(External::Note {
+            Ok(ExternalDraft::Note {
                 content: "a".to_owned(),
                 inner: "b".to_owned(),
                 tag: "c".to_owned(),
-            })
+            }
+            .validate()
+            .unwrap())
         );
     }
     assert_eq!(calls, 0);

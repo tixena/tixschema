@@ -197,13 +197,24 @@ mod holders {
         },
         Wrap(CAW10NN),
     }
-    impl Sample for CA10NN {
+    impl Sample for CA10NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CAW10NN { b: 45 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CAW10NNDraft { b: 45 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CA10NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CA10NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -224,13 +235,24 @@ mod holders {
         },
         Wrap(CAW10SS),
     }
-    impl Sample for CA10SS {
+    impl Sample for CA10SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CAW10SS { b: 45 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CAW10SSDraft { b: 45 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CA10SS {
+        fn samples() -> Vec<(String, Self)> {
+            <CA10SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -259,31 +281,41 @@ mod holders {
         #[serde(rename = "ft10_own")]
         pub own: u32,
     }
-    impl Sample for CFT10NNN {
+    impl Sample for CFT10NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 80,
-                        inner: CFTI10NNN::Rect { a: 82 },
+                        inner: CFTI10NNNDraft::Rect { a: 82 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 80,
-                        inner: CFTI10NNN::Dot,
+                        inner: CFTI10NNNDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 80,
-                        inner: CFTI10NNN::Wrap(CFTW10NNN { b: 85 }),
+                        inner: CFTI10NNNDraft::Wrap(CFTW10NNNDraft { b: 85 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for CFT10NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <CFT10NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -304,13 +336,24 @@ mod holders {
         },
         Wrap(CTW10NN),
     }
-    impl Sample for CT10NN {
+    impl Sample for CT10NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 50 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CTW10NN { b: 55 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CTW10NNDraft { b: 55 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CT10NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CT10NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -333,13 +376,24 @@ mod holders {
         #[serde(rename = "e11_wrap")]
         Wrap(CEW11NN),
     }
-    impl Sample for CE11NN {
+    impl Sample for CE11NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CEW11NN { b: 36 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CEW11NNDraft { b: 36 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CE11NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CE11NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -363,15 +417,23 @@ mod holders {
         #[serde(flatten)]
         pub y: CFOY11NN,
     }
-    impl Sample for CFO11NN {
+    impl Sample for CFO11NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: CFOX11NN { a: 111 },
-                    y: CFOY11NN { b: 136 },
+                    x: CFOX11NNDraft { a: 111 }.validate().unwrap(),
+                    y: CFOY11NNDraft { b: 136 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for CFO11NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CFO11NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -389,15 +451,23 @@ mod holders {
         #[serde(rename = "shared")]
         pub own: u32,
     }
-    impl Sample for CFP11NN {
+    impl Sample for CFP11NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 111,
-                    inner: CFPI11NN { a: 76 },
+                    inner: CFPI11NNDraft { a: 76 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for CFP11NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CFP11NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -407,9 +477,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for COI11N {
+    impl Sample for COI11NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 111 })]
+        }
+    }
+    impl Sample for COI11N {
+        fn samples() -> Vec<(String, Self)> {
+            <COI11NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -419,9 +497,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for CP11N {
+    impl Sample for CP11NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 111 })]
+        }
+    }
+    impl Sample for CP11N {
+        fn samples() -> Vec<(String, Self)> {
+            <CP11NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -431,9 +517,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for CP11S {
+    impl Sample for CP11SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 111 })]
+        }
+    }
+    impl Sample for CP11S {
+        fn samples() -> Vec<(String, Self)> {
+            <CP11SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -453,12 +547,23 @@ mod holders {
         },
         Wrap(CVW11NN),
     }
-    impl Sample for CV11NN {
+    impl Sample for CV11NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 111 }),
-                ("Wrap".to_owned(), Self::Wrap(CVW11NN { b: 146 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CVW11NNDraft { b: 146 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CV11NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CV11NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -481,13 +586,24 @@ mod holders {
         #[serde(rename = "e10_wrap")]
         Wrap(CEW10NN),
     }
-    impl Sample for CE10NN {
+    impl Sample for CE10NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CEW10NN { b: 35 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CEW10NNDraft { b: 35 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CE10NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CE10NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -508,13 +624,24 @@ mod holders {
         },
         Wrap(CAW11NN),
     }
-    impl Sample for CA11NN {
+    impl Sample for CA11NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CAW11NN { b: 46 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CAW11NNDraft { b: 46 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CA11NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CA11NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -535,13 +662,24 @@ mod holders {
         },
         Wrap(CAW11SS),
     }
-    impl Sample for CA11SS {
+    impl Sample for CA11SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CAW11SS { b: 46 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CAW11SSDraft { b: 46 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CA11SS {
+        fn samples() -> Vec<(String, Self)> {
+            <CA11SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -570,31 +708,41 @@ mod holders {
         #[serde(rename = "ft11_own")]
         pub own: u32,
     }
-    impl Sample for CFT11NNN {
+    impl Sample for CFT11NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 81,
-                        inner: CFTI11NNN::Rect { a: 83 },
+                        inner: CFTI11NNNDraft::Rect { a: 83 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 81,
-                        inner: CFTI11NNN::Dot,
+                        inner: CFTI11NNNDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 81,
-                        inner: CFTI11NNN::Wrap(CFTW11NNN { b: 86 }),
+                        inner: CFTI11NNNDraft::Wrap(CFTW11NNNDraft { b: 86 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for CFT11NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <CFT11NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -615,13 +763,24 @@ mod holders {
         },
         Wrap(CTW11NN),
     }
-    impl Sample for CT11NN {
+    impl Sample for CT11NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 51 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CTW11NN { b: 56 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CTW11NNDraft { b: 56 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CT11NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CT11NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -642,13 +801,24 @@ mod holders {
         },
         Wrap(CTW11SS),
     }
-    impl Sample for CT11SS {
+    impl Sample for CT11SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 51 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CTW11SS { b: 56 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CTW11SSDraft { b: 56 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CT11SS {
+        fn samples() -> Vec<(String, Self)> {
+            <CT11SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -671,13 +841,24 @@ mod holders {
         #[serde(rename = "e10_wrap")]
         Wrap(CEW10SS),
     }
-    impl Sample for CE10SS {
+    impl Sample for CE10SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(CEW10SS { b: 35 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CEW10SSDraft { b: 35 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CE10SS {
+        fn samples() -> Vec<(String, Self)> {
+            <CE10SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -701,15 +882,23 @@ mod holders {
         #[serde(flatten)]
         pub y: CFOY10NN,
     }
-    impl Sample for CFO10NN {
+    impl Sample for CFO10NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: CFOX10NN { a: 110 },
-                    y: CFOY10NN { b: 135 },
+                    x: CFOX10NNDraft { a: 110 }.validate().unwrap(),
+                    y: CFOY10NNDraft { b: 135 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for CFO10NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CFO10NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -727,15 +916,23 @@ mod holders {
         #[serde(rename = "shared")]
         pub own: u32,
     }
-    impl Sample for CFP10NN {
+    impl Sample for CFP10NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 110,
-                    inner: CFPI10NN { a: 75 },
+                    inner: CFPI10NNDraft { a: 75 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for CFP10NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CFP10NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -745,9 +942,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for COI10N {
+    impl Sample for COI10NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+    impl Sample for COI10N {
+        fn samples() -> Vec<(String, Self)> {
+            <COI10NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -757,9 +962,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for COI10S {
+    impl Sample for COI10SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+    impl Sample for COI10S {
+        fn samples() -> Vec<(String, Self)> {
+            <COI10SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -769,9 +982,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for CP10N {
+    impl Sample for CP10NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 110 })]
+        }
+    }
+    impl Sample for CP10N {
+        fn samples() -> Vec<(String, Self)> {
+            <CP10NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -781,9 +1002,17 @@ mod holders {
         #[serde(rename = "shared")]
         pub a: u32,
     }
-    impl Sample for CP10S {
+    impl Sample for CP10SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 110 })]
+        }
+    }
+    impl Sample for CP10S {
+        fn samples() -> Vec<(String, Self)> {
+            <CP10SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -803,12 +1032,23 @@ mod holders {
         },
         Wrap(CVW10NN),
     }
-    impl Sample for CV10NN {
+    impl Sample for CV10NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 110 }),
-                ("Wrap".to_owned(), Self::Wrap(CVW10NN { b: 145 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(CVW10NNDraft { b: 145 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for CV10NN {
+        fn samples() -> Vec<(String, Self)> {
+            <CV10NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -829,13 +1069,24 @@ mod holders {
         },
         Wrap(AW0NN),
     }
-    impl Sample for A0NN {
+    impl Sample for A0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(AW0NN { b: 35 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(AW0NNDraft { b: 35 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <A0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -856,13 +1107,24 @@ mod holders {
         },
         Wrap(AW0SS),
     }
-    impl Sample for A0SS {
+    impl Sample for A0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(AW0SS { b: 35 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(AW0SSDraft { b: 35 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for A0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -885,13 +1147,24 @@ mod holders {
         #[serde(rename = "e0_wrap")]
         Wrap(EW0NN),
     }
-    impl Sample for E0NN {
+    impl Sample for E0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 20 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(EW0NN { b: 25 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(EW0NNDraft { b: 25 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <E0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -914,13 +1187,24 @@ mod holders {
         #[serde(rename = "e0_wrap")]
         Wrap(EW0SS),
     }
-    impl Sample for E0SS {
+    impl Sample for E0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 20 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(EW0SS { b: 25 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(EW0SSDraft { b: 25 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -944,15 +1228,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY0NN,
     }
-    impl Sample for FO0NN {
+    impl Sample for FO0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX0NN { a: 120 },
-                    y: FOY0NN { b: 125 },
+                    x: FOX0NNDraft { a: 120 }.validate().unwrap(),
+                    y: FOY0NNDraft { b: 125 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FO0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -976,15 +1268,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY0SS,
     }
-    impl Sample for FO0SS {
+    impl Sample for FO0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX0SS { a: 120 },
-                    y: FOY0SS { b: 125 },
+                    x: FOX0SSDraft { a: 120 }.validate().unwrap(),
+                    y: FOY0SSDraft { b: 125 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1002,15 +1302,23 @@ mod holders {
         #[serde(rename = "fp0_own")]
         pub own: u32,
     }
-    impl Sample for FP0NN {
+    impl Sample for FP0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 60,
-                    inner: FPI0NN { a: 65 },
+                    inner: FPI0NNDraft { a: 65 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1039,31 +1347,41 @@ mod holders {
         #[serde(rename = "ft0_own")]
         pub own: u32,
     }
-    impl Sample for FT0NNN {
+    impl Sample for FT0NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NNN::Rect { a: 72 },
+                        inner: FTI0NNNDraft::Rect { a: 72 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NNN::Dot,
+                        inner: FTI0NNNDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NNN::Wrap(FTW0NNN { b: 75 }),
+                        inner: FTI0NNNDraft::Wrap(FTW0NNNDraft { b: 75 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for FT0NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT0NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1073,9 +1391,17 @@ mod holders {
         #[serde(rename = "o0_a")]
         pub a: u32,
     }
-    impl Sample for OI0N {
+    impl Sample for OI0NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+    impl Sample for OI0N {
+        fn samples() -> Vec<(String, Self)> {
+            <OI0NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1085,9 +1411,17 @@ mod holders {
         #[serde(rename = "o0_a")]
         pub a: u32,
     }
-    impl Sample for OI0S {
+    impl Sample for OI0SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 110 })]
+        }
+    }
+    impl Sample for OI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <OI0SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1097,9 +1431,17 @@ mod holders {
         #[serde(rename = "p0_a")]
         pub a: u32,
     }
-    impl Sample for P0N {
+    impl Sample for P0NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 10 })]
+        }
+    }
+    impl Sample for P0N {
+        fn samples() -> Vec<(String, Self)> {
+            <P0NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1109,9 +1451,17 @@ mod holders {
         #[serde(rename = "p0_a")]
         pub a: u32,
     }
-    impl Sample for P0S {
+    impl Sample for P0SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 10 })]
+        }
+    }
+    impl Sample for P0S {
+        fn samples() -> Vec<(String, Self)> {
+            <P0SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1132,13 +1482,24 @@ mod holders {
         },
         Wrap(TW0NN),
     }
-    impl Sample for T0NN {
+    impl Sample for T0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW0NN { b: 45 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW0NNDraft { b: 45 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <T0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1158,12 +1519,23 @@ mod holders {
         },
         Wrap(VW0NN),
     }
-    impl Sample for V0NN {
+    impl Sample for V0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 130 }),
-                ("Wrap".to_owned(), Self::Wrap(VW0NN { b: 135 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW0NNDraft { b: 135 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1183,12 +1555,23 @@ mod holders {
         },
         Wrap(VW0SS),
     }
-    impl Sample for V0SS {
+    impl Sample for V0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 130 }),
-                ("Wrap".to_owned(), Self::Wrap(VW0SS { b: 135 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW0SSDraft { b: 135 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <V0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1209,13 +1592,24 @@ mod holders {
         },
         Wrap(AW1NN),
     }
-    impl Sample for A1NN {
+    impl Sample for A1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(AW1NN { b: 36 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(AW1NNDraft { b: 36 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for A1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <A1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1236,13 +1630,24 @@ mod holders {
         },
         Wrap(AW1SS),
     }
-    impl Sample for A1SS {
+    impl Sample for A1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(AW1SS { b: 36 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(AW1SSDraft { b: 36 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for A1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1265,13 +1670,24 @@ mod holders {
         #[serde(rename = "e1_wrap")]
         Wrap(EW1NN),
     }
-    impl Sample for E1NN {
+    impl Sample for E1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 21 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(EW1NN { b: 26 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(EW1NNDraft { b: 26 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for E1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <E1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1294,13 +1710,24 @@ mod holders {
         #[serde(rename = "e1_wrap")]
         Wrap(EW1SS),
     }
-    impl Sample for E1SS {
+    impl Sample for E1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 21 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(EW1SS { b: 26 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(EW1SSDraft { b: 26 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for E1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1324,15 +1751,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY1NN,
     }
-    impl Sample for FO1NN {
+    impl Sample for FO1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX1NN { a: 121 },
-                    y: FOY1NN { b: 126 },
+                    x: FOX1NNDraft { a: 121 }.validate().unwrap(),
+                    y: FOY1NNDraft { b: 126 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FO1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1356,15 +1791,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY1SS,
     }
-    impl Sample for FO1SS {
+    impl Sample for FO1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX1SS { a: 121 },
-                    y: FOY1SS { b: 126 },
+                    x: FOX1SSDraft { a: 121 }.validate().unwrap(),
+                    y: FOY1SSDraft { b: 126 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1382,15 +1825,23 @@ mod holders {
         #[serde(rename = "fp1_own")]
         pub own: u32,
     }
-    impl Sample for FP1NN {
+    impl Sample for FP1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 61,
-                    inner: FPI1NN { a: 66 },
+                    inner: FPI1NNDraft { a: 66 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1408,15 +1859,23 @@ mod holders {
         #[serde(rename = "fp1_own")]
         pub own: u32,
     }
-    impl Sample for FP1SS {
+    impl Sample for FP1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 61,
-                    inner: FPI1SS { a: 66 },
+                    inner: FPI1SSDraft { a: 66 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FP1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1445,31 +1904,41 @@ mod holders {
         #[serde(rename = "ft1_own")]
         pub own: u32,
     }
-    impl Sample for FT1NNN {
+    impl Sample for FT1NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNN::Rect { a: 73 },
+                        inner: FTI1NNNDraft::Rect { a: 73 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNN::Dot,
+                        inner: FTI1NNNDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNN::Wrap(FTW1NNN { b: 76 }),
+                        inner: FTI1NNNDraft::Wrap(FTW1NNNDraft { b: 76 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for FT1NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT1NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1479,9 +1948,17 @@ mod holders {
         #[serde(rename = "o1_a")]
         pub a: u32,
     }
-    impl Sample for OI1N {
+    impl Sample for OI1NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 111 })]
+        }
+    }
+    impl Sample for OI1N {
+        fn samples() -> Vec<(String, Self)> {
+            <OI1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1491,9 +1968,17 @@ mod holders {
         #[serde(rename = "o1_a")]
         pub a: u32,
     }
-    impl Sample for OI1S {
+    impl Sample for OI1SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 111 })]
+        }
+    }
+    impl Sample for OI1S {
+        fn samples() -> Vec<(String, Self)> {
+            <OI1SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1503,9 +1988,17 @@ mod holders {
         #[serde(rename = "p1_a")]
         pub a: u32,
     }
-    impl Sample for P1N {
+    impl Sample for P1NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 11 })]
+        }
+    }
+    impl Sample for P1N {
+        fn samples() -> Vec<(String, Self)> {
+            <P1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1515,9 +2008,17 @@ mod holders {
         #[serde(rename = "p1_a")]
         pub a: u32,
     }
-    impl Sample for P1S {
+    impl Sample for P1SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 11 })]
+        }
+    }
+    impl Sample for P1S {
+        fn samples() -> Vec<(String, Self)> {
+            <P1SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1538,13 +2039,24 @@ mod holders {
         },
         Wrap(TW1NN),
     }
-    impl Sample for T1NN {
+    impl Sample for T1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW1NN { b: 46 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW1NNDraft { b: 46 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <T1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1565,13 +2077,24 @@ mod holders {
         },
         Wrap(TW1SS),
     }
-    impl Sample for T1SS {
+    impl Sample for T1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW1SS { b: 46 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW1SSDraft { b: 46 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <T1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1591,12 +2114,23 @@ mod holders {
         },
         Wrap(VW1NN),
     }
-    impl Sample for V1NN {
+    impl Sample for V1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 131 }),
-                ("Wrap".to_owned(), Self::Wrap(VW1NN { b: 136 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW1NNDraft { b: 136 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1616,12 +2150,23 @@ mod holders {
         },
         Wrap(VW1SS),
     }
-    impl Sample for V1SS {
+    impl Sample for V1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 131 }),
-                ("Wrap".to_owned(), Self::Wrap(VW1SS { b: 136 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW1SSDraft { b: 136 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <V1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1642,13 +2187,24 @@ mod holders {
         },
         Wrap(AW2NN),
     }
-    impl Sample for A2NN {
+    impl Sample for A2NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 32 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(AW2NN { b: 37 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(AW2NNDraft { b: 37 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for A2NN {
+        fn samples() -> Vec<(String, Self)> {
+            <A2NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1669,13 +2225,24 @@ mod holders {
         },
         Wrap(AW2SS),
     }
-    impl Sample for A2SS {
+    impl Sample for A2SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 32 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(AW2SS { b: 37 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(AW2SSDraft { b: 37 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for A2SS {
+        fn samples() -> Vec<(String, Self)> {
+            <A2SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1698,13 +2265,24 @@ mod holders {
         #[serde(rename = "e2_wrap")]
         Wrap(EW2NN),
     }
-    impl Sample for E2NN {
+    impl Sample for E2NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 22 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(EW2NN { b: 27 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(EW2NNDraft { b: 27 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for E2NN {
+        fn samples() -> Vec<(String, Self)> {
+            <E2NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1727,13 +2305,24 @@ mod holders {
         #[serde(rename = "e2_wrap")]
         Wrap(EW2SS),
     }
-    impl Sample for E2SS {
+    impl Sample for E2SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 22 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(EW2SS { b: 27 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(EW2SSDraft { b: 27 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for E2SS {
+        fn samples() -> Vec<(String, Self)> {
+            <E2SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1757,15 +2346,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY2NN,
     }
-    impl Sample for FO2NN {
+    impl Sample for FO2NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX2NN { a: 122 },
-                    y: FOY2NN { b: 127 },
+                    x: FOX2NNDraft { a: 122 }.validate().unwrap(),
+                    y: FOY2NNDraft { b: 127 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO2NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FO2NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1789,15 +2386,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY2SS,
     }
-    impl Sample for FO2SS {
+    impl Sample for FO2SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX2SS { a: 122 },
-                    y: FOY2SS { b: 127 },
+                    x: FOX2SSDraft { a: 122 }.validate().unwrap(),
+                    y: FOY2SSDraft { b: 127 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO2SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO2SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1815,15 +2420,23 @@ mod holders {
         #[serde(rename = "fp2_own")]
         pub own: u32,
     }
-    impl Sample for FP2NN {
+    impl Sample for FP2NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 62,
-                    inner: FPI2NN { a: 67 },
+                    inner: FPI2NNDraft { a: 67 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP2NN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP2NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1841,15 +2454,23 @@ mod holders {
         #[serde(rename = "fp2_own")]
         pub own: u32,
     }
-    impl Sample for FP2SS {
+    impl Sample for FP2SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 62,
-                    inner: FPI2SS { a: 67 },
+                    inner: FPI2SSDraft { a: 67 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP2SS {
+        fn samples() -> Vec<(String, Self)> {
+            <FP2SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1878,31 +2499,41 @@ mod holders {
         #[serde(rename = "ft2_own")]
         pub own: u32,
     }
-    impl Sample for FT2NNN {
+    impl Sample for FT2NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 72,
-                        inner: FTI2NNN::Rect { a: 74 },
+                        inner: FTI2NNNDraft::Rect { a: 74 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 72,
-                        inner: FTI2NNN::Dot,
+                        inner: FTI2NNNDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 72,
-                        inner: FTI2NNN::Wrap(FTW2NNN { b: 77 }),
+                        inner: FTI2NNNDraft::Wrap(FTW2NNNDraft { b: 77 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for FT2NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT2NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1912,9 +2543,17 @@ mod holders {
         #[serde(rename = "o2_a")]
         pub a: u32,
     }
-    impl Sample for OI2N {
+    impl Sample for OI2NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 112 })]
+        }
+    }
+    impl Sample for OI2N {
+        fn samples() -> Vec<(String, Self)> {
+            <OI2NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1924,9 +2563,17 @@ mod holders {
         #[serde(rename = "o2_a")]
         pub a: u32,
     }
-    impl Sample for OI2S {
+    impl Sample for OI2SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("Some".to_owned(), Self { a: 112 })]
+        }
+    }
+    impl Sample for OI2S {
+        fn samples() -> Vec<(String, Self)> {
+            <OI2SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1936,9 +2583,17 @@ mod holders {
         #[serde(rename = "p2_a")]
         pub a: u32,
     }
-    impl Sample for P2N {
+    impl Sample for P2NDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 12 })]
+        }
+    }
+    impl Sample for P2N {
+        fn samples() -> Vec<(String, Self)> {
+            <P2NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1948,9 +2603,17 @@ mod holders {
         #[serde(rename = "p2_a")]
         pub a: u32,
     }
-    impl Sample for P2S {
+    impl Sample for P2SDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![("-".to_owned(), Self { a: 12 })]
+        }
+    }
+    impl Sample for P2S {
+        fn samples() -> Vec<(String, Self)> {
+            <P2SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1971,13 +2634,24 @@ mod holders {
         },
         Wrap(TW2NN),
     }
-    impl Sample for T2NN {
+    impl Sample for T2NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 42 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW2NN { b: 47 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW2NNDraft { b: 47 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T2NN {
+        fn samples() -> Vec<(String, Self)> {
+            <T2NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -1998,13 +2672,24 @@ mod holders {
         },
         Wrap(TW2SS),
     }
-    impl Sample for T2SS {
+    impl Sample for T2SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 42 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW2SS { b: 47 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW2SSDraft { b: 47 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T2SS {
+        fn samples() -> Vec<(String, Self)> {
+            <T2SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2024,12 +2709,23 @@ mod holders {
         },
         Wrap(VW2NN),
     }
-    impl Sample for V2NN {
+    impl Sample for V2NNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 132 }),
-                ("Wrap".to_owned(), Self::Wrap(VW2NN { b: 137 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW2NNDraft { b: 137 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V2NN {
+        fn samples() -> Vec<(String, Self)> {
+            <V2NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2049,12 +2745,23 @@ mod holders {
         },
         Wrap(VW2SS),
     }
-    impl Sample for V2SS {
+    impl Sample for V2SSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 132 }),
-                ("Wrap".to_owned(), Self::Wrap(VW2SS { b: 137 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW2SSDraft { b: 137 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V2SS {
+        fn samples() -> Vec<(String, Self)> {
+            <V2SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2078,15 +2785,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY0NS,
     }
-    impl Sample for FO0NS {
+    impl Sample for FO0NSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX0NS { a: 120 },
-                    y: FOY0NS { b: 125 },
+                    x: FOX0NSDraft { a: 120 }.validate().unwrap(),
+                    y: FOY0NSDraft { b: 125 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO0NS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO0NSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2104,15 +2819,23 @@ mod holders {
         #[serde(rename = "fp0_own")]
         pub own: u32,
     }
-    impl Sample for FP0NS {
+    impl Sample for FP0NSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 60,
-                    inner: FPI0NS { a: 65 },
+                    inner: FPI0NSDraft { a: 65 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP0NS {
+        fn samples() -> Vec<(String, Self)> {
+            <FP0NSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2130,15 +2853,23 @@ mod holders {
         #[serde(rename = "fp0_own")]
         pub own: u32,
     }
-    impl Sample for FP0SN {
+    impl Sample for FP0SNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 60,
-                    inner: FPI0SN { a: 65 },
+                    inner: FPI0SNDraft { a: 65 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP0SN {
+        fn samples() -> Vec<(String, Self)> {
+            <FP0SNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2159,13 +2890,24 @@ mod holders {
         },
         Wrap(TW0SN),
     }
-    impl Sample for T0SN {
+    impl Sample for T0SNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW0SN { b: 45 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW0SNDraft { b: 45 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T0SN {
+        fn samples() -> Vec<(String, Self)> {
+            <T0SNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2189,15 +2931,23 @@ mod holders {
         #[serde(flatten)]
         pub y: FOY1NS,
     }
-    impl Sample for FO1NS {
+    impl Sample for FO1NSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX1NS { a: 121 },
-                    y: FOY1NS { b: 126 },
+                    x: FOX1NSDraft { a: 121 }.validate().unwrap(),
+                    y: FOY1NSDraft { b: 126 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FO1NS {
+        fn samples() -> Vec<(String, Self)> {
+            <FO1NSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2215,15 +2965,23 @@ mod holders {
         #[serde(rename = "fp1_own")]
         pub own: u32,
     }
-    impl Sample for FP1NS {
+    impl Sample for FP1NSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![(
                 "-".to_owned(),
                 Self {
                     own: 61,
-                    inner: FPI1NS { a: 66 },
+                    inner: FPI1NSDraft { a: 66 }.validate().unwrap(),
                 },
             )]
+        }
+    }
+    impl Sample for FP1NS {
+        fn samples() -> Vec<(String, Self)> {
+            <FP1NSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2252,31 +3010,41 @@ mod holders {
         #[serde(rename = "ft1_own")]
         pub own: u32,
     }
-    impl Sample for FT1NNS {
+    impl Sample for FT1NNSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNS::Rect { a: 73 },
+                        inner: FTI1NNSDraft::Rect { a: 73 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNS::Dot,
+                        inner: FTI1NNSDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNS::Wrap(FTW1NNS { b: 76 }),
+                        inner: FTI1NNSDraft::Wrap(FTW1NNSDraft { b: 76 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for FT1NNS {
+        fn samples() -> Vec<(String, Self)> {
+            <FT1NNSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2305,31 +3073,41 @@ mod holders {
         #[serde(rename = "ft1_own")]
         pub own: u32,
     }
-    impl Sample for FT1NSN {
+    impl Sample for FT1NSNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 (
                     "Rect".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NSN::Rect { a: 73 },
+                        inner: FTI1NSNDraft::Rect { a: 73 }.validate().unwrap(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NSN::Dot,
+                        inner: FTI1NSNDraft::Dot.validate().unwrap(),
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NSN::Wrap(FTW1NSN { b: 76 }),
+                        inner: FTI1NSNDraft::Wrap(FTW1NSNDraft { b: 76 }.validate().unwrap())
+                            .validate()
+                            .unwrap(),
                     },
                 ),
             ]
+        }
+    }
+    impl Sample for FT1NSN {
+        fn samples() -> Vec<(String, Self)> {
+            <FT1NSNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2350,13 +3128,24 @@ mod holders {
         },
         Wrap(TW1NS),
     }
-    impl Sample for T1NS {
+    impl Sample for T1NSDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                ("Wrap".to_owned(), Self::Wrap(TW1NS { b: 46 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(TW1NSDraft { b: 46 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for T1NS {
+        fn samples() -> Vec<(String, Self)> {
+            <T1NSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2376,12 +3165,23 @@ mod holders {
         },
         Wrap(VW1SN),
     }
-    impl Sample for V1SN {
+    impl Sample for V1SNDraft {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 131 }),
-                ("Wrap".to_owned(), Self::Wrap(VW1SN { b: 136 })),
+                (
+                    "Wrap".to_owned(),
+                    Self::Wrap(VW1SNDraft { b: 136 }.validate().unwrap()),
+                ),
             ]
+        }
+    }
+    impl Sample for V1SN {
+        fn samples() -> Vec<(String, Self)> {
+            <V1SNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
+                .collect()
         }
     }
 
@@ -2391,11 +3191,19 @@ mod holders {
         #[serde(flatten)]
         pub held: A0NN,
     }
-    impl Sample for IN0A0NN {
+    impl Sample for IN0A0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0A0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2406,11 +3214,19 @@ mod holders {
         #[serde(flatten)]
         pub held: A0SS,
     }
-    impl Sample for IN0A0SS {
+    impl Sample for IN0A0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <A0SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0A0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0A0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2421,11 +3237,19 @@ mod holders {
         #[serde(flatten)]
         pub held: E0NN,
     }
-    impl Sample for IN0E0NN {
+    impl Sample for IN0E0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0E0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2436,11 +3260,19 @@ mod holders {
         #[serde(flatten)]
         pub held: E0SS,
     }
-    impl Sample for IN0E0SS {
+    impl Sample for IN0E0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <E0SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0E0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2451,11 +3283,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FO0NN,
     }
-    impl Sample for IN0FO0NN {
+    impl Sample for IN0FO0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FO0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FO0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FO0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2466,11 +3306,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FO0SS,
     }
-    impl Sample for IN0FO0SS {
+    impl Sample for IN0FO0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <FO0SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FO0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FO0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2481,11 +3329,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FP0NN,
     }
-    impl Sample for IN0FP0NN {
+    impl Sample for IN0FP0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FP0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FP0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FP0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2496,11 +3352,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FT0NNN,
     }
-    impl Sample for IN0FT0NNN {
+    impl Sample for IN0FT0NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FT0NNN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FT0NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FT0NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2511,11 +3375,19 @@ mod holders {
         #[serde(flatten)]
         pub held: Option<OI0N>,
     }
-    impl Sample for IN0OptOI0N {
+    impl Sample for IN0OptOI0NDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI0N>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0OptOI0N {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0OptOI0NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2526,11 +3398,19 @@ mod holders {
         #[serde(flatten)]
         pub held: Option<OI0S>,
     }
-    impl Sample for IN0OptOI0S {
+    impl Sample for IN0OptOI0SDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI0S>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0OptOI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0OptOI0SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2541,11 +3421,19 @@ mod holders {
         #[serde(flatten)]
         pub held: P0N,
     }
-    impl Sample for IN0P0N {
+    impl Sample for IN0P0NDraft {
         fn samples() -> Vec<(String, Self)> {
             <P0N>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0P0N {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0P0NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2556,11 +3444,19 @@ mod holders {
         #[serde(flatten)]
         pub held: P0S,
     }
-    impl Sample for IN0P0S {
+    impl Sample for IN0P0SDraft {
         fn samples() -> Vec<(String, Self)> {
             <P0S>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0P0S {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0P0SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2571,11 +3467,19 @@ mod holders {
         #[serde(flatten)]
         pub held: T0NN,
     }
-    impl Sample for IN0T0NN {
+    impl Sample for IN0T0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <T0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0T0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0T0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2586,11 +3490,19 @@ mod holders {
         #[serde(flatten)]
         pub held: V0NN,
     }
-    impl Sample for IN0V0NN {
+    impl Sample for IN0V0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <V0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0V0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0V0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2603,11 +3515,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1A0NN {
+    impl Sample for IN1A0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1A0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2620,11 +3540,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1A0SS {
+    impl Sample for IN1A0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <A0SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1A0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1A0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2637,11 +3565,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1E0NN {
+    impl Sample for IN1E0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1E0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2654,11 +3590,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1E0SS {
+    impl Sample for IN1E0SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <E0SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1E0SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1E0SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2671,11 +3615,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1FO0NN {
+    impl Sample for IN1FO0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FO0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1FO0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1FO0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2688,11 +3640,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1FP0NN {
+    impl Sample for IN1FP0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FP0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1FP0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1FP0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2705,11 +3665,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1FT0NNN {
+    impl Sample for IN1FT0NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FT0NNN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1FT0NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1FT0NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2722,11 +3690,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1OptOI0N {
+    impl Sample for IN1OptOI0NDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI0N>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1OptOI0N {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1OptOI0NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2739,11 +3715,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1OptOI0S {
+    impl Sample for IN1OptOI0SDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI0S>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1OptOI0S {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1OptOI0SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2756,11 +3740,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1P0N {
+    impl Sample for IN1P0NDraft {
         fn samples() -> Vec<(String, Self)> {
             <P0N>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1P0N {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1P0NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2773,11 +3765,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1P0S {
+    impl Sample for IN1P0SDraft {
         fn samples() -> Vec<(String, Self)> {
             <P0S>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1P0S {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1P0SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2790,11 +3790,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1T0NN {
+    impl Sample for IN1T0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <T0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1T0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1T0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2807,11 +3815,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1V0NN {
+    impl Sample for IN1V0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <V0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1V0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1V0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2822,11 +3838,19 @@ mod holders {
         #[serde(flatten)]
         pub held: A0NN,
     }
-    impl Sample for IS0A0NN {
+    impl Sample for IS0A0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IS0A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS0A0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2837,11 +3861,19 @@ mod holders {
         #[serde(flatten)]
         pub held: E0NN,
     }
-    impl Sample for IS0E0NN {
+    impl Sample for IS0E0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IS0E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS0E0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2854,11 +3886,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IS1A0NN {
+    impl Sample for IS1A0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IS1A0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS1A0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2871,11 +3911,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IS1E0NN {
+    impl Sample for IS1E0NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E0NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IS1E0NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS1E0NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2886,11 +3934,19 @@ mod holders {
         #[serde(flatten)]
         pub held: A1NN,
     }
-    impl Sample for IN0A1NN {
+    impl Sample for IN0A1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0A1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0A1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2901,11 +3957,19 @@ mod holders {
         #[serde(flatten)]
         pub held: E1NN,
     }
-    impl Sample for IN0E1NN {
+    impl Sample for IN0E1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0E1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0E1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2916,11 +3980,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FO1NN,
     }
-    impl Sample for IN0FO1NN {
+    impl Sample for IN0FO1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FO1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FO1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FO1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2931,11 +4003,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FP1NN,
     }
-    impl Sample for IN0FP1NN {
+    impl Sample for IN0FP1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FP1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FP1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FP1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2946,11 +4026,19 @@ mod holders {
         #[serde(flatten)]
         pub held: FT1NNN,
     }
-    impl Sample for IN0FT1NNN {
+    impl Sample for IN0FT1NNNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FT1NNN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0FT1NNN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0FT1NNNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2961,11 +4049,19 @@ mod holders {
         #[serde(flatten)]
         pub held: Option<OI1S>,
     }
-    impl Sample for IN0OptOI1S {
+    impl Sample for IN0OptOI1SDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI1S>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0OptOI1S {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0OptOI1SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2976,11 +4072,19 @@ mod holders {
         #[serde(flatten)]
         pub held: P1S,
     }
-    impl Sample for IN0P1S {
+    impl Sample for IN0P1SDraft {
         fn samples() -> Vec<(String, Self)> {
             <P1S>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0P1S {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0P1SDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -2991,11 +4095,19 @@ mod holders {
         #[serde(flatten)]
         pub held: T1SS,
     }
-    impl Sample for IN0T1SS {
+    impl Sample for IN0T1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <T1SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0T1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0T1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3006,11 +4118,19 @@ mod holders {
         #[serde(flatten)]
         pub held: V1NN,
     }
-    impl Sample for IN0V1NN {
+    impl Sample for IN0V1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <V1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0V1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0V1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3021,11 +4141,19 @@ mod holders {
         #[serde(flatten)]
         pub held: V1SS,
     }
-    impl Sample for IN0V1SS {
+    impl Sample for IN0V1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <V1SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IN0V1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN0V1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3038,11 +4166,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1A1SS {
+    impl Sample for IN1A1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <A1SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1A1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1A1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3055,11 +4191,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1E1SS {
+    impl Sample for IN1E1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <E1SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1E1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1E1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3072,11 +4216,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1FO1SS {
+    impl Sample for IN1FO1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <FO1SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1FO1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1FO1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3089,11 +4241,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1FP1NN {
+    impl Sample for IN1FP1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <FP1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1FP1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1FP1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3106,11 +4266,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1FP1SS {
+    impl Sample for IN1FP1SSDraft {
         fn samples() -> Vec<(String, Self)> {
             <FP1SS>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1FP1SS {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1FP1SSDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3123,11 +4291,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1OptOI1N {
+    impl Sample for IN1OptOI1NDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI1N>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1OptOI1N {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1OptOI1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3140,11 +4316,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1P1N {
+    impl Sample for IN1P1NDraft {
         fn samples() -> Vec<(String, Self)> {
             <P1N>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1P1N {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1P1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3157,11 +4341,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1T1NN {
+    impl Sample for IN1T1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <T1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1T1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1T1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3174,11 +4366,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IN1V1NN {
+    impl Sample for IN1V1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <V1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IN1V1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IN1V1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3189,11 +4389,19 @@ mod holders {
         #[serde(flatten)]
         pub held: A1NN,
     }
-    impl Sample for IS0A1NN {
+    impl Sample for IS0A1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IS0A1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS0A1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3204,11 +4412,19 @@ mod holders {
         #[serde(flatten)]
         pub held: E1NN,
     }
-    impl Sample for IS0E1NN {
+    impl Sample for IS0E1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IS0E1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS0E1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3219,11 +4435,19 @@ mod holders {
         #[serde(flatten)]
         pub held: Option<OI1N>,
     }
-    impl Sample for IS0OptOI1N {
+    impl Sample for IS0OptOI1NDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI1N>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IS0OptOI1N {
+        fn samples() -> Vec<(String, Self)> {
+            <IS0OptOI1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3234,11 +4458,19 @@ mod holders {
         #[serde(flatten)]
         pub held: P1N,
     }
-    impl Sample for IS0P1N {
+    impl Sample for IS0P1NDraft {
         fn samples() -> Vec<(String, Self)> {
             <P1N>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { held }))
+                .collect()
+        }
+    }
+    impl Sample for IS0P1N {
+        fn samples() -> Vec<(String, Self)> {
+            <IS0P1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3251,11 +4483,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IS1A1NN {
+    impl Sample for IS1A1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <A1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IS1A1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS1A1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3268,11 +4508,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IS1E1NN {
+    impl Sample for IS1E1NNDraft {
         fn samples() -> Vec<(String, Self)> {
             <E1NN>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IS1E1NN {
+        fn samples() -> Vec<(String, Self)> {
+            <IS1E1NNDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3285,11 +4533,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IS1OptOI1N {
+    impl Sample for IS1OptOI1NDraft {
         fn samples() -> Vec<(String, Self)> {
             <Option<OI1N>>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IS1OptOI1N {
+        fn samples() -> Vec<(String, Self)> {
+            <IS1OptOI1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -3302,11 +4558,19 @@ mod holders {
         #[serde(rename = "i_own")]
         pub own: u32,
     }
-    impl Sample for IS1P1N {
+    impl Sample for IS1P1NDraft {
         fn samples() -> Vec<(String, Self)> {
             <P1N>::samples()
                 .into_iter()
                 .map(|(label, held)| (label, Self { own: 6, held }))
+                .collect()
+        }
+    }
+    impl Sample for IS1P1N {
+        fn samples() -> Vec<(String, Self)> {
+            <IS1P1NDraft as Sample>::samples()
+                .into_iter()
+                .map(|(label, draft)| (label, draft.validate().unwrap()))
                 .collect()
         }
     }
@@ -15818,7 +17082,7 @@ mod holders {
     fn holder1() -> Vec<String> {
         check(
             "collide1:C1NX:CA10_SS nonstrict",
-            &rows1(|m0: CA10SS| Holder1 { own: 7, m0 }),
+            &rows1(|m0: CA10SS| Holder1Draft { own: 7, m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -15826,7 +17090,7 @@ mod holders {
     fn holder9() -> Vec<String> {
         check(
             "collide2:C2N0:CA10_NN|CFO11_NNnonstrict",
-            &rows2(|m0: CA10NN, m1: CFO11NN| Holder9 { m0, m1 }),
+            &rows2(|m0: CA10NN, m1: CFO11NN| Holder9Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -15834,7 +17098,7 @@ mod holders {
     fn holder17() -> Vec<String> {
         check(
             "collide2:C2N0:CA10_NN|CV11_NNnonstrict",
-            &rows2(|m0: CA10NN, m1: CV11NN| Holder17 { m0, m1 }),
+            &rows2(|m0: CA10NN, m1: CV11NN| Holder17Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -15849,7 +17113,7 @@ mod holders {
     fn holder25() -> Vec<String> {
         check(
             "collide2:C2N0:CA10_SS|CO11_N nonstrict",
-            &rows2(|m0: CA10SS, m1: Option<COI11N>| Holder25 { m0, m1 }),
+            &rows2(|m0: CA10SS, m1: Option<COI11N>| Holder25Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -15864,7 +17128,7 @@ mod holders {
     fn holder33() -> Vec<String> {
         check(
             "collide2:C2N0:CE10_NN|CFT11_NNNnonstrict",
-            &rows2(|m0: CE10NN, m1: CFT11NNN| Holder33 { m0, m1 }),
+            &rows2(|m0: CE10NN, m1: CFT11NNN| Holder33Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -15882,7 +17146,7 @@ mod holders {
     fn holder41() -> Vec<String> {
         check(
             "collide2:C2N0:CFO10_NN|CA11_NNnonstrict",
-            &rows2(|m0: CFO10NN, m1: CA11NN| Holder41 { m0, m1 }),
+            &rows2(|m0: CFO10NN, m1: CA11NN| Holder41Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -15890,7 +17154,7 @@ mod holders {
     fn holder49() -> Vec<String> {
         check(
             "collide2:C2N0:CFT10_NNN|CE11_NNnonstrict",
-            &rows2(|m0: CFT10NNN, m1: CE11NN| Holder49 { m0, m1 }),
+            &rows2(|m0: CFT10NNN, m1: CE11NN| Holder49Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -15908,7 +17172,7 @@ mod holders {
     fn holder57() -> Vec<String> {
         check(
             "collide2:C2N0:CFT10_NNN|CV11_NNnonstrict",
-            &rows2(|m0: CFT10NNN, m1: CV11NN| Holder57 { m0, m1 }),
+            &rows2(|m0: CFT10NNN, m1: CV11NN| Holder57Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -15923,7 +17187,7 @@ mod holders {
     fn holder65() -> Vec<String> {
         check(
             "collide2:C2N0:CO10_S|CFT11_NNNnonstrict",
-            &rows2(|m0: Option<COI10S>, m1: CFT11NNN| Holder65 { m0, m1 }),
+            &rows2(|m0: Option<COI10S>, m1: CFT11NNN| Holder65Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -15938,7 +17202,7 @@ mod holders {
     fn holder73() -> Vec<String> {
         check(
             "collide2:C2N0:CP10_S|CA11_NN nonstrict",
-            &rows2(|m0: CP10S, m1: CA11NN| Holder73 { m0, m1 }),
+            &rows2(|m0: CP10S, m1: CA11NN| Holder73Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -15946,7 +17210,7 @@ mod holders {
     fn holder81() -> Vec<String> {
         check(
             "collide2:C2N0:CT10_NN|CFP11_NNnonstrict",
-            &rows2(|m0: CT10NN, m1: CFP11NN| Holder81 { m0, m1 }),
+            &rows2(|m0: CT10NN, m1: CFP11NN| Holder81Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -15954,7 +17218,7 @@ mod holders {
     fn holder89() -> Vec<String> {
         check(
             "collide2:C2N0:CV10_NN|CFT11_NNNnonstrict",
-            &rows2(|m0: CV10NN, m1: CFT11NNN| Holder89 { m0, m1 }),
+            &rows2(|m0: CV10NN, m1: CFT11NNN| Holder89Draft { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -15969,7 +17233,7 @@ mod holders {
     fn holder97() -> Vec<String> {
         check(
             "collide2:C2N1:CA10_NN|CO11_N nonstrict",
-            &rows2(|m0: CA10NN, m1: Option<COI11N>| Holder97 { own: 7, m0, m1 }),
+            &rows2(|m0: CA10NN, m1: Option<COI11N>| Holder97Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -15984,7 +17248,7 @@ mod holders {
     fn holder105() -> Vec<String> {
         check(
             "collide2:C2N1:CA10_SS|CFO11_NNnonstrict",
-            &rows2(|m0: CA10SS, m1: CFO11NN| Holder105 { own: 7, m0, m1 }),
+            &rows2(|m0: CA10SS, m1: CFO11NN| Holder105Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -15992,7 +17256,7 @@ mod holders {
     fn holder113() -> Vec<String> {
         check(
             "collide2:C2N1:CA10_SS|CV11_NNnonstrict",
-            &rows2(|m0: CA10SS, m1: CV11NN| Holder113 { own: 7, m0, m1 }),
+            &rows2(|m0: CA10SS, m1: CV11NN| Holder113Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -16007,7 +17271,7 @@ mod holders {
     fn holder121() -> Vec<String> {
         check(
             "collide2:C2N1:CE10_SS|CA11_SS nonstrict",
-            &rows2(|m0: CE10SS, m1: CA11SS| Holder121 { own: 7, m0, m1 }),
+            &rows2(|m0: CE10SS, m1: CA11SS| Holder121Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16025,7 +17289,7 @@ mod holders {
     fn holder129() -> Vec<String> {
         check(
             "collide2:C2N1:CFP10_NN|CA11_NNnonstrict",
-            &rows2(|m0: CFP10NN, m1: CA11NN| Holder129 { own: 7, m0, m1 }),
+            &rows2(|m0: CFP10NN, m1: CA11NN| Holder129Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16033,7 +17297,7 @@ mod holders {
     fn holder137() -> Vec<String> {
         check(
             "collide2:C2N1:CFT10_NNN|CO11_Nnonstrict",
-            &rows2(|m0: CFT10NNN, m1: Option<COI11N>| Holder137 { own: 7, m0, m1 }),
+            &rows2(|m0: CFT10NNN, m1: Option<COI11N>| Holder137Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -16048,7 +17312,7 @@ mod holders {
     fn holder145() -> Vec<String> {
         check(
             "collide2:C2N1:CO10_N|CT11_NNnonstrict",
-            &rows2(|m0: Option<COI10N>, m1: CT11NN| Holder145 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<COI10N>, m1: CT11NN| Holder145Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -16063,7 +17327,7 @@ mod holders {
     fn holder153() -> Vec<String> {
         check(
             "collide2:C2N1:CP10_N|CA11_SS nonstrict",
-            &rows2(|m0: CP10N, m1: CA11SS| Holder153 { own: 7, m0, m1 }),
+            &rows2(|m0: CP10N, m1: CA11SS| Holder153Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16071,7 +17335,7 @@ mod holders {
     fn holder161() -> Vec<String> {
         check(
             "collide2:C2N1:CP10_S|CT11_SS",
-            &rows2(|m0: CP10S, m1: CT11SS| Holder161 { own: 7, m0, m1 }),
+            &rows2(|m0: CP10S, m1: CT11SS| Holder161Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -16079,7 +17343,7 @@ mod holders {
     fn holder169() -> Vec<String> {
         check(
             "collide2:C2N1:CT10_NN|CP11_Snonstrict",
-            &rows2(|m0: CT10NN, m1: CP11S| Holder169 { own: 7, m0, m1 }),
+            &rows2(|m0: CT10NN, m1: CP11S| Holder169Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16087,7 +17351,7 @@ mod holders {
     fn holder177() -> Vec<String> {
         check(
             "collide2:C2S0:CA10_NN|CO11_N",
-            &rows2(|m0: CA10NN, m1: Option<COI11N>| Holder177 { m0, m1 }),
+            &rows2(|m0: CA10NN, m1: Option<COI11N>| Holder177Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16102,7 +17366,7 @@ mod holders {
     fn holder185() -> Vec<String> {
         check(
             "collide2:C2S0:CA10_SS|CP11_N",
-            &rows2(|m0: CA10SS, m1: CP11N| Holder185 { m0, m1 }),
+            &rows2(|m0: CA10SS, m1: CP11N| Holder185Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -16110,7 +17374,7 @@ mod holders {
     fn holder193() -> Vec<String> {
         check(
             "collide2:C2S0:CO10_S|CA11_NN",
-            &rows2(|m0: Option<COI10S>, m1: CA11NN| Holder193 { m0, m1 }),
+            &rows2(|m0: Option<COI10S>, m1: CA11NN| Holder193Draft { m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -16125,7 +17389,7 @@ mod holders {
     fn holder201() -> Vec<String> {
         check(
             "collide2:C2S1:CA10_NN|CO11_N",
-            &rows2(|m0: CA10NN, m1: Option<COI11N>| Holder201 { own: 7, m0, m1 }),
+            &rows2(|m0: CA10NN, m1: Option<COI11N>| Holder201Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16140,7 +17404,7 @@ mod holders {
     fn holder209() -> Vec<String> {
         check(
             "collide2:C2S1:CA10_SS|CP11_N",
-            &rows2(|m0: CA10SS, m1: CP11N| Holder209 { own: 7, m0, m1 }),
+            &rows2(|m0: CA10SS, m1: CP11N| Holder209Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -16148,7 +17412,7 @@ mod holders {
     fn holder217() -> Vec<String> {
         check(
             "collide2:C2S1:CO10_S|CA11_NN",
-            &rows2(|m0: Option<COI10S>, m1: CA11NN| Holder217 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<COI10S>, m1: CA11NN| Holder217Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -16163,7 +17427,7 @@ mod holders {
     fn holder225() -> Vec<String> {
         check(
             "main1:H1N0:E0_NN nonstrict",
-            &rows1(|m0: E0NN| Holder225 { m0 }),
+            &rows1(|m0: E0NN| Holder225Draft { m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -16171,7 +17435,7 @@ mod holders {
     fn holder233() -> Vec<String> {
         check(
             "main1:H1N0:O0_N nonstrict",
-            &rows1(|m0: Option<OI0N>| Holder233 { m0 }),
+            &rows1(|m0: Option<OI0N>| Holder233Draft { m0 }),
             &[("None", 'E'), ("Some", 'E')],
         )
     }
@@ -16179,7 +17443,7 @@ mod holders {
     fn holder241() -> Vec<String> {
         check(
             "main1:H1N1:A0_NN nonstrict",
-            &rows1(|m0: A0NN| Holder241 { own: 7, m0 }),
+            &rows1(|m0: A0NN| Holder241Draft { own: 7, m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -16187,7 +17451,7 @@ mod holders {
     fn holder249() -> Vec<String> {
         check(
             "main1:H1N1:FT0_NNNnonstrict",
-            &rows1(|m0: FT0NNN| Holder249 { own: 7, m0 }),
+            &rows1(|m0: FT0NNN| Holder249Draft { own: 7, m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -16195,7 +17459,7 @@ mod holders {
     fn holder257() -> Vec<String> {
         check(
             "main1:H1N1:V0_SS",
-            &rows1(|m0: V0SS| Holder257 { own: 7, m0 }),
+            &rows1(|m0: V0SS| Holder257Draft { own: 7, m0 }),
             &[("Rect", 'R'), ("Wrap", 'R')],
         )
     }
@@ -16203,7 +17467,7 @@ mod holders {
     fn holder265() -> Vec<String> {
         check(
             "main1:H1S0:P0_S",
-            &rows1(|m0: P0S| Holder265 { m0 }),
+            &rows1(|m0: P0S| Holder265Draft { m0 }),
             &[("-", 'R')],
         )
     }
@@ -16211,7 +17475,7 @@ mod holders {
     fn holder273() -> Vec<String> {
         check(
             "main1:H1S1:P0_S",
-            &rows1(|m0: P0S| Holder273 { own: 7, m0 }),
+            &rows1(|m0: P0S| Holder273Draft { own: 7, m0 }),
             &[("-", 'R')],
         )
     }
@@ -16219,7 +17483,7 @@ mod holders {
     fn holder281() -> Vec<String> {
         check(
             "main2:H2N0:A0_NN|FP1_SS",
-            &rows2(|m0: A0NN, m1: FP1SS| Holder281 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: FP1SS| Holder281Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -16227,7 +17491,7 @@ mod holders {
     fn holder289() -> Vec<String> {
         check(
             "main2:H2N0:A0_NN|V1_NNnonstrict",
-            &rows2(|m0: A0NN, m1: V1NN| Holder289 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: V1NN| Holder289Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -16242,7 +17506,7 @@ mod holders {
     fn holder297() -> Vec<String> {
         check(
             "main2:H2N0:A0_SS|FP1_NNnonstrict",
-            &rows2(|m0: A0SS, m1: FP1NN| Holder297 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: FP1NN| Holder297Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16250,7 +17514,7 @@ mod holders {
     fn holder305() -> Vec<String> {
         check(
             "main2:H2N0:A0_SS|T1_SS",
-            &rows2(|m0: A0SS, m1: T1SS| Holder305 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: T1SS| Holder305Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -16268,7 +17532,7 @@ mod holders {
     fn holder313() -> Vec<String> {
         check(
             "main2:H2N0:E0_NN|FO1_SS",
-            &rows2(|m0: E0NN, m1: FO1SS| Holder313 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: FO1SS| Holder313Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -16276,7 +17540,7 @@ mod holders {
     fn holder321() -> Vec<String> {
         check(
             "main2:H2N0:E0_NN|T1_NNnonstrict",
-            &rows2(|m0: E0NN, m1: T1NN| Holder321 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: T1NN| Holder321Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16294,7 +17558,7 @@ mod holders {
     fn holder329() -> Vec<String> {
         check(
             "main2:H2N0:E0_SS|FO1_NNnonstrict",
-            &rows2(|m0: E0SS, m1: FO1NN| Holder329 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: FO1NN| Holder329Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16302,7 +17566,7 @@ mod holders {
     fn holder337() -> Vec<String> {
         check(
             "main2:H2N0:E0_SS|P1_S nonstrict",
-            &rows2(|m0: E0SS, m1: P1S| Holder337 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: P1S| Holder337Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16310,7 +17574,7 @@ mod holders {
     fn holder345() -> Vec<String> {
         check(
             "main2:H2N0:FO0_NN|E1_SSnonstrict",
-            &rows2(|m0: FO0NN, m1: E1SS| Holder345 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: E1SS| Holder345Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16318,7 +17582,7 @@ mod holders {
     fn holder353() -> Vec<String> {
         check(
             "main2:H2N0:FO0_NN|T1_NNnonstrict",
-            &rows2(|m0: FO0NN, m1: T1NN| Holder353 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: T1NN| Holder353Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16326,7 +17590,7 @@ mod holders {
     fn holder361() -> Vec<String> {
         check(
             "main2:H2N0:FP0_NN|FT1_NNNnonstrict",
-            &rows2(|m0: FP0NN, m1: FT1NNN| Holder361 { m0, m1 }),
+            &rows2(|m0: FP0NN, m1: FT1NNN| Holder361Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16334,7 +17598,7 @@ mod holders {
     fn holder369() -> Vec<String> {
         check(
             "main2:H2N0:FT0_NNN|A1_SSnonstrict",
-            &rows2(|m0: FT0NNN, m1: A1SS| Holder369 { m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: A1SS| Holder369Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16352,7 +17616,7 @@ mod holders {
     fn holder377() -> Vec<String> {
         check(
             "main2:H2N0:FT0_NNN|P1_Nnonstrict",
-            &rows2(|m0: FT0NNN, m1: P1N| Holder377 { m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: P1N| Holder377Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16360,7 +17624,7 @@ mod holders {
     fn holder385() -> Vec<String> {
         check(
             "main2:H2N0:O0_N|FO1_NNnonstrict",
-            &rows2(|m0: Option<OI0N>, m1: FO1NN| Holder385 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: FO1NN| Holder385Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -16368,7 +17632,7 @@ mod holders {
     fn holder393() -> Vec<String> {
         check(
             "main2:H2N0:O0_N|P1_S nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: P1S| Holder393 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: P1S| Holder393Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -16376,7 +17640,7 @@ mod holders {
     fn holder401() -> Vec<String> {
         check(
             "main2:H2N0:O0_S|E1_SS nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: E1SS| Holder401 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: E1SS| Holder401Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -16391,7 +17655,7 @@ mod holders {
     fn holder409() -> Vec<String> {
         check(
             "main2:H2N0:O0_S|P1_N nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: P1N| Holder409 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: P1N| Holder409Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -16399,7 +17663,7 @@ mod holders {
     fn holder417() -> Vec<String> {
         check(
             "main2:H2N0:P0_N|E1_NN nonstrict",
-            &rows2(|m0: P0N, m1: E1NN| Holder417 { m0, m1 }),
+            &rows2(|m0: P0N, m1: E1NN| Holder417Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16407,7 +17671,7 @@ mod holders {
     fn holder425() -> Vec<String> {
         check(
             "main2:H2N0:P0_N|O1_S nonstrict",
-            &rows2(|m0: P0N, m1: Option<OI1S>| Holder425 { m0, m1 }),
+            &rows2(|m0: P0N, m1: Option<OI1S>| Holder425Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -16415,7 +17679,7 @@ mod holders {
     fn holder433() -> Vec<String> {
         check(
             "main2:H2N0:P0_S|A1_SS nonstrict",
-            &rows2(|m0: P0S, m1: A1SS| Holder433 { m0, m1 }),
+            &rows2(|m0: P0S, m1: A1SS| Holder433Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16423,7 +17687,7 @@ mod holders {
     fn holder441() -> Vec<String> {
         check(
             "main2:H2N0:P0_S|O1_N nonstrict",
-            &rows2(|m0: P0S, m1: Option<OI1N>| Holder441 { m0, m1 }),
+            &rows2(|m0: P0S, m1: Option<OI1N>| Holder441Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -16431,7 +17695,7 @@ mod holders {
     fn holder449() -> Vec<String> {
         check(
             "main2:H2N0:T0_NN|A1_NNnonstrict",
-            &rows2(|m0: T0NN, m1: A1NN| Holder449 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: A1NN| Holder449Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16449,7 +17713,7 @@ mod holders {
     fn holder457() -> Vec<String> {
         check(
             "main2:H2N0:T0_NN|O1_Snonstrict",
-            &rows2(|m0: T0NN, m1: Option<OI1S>| Holder457 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: Option<OI1S>| Holder457Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -16464,7 +17728,7 @@ mod holders {
     fn holder465() -> Vec<String> {
         check(
             "main2:H2N0:V0_NN|E1_SSnonstrict",
-            &rows2(|m0: V0NN, m1: E1SS| Holder465 { m0, m1 }),
+            &rows2(|m0: V0NN, m1: E1SS| Holder465Draft { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -16479,7 +17743,7 @@ mod holders {
     fn holder473() -> Vec<String> {
         check(
             "main2:H2N0:V0_NN|T1_NNnonstrict",
-            &rows2(|m0: V0NN, m1: T1NN| Holder473 { m0, m1 }),
+            &rows2(|m0: V0NN, m1: T1NN| Holder473Draft { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -16494,7 +17758,7 @@ mod holders {
     fn holder481() -> Vec<String> {
         check(
             "main2:H2N1:A0_NN|FP1_NNnonstrict",
-            &rows2(|m0: A0NN, m1: FP1NN| Holder481 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: FP1NN| Holder481Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16502,7 +17766,7 @@ mod holders {
     fn holder489() -> Vec<String> {
         check(
             "main2:H2N1:A0_NN|T1_SS",
-            &rows2(|m0: A0NN, m1: T1SS| Holder489 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: T1SS| Holder489Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -16520,7 +17784,7 @@ mod holders {
     fn holder497() -> Vec<String> {
         check(
             "main2:H2N1:A0_SS|FO1_SS",
-            &rows2(|m0: A0SS, m1: FO1SS| Holder497 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: FO1SS| Holder497Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -16528,7 +17792,7 @@ mod holders {
     fn holder505() -> Vec<String> {
         check(
             "main2:H2N1:A0_SS|T1_NNnonstrict",
-            &rows2(|m0: A0SS, m1: T1NN| Holder505 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: T1NN| Holder505Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16546,7 +17810,7 @@ mod holders {
     fn holder513() -> Vec<String> {
         check(
             "main2:H2N1:E0_NN|FO1_NNnonstrict",
-            &rows2(|m0: E0NN, m1: FO1NN| Holder513 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: FO1NN| Holder513Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16554,7 +17818,7 @@ mod holders {
     fn holder521() -> Vec<String> {
         check(
             "main2:H2N1:E0_NN|P1_S nonstrict",
-            &rows2(|m0: E0NN, m1: P1S| Holder521 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: P1S| Holder521Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16562,7 +17826,7 @@ mod holders {
     fn holder529() -> Vec<String> {
         check(
             "main2:H2N1:E0_SS|E1_SS nonstrict",
-            &rows2(|m0: E0SS, m1: E1SS| Holder529 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: E1SS| Holder529Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16580,7 +17844,7 @@ mod holders {
     fn holder537() -> Vec<String> {
         check(
             "main2:H2N1:E0_SS|P1_N nonstrict",
-            &rows2(|m0: E0SS, m1: P1N| Holder537 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: P1N| Holder537Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16588,7 +17852,7 @@ mod holders {
     fn holder545() -> Vec<String> {
         check(
             "main2:H2N1:FO0_NN|E1_NNnonstrict",
-            &rows2(|m0: FO0NN, m1: E1NN| Holder545 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NN, m1: E1NN| Holder545Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16596,7 +17860,7 @@ mod holders {
     fn holder553() -> Vec<String> {
         check(
             "main2:H2N1:FO0_NN|P1_Snonstrict",
-            &rows2(|m0: FO0NN, m1: P1S| Holder553 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NN, m1: P1S| Holder553Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -16604,7 +17868,7 @@ mod holders {
     fn holder561() -> Vec<String> {
         check(
             "main2:H2N1:FP0_NN|FP1_NNnonstrict",
-            &rows2(|m0: FP0NN, m1: FP1NN| Holder561 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NN, m1: FP1NN| Holder561Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -16612,7 +17876,7 @@ mod holders {
     fn holder569() -> Vec<String> {
         check(
             "main2:H2N1:FT0_NNN|A1_NNnonstrict",
-            &rows2(|m0: FT0NNN, m1: A1NN| Holder569 { own: 7, m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: A1NN| Holder569Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -16630,7 +17894,7 @@ mod holders {
     fn holder577() -> Vec<String> {
         check(
             "main2:H2N1:FT0_NNN|O1_Snonstrict",
-            &rows2(|m0: FT0NNN, m1: Option<OI1S>| Holder577 { own: 7, m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: Option<OI1S>| Holder577Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -16645,7 +17909,7 @@ mod holders {
     fn holder585() -> Vec<String> {
         check(
             "main2:H2N1:O0_N|E1_SS nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: E1SS| Holder585 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: E1SS| Holder585Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -16660,7 +17924,7 @@ mod holders {
     fn holder593() -> Vec<String> {
         check(
             "main2:H2N1:O0_N|P1_N nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: P1N| Holder593 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: P1N| Holder593Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -16668,7 +17932,7 @@ mod holders {
     fn holder601() -> Vec<String> {
         check(
             "main2:H2N1:O0_S|E1_NN nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: E1NN| Holder601 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: E1NN| Holder601Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -16683,7 +17947,7 @@ mod holders {
     fn holder609() -> Vec<String> {
         check(
             "main2:H2N1:O0_S|O1_S nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: Option<OI1S>| Holder609 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: Option<OI1S>| Holder609Draft { own: 7, m0, m1 }),
             &[
                 ("None,None", 'E'),
                 ("None,Some", 'E'),
@@ -16696,7 +17960,7 @@ mod holders {
     fn holder617() -> Vec<String> {
         check(
             "main2:H2N1:P0_N|A1_SS nonstrict",
-            &rows2(|m0: P0N, m1: A1SS| Holder617 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: A1SS| Holder617Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16704,7 +17968,7 @@ mod holders {
     fn holder625() -> Vec<String> {
         check(
             "main2:H2N1:P0_N|O1_N nonstrict",
-            &rows2(|m0: P0N, m1: Option<OI1N>| Holder625 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: Option<OI1N>| Holder625Draft { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -16712,7 +17976,7 @@ mod holders {
     fn holder633() -> Vec<String> {
         check(
             "main2:H2N1:P0_S|A1_NN nonstrict",
-            &rows2(|m0: P0S, m1: A1NN| Holder633 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: A1NN| Holder633Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16720,7 +17984,7 @@ mod holders {
     fn holder641() -> Vec<String> {
         check(
             "main2:H2N1:P0_S|FT1_NNNnonstrict",
-            &rows2(|m0: P0S, m1: FT1NNN| Holder641 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: FT1NNN| Holder641Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -16728,7 +17992,7 @@ mod holders {
     fn holder649() -> Vec<String> {
         check(
             "main2:H2N1:P0_S|V1_SS",
-            &rows2(|m0: P0S, m1: V1SS| Holder649 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: V1SS| Holder649Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -16736,7 +18000,7 @@ mod holders {
     fn holder657() -> Vec<String> {
         check(
             "main2:H2N1:T0_NN|O1_Nnonstrict",
-            &rows2(|m0: T0NN, m1: Option<OI1N>| Holder657 { own: 7, m0, m1 }),
+            &rows2(|m0: T0NN, m1: Option<OI1N>| Holder657Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -16751,7 +18015,7 @@ mod holders {
     fn holder665() -> Vec<String> {
         check(
             "main2:H2N1:V0_NN|E1_NNnonstrict",
-            &rows2(|m0: V0NN, m1: E1NN| Holder665 { own: 7, m0, m1 }),
+            &rows2(|m0: V0NN, m1: E1NN| Holder665Draft { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -16766,7 +18030,7 @@ mod holders {
     fn holder673() -> Vec<String> {
         check(
             "main2:H2N1:V0_NN|P1_Snonstrict",
-            &rows2(|m0: V0NN, m1: P1S| Holder673 { own: 7, m0, m1 }),
+            &rows2(|m0: V0NN, m1: P1S| Holder673Draft { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -16774,7 +18038,7 @@ mod holders {
     fn holder681() -> Vec<String> {
         check(
             "main2:H2S0:A0_NN|O1_S",
-            &rows2(|m0: A0NN, m1: Option<OI1S>| Holder681 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: Option<OI1S>| Holder681Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16789,7 +18053,7 @@ mod holders {
     fn holder689() -> Vec<String> {
         check(
             "main2:H2S0:A0_SS|O1_S",
-            &rows2(|m0: A0SS, m1: Option<OI1S>| Holder689 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: Option<OI1S>| Holder689Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16804,7 +18068,7 @@ mod holders {
     fn holder697() -> Vec<String> {
         check(
             "main2:H2S0:E0_NN|O1_S",
-            &rows2(|m0: E0NN, m1: Option<OI1S>| Holder697 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: Option<OI1S>| Holder697Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16819,7 +18083,7 @@ mod holders {
     fn holder705() -> Vec<String> {
         check(
             "main2:H2S0:E0_SS|O1_S",
-            &rows2(|m0: E0SS, m1: Option<OI1S>| Holder705 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: Option<OI1S>| Holder705Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16834,7 +18098,7 @@ mod holders {
     fn holder713() -> Vec<String> {
         check(
             "main2:H2S0:O0_N|O1_S",
-            &rows2(|m0: Option<OI0N>, m1: Option<OI1S>| Holder713 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: Option<OI1S>| Holder713Draft { m0, m1 }),
             &[
                 ("None,None", 'R'),
                 ("None,Some", 'R'),
@@ -16847,7 +18111,7 @@ mod holders {
     fn holder721() -> Vec<String> {
         check(
             "main2:H2S0:O0_S|O1_S",
-            &rows2(|m0: Option<OI0S>, m1: Option<OI1S>| Holder721 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: Option<OI1S>| Holder721Draft { m0, m1 }),
             &[
                 ("None,None", 'R'),
                 ("None,Some", 'R'),
@@ -16860,7 +18124,7 @@ mod holders {
     fn holder729() -> Vec<String> {
         check(
             "main2:H2S0:P0_N|O1_S",
-            &rows2(|m0: P0N, m1: Option<OI1S>| Holder729 { m0, m1 }),
+            &rows2(|m0: P0N, m1: Option<OI1S>| Holder729Draft { m0, m1 }),
             &[("-,None", 'R'), ("-,Some", 'R')],
         )
     }
@@ -16868,7 +18132,7 @@ mod holders {
     fn holder737() -> Vec<String> {
         check(
             "main2:H2S0:P0_S|O1_S",
-            &rows2(|m0: P0S, m1: Option<OI1S>| Holder737 { m0, m1 }),
+            &rows2(|m0: P0S, m1: Option<OI1S>| Holder737Draft { m0, m1 }),
             &[("-,None", 'R'), ("-,Some", 'R')],
         )
     }
@@ -16876,7 +18140,7 @@ mod holders {
     fn holder745() -> Vec<String> {
         check(
             "main2:H2S1:A0_NN|O1_S",
-            &rows2(|m0: A0NN, m1: Option<OI1S>| Holder745 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: Option<OI1S>| Holder745Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16891,7 +18155,7 @@ mod holders {
     fn holder753() -> Vec<String> {
         check(
             "main2:H2S1:A0_SS|O1_S",
-            &rows2(|m0: A0SS, m1: Option<OI1S>| Holder753 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: Option<OI1S>| Holder753Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16906,7 +18170,7 @@ mod holders {
     fn holder761() -> Vec<String> {
         check(
             "main2:H2S1:E0_NN|O1_S",
-            &rows2(|m0: E0NN, m1: Option<OI1S>| Holder761 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: Option<OI1S>| Holder761Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16921,7 +18185,7 @@ mod holders {
     fn holder769() -> Vec<String> {
         check(
             "main2:H2S1:E0_SS|O1_S",
-            &rows2(|m0: E0SS, m1: Option<OI1S>| Holder769 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: Option<OI1S>| Holder769Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -16936,7 +18200,7 @@ mod holders {
     fn holder777() -> Vec<String> {
         check(
             "main2:H2S1:O0_N|O1_S",
-            &rows2(|m0: Option<OI0N>, m1: Option<OI1S>| Holder777 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: Option<OI1S>| Holder777Draft { own: 7, m0, m1 }),
             &[
                 ("None,None", 'R'),
                 ("None,Some", 'R'),
@@ -16949,7 +18213,7 @@ mod holders {
     fn holder785() -> Vec<String> {
         check(
             "main2:H2S1:O0_S|O1_S",
-            &rows2(|m0: Option<OI0S>, m1: Option<OI1S>| Holder785 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: Option<OI1S>| Holder785Draft { own: 7, m0, m1 }),
             &[
                 ("None,None", 'R'),
                 ("None,Some", 'R'),
@@ -16962,7 +18226,7 @@ mod holders {
     fn holder793() -> Vec<String> {
         check(
             "main2:H2S1:P0_N|O1_S",
-            &rows2(|m0: P0N, m1: Option<OI1S>| Holder793 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: Option<OI1S>| Holder793Draft { own: 7, m0, m1 }),
             &[("-,None", 'R'), ("-,Some", 'R')],
         )
     }
@@ -16970,7 +18234,7 @@ mod holders {
     fn holder801() -> Vec<String> {
         check(
             "main2:H2S1:P0_S|O1_S",
-            &rows2(|m0: P0S, m1: Option<OI1S>| Holder801 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: Option<OI1S>| Holder801Draft { own: 7, m0, m1 }),
             &[("-,None", 'R'), ("-,Some", 'R')],
         )
     }
@@ -16978,7 +18242,7 @@ mod holders {
     fn holder809() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|A1_NN|FO2_SS",
-            &rows3(|m0: A0NN, m1: A1NN, m2: FO2SS| Holder809 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: FO2SS| Holder809Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -16996,7 +18260,7 @@ mod holders {
     fn holder817() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|A1_NN|T2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: A1NN, m2: T2NN| Holder817 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: T2NN| Holder817Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17032,7 +18296,7 @@ mod holders {
     fn holder825() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|A1_SS|FO2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: A1SS, m2: FO2NN| Holder825 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1SS, m2: FO2NN| Holder825Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -17050,7 +18314,7 @@ mod holders {
     fn holder833() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|A1_SS|P2_S nonstrict",
-            &rows3(|m0: A0NN, m1: A1SS, m2: P2S| Holder833 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1SS, m2: P2S| Holder833Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -17068,7 +18332,7 @@ mod holders {
     fn holder841() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|E1_NN|E2_SS nonstrict",
-            &rows3(|m0: A0NN, m1: E1NN, m2: E2SS| Holder841 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1NN, m2: E2SS| Holder841Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17104,7 +18368,7 @@ mod holders {
     fn holder849() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|E1_NN|P2_N nonstrict",
-            &rows3(|m0: A0NN, m1: E1NN, m2: P2N| Holder849 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1NN, m2: P2N| Holder849Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -17122,7 +18386,7 @@ mod holders {
     fn holder857() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|E1_SS|E2_NN nonstrict",
-            &rows3(|m0: A0NN, m1: E1SS, m2: E2NN| Holder857 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1SS, m2: E2NN| Holder857Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17158,7 +18422,7 @@ mod holders {
     fn holder865() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|E1_SS|O2_S nonstrict",
-            &rows3(|m0: A0NN, m1: E1SS, m2: Option<OI2S>| Holder865 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1SS, m2: Option<OI2S>| Holder865Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -17185,7 +18449,7 @@ mod holders {
     fn holder873() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|FO1_NN|A2_SSnonstrict",
-            &rows3(|m0: A0NN, m1: FO1NN, m2: A2SS| Holder873 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FO1NN, m2: A2SS| Holder873Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -17203,7 +18467,7 @@ mod holders {
     fn holder881() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|FO1_NN|P2_Nnonstrict",
-            &rows3(|m0: A0NN, m1: FO1NN, m2: P2N| Holder881 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FO1NN, m2: P2N| Holder881Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -17211,7 +18475,7 @@ mod holders {
     fn holder889() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|FP1_NN|FO2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: FP1NN, m2: FO2NN| Holder889 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FP1NN, m2: FO2NN| Holder889Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -17219,7 +18483,7 @@ mod holders {
     fn holder897() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|FP1_NN|V2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: FP1NN, m2: V2NN| Holder897 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FP1NN, m2: V2NN| Holder897Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -17234,7 +18498,7 @@ mod holders {
     fn holder905() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|FT1_NNN|O2_Nnonstrict",
-            &rows3(|m0: A0NN, m1: FT1NNN, m2: Option<OI2N>| Holder905 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FT1NNN, m2: Option<OI2N>| Holder905Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -17261,7 +18525,7 @@ mod holders {
     fn holder913() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|O1_N|E2_NN nonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: E2NN| Holder913 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: E2NN| Holder913Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -17288,7 +18552,7 @@ mod holders {
     fn holder921() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|O1_N|O2_S nonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: Option<OI2S>| Holder921 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: Option<OI2S>| Holder921Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -17309,7 +18573,7 @@ mod holders {
     fn holder929() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|O1_S|A2_SS nonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: A2SS| Holder929 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: A2SS| Holder929Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -17336,7 +18600,7 @@ mod holders {
     fn holder937() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|O1_S|O2_N nonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: Option<OI2N>| Holder937 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: Option<OI2N>| Holder937Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -17357,7 +18621,7 @@ mod holders {
     fn holder945() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|P1_N|A2_NN nonstrict",
-            &rows3(|m0: A0NN, m1: P1N, m2: A2NN| Holder945 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: A2NN| Holder945Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -17375,7 +18639,7 @@ mod holders {
     fn holder953() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|P1_N|FT2_NNNnonstrict",
-            &rows3(|m0: A0NN, m1: P1N, m2: FT2NNN| Holder953 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: FT2NNN| Holder953Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -17393,7 +18657,7 @@ mod holders {
     fn holder961() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|P1_N|V2_SS",
-            &rows3(|m0: A0NN, m1: P1N, m2: V2SS| Holder961 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: V2SS| Holder961Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'R'),
                 ("Dot,-,Wrap", 'R'),
@@ -17408,7 +18672,7 @@ mod holders {
     fn holder969() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|P1_S|FP2_SS",
-            &rows3(|m0: A0NN, m1: P1S, m2: FP2SS| Holder969 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1S, m2: FP2SS| Holder969Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
         )
     }
@@ -17416,7 +18680,7 @@ mod holders {
     fn holder977() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|P1_S|V2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: P1S, m2: V2NN| Holder977 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1S, m2: V2NN| Holder977Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -17431,7 +18695,7 @@ mod holders {
     fn holder985() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|T1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: A0NN, m1: T1NN, m2: FT2NNN| Holder985 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: T1NN, m2: FT2NNN| Holder985Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17467,7 +18731,7 @@ mod holders {
     fn holder993() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|V1_NN|A2_SSnonstrict",
-            &rows3(|m0: A0NN, m1: V1NN, m2: A2SS| Holder993 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: V1NN, m2: A2SS| Holder993Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -17494,7 +18758,7 @@ mod holders {
     fn holder1001() -> Vec<String> {
         check(
             "main3:H3N0:A0_NN|V1_NN|P2_Nnonstrict",
-            &rows3(|m0: A0NN, m1: V1NN, m2: P2N| Holder1001 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: V1NN, m2: P2N| Holder1001Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
                 ("Dot,Wrap,-", 'E'),
@@ -17509,7 +18773,7 @@ mod holders {
     fn holder1009() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|A1_NN|FO2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: A1NN, m2: FO2NN| Holder1009 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1NN, m2: FO2NN| Holder1009Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -17527,7 +18791,7 @@ mod holders {
     fn holder1017() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|A1_NN|P2_S nonstrict",
-            &rows3(|m0: A0SS, m1: A1NN, m2: P2S| Holder1017 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1NN, m2: P2S| Holder1017Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -17545,7 +18809,7 @@ mod holders {
     fn holder1025() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|A1_SS|E2_SS nonstrict",
-            &rows3(|m0: A0SS, m1: A1SS, m2: E2SS| Holder1025 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1SS, m2: E2SS| Holder1025Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17581,7 +18845,7 @@ mod holders {
     fn holder1033() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|A1_SS|P2_N nonstrict",
-            &rows3(|m0: A0SS, m1: A1SS, m2: P2N| Holder1033 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1SS, m2: P2N| Holder1033Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -17599,7 +18863,7 @@ mod holders {
     fn holder1041() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|E1_NN|E2_NN nonstrict",
-            &rows3(|m0: A0SS, m1: E1NN, m2: E2NN| Holder1041 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1NN, m2: E2NN| Holder1041Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17635,7 +18899,7 @@ mod holders {
     fn holder1049() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|E1_NN|O2_S nonstrict",
-            &rows3(|m0: A0SS, m1: E1NN, m2: Option<OI2S>| Holder1049 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1NN, m2: Option<OI2S>| Holder1049Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -17662,7 +18926,7 @@ mod holders {
     fn holder1057() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|E1_SS|A2_SS nonstrict",
-            &rows3(|m0: A0SS, m1: E1SS, m2: A2SS| Holder1057 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1SS, m2: A2SS| Holder1057Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17698,7 +18962,7 @@ mod holders {
     fn holder1065() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|E1_SS|O2_N nonstrict",
-            &rows3(|m0: A0SS, m1: E1SS, m2: Option<OI2N>| Holder1065 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1SS, m2: Option<OI2N>| Holder1065Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -17725,7 +18989,7 @@ mod holders {
     fn holder1073() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|FO1_NN|A2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: FO1NN, m2: A2NN| Holder1073 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FO1NN, m2: A2NN| Holder1073Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -17743,7 +19007,7 @@ mod holders {
     fn holder1081() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|FO1_NN|O2_Snonstrict",
-            &rows3(|m0: A0SS, m1: FO1NN, m2: Option<OI2S>| Holder1081 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FO1NN, m2: Option<OI2S>| Holder1081Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -17758,7 +19022,7 @@ mod holders {
     fn holder1089() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|FP1_NN|E2_SSnonstrict",
-            &rows3(|m0: A0SS, m1: FP1NN, m2: E2SS| Holder1089 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FP1NN, m2: E2SS| Holder1089Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -17776,7 +19040,7 @@ mod holders {
     fn holder1097() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|FP1_NN|T2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: FP1NN, m2: T2NN| Holder1097 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FP1NN, m2: T2NN| Holder1097Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -17794,7 +19058,7 @@ mod holders {
     fn holder1105() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|FT1_NNN|FT2_NNNnonstrict",
-            &rows3(|m0: A0SS, m1: FT1NNN, m2: FT2NNN| Holder1105 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: FT2NNN| Holder1105Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -17830,7 +19094,7 @@ mod holders {
     fn holder1113() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|O1_N|A2_SS nonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: A2SS| Holder1113 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: A2SS| Holder1113Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -17857,7 +19121,7 @@ mod holders {
     fn holder1121() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|O1_N|O2_N nonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: Option<OI2N>| Holder1121 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: Option<OI2N>| Holder1121Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -17878,7 +19142,7 @@ mod holders {
     fn holder1129() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|O1_S|A2_NN nonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: A2NN| Holder1129 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: A2NN| Holder1129Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -17905,7 +19169,7 @@ mod holders {
     fn holder1137() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|O1_S|FT2_NNNnonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: FT2NNN| Holder1137 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: FT2NNN| Holder1137Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -17932,7 +19196,7 @@ mod holders {
     fn holder1145() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|O1_S|V2_SS",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: V2SS| Holder1145 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: V2SS| Holder1145Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'R'),
                 ("Dot,None,Wrap", 'R'),
@@ -17953,7 +19217,7 @@ mod holders {
     fn holder1153() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|P1_N|FP2_SS",
-            &rows3(|m0: A0SS, m1: P1N, m2: FP2SS| Holder1153 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1N, m2: FP2SS| Holder1153Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
         )
     }
@@ -17961,7 +19225,7 @@ mod holders {
     fn holder1161() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|P1_N|V2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: P1N, m2: V2NN| Holder1161 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1N, m2: V2NN| Holder1161Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -17976,7 +19240,7 @@ mod holders {
     fn holder1169() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|P1_S|FP2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: P1S, m2: FP2NN| Holder1169 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1S, m2: FP2NN| Holder1169Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -17984,7 +19248,7 @@ mod holders {
     fn holder1177() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|P1_S|T2_SS",
-            &rows3(|m0: A0SS, m1: P1S, m2: T2SS| Holder1177 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1S, m2: T2SS| Holder1177Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -18002,7 +19266,7 @@ mod holders {
     fn holder1185() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|T1_NN|FP2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: T1NN, m2: FP2NN| Holder1185 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: T1NN, m2: FP2NN| Holder1185Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -18020,7 +19284,7 @@ mod holders {
     fn holder1193() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|V1_NN|A2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: V1NN, m2: A2NN| Holder1193 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: V1NN, m2: A2NN| Holder1193Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -18047,7 +19311,7 @@ mod holders {
     fn holder1201() -> Vec<String> {
         check(
             "main3:H3N0:A0_SS|V1_NN|O2_Snonstrict",
-            &rows3(|m0: A0SS, m1: V1NN, m2: Option<OI2S>| Holder1201 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: V1NN, m2: Option<OI2S>| Holder1201Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,None", 'E'),
                 ("Dot,Rect,Some", 'E'),
@@ -18068,7 +19332,7 @@ mod holders {
     fn holder1209() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|A1_NN|E2_SS nonstrict",
-            &rows3(|m0: E0NN, m1: A1NN, m2: E2SS| Holder1209 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1NN, m2: E2SS| Holder1209Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18104,7 +19368,7 @@ mod holders {
     fn holder1217() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|A1_NN|P2_N nonstrict",
-            &rows3(|m0: E0NN, m1: A1NN, m2: P2N| Holder1217 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1NN, m2: P2N| Holder1217Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -18122,7 +19386,7 @@ mod holders {
     fn holder1225() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|A1_SS|E2_NN nonstrict",
-            &rows3(|m0: E0NN, m1: A1SS, m2: E2NN| Holder1225 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1SS, m2: E2NN| Holder1225Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18158,7 +19422,7 @@ mod holders {
     fn holder1233() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|A1_SS|O2_S nonstrict",
-            &rows3(|m0: E0NN, m1: A1SS, m2: Option<OI2S>| Holder1233 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1SS, m2: Option<OI2S>| Holder1233Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -18185,7 +19449,7 @@ mod holders {
     fn holder1241() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|E1_NN|A2_SS nonstrict",
-            &rows3(|m0: E0NN, m1: E1NN, m2: A2SS| Holder1241 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1NN, m2: A2SS| Holder1241Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18221,7 +19485,7 @@ mod holders {
     fn holder1249() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|E1_NN|O2_N nonstrict",
-            &rows3(|m0: E0NN, m1: E1NN, m2: Option<OI2N>| Holder1249 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1NN, m2: Option<OI2N>| Holder1249Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -18248,7 +19512,7 @@ mod holders {
     fn holder1257() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|E1_SS|A2_NN nonstrict",
-            &rows3(|m0: E0NN, m1: E1SS, m2: A2NN| Holder1257 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: A2NN| Holder1257Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18284,7 +19548,7 @@ mod holders {
     fn holder1265() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|E1_SS|FT2_NNNnonstrict",
-            &rows3(|m0: E0NN, m1: E1SS, m2: FT2NNN| Holder1265 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: FT2NNN| Holder1265Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18320,7 +19584,7 @@ mod holders {
     fn holder1273() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|E1_SS|V2_SS",
-            &rows3(|m0: E0NN, m1: E1SS, m2: V2SS| Holder1273 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: V2SS| Holder1273Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'R'),
                 ("Dot,Dot,Wrap", 'R'),
@@ -18347,7 +19611,7 @@ mod holders {
     fn holder1281() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|FO1_NN|O2_Nnonstrict",
-            &rows3(|m0: E0NN, m1: FO1NN, m2: Option<OI2N>| Holder1281 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FO1NN, m2: Option<OI2N>| Holder1281Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -18362,7 +19626,7 @@ mod holders {
     fn holder1289() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|FP1_NN|E2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: FP1NN, m2: E2NN| Holder1289 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FP1NN, m2: E2NN| Holder1289Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -18380,7 +19644,7 @@ mod holders {
     fn holder1297() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|FP1_NN|P2_Snonstrict",
-            &rows3(|m0: E0NN, m1: FP1NN, m2: P2S| Holder1297 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FP1NN, m2: P2S| Holder1297Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -18388,7 +19652,7 @@ mod holders {
     fn holder1305() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|FT1_NNN|FP2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: FT1NNN, m2: FP2NN| Holder1305 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: FP2NN| Holder1305Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -18406,7 +19670,7 @@ mod holders {
     fn holder1313() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|O1_N|A2_NN nonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: A2NN| Holder1313 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: A2NN| Holder1313Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -18433,7 +19697,7 @@ mod holders {
     fn holder1321() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|O1_N|FT2_NNNnonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: FT2NNN| Holder1321 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: FT2NNN| Holder1321Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -18460,7 +19724,7 @@ mod holders {
     fn holder1329() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|O1_N|V2_SS",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: V2SS| Holder1329 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: V2SS| Holder1329Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'R'),
                 ("Dot,None,Wrap", 'R'),
@@ -18481,7 +19745,7 @@ mod holders {
     fn holder1337() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|O1_S|FP2_SS",
-            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: FP2SS| Holder1337 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: FP2SS| Holder1337Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'R'),
                 ("Dot,Some,-", 'R'),
@@ -18496,7 +19760,7 @@ mod holders {
     fn holder1345() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|O1_S|V2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: V2NN| Holder1345 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: V2NN| Holder1345Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'E'),
                 ("Dot,None,Wrap", 'E'),
@@ -18517,7 +19781,7 @@ mod holders {
     fn holder1353() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|P1_N|FP2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: P1N, m2: FP2NN| Holder1353 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1N, m2: FP2NN| Holder1353Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -18525,7 +19789,7 @@ mod holders {
     fn holder1361() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|P1_N|T2_SS",
-            &rows3(|m0: E0NN, m1: P1N, m2: T2SS| Holder1361 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1N, m2: T2SS| Holder1361Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -18543,7 +19807,7 @@ mod holders {
     fn holder1369() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|P1_S|FO2_SS",
-            &rows3(|m0: E0NN, m1: P1S, m2: FO2SS| Holder1369 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: FO2SS| Holder1369Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
         )
     }
@@ -18551,7 +19815,7 @@ mod holders {
     fn holder1377() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|P1_S|T2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: P1S, m2: T2NN| Holder1377 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: T2NN| Holder1377Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -18569,7 +19833,7 @@ mod holders {
     fn holder1385() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|T1_NN|FO2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: T1NN, m2: FO2NN| Holder1385 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: T1NN, m2: FO2NN| Holder1385Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -18587,7 +19851,7 @@ mod holders {
     fn holder1393() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|T1_NN|V2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: T1NN, m2: V2NN| Holder1393 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: T1NN, m2: V2NN| Holder1393Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -18614,7 +19878,7 @@ mod holders {
     fn holder1401() -> Vec<String> {
         check(
             "main3:H3N0:E0_NN|V1_NN|O2_Nnonstrict",
-            &rows3(|m0: E0NN, m1: V1NN, m2: Option<OI2N>| Holder1401 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: V1NN, m2: Option<OI2N>| Holder1401Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,None", 'E'),
                 ("Dot,Rect,Some", 'E'),
@@ -18635,7 +19899,7 @@ mod holders {
     fn holder1409() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|A1_NN|E2_NN nonstrict",
-            &rows3(|m0: E0SS, m1: A1NN, m2: E2NN| Holder1409 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1NN, m2: E2NN| Holder1409Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18671,7 +19935,7 @@ mod holders {
     fn holder1417() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|A1_NN|O2_S nonstrict",
-            &rows3(|m0: E0SS, m1: A1NN, m2: Option<OI2S>| Holder1417 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1NN, m2: Option<OI2S>| Holder1417Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -18698,7 +19962,7 @@ mod holders {
     fn holder1425() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|A1_SS|A2_SS nonstrict",
-            &rows3(|m0: E0SS, m1: A1SS, m2: A2SS| Holder1425 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1SS, m2: A2SS| Holder1425Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18734,7 +19998,7 @@ mod holders {
     fn holder1433() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|A1_SS|O2_N nonstrict",
-            &rows3(|m0: E0SS, m1: A1SS, m2: Option<OI2N>| Holder1433 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1SS, m2: Option<OI2N>| Holder1433Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -18761,7 +20025,7 @@ mod holders {
     fn holder1441() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|E1_NN|A2_NN nonstrict",
-            &rows3(|m0: E0SS, m1: E1NN, m2: A2NN| Holder1441 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: A2NN| Holder1441Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18797,7 +20061,7 @@ mod holders {
     fn holder1449() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|E1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: E0SS, m1: E1NN, m2: FT2NNN| Holder1449 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: FT2NNN| Holder1449Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -18833,7 +20097,7 @@ mod holders {
     fn holder1457() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|E1_NN|V2_SS",
-            &rows3(|m0: E0SS, m1: E1NN, m2: V2SS| Holder1457 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: V2SS| Holder1457Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'R'),
                 ("Dot,Dot,Wrap", 'R'),
@@ -18860,7 +20124,7 @@ mod holders {
     fn holder1465() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|E1_SS|FP2_SS",
-            &rows3(|m0: E0SS, m1: E1SS, m2: FP2SS| Holder1465 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1SS, m2: FP2SS| Holder1465Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -18878,7 +20142,7 @@ mod holders {
     fn holder1473() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|E1_SS|V2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: E1SS, m2: V2NN| Holder1473 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1SS, m2: V2NN| Holder1473Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -18905,7 +20169,7 @@ mod holders {
     fn holder1481() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|FO1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: E0SS, m1: FO1NN, m2: FT2NNN| Holder1481 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FO1NN, m2: FT2NNN| Holder1481Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -18923,7 +20187,7 @@ mod holders {
     fn holder1489() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|FP1_NN|A2_SSnonstrict",
-            &rows3(|m0: E0SS, m1: FP1NN, m2: A2SS| Holder1489 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FP1NN, m2: A2SS| Holder1489Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -18941,7 +20205,7 @@ mod holders {
     fn holder1497() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|FP1_NN|P2_Nnonstrict",
-            &rows3(|m0: E0SS, m1: FP1NN, m2: P2N| Holder1497 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FP1NN, m2: P2N| Holder1497Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -18949,7 +20213,7 @@ mod holders {
     fn holder1505() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|FT1_NNN|FO2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: FT1NNN, m2: FO2NN| Holder1505 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FT1NNN, m2: FO2NN| Holder1505Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -18967,7 +20231,7 @@ mod holders {
     fn holder1513() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|FT1_NNN|V2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: FT1NNN, m2: V2NN| Holder1513 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FT1NNN, m2: V2NN| Holder1513Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -18994,7 +20258,7 @@ mod holders {
     fn holder1521() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|O1_N|FP2_SS",
-            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: FP2SS| Holder1521 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: FP2SS| Holder1521Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'R'),
                 ("Dot,Some,-", 'R'),
@@ -19009,7 +20273,7 @@ mod holders {
     fn holder1529() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|O1_N|V2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: V2NN| Holder1529 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: V2NN| Holder1529Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'E'),
                 ("Dot,None,Wrap", 'E'),
@@ -19030,7 +20294,7 @@ mod holders {
     fn holder1537() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|O1_S|FP2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: FP2NN| Holder1537 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: FP2NN| Holder1537Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -19045,7 +20309,7 @@ mod holders {
     fn holder1545() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|O1_S|T2_SS",
-            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: T2SS| Holder1545 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: T2SS| Holder1545Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -19072,7 +20336,7 @@ mod holders {
     fn holder1553() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|P1_N|FO2_SS",
-            &rows3(|m0: E0SS, m1: P1N, m2: FO2SS| Holder1553 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: FO2SS| Holder1553Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
         )
     }
@@ -19080,7 +20344,7 @@ mod holders {
     fn holder1561() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|P1_N|T2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: P1N, m2: T2NN| Holder1561 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: T2NN| Holder1561Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -19098,7 +20362,7 @@ mod holders {
     fn holder1569() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|P1_S|FO2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: P1S, m2: FO2NN| Holder1569 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1S, m2: FO2NN| Holder1569Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -19106,7 +20370,7 @@ mod holders {
     fn holder1577() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|P1_S|P2_S nonstrict",
-            &rows3(|m0: E0SS, m1: P1S, m2: P2S| Holder1577 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1S, m2: P2S| Holder1577Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -19114,7 +20378,7 @@ mod holders {
     fn holder1585() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|T1_NN|E2_SSnonstrict",
-            &rows3(|m0: E0SS, m1: T1NN, m2: E2SS| Holder1585 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: T1NN, m2: E2SS| Holder1585Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -19150,7 +20414,7 @@ mod holders {
     fn holder1593() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|T1_NN|T2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: T1NN, m2: T2NN| Holder1593 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: T1NN, m2: T2NN| Holder1593Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -19186,7 +20450,7 @@ mod holders {
     fn holder1601() -> Vec<String> {
         check(
             "main3:H3N0:E0_SS|V1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: E0SS, m1: V1NN, m2: FT2NNN| Holder1601 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: V1NN, m2: FT2NNN| Holder1601Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -19213,7 +20477,7 @@ mod holders {
     fn holder1609() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|A1_NN|A2_SSnonstrict",
-            &rows3(|m0: FO0NN, m1: A1NN, m2: A2SS| Holder1609 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1NN, m2: A2SS| Holder1609Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19231,7 +20495,7 @@ mod holders {
     fn holder1617() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|A1_NN|P2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: A1NN, m2: P2N| Holder1617 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1NN, m2: P2N| Holder1617Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19239,7 +20503,7 @@ mod holders {
     fn holder1625() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|A1_SS|FO2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: A1SS, m2: FO2NN| Holder1625 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1SS, m2: FO2NN| Holder1625Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19247,7 +20511,7 @@ mod holders {
     fn holder1633() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|A1_SS|V2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: A1SS, m2: V2NN| Holder1633 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1SS, m2: V2NN| Holder1633Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
                 ("-,Dot,Wrap", 'E'),
@@ -19262,7 +20526,7 @@ mod holders {
     fn holder1641() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|E1_NN|O2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: E1NN, m2: Option<OI2N>| Holder1641 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: E1NN, m2: Option<OI2N>| Holder1641Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -19277,7 +20541,7 @@ mod holders {
     fn holder1649() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|E1_SS|E2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: E1SS, m2: E2NN| Holder1649 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: E1SS, m2: E2NN| Holder1649Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19295,7 +20559,7 @@ mod holders {
     fn holder1657() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|E1_SS|P2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: E1SS, m2: P2S| Holder1657 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: E1SS, m2: P2S| Holder1657Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19303,7 +20567,7 @@ mod holders {
     fn holder1665() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|FO1_NN|FP2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: FO1NN, m2: FP2NN| Holder1665 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: FP2NN| Holder1665Draft { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -19311,7 +20575,7 @@ mod holders {
     fn holder1673() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|FP1_NN|A2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: FP1NN, m2: A2NN| Holder1673 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: A2NN| Holder1673Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -19319,7 +20583,7 @@ mod holders {
     fn holder1681() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|FP1_NN|O2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: FP1NN, m2: Option<OI2S>| Holder1681 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: Option<OI2S>| Holder1681Draft { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -19327,7 +20591,7 @@ mod holders {
     fn holder1689() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|FT1_NNN|E2_SSnonstrict",
-            &rows3(|m0: FO0NN, m1: FT1NNN, m2: E2SS| Holder1689 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FT1NNN, m2: E2SS| Holder1689Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19345,7 +20609,7 @@ mod holders {
     fn holder1697() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|FT1_NNN|T2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: FT1NNN, m2: T2NN| Holder1697 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FT1NNN, m2: T2NN| Holder1697Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19363,7 +20627,7 @@ mod holders {
     fn holder1705() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|O1_N|FT2_NNNnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: FT2NNN| Holder1705 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: FT2NNN| Holder1705Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -19378,7 +20642,7 @@ mod holders {
     fn holder1713() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|O1_S|A2_SSnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: A2SS| Holder1713 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: A2SS| Holder1713Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -19393,7 +20657,7 @@ mod holders {
     fn holder1721() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|O1_S|P2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: P2N| Holder1721 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: P2N| Holder1721Draft { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -19401,7 +20665,7 @@ mod holders {
     fn holder1729() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|P1_N|FO2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: P1N, m2: FO2NN| Holder1729 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: P1N, m2: FO2NN| Holder1729Draft { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -19409,7 +20673,7 @@ mod holders {
     fn holder1737() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|P1_N|V2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: P1N, m2: V2NN| Holder1737 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: P1N, m2: V2NN| Holder1737Draft { m0, m1, m2 }),
             &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -19417,7 +20681,7 @@ mod holders {
     fn holder1745() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|P1_S|O2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: P1S, m2: Option<OI2N>| Holder1745 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: P1S, m2: Option<OI2N>| Holder1745Draft { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -19425,7 +20689,7 @@ mod holders {
     fn holder1753() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|T1_NN|E2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: T1NN, m2: E2NN| Holder1753 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: T1NN, m2: E2NN| Holder1753Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19443,7 +20707,7 @@ mod holders {
     fn holder1761() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|T1_NN|P2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: T1NN, m2: P2S| Holder1761 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: T1NN, m2: P2S| Holder1761Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19451,7 +20715,7 @@ mod holders {
     fn holder1769() -> Vec<String> {
         check(
             "main3:H3N0:FO0_NN|V1_NN|FP2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: V1NN, m2: FP2NN| Holder1769 { m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: V1NN, m2: FP2NN| Holder1769Draft { m0, m1, m2 }),
             &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19459,7 +20723,7 @@ mod holders {
     fn holder1777() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|A1_NN|A2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: A1NN, m2: A2NN| Holder1777 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1NN, m2: A2NN| Holder1777Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19477,7 +20741,7 @@ mod holders {
     fn holder1785() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|A1_NN|O2_Snonstrict",
-            &rows3(|m0: FP0NN, m1: A1NN, m2: Option<OI2S>| Holder1785 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1NN, m2: Option<OI2S>| Holder1785Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -19492,7 +20756,7 @@ mod holders {
     fn holder1793() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|A1_SS|E2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: A1SS, m2: E2SS| Holder1793 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1SS, m2: E2SS| Holder1793Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19510,7 +20774,7 @@ mod holders {
     fn holder1801() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|A1_SS|T2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: A1SS, m2: T2NN| Holder1801 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1SS, m2: T2NN| Holder1801Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19528,7 +20792,7 @@ mod holders {
     fn holder1809() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|E1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: FP0NN, m1: E1NN, m2: FT2NNN| Holder1809 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1NN, m2: FT2NNN| Holder1809Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19546,7 +20810,7 @@ mod holders {
     fn holder1817() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|E1_SS|A2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: E1SS, m2: A2SS| Holder1817 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1SS, m2: A2SS| Holder1817Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19564,7 +20828,7 @@ mod holders {
     fn holder1825() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|E1_SS|P2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: E1SS, m2: P2N| Holder1825 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1SS, m2: P2N| Holder1825Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19572,7 +20836,7 @@ mod holders {
     fn holder1833() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|FO1_NN|FO2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: FO1NN, m2: FO2NN| Holder1833 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FO1NN, m2: FO2NN| Holder1833Draft { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -19580,7 +20844,7 @@ mod holders {
     fn holder1841() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|FO1_NN|V2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: FO1NN, m2: V2NN| Holder1841 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FO1NN, m2: V2NN| Holder1841Draft { m0, m1, m2 }),
             &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -19588,7 +20852,7 @@ mod holders {
     fn holder1849() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|FP1_NN|O2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: FP1NN, m2: Option<OI2N>| Holder1849 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FP1NN, m2: Option<OI2N>| Holder1849Draft { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -19596,7 +20860,7 @@ mod holders {
     fn holder1857() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|FT1_NNN|E2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: FT1NNN, m2: E2NN| Holder1857 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FT1NNN, m2: E2NN| Holder1857Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19614,7 +20878,7 @@ mod holders {
     fn holder1865() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|FT1_NNN|P2_Snonstrict",
-            &rows3(|m0: FP0NN, m1: FT1NNN, m2: P2S| Holder1865 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FT1NNN, m2: P2S| Holder1865Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19622,7 +20886,7 @@ mod holders {
     fn holder1873() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|O1_N|FP2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: FP2NN| Holder1873 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: FP2NN| Holder1873Draft { m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -19630,7 +20894,7 @@ mod holders {
     fn holder1881() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|O1_S|A2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: A2NN| Holder1881 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: A2NN| Holder1881Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -19645,7 +20909,7 @@ mod holders {
     fn holder1889() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|O1_S|O2_Snonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder1889 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder1889Draft { m0, m1, m2 }),
             &[
                 ("-,None,None", 'E'),
                 ("-,None,Some", 'E'),
@@ -19658,7 +20922,7 @@ mod holders {
     fn holder1897() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|P1_N|E2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: P1N, m2: E2SS| Holder1897 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: P1N, m2: E2SS| Holder1897Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -19666,7 +20930,7 @@ mod holders {
     fn holder1905() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|P1_N|T2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: P1N, m2: T2NN| Holder1905 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: P1N, m2: T2NN| Holder1905Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -19674,7 +20938,7 @@ mod holders {
     fn holder1913() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|P1_S|FT2_NNNnonstrict",
-            &rows3(|m0: FP0NN, m1: P1S, m2: FT2NNN| Holder1913 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: P1S, m2: FT2NNN| Holder1913Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -19682,7 +20946,7 @@ mod holders {
     fn holder1921() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|T1_NN|A2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: T1NN, m2: A2SS| Holder1921 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: T1NN, m2: A2SS| Holder1921Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -19700,7 +20964,7 @@ mod holders {
     fn holder1929() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|T1_NN|P2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: T1NN, m2: P2N| Holder1929 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: T1NN, m2: P2N| Holder1929Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19708,7 +20972,7 @@ mod holders {
     fn holder1937() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|V1_NN|FO2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: V1NN, m2: FO2NN| Holder1937 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: V1NN, m2: FO2NN| Holder1937Draft { m0, m1, m2 }),
             &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -19716,7 +20980,7 @@ mod holders {
     fn holder1945() -> Vec<String> {
         check(
             "main3:H3N0:FP0_NN|V1_NN|V2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: V1NN, m2: V2NN| Holder1945 { m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: V1NN, m2: V2NN| Holder1945Draft { m0, m1, m2 }),
             &[
                 ("-,Rect,Rect", 'E'),
                 ("-,Rect,Wrap", 'E'),
@@ -19729,7 +20993,7 @@ mod holders {
     fn holder1953() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|A1_NN|O2_Nnonstrict",
-            &rows3(|m0: FT0NNN, m1: A1NN, m2: Option<OI2N>| Holder1953 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: A1NN, m2: Option<OI2N>| Holder1953Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -19756,7 +21020,7 @@ mod holders {
     fn holder1961() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|A1_SS|E2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: A1SS, m2: E2NN| Holder1961 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: A1SS, m2: E2NN| Holder1961Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -19792,7 +21056,7 @@ mod holders {
     fn holder1969() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|A1_SS|P2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: A1SS, m2: P2S| Holder1969 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: A1SS, m2: P2S| Holder1969Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -19810,7 +21074,7 @@ mod holders {
     fn holder1977() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|E1_NN|FP2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: E1NN, m2: FP2NN| Holder1977 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: FP2NN| Holder1977Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -19828,7 +21092,7 @@ mod holders {
     fn holder1985() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|E1_SS|A2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: E1SS, m2: A2NN| Holder1985 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: A2NN| Holder1985Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -19864,7 +21128,7 @@ mod holders {
     fn holder1993() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|E1_SS|O2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: E1SS, m2: Option<OI2S>| Holder1993 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: Option<OI2S>| Holder1993Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -19891,7 +21155,7 @@ mod holders {
     fn holder2001() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|FO1_NN|E2_SSnonstrict",
-            &rows3(|m0: FT0NNN, m1: FO1NN, m2: E2SS| Holder2001 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FO1NN, m2: E2SS| Holder2001Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -19909,7 +21173,7 @@ mod holders {
     fn holder2009() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|FO1_NN|T2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: FO1NN, m2: T2NN| Holder2009 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FO1NN, m2: T2NN| Holder2009Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -19927,7 +21191,7 @@ mod holders {
     fn holder2017() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|FP1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: FT0NNN, m1: FP1NN, m2: FT2NNN| Holder2017 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: FT2NNN| Holder2017Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -19945,7 +21209,7 @@ mod holders {
     fn holder2025() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|FT1_NNN|A2_SSnonstrict",
-            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: A2SS| Holder2025 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: A2SS| Holder2025Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -19981,7 +21245,7 @@ mod holders {
     fn holder2033() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|FT1_NNN|P2_Nnonstrict",
-            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: P2N| Holder2033 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: P2N| Holder2033Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -19999,7 +21263,7 @@ mod holders {
     fn holder2041() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|O1_N|FO2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: FO2NN| Holder2041 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: FO2NN| Holder2041Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -20014,7 +21278,7 @@ mod holders {
     fn holder2049() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|O1_N|V2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: V2NN| Holder2049 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: Option<OI1N>, m2: V2NN| Holder2049Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Rect", 'E'),
                 ("Dot,None,Wrap", 'E'),
@@ -20035,7 +21299,7 @@ mod holders {
     fn holder2057() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|O1_S|O2_Nnonstrict",
-            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: Option<OI2N>| Holder2057 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: Option<OI2N>| Holder2057Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -20056,7 +21320,7 @@ mod holders {
     fn holder2065() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|P1_N|E2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: P1N, m2: E2NN| Holder2065 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: P1N, m2: E2NN| Holder2065Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -20074,7 +21338,7 @@ mod holders {
     fn holder2073() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|P1_N|P2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: P1N, m2: P2S| Holder2073 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: P1N, m2: P2S| Holder2073Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -20082,7 +21346,7 @@ mod holders {
     fn holder2081() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|P1_S|FP2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: P1S, m2: FP2NN| Holder2081 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: P1S, m2: FP2NN| Holder2081Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -20090,7 +21354,7 @@ mod holders {
     fn holder2089() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|T1_NN|A2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: T1NN, m2: A2NN| Holder2089 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: A2NN| Holder2089Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -20126,7 +21390,7 @@ mod holders {
     fn holder2097() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|T1_NN|O2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: T1NN, m2: Option<OI2S>| Holder2097 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: Option<OI2S>| Holder2097Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -20153,7 +21417,7 @@ mod holders {
     fn holder2105() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|V1_NN|E2_SSnonstrict",
-            &rows3(|m0: FT0NNN, m1: V1NN, m2: E2SS| Holder2105 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: V1NN, m2: E2SS| Holder2105Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -20180,7 +21444,7 @@ mod holders {
     fn holder2113() -> Vec<String> {
         check(
             "main3:H3N0:FT0_NNN|V1_NN|T2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: V1NN, m2: T2NN| Holder2113 { m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: V1NN, m2: T2NN| Holder2113Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -20207,7 +21471,7 @@ mod holders {
     fn holder2121() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|A1_NN|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: FP2NN| Holder2121 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: FP2NN| Holder2121Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20222,7 +21486,7 @@ mod holders {
     fn holder2129() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|A1_NN|T2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: T2SS| Holder2129 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: T2SS| Holder2129Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -20249,7 +21513,7 @@ mod holders {
     fn holder2137() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|A1_SS|FO2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: FO2SS| Holder2137 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: FO2SS| Holder2137Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'R'),
                 ("None,Rect,-", 'R'),
@@ -20264,7 +21528,7 @@ mod holders {
     fn holder2145() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|A1_SS|T2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: T2NN| Holder2145 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: T2NN| Holder2145Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -20291,7 +21555,7 @@ mod holders {
     fn holder2153() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|E1_NN|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: FO2NN| Holder2153 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: FO2NN| Holder2153Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20306,7 +21570,7 @@ mod holders {
     fn holder2161() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|E1_NN|P2_S nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: P2S| Holder2161 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: P2S| Holder2161Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20321,7 +21585,7 @@ mod holders {
     fn holder2169() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|E1_SS|E2_SS nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: E2SS| Holder2169 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: E2SS| Holder2169Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -20348,7 +21612,7 @@ mod holders {
     fn holder2177() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|E1_SS|P2_N nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: P2N| Holder2177 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: P2N| Holder2177Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20363,7 +21627,7 @@ mod holders {
     fn holder2185() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|FO1_NN|E2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: E2NN| Holder2185 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: E2NN| Holder2185Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20378,7 +21642,7 @@ mod holders {
     fn holder2193() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|FO1_NN|P2_Snonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: P2S| Holder2193 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: P2S| Holder2193Draft { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -20386,7 +21650,7 @@ mod holders {
     fn holder2201() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|FP1_NN|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: FP2NN| Holder2201 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: FP2NN| Holder2201Draft { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -20394,7 +21658,7 @@ mod holders {
     fn holder2209() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|FT1_NNN|A2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: A2NN| Holder2209 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: A2NN| Holder2209Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -20421,7 +21685,7 @@ mod holders {
     fn holder2217() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|FT1_NNN|O2_Snonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: Option<OI2S>| Holder2217 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: Option<OI2S>| Holder2217Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,None", 'E'),
                 ("None,Dot,Some", 'E'),
@@ -20442,7 +21706,7 @@ mod holders {
     fn holder2225() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|O1_N|E2_SS nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: E2SS| Holder2225 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: E2SS| Holder2225Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'E'),
                 ("None,None,Rect", 'E'),
@@ -20463,7 +21727,7 @@ mod holders {
     fn holder2233() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|O1_N|P2_N nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: P2N| Holder2233 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: P2N| Holder2233Draft { m0, m1, m2 }),
             &[
                 ("None,None,-", 'E'),
                 ("None,Some,-", 'E'),
@@ -20476,7 +21740,7 @@ mod holders {
     fn holder2241() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|O1_S|E2_NN nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: E2NN| Holder2241 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: E2NN| Holder2241Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'E'),
                 ("None,None,Rect", 'E'),
@@ -20498,7 +21762,11 @@ mod holders {
         check(
             "main3:H3N0:O0_N|O1_S|O2_S nonstrict",
             &rows3(
-                |m0: Option<OI0N>, m1: Option<OI1S>, m2: Option<OI2S>| Holder2249 { m0, m1, m2 },
+                |m0: Option<OI0N>, m1: Option<OI1S>, m2: Option<OI2S>| Holder2249Draft {
+                    m0,
+                    m1,
+                    m2,
+                },
             ),
             &[
                 ("None,None,None", 'E'),
@@ -20516,7 +21784,7 @@ mod holders {
     fn holder2257() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|P1_N|A2_SS nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1N, m2: A2SS| Holder2257 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: A2SS| Holder2257Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20531,7 +21799,7 @@ mod holders {
     fn holder2265() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|P1_N|O2_N nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1N, m2: Option<OI2N>| Holder2265 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: Option<OI2N>| Holder2265Draft { m0, m1, m2 }),
             &[
                 ("None,-,None", 'E'),
                 ("None,-,Some", 'E'),
@@ -20544,7 +21812,7 @@ mod holders {
     fn holder2273() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|P1_S|A2_NN nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: A2NN| Holder2273 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: A2NN| Holder2273Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20559,7 +21827,7 @@ mod holders {
     fn holder2281() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|P1_S|FT2_NNNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: FT2NNN| Holder2281 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: FT2NNN| Holder2281Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20574,7 +21842,7 @@ mod holders {
     fn holder2289() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|P1_S|V2_SS",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: V2SS| Holder2289 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: V2SS| Holder2289Draft { m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'R'),
                 ("None,-,Wrap", 'R'),
@@ -20587,7 +21855,7 @@ mod holders {
     fn holder2297() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|T1_NN|O2_Nnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: Option<OI2N>| Holder2297 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: Option<OI2N>| Holder2297Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,None", 'E'),
                 ("None,Dot,Some", 'E'),
@@ -20608,7 +21876,7 @@ mod holders {
     fn holder2305() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|V1_NN|E2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: E2NN| Holder2305 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: E2NN| Holder2305Draft { m0, m1, m2 }),
             &[
                 ("None,Rect,Dot", 'E'),
                 ("None,Rect,Rect", 'E'),
@@ -20629,7 +21897,7 @@ mod holders {
     fn holder2313() -> Vec<String> {
         check(
             "main3:H3N0:O0_N|V1_NN|P2_Snonstrict",
-            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: P2S| Holder2313 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: P2S| Holder2313Draft { m0, m1, m2 }),
             &[
                 ("None,Rect,-", 'E'),
                 ("None,Wrap,-", 'E'),
@@ -20642,7 +21910,7 @@ mod holders {
     fn holder2321() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|A1_NN|FO2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: FO2SS| Holder2321 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: FO2SS| Holder2321Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'R'),
                 ("None,Rect,-", 'R'),
@@ -20657,7 +21925,7 @@ mod holders {
     fn holder2329() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|A1_NN|T2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: T2NN| Holder2329 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: T2NN| Holder2329Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -20684,7 +21952,7 @@ mod holders {
     fn holder2337() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|A1_SS|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: FO2NN| Holder2337 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: FO2NN| Holder2337Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20699,7 +21967,7 @@ mod holders {
     fn holder2345() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|A1_SS|P2_S nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: P2S| Holder2345 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: P2S| Holder2345Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20714,7 +21982,7 @@ mod holders {
     fn holder2353() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|E1_NN|E2_SS nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: E2SS| Holder2353 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: E2SS| Holder2353Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -20741,7 +22009,7 @@ mod holders {
     fn holder2361() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|E1_NN|P2_N nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: P2N| Holder2361 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: P2N| Holder2361Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -20756,7 +22024,7 @@ mod holders {
     fn holder2369() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|E1_SS|E2_NN nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: E2NN| Holder2369 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: E2NN| Holder2369Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -20783,7 +22051,7 @@ mod holders {
     fn holder2377() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|E1_SS|O2_S nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: Option<OI2S>| Holder2377 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: Option<OI2S>| Holder2377Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,None", 'E'),
                 ("None,Dot,Some", 'E'),
@@ -20804,7 +22072,7 @@ mod holders {
     fn holder2385() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|FO1_NN|A2_SSnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: A2SS| Holder2385 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: A2SS| Holder2385Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20819,7 +22087,7 @@ mod holders {
     fn holder2393() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|FO1_NN|P2_Nnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: P2N| Holder2393 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: P2N| Holder2393Draft { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -20827,7 +22095,7 @@ mod holders {
     fn holder2401() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|FP1_NN|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: FO2NN| Holder2401 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: FO2NN| Holder2401Draft { m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -20835,7 +22103,7 @@ mod holders {
     fn holder2409() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|FP1_NN|V2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: V2NN| Holder2409 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: V2NN| Holder2409Draft { m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'E'),
                 ("None,-,Wrap", 'E'),
@@ -20848,7 +22116,7 @@ mod holders {
     fn holder2417() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|FT1_NNN|O2_Nnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: Option<OI2N>| Holder2417 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: Option<OI2N>| Holder2417Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,None", 'E'),
                 ("None,Dot,Some", 'E'),
@@ -20869,7 +22137,7 @@ mod holders {
     fn holder2425() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|O1_N|E2_NN nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: E2NN| Holder2425 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: E2NN| Holder2425Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'E'),
                 ("None,None,Rect", 'E'),
@@ -20891,7 +22159,11 @@ mod holders {
         check(
             "main3:H3N0:O0_S|O1_N|O2_S nonstrict",
             &rows3(
-                |m0: Option<OI0S>, m1: Option<OI1N>, m2: Option<OI2S>| Holder2433 { m0, m1, m2 },
+                |m0: Option<OI0S>, m1: Option<OI1N>, m2: Option<OI2S>| Holder2433Draft {
+                    m0,
+                    m1,
+                    m2,
+                },
             ),
             &[
                 ("None,None,None", 'E'),
@@ -20909,7 +22181,7 @@ mod holders {
     fn holder2441() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|O1_S|A2_SS nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: A2SS| Holder2441 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: A2SS| Holder2441Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'E'),
                 ("None,None,Rect", 'E'),
@@ -20931,7 +22203,11 @@ mod holders {
         check(
             "main3:H3N0:O0_S|O1_S|O2_N nonstrict",
             &rows3(
-                |m0: Option<OI0S>, m1: Option<OI1S>, m2: Option<OI2N>| Holder2449 { m0, m1, m2 },
+                |m0: Option<OI0S>, m1: Option<OI1S>, m2: Option<OI2N>| Holder2449Draft {
+                    m0,
+                    m1,
+                    m2,
+                },
             ),
             &[
                 ("None,None,None", 'E'),
@@ -20949,7 +22225,7 @@ mod holders {
     fn holder2457() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|P1_N|A2_NN nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: A2NN| Holder2457 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: A2NN| Holder2457Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20964,7 +22240,7 @@ mod holders {
     fn holder2465() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|P1_N|FT2_NNNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: FT2NNN| Holder2465 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: FT2NNN| Holder2465Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -20979,7 +22255,7 @@ mod holders {
     fn holder2473() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|P1_N|V2_SS",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: V2SS| Holder2473 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: V2SS| Holder2473Draft { m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'R'),
                 ("None,-,Wrap", 'R'),
@@ -20992,7 +22268,7 @@ mod holders {
     fn holder2481() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|P1_S|FP2_SS",
-            &rows3(|m0: Option<OI0S>, m1: P1S, m2: FP2SS| Holder2481 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: FP2SS| Holder2481Draft { m0, m1, m2 }),
             &[("None,-,-", 'R'), ("Some,-,-", 'R')],
         )
     }
@@ -21000,7 +22276,7 @@ mod holders {
     fn holder2489() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|P1_S|V2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1S, m2: V2NN| Holder2489 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: V2NN| Holder2489Draft { m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'E'),
                 ("None,-,Wrap", 'E'),
@@ -21013,7 +22289,7 @@ mod holders {
     fn holder2497() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|T1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: FT2NNN| Holder2497 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: FT2NNN| Holder2497Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -21040,7 +22316,7 @@ mod holders {
     fn holder2505() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|V1_NN|A2_SSnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: A2SS| Holder2505 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: A2SS| Holder2505Draft { m0, m1, m2 }),
             &[
                 ("None,Rect,Dot", 'E'),
                 ("None,Rect,Rect", 'E'),
@@ -21061,7 +22337,7 @@ mod holders {
     fn holder2513() -> Vec<String> {
         check(
             "main3:H3N0:O0_S|V1_NN|P2_Nnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: P2N| Holder2513 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: P2N| Holder2513Draft { m0, m1, m2 }),
             &[
                 ("None,Rect,-", 'E'),
                 ("None,Wrap,-", 'E'),
@@ -21074,7 +22350,7 @@ mod holders {
     fn holder2521() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|A1_NN|FO2_NNnonstrict",
-            &rows3(|m0: P0N, m1: A1NN, m2: FO2NN| Holder2521 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1NN, m2: FO2NN| Holder2521Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21082,7 +22358,7 @@ mod holders {
     fn holder2529() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|A1_NN|P2_S nonstrict",
-            &rows3(|m0: P0N, m1: A1NN, m2: P2S| Holder2529 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1NN, m2: P2S| Holder2529Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21090,7 +22366,7 @@ mod holders {
     fn holder2537() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|A1_SS|E2_SS nonstrict",
-            &rows3(|m0: P0N, m1: A1SS, m2: E2SS| Holder2537 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1SS, m2: E2SS| Holder2537Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21108,7 +22384,7 @@ mod holders {
     fn holder2545() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|A1_SS|P2_N nonstrict",
-            &rows3(|m0: P0N, m1: A1SS, m2: P2N| Holder2545 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1SS, m2: P2N| Holder2545Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21116,7 +22392,7 @@ mod holders {
     fn holder2553() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|E1_NN|E2_NN nonstrict",
-            &rows3(|m0: P0N, m1: E1NN, m2: E2NN| Holder2553 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1NN, m2: E2NN| Holder2553Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21134,7 +22410,7 @@ mod holders {
     fn holder2561() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|E1_NN|O2_S nonstrict",
-            &rows3(|m0: P0N, m1: E1NN, m2: Option<OI2S>| Holder2561 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1NN, m2: Option<OI2S>| Holder2561Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -21149,7 +22425,7 @@ mod holders {
     fn holder2569() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|E1_SS|A2_SS nonstrict",
-            &rows3(|m0: P0N, m1: E1SS, m2: A2SS| Holder2569 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1SS, m2: A2SS| Holder2569Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21167,7 +22443,7 @@ mod holders {
     fn holder2577() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|E1_SS|O2_N nonstrict",
-            &rows3(|m0: P0N, m1: E1SS, m2: Option<OI2N>| Holder2577 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1SS, m2: Option<OI2N>| Holder2577Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -21182,7 +22458,7 @@ mod holders {
     fn holder2585() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|FO1_NN|A2_NNnonstrict",
-            &rows3(|m0: P0N, m1: FO1NN, m2: A2NN| Holder2585 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FO1NN, m2: A2NN| Holder2585Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -21190,7 +22466,7 @@ mod holders {
     fn holder2593() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|FO1_NN|O2_Snonstrict",
-            &rows3(|m0: P0N, m1: FO1NN, m2: Option<OI2S>| Holder2593 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FO1NN, m2: Option<OI2S>| Holder2593Draft { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -21198,7 +22474,7 @@ mod holders {
     fn holder2601() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|FP1_NN|E2_SSnonstrict",
-            &rows3(|m0: P0N, m1: FP1NN, m2: E2SS| Holder2601 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FP1NN, m2: E2SS| Holder2601Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -21206,7 +22482,7 @@ mod holders {
     fn holder2609() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|FP1_NN|T2_NNnonstrict",
-            &rows3(|m0: P0N, m1: FP1NN, m2: T2NN| Holder2609 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FP1NN, m2: T2NN| Holder2609Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -21214,7 +22490,7 @@ mod holders {
     fn holder2617() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|FT1_NNN|FT2_NNNnonstrict",
-            &rows3(|m0: P0N, m1: FT1NNN, m2: FT2NNN| Holder2617 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FT1NNN, m2: FT2NNN| Holder2617Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21232,7 +22508,7 @@ mod holders {
     fn holder2625() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|O1_N|A2_SS nonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1N>, m2: A2SS| Holder2625 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: A2SS| Holder2625Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -21247,7 +22523,7 @@ mod holders {
     fn holder2633() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|O1_N|O2_N nonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1N>, m2: Option<OI2N>| Holder2633 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: Option<OI2N>| Holder2633Draft { m0, m1, m2 }),
             &[
                 ("-,None,None", 'E'),
                 ("-,None,Some", 'E'),
@@ -21260,7 +22536,7 @@ mod holders {
     fn holder2641() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|O1_S|A2_NN nonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: A2NN| Holder2641 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: A2NN| Holder2641Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -21275,7 +22551,7 @@ mod holders {
     fn holder2649() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|O1_S|FT2_NNNnonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: FT2NNN| Holder2649 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: FT2NNN| Holder2649Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -21290,7 +22566,7 @@ mod holders {
     fn holder2657() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|O1_S|V2_SS",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: V2SS| Holder2657 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: V2SS| Holder2657Draft { m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'R'),
                 ("-,None,Wrap", 'R'),
@@ -21303,7 +22579,7 @@ mod holders {
     fn holder2665() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|P1_N|FP2_SS",
-            &rows3(|m0: P0N, m1: P1N, m2: FP2SS| Holder2665 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1N, m2: FP2SS| Holder2665Draft { m0, m1, m2 }),
             &[("-,-,-", 'R')],
         )
     }
@@ -21311,7 +22587,7 @@ mod holders {
     fn holder2673() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|P1_N|V2_NNnonstrict",
-            &rows3(|m0: P0N, m1: P1N, m2: V2NN| Holder2673 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1N, m2: V2NN| Holder2673Draft { m0, m1, m2 }),
             &[("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -21319,7 +22595,7 @@ mod holders {
     fn holder2681() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|P1_S|FP2_NNnonstrict",
-            &rows3(|m0: P0N, m1: P1S, m2: FP2NN| Holder2681 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1S, m2: FP2NN| Holder2681Draft { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -21327,7 +22603,7 @@ mod holders {
     fn holder2689() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|P1_S|T2_SS",
-            &rows3(|m0: P0N, m1: P1S, m2: T2SS| Holder2689 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1S, m2: T2SS| Holder2689Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -21335,7 +22611,7 @@ mod holders {
     fn holder2697() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|T1_NN|FP2_NNnonstrict",
-            &rows3(|m0: P0N, m1: T1NN, m2: FP2NN| Holder2697 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: T1NN, m2: FP2NN| Holder2697Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21343,7 +22619,7 @@ mod holders {
     fn holder2705() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|V1_NN|A2_NNnonstrict",
-            &rows3(|m0: P0N, m1: V1NN, m2: A2NN| Holder2705 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: V1NN, m2: A2NN| Holder2705Draft { m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
                 ("-,Rect,Rect", 'E'),
@@ -21358,7 +22634,7 @@ mod holders {
     fn holder2713() -> Vec<String> {
         check(
             "main3:H3N0:P0_N|V1_NN|O2_Snonstrict",
-            &rows3(|m0: P0N, m1: V1NN, m2: Option<OI2S>| Holder2713 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: V1NN, m2: Option<OI2S>| Holder2713Draft { m0, m1, m2 }),
             &[
                 ("-,Rect,None", 'E'),
                 ("-,Rect,Some", 'E'),
@@ -21371,7 +22647,7 @@ mod holders {
     fn holder2721() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|A1_NN|E2_SS nonstrict",
-            &rows3(|m0: P0S, m1: A1NN, m2: E2SS| Holder2721 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1NN, m2: E2SS| Holder2721Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21389,7 +22665,7 @@ mod holders {
     fn holder2729() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|A1_NN|P2_N nonstrict",
-            &rows3(|m0: P0S, m1: A1NN, m2: P2N| Holder2729 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1NN, m2: P2N| Holder2729Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21397,7 +22673,7 @@ mod holders {
     fn holder2737() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|A1_SS|E2_NN nonstrict",
-            &rows3(|m0: P0S, m1: A1SS, m2: E2NN| Holder2737 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1SS, m2: E2NN| Holder2737Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21415,7 +22691,7 @@ mod holders {
     fn holder2745() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|A1_SS|O2_S nonstrict",
-            &rows3(|m0: P0S, m1: A1SS, m2: Option<OI2S>| Holder2745 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1SS, m2: Option<OI2S>| Holder2745Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -21430,7 +22706,7 @@ mod holders {
     fn holder2753() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|E1_NN|A2_SS nonstrict",
-            &rows3(|m0: P0S, m1: E1NN, m2: A2SS| Holder2753 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1NN, m2: A2SS| Holder2753Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21448,7 +22724,7 @@ mod holders {
     fn holder2761() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|E1_NN|O2_N nonstrict",
-            &rows3(|m0: P0S, m1: E1NN, m2: Option<OI2N>| Holder2761 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1NN, m2: Option<OI2N>| Holder2761Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -21463,7 +22739,7 @@ mod holders {
     fn holder2769() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|E1_SS|A2_NN nonstrict",
-            &rows3(|m0: P0S, m1: E1SS, m2: A2NN| Holder2769 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: A2NN| Holder2769Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21481,7 +22757,7 @@ mod holders {
     fn holder2777() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|E1_SS|FT2_NNNnonstrict",
-            &rows3(|m0: P0S, m1: E1SS, m2: FT2NNN| Holder2777 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: FT2NNN| Holder2777Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -21499,7 +22775,7 @@ mod holders {
     fn holder2785() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|E1_SS|V2_SS",
-            &rows3(|m0: P0S, m1: E1SS, m2: V2SS| Holder2785 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: V2SS| Holder2785Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'R'),
                 ("-,Dot,Wrap", 'R'),
@@ -21514,7 +22790,7 @@ mod holders {
     fn holder2793() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|FO1_NN|O2_Nnonstrict",
-            &rows3(|m0: P0S, m1: FO1NN, m2: Option<OI2N>| Holder2793 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FO1NN, m2: Option<OI2N>| Holder2793Draft { m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -21522,7 +22798,7 @@ mod holders {
     fn holder2801() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|FP1_NN|E2_NNnonstrict",
-            &rows3(|m0: P0S, m1: FP1NN, m2: E2NN| Holder2801 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FP1NN, m2: E2NN| Holder2801Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -21530,7 +22806,7 @@ mod holders {
     fn holder2809() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|FP1_NN|P2_Snonstrict",
-            &rows3(|m0: P0S, m1: FP1NN, m2: P2S| Holder2809 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FP1NN, m2: P2S| Holder2809Draft { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -21538,7 +22814,7 @@ mod holders {
     fn holder2817() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|FT1_NNN|FP2_NNnonstrict",
-            &rows3(|m0: P0S, m1: FT1NNN, m2: FP2NN| Holder2817 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FT1NNN, m2: FP2NN| Holder2817Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21546,7 +22822,7 @@ mod holders {
     fn holder2825() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|O1_N|A2_NN nonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: A2NN| Holder2825 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: A2NN| Holder2825Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -21561,7 +22837,7 @@ mod holders {
     fn holder2833() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|O1_N|FT2_NNNnonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: FT2NNN| Holder2833 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: FT2NNN| Holder2833Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -21576,7 +22852,7 @@ mod holders {
     fn holder2841() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|O1_N|V2_SS",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: V2SS| Holder2841 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: V2SS| Holder2841Draft { m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'R'),
                 ("-,None,Wrap", 'R'),
@@ -21589,7 +22865,7 @@ mod holders {
     fn holder2849() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|O1_S|FP2_SS",
-            &rows3(|m0: P0S, m1: Option<OI1S>, m2: FP2SS| Holder2849 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: FP2SS| Holder2849Draft { m0, m1, m2 }),
             &[("-,None,-", 'R'), ("-,Some,-", 'R')],
         )
     }
@@ -21597,7 +22873,7 @@ mod holders {
     fn holder2857() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|O1_S|V2_NNnonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1S>, m2: V2NN| Holder2857 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: V2NN| Holder2857Draft { m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'E'),
                 ("-,None,Wrap", 'E'),
@@ -21610,7 +22886,7 @@ mod holders {
     fn holder2865() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|P1_N|FP2_NNnonstrict",
-            &rows3(|m0: P0S, m1: P1N, m2: FP2NN| Holder2865 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1N, m2: FP2NN| Holder2865Draft { m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -21618,7 +22894,7 @@ mod holders {
     fn holder2873() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|P1_N|T2_SS",
-            &rows3(|m0: P0S, m1: P1N, m2: T2SS| Holder2873 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1N, m2: T2SS| Holder2873Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -21626,7 +22902,7 @@ mod holders {
     fn holder2881() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|P1_S|FO2_SS",
-            &rows3(|m0: P0S, m1: P1S, m2: FO2SS| Holder2881 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: FO2SS| Holder2881Draft { m0, m1, m2 }),
             &[("-,-,-", 'R')],
         )
     }
@@ -21634,7 +22910,7 @@ mod holders {
     fn holder2889() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|P1_S|T2_NNnonstrict",
-            &rows3(|m0: P0S, m1: P1S, m2: T2NN| Holder2889 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: T2NN| Holder2889Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -21642,7 +22918,7 @@ mod holders {
     fn holder2897() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|T1_NN|FO2_NNnonstrict",
-            &rows3(|m0: P0S, m1: T1NN, m2: FO2NN| Holder2897 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: T1NN, m2: FO2NN| Holder2897Draft { m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -21650,7 +22926,7 @@ mod holders {
     fn holder2905() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|T1_NN|V2_NNnonstrict",
-            &rows3(|m0: P0S, m1: T1NN, m2: V2NN| Holder2905 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: T1NN, m2: V2NN| Holder2905Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
                 ("-,Dot,Wrap", 'E'),
@@ -21665,7 +22941,7 @@ mod holders {
     fn holder2913() -> Vec<String> {
         check(
             "main3:H3N0:P0_S|V1_NN|O2_Nnonstrict",
-            &rows3(|m0: P0S, m1: V1NN, m2: Option<OI2N>| Holder2913 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: V1NN, m2: Option<OI2N>| Holder2913Draft { m0, m1, m2 }),
             &[
                 ("-,Rect,None", 'E'),
                 ("-,Rect,Some", 'E'),
@@ -21678,7 +22954,7 @@ mod holders {
     fn holder2921() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|A1_NN|E2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: A1NN, m2: E2NN| Holder2921 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: A1NN, m2: E2NN| Holder2921Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -21714,7 +22990,7 @@ mod holders {
     fn holder2929() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|A1_NN|P2_Snonstrict",
-            &rows3(|m0: T0NN, m1: A1NN, m2: P2S| Holder2929 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: A1NN, m2: P2S| Holder2929Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -21732,7 +23008,7 @@ mod holders {
     fn holder2937() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|A1_SS|FP2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: A1SS, m2: FP2NN| Holder2937 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: A1SS, m2: FP2NN| Holder2937Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -21750,7 +23026,7 @@ mod holders {
     fn holder2945() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|E1_NN|A2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: E1NN, m2: A2NN| Holder2945 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1NN, m2: A2NN| Holder2945Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -21786,7 +23062,7 @@ mod holders {
     fn holder2953() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|E1_NN|O2_Snonstrict",
-            &rows3(|m0: T0NN, m1: E1NN, m2: Option<OI2S>| Holder2953 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1NN, m2: Option<OI2S>| Holder2953Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -21813,7 +23089,7 @@ mod holders {
     fn holder2961() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|E1_SS|E2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: E1SS, m2: E2SS| Holder2961 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1SS, m2: E2SS| Holder2961Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -21849,7 +23125,7 @@ mod holders {
     fn holder2969() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|E1_SS|T2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: E1SS, m2: T2NN| Holder2969 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1SS, m2: T2NN| Holder2969Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -21885,7 +23161,7 @@ mod holders {
     fn holder2977() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|FO1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: T0NN, m1: FO1NN, m2: FT2NNN| Holder2977 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FO1NN, m2: FT2NNN| Holder2977Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -21903,7 +23179,7 @@ mod holders {
     fn holder2985() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|FP1_NN|A2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: FP1NN, m2: A2SS| Holder2985 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FP1NN, m2: A2SS| Holder2985Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -21921,7 +23197,7 @@ mod holders {
     fn holder2993() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|FP1_NN|P2_Nnonstrict",
-            &rows3(|m0: T0NN, m1: FP1NN, m2: P2N| Holder2993 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FP1NN, m2: P2N| Holder2993Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -21929,7 +23205,7 @@ mod holders {
     fn holder3001() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|FT1_NNN|FO2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: FT1NNN, m2: FO2NN| Holder3001 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FT1NNN, m2: FO2NN| Holder3001Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -21947,7 +23223,7 @@ mod holders {
     fn holder3009() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|FT1_NNN|V2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: FT1NNN, m2: V2NN| Holder3009 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FT1NNN, m2: V2NN| Holder3009Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -21974,7 +23250,7 @@ mod holders {
     fn holder3017() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|O1_N|O2_Nnonstrict",
-            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: Option<OI2N>| Holder3017 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: Option<OI2N>| Holder3017Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -21995,7 +23271,7 @@ mod holders {
     fn holder3025() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|O1_S|E2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: E2NN| Holder3025 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: E2NN| Holder3025Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -22022,7 +23298,7 @@ mod holders {
     fn holder3033() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|O1_S|P2_Snonstrict",
-            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: P2S| Holder3033 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: P2S| Holder3033Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -22037,7 +23313,7 @@ mod holders {
     fn holder3041() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|P1_N|FP2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: P1N, m2: FP2NN| Holder3041 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1N, m2: FP2NN| Holder3041Draft { m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -22045,7 +23321,7 @@ mod holders {
     fn holder3049() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|P1_S|A2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: P1S, m2: A2NN| Holder3049 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1S, m2: A2NN| Holder3049Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -22063,7 +23339,7 @@ mod holders {
     fn holder3057() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|P1_S|O2_Snonstrict",
-            &rows3(|m0: T0NN, m1: P1S, m2: Option<OI2S>| Holder3057 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1S, m2: Option<OI2S>| Holder3057Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -22078,7 +23354,7 @@ mod holders {
     fn holder3065() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|T1_NN|E2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: T1NN, m2: E2SS| Holder3065 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: T1NN, m2: E2SS| Holder3065Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -22114,7 +23390,7 @@ mod holders {
     fn holder3073() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|T1_NN|T2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: T1NN, m2: T2NN| Holder3073 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: T1NN, m2: T2NN| Holder3073Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -22150,7 +23426,7 @@ mod holders {
     fn holder3081() -> Vec<String> {
         check(
             "main3:H3N0:T0_NN|V1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: T0NN, m1: V1NN, m2: FT2NNN| Holder3081 { m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: V1NN, m2: FT2NNN| Holder3081Draft { m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -22177,7 +23453,7 @@ mod holders {
     fn holder3089() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|A1_NN|A2_SSnonstrict",
-            &rows3(|m0: V0NN, m1: A1NN, m2: A2SS| Holder3089 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1NN, m2: A2SS| Holder3089Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -22204,7 +23480,7 @@ mod holders {
     fn holder3097() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|A1_NN|P2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: A1NN, m2: P2N| Holder3097 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1NN, m2: P2N| Holder3097Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -22219,7 +23495,7 @@ mod holders {
     fn holder3105() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|A1_SS|FO2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: A1SS, m2: FO2NN| Holder3105 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1SS, m2: FO2NN| Holder3105Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -22234,7 +23510,7 @@ mod holders {
     fn holder3113() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|A1_SS|V2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: A1SS, m2: V2NN| Holder3113 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1SS, m2: V2NN| Holder3113Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Rect", 'E'),
                 ("Rect,Dot,Wrap", 'E'),
@@ -22255,7 +23531,7 @@ mod holders {
     fn holder3121() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|E1_NN|O2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: E1NN, m2: Option<OI2N>| Holder3121 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: E1NN, m2: Option<OI2N>| Holder3121Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,None", 'E'),
                 ("Rect,Dot,Some", 'E'),
@@ -22276,7 +23552,7 @@ mod holders {
     fn holder3129() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|E1_SS|E2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: E1SS, m2: E2NN| Holder3129 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: E1SS, m2: E2NN| Holder3129Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -22303,7 +23579,7 @@ mod holders {
     fn holder3137() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|E1_SS|P2_Snonstrict",
-            &rows3(|m0: V0NN, m1: E1SS, m2: P2S| Holder3137 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: E1SS, m2: P2S| Holder3137Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -22318,7 +23594,7 @@ mod holders {
     fn holder3145() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|FO1_NN|FP2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: FO1NN, m2: FP2NN| Holder3145 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FO1NN, m2: FP2NN| Holder3145Draft { m0, m1, m2 }),
             &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -22326,7 +23602,7 @@ mod holders {
     fn holder3153() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|FP1_NN|A2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: FP1NN, m2: A2NN| Holder3153 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FP1NN, m2: A2NN| Holder3153Draft { m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
                 ("Rect,-,Rect", 'E'),
@@ -22341,7 +23617,7 @@ mod holders {
     fn holder3161() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|FP1_NN|O2_Snonstrict",
-            &rows3(|m0: V0NN, m1: FP1NN, m2: Option<OI2S>| Holder3161 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FP1NN, m2: Option<OI2S>| Holder3161Draft { m0, m1, m2 }),
             &[
                 ("Rect,-,None", 'E'),
                 ("Rect,-,Some", 'E'),
@@ -22354,7 +23630,7 @@ mod holders {
     fn holder3169() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|FT1_NNN|E2_SSnonstrict",
-            &rows3(|m0: V0NN, m1: FT1NNN, m2: E2SS| Holder3169 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FT1NNN, m2: E2SS| Holder3169Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -22381,7 +23657,7 @@ mod holders {
     fn holder3177() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|FT1_NNN|T2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: FT1NNN, m2: T2NN| Holder3177 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FT1NNN, m2: T2NN| Holder3177Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -22408,7 +23684,7 @@ mod holders {
     fn holder3185() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|O1_N|FT2_NNNnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: FT2NNN| Holder3185 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: FT2NNN| Holder3185Draft { m0, m1, m2 }),
             &[
                 ("Rect,None,Dot", 'E'),
                 ("Rect,None,Rect", 'E'),
@@ -22429,7 +23705,7 @@ mod holders {
     fn holder3193() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|O1_S|A2_SSnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: A2SS| Holder3193 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: A2SS| Holder3193Draft { m0, m1, m2 }),
             &[
                 ("Rect,None,Dot", 'E'),
                 ("Rect,None,Rect", 'E'),
@@ -22450,7 +23726,7 @@ mod holders {
     fn holder3201() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|O1_S|P2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: P2N| Holder3201 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: P2N| Holder3201Draft { m0, m1, m2 }),
             &[
                 ("Rect,None,-", 'E'),
                 ("Rect,Some,-", 'E'),
@@ -22463,7 +23739,7 @@ mod holders {
     fn holder3209() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|P1_N|FO2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: P1N, m2: FO2NN| Holder3209 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: P1N, m2: FO2NN| Holder3209Draft { m0, m1, m2 }),
             &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -22471,7 +23747,7 @@ mod holders {
     fn holder3217() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|P1_N|V2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: P1N, m2: V2NN| Holder3217 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: P1N, m2: V2NN| Holder3217Draft { m0, m1, m2 }),
             &[
                 ("Rect,-,Rect", 'E'),
                 ("Rect,-,Wrap", 'E'),
@@ -22484,7 +23760,7 @@ mod holders {
     fn holder3225() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|P1_S|O2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: P1S, m2: Option<OI2N>| Holder3225 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: P1S, m2: Option<OI2N>| Holder3225Draft { m0, m1, m2 }),
             &[
                 ("Rect,-,None", 'E'),
                 ("Rect,-,Some", 'E'),
@@ -22497,7 +23773,7 @@ mod holders {
     fn holder3233() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|T1_NN|E2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: T1NN, m2: E2NN| Holder3233 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: T1NN, m2: E2NN| Holder3233Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -22524,7 +23800,7 @@ mod holders {
     fn holder3241() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|T1_NN|P2_Snonstrict",
-            &rows3(|m0: V0NN, m1: T1NN, m2: P2S| Holder3241 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: T1NN, m2: P2S| Holder3241Draft { m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -22539,7 +23815,7 @@ mod holders {
     fn holder3249() -> Vec<String> {
         check(
             "main3:H3N0:V0_NN|V1_NN|FP2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: V1NN, m2: FP2NN| Holder3249 { m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: V1NN, m2: FP2NN| Holder3249Draft { m0, m1, m2 }),
             &[
                 ("Rect,Rect,-", 'E'),
                 ("Rect,Wrap,-", 'E'),
@@ -22552,7 +23828,7 @@ mod holders {
     fn holder3257() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|A1_NN|A2_NN nonstrict",
-            &rows3(|m0: A0NN, m1: A1NN, m2: A2NN| Holder3257 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: A2NN| Holder3257Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -22588,7 +23864,7 @@ mod holders {
     fn holder3265() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|A1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: A0NN, m1: A1NN, m2: FT2NNN| Holder3265 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: FT2NNN| Holder3265Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -22624,7 +23900,7 @@ mod holders {
     fn holder3273() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|A1_NN|V2_SS",
-            &rows3(|m0: A0NN, m1: A1NN, m2: V2SS| Holder3273 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: V2SS| Holder3273Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'R'),
                 ("Dot,Dot,Wrap", 'R'),
@@ -22651,7 +23927,7 @@ mod holders {
     fn holder3281() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|A1_SS|FP2_SS",
-            &rows3(|m0: A0NN, m1: A1SS, m2: FP2SS| Holder3281 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1SS, m2: FP2SS| Holder3281Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -22669,7 +23945,7 @@ mod holders {
     fn holder3289() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|A1_SS|V2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: A1SS, m2: V2NN| Holder3289 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1SS, m2: V2NN| Holder3289Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -22696,7 +23972,7 @@ mod holders {
     fn holder3297() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|E1_NN|FP2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: E1NN, m2: FP2NN| Holder3297 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1NN, m2: FP2NN| Holder3297Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -22714,7 +23990,7 @@ mod holders {
     fn holder3305() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|E1_NN|T2_SS",
-            &rows3(|m0: A0NN, m1: E1NN, m2: T2SS| Holder3305 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1NN, m2: T2SS| Holder3305Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -22750,7 +24026,7 @@ mod holders {
     fn holder3313() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|E1_SS|FO2_SS",
-            &rows3(|m0: A0NN, m1: E1SS, m2: FO2SS| Holder3313 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1SS, m2: FO2SS| Holder3313Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -22768,7 +24044,7 @@ mod holders {
     fn holder3321() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|E1_SS|T2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: E1SS, m2: T2NN| Holder3321 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1SS, m2: T2NN| Holder3321Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -22804,7 +24080,7 @@ mod holders {
     fn holder3329() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|FO1_NN|FO2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: FO1NN, m2: FO2NN| Holder3329 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FO1NN, m2: FO2NN| Holder3329Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -22812,7 +24088,7 @@ mod holders {
     fn holder3337() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|FO1_NN|V2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: FO1NN, m2: V2NN| Holder3337 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FO1NN, m2: V2NN| Holder3337Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -22827,7 +24103,7 @@ mod holders {
     fn holder3345() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|FP1_NN|O2_Nnonstrict",
-            &rows3(|m0: A0NN, m1: FP1NN, m2: Option<OI2N>| Holder3345 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FP1NN, m2: Option<OI2N>| Holder3345Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -22842,7 +24118,7 @@ mod holders {
     fn holder3353() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|FT1_NNN|E2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: FT1NNN, m2: E2NN| Holder3353 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FT1NNN, m2: E2NN| Holder3353Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -22878,7 +24154,7 @@ mod holders {
     fn holder3361() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|FT1_NNN|P2_Snonstrict",
-            &rows3(|m0: A0NN, m1: FT1NNN, m2: P2S| Holder3361 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: FT1NNN, m2: P2S| Holder3361Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -22896,7 +24172,7 @@ mod holders {
     fn holder3369() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|O1_N|FO2_SS",
-            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: FO2SS| Holder3369 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: FO2SS| Holder3369Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'R'),
                 ("Dot,Some,-", 'R'),
@@ -22911,7 +24187,7 @@ mod holders {
     fn holder3377() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|O1_N|T2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: T2NN| Holder3377 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: T2NN| Holder3377Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -22938,7 +24214,7 @@ mod holders {
     fn holder3385() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|O1_S|FO2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: FO2NN| Holder3385 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: FO2NN| Holder3385Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -22953,7 +24229,7 @@ mod holders {
     fn holder3393() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|O1_S|P2_S nonstrict",
-            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: P2S| Holder3393 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: P2S| Holder3393Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -22968,7 +24244,7 @@ mod holders {
     fn holder3401() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|P1_N|E2_SS nonstrict",
-            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder3401 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder3401Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -22986,7 +24262,7 @@ mod holders {
     fn holder3409() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|P1_N|P2_N nonstrict",
-            &rows3(|m0: A0NN, m1: P1N, m2: P2N| Holder3409 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: P2N| Holder3409Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -22994,7 +24270,7 @@ mod holders {
     fn holder3417() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|P1_S|E2_NN nonstrict",
-            &rows3(|m0: A0NN, m1: P1S, m2: E2NN| Holder3417 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1S, m2: E2NN| Holder3417Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23012,7 +24288,7 @@ mod holders {
     fn holder3425() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|P1_S|O2_S nonstrict",
-            &rows3(|m0: A0NN, m1: P1S, m2: Option<OI2S>| Holder3425 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1S, m2: Option<OI2S>| Holder3425Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -23027,7 +24303,7 @@ mod holders {
     fn holder3433() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|T1_NN|A2_SSnonstrict",
-            &rows3(|m0: A0NN, m1: T1NN, m2: A2SS| Holder3433 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: T1NN, m2: A2SS| Holder3433Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23063,7 +24339,7 @@ mod holders {
     fn holder3441() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|T1_NN|P2_Nnonstrict",
-            &rows3(|m0: A0NN, m1: T1NN, m2: P2N| Holder3441 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: T1NN, m2: P2N| Holder3441Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23081,7 +24357,7 @@ mod holders {
     fn holder3449() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|V1_NN|FO2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: V1NN, m2: FO2NN| Holder3449 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: V1NN, m2: FO2NN| Holder3449Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
                 ("Dot,Wrap,-", 'E'),
@@ -23096,7 +24372,7 @@ mod holders {
     fn holder3457() -> Vec<String> {
         check(
             "main3:H3N1:A0_NN|V1_NN|V2_NNnonstrict",
-            &rows3(|m0: A0NN, m1: V1NN, m2: V2NN| Holder3457 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: V1NN, m2: V2NN| Holder3457Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Rect", 'E'),
                 ("Dot,Rect,Wrap", 'E'),
@@ -23117,7 +24393,7 @@ mod holders {
     fn holder3465() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|A1_NN|FP2_SS",
-            &rows3(|m0: A0SS, m1: A1NN, m2: FP2SS| Holder3465 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1NN, m2: FP2SS| Holder3465Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -23135,7 +24411,7 @@ mod holders {
     fn holder3473() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|A1_NN|V2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: A1NN, m2: V2NN| Holder3473 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1NN, m2: V2NN| Holder3473Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -23162,7 +24438,7 @@ mod holders {
     fn holder3481() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|A1_SS|FP2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: A1SS, m2: FP2NN| Holder3481 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1SS, m2: FP2NN| Holder3481Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23180,7 +24456,7 @@ mod holders {
     fn holder3489() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|A1_SS|T2_SS",
-            &rows3(|m0: A0SS, m1: A1SS, m2: T2SS| Holder3489 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1SS, m2: T2SS| Holder3489Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -23216,7 +24492,7 @@ mod holders {
     fn holder3497() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|E1_NN|FO2_SS",
-            &rows3(|m0: A0SS, m1: E1NN, m2: FO2SS| Holder3497 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1NN, m2: FO2SS| Holder3497Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -23234,7 +24510,7 @@ mod holders {
     fn holder3505() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|E1_NN|T2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: E1NN, m2: T2NN| Holder3505 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1NN, m2: T2NN| Holder3505Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23270,7 +24546,7 @@ mod holders {
     fn holder3513() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|E1_SS|FO2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: E1SS, m2: FO2NN| Holder3513 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1SS, m2: FO2NN| Holder3513Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23288,7 +24564,7 @@ mod holders {
     fn holder3521() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|E1_SS|P2_S nonstrict",
-            &rows3(|m0: A0SS, m1: E1SS, m2: P2S| Holder3521 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1SS, m2: P2S| Holder3521Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23306,7 +24582,7 @@ mod holders {
     fn holder3529() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|FO1_NN|E2_SSnonstrict",
-            &rows3(|m0: A0SS, m1: FO1NN, m2: E2SS| Holder3529 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FO1NN, m2: E2SS| Holder3529Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23324,7 +24600,7 @@ mod holders {
     fn holder3537() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|FO1_NN|T2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: FO1NN, m2: T2NN| Holder3537 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FO1NN, m2: T2NN| Holder3537Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23342,7 +24618,7 @@ mod holders {
     fn holder3545() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|FP1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: A0SS, m1: FP1NN, m2: FT2NNN| Holder3545 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FP1NN, m2: FT2NNN| Holder3545Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23360,7 +24636,7 @@ mod holders {
     fn holder3553() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|FT1_NNN|A2_SSnonstrict",
-            &rows3(|m0: A0SS, m1: FT1NNN, m2: A2SS| Holder3553 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: A2SS| Holder3553Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23396,7 +24672,7 @@ mod holders {
     fn holder3561() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|FT1_NNN|P2_Nnonstrict",
-            &rows3(|m0: A0SS, m1: FT1NNN, m2: P2N| Holder3561 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: FT1NNN, m2: P2N| Holder3561Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23414,7 +24690,7 @@ mod holders {
     fn holder3569() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|O1_N|FO2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: FO2NN| Holder3569 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: FO2NN| Holder3569Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -23429,7 +24705,7 @@ mod holders {
     fn holder3577() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|O1_N|P2_S nonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: P2S| Holder3577 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: P2S| Holder3577Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -23444,7 +24720,7 @@ mod holders {
     fn holder3585() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|O1_S|E2_SS nonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder3585 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder3585Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -23471,7 +24747,7 @@ mod holders {
     fn holder3593() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|O1_S|P2_N nonstrict",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: P2N| Holder3593 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: P2N| Holder3593Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -23486,7 +24762,7 @@ mod holders {
     fn holder3601() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|P1_N|E2_NN nonstrict",
-            &rows3(|m0: A0SS, m1: P1N, m2: E2NN| Holder3601 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1N, m2: E2NN| Holder3601Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23504,7 +24780,7 @@ mod holders {
     fn holder3609() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|P1_N|O2_S nonstrict",
-            &rows3(|m0: A0SS, m1: P1N, m2: Option<OI2S>| Holder3609 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1N, m2: Option<OI2S>| Holder3609Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -23519,7 +24795,7 @@ mod holders {
     fn holder3617() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|P1_S|A2_SS nonstrict",
-            &rows3(|m0: A0SS, m1: P1S, m2: A2SS| Holder3617 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1S, m2: A2SS| Holder3617Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23537,7 +24813,7 @@ mod holders {
     fn holder3625() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|P1_S|O2_N nonstrict",
-            &rows3(|m0: A0SS, m1: P1S, m2: Option<OI2N>| Holder3625 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1S, m2: Option<OI2N>| Holder3625Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -23552,7 +24828,7 @@ mod holders {
     fn holder3633() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|T1_NN|A2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: T1NN, m2: A2NN| Holder3633 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: T1NN, m2: A2NN| Holder3633Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23588,7 +24864,7 @@ mod holders {
     fn holder3641() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|T1_NN|O2_Snonstrict",
-            &rows3(|m0: A0SS, m1: T1NN, m2: Option<OI2S>| Holder3641 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: T1NN, m2: Option<OI2S>| Holder3641Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -23615,7 +24891,7 @@ mod holders {
     fn holder3649() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|V1_NN|E2_SSnonstrict",
-            &rows3(|m0: A0SS, m1: V1NN, m2: E2SS| Holder3649 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: V1NN, m2: E2SS| Holder3649Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -23642,7 +24918,7 @@ mod holders {
     fn holder3657() -> Vec<String> {
         check(
             "main3:H3N1:A0_SS|V1_NN|T2_NNnonstrict",
-            &rows3(|m0: A0SS, m1: V1NN, m2: T2NN| Holder3657 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: V1NN, m2: T2NN| Holder3657Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -23669,7 +24945,7 @@ mod holders {
     fn holder3665() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|A1_NN|FP2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: A1NN, m2: FP2NN| Holder3665 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1NN, m2: FP2NN| Holder3665Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23687,7 +24963,7 @@ mod holders {
     fn holder3673() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|A1_NN|T2_SS",
-            &rows3(|m0: E0NN, m1: A1NN, m2: T2SS| Holder3673 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1NN, m2: T2SS| Holder3673Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -23723,7 +24999,7 @@ mod holders {
     fn holder3681() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|A1_SS|FO2_SS",
-            &rows3(|m0: E0NN, m1: A1SS, m2: FO2SS| Holder3681 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1SS, m2: FO2SS| Holder3681Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -23741,7 +25017,7 @@ mod holders {
     fn holder3689() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|A1_SS|T2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: A1SS, m2: T2NN| Holder3689 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1SS, m2: T2NN| Holder3689Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23777,7 +25053,7 @@ mod holders {
     fn holder3697() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|E1_NN|FO2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: E1NN, m2: FO2NN| Holder3697 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1NN, m2: FO2NN| Holder3697Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23795,7 +25071,7 @@ mod holders {
     fn holder3705() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|E1_NN|P2_S nonstrict",
-            &rows3(|m0: E0NN, m1: E1NN, m2: P2S| Holder3705 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1NN, m2: P2S| Holder3705Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23813,7 +25089,7 @@ mod holders {
     fn holder3713() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|E1_SS|E2_SS nonstrict",
-            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder3713 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder3713Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23849,7 +25125,7 @@ mod holders {
     fn holder3721() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|E1_SS|P2_N nonstrict",
-            &rows3(|m0: E0NN, m1: E1SS, m2: P2N| Holder3721 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: P2N| Holder3721Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -23867,7 +25143,7 @@ mod holders {
     fn holder3729() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|FO1_NN|E2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: FO1NN, m2: E2NN| Holder3729 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FO1NN, m2: E2NN| Holder3729Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -23885,7 +25161,7 @@ mod holders {
     fn holder3737() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|FO1_NN|P2_Snonstrict",
-            &rows3(|m0: E0NN, m1: FO1NN, m2: P2S| Holder3737 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FO1NN, m2: P2S| Holder3737Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -23893,7 +25169,7 @@ mod holders {
     fn holder3745() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|FP1_NN|FP2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: FP1NN, m2: FP2NN| Holder3745 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FP1NN, m2: FP2NN| Holder3745Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -23901,7 +25177,7 @@ mod holders {
     fn holder3753() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|FT1_NNN|A2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: FT1NNN, m2: A2NN| Holder3753 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: A2NN| Holder3753Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -23937,7 +25213,7 @@ mod holders {
     fn holder3761() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|FT1_NNN|O2_Snonstrict",
-            &rows3(|m0: E0NN, m1: FT1NNN, m2: Option<OI2S>| Holder3761 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: FT1NNN, m2: Option<OI2S>| Holder3761Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -23964,7 +25240,7 @@ mod holders {
     fn holder3769() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|O1_N|E2_SS nonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder3769 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder3769Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -23991,7 +25267,7 @@ mod holders {
     fn holder3777() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|O1_N|P2_N nonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: P2N| Holder3777 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: P2N| Holder3777Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -24006,7 +25282,7 @@ mod holders {
     fn holder3785() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|O1_S|E2_NN nonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2NN| Holder3785 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2NN| Holder3785Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -24033,12 +25309,14 @@ mod holders {
     fn holder3793() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|O1_S|O2_S nonstrict",
-            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder3793 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: E0NN, m1: Option<OI1S>, m2: Option<OI2S>| Holder3793Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -24059,7 +25337,7 @@ mod holders {
     fn holder3801() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|P1_N|A2_SS nonstrict",
-            &rows3(|m0: E0NN, m1: P1N, m2: A2SS| Holder3801 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1N, m2: A2SS| Holder3801Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -24077,7 +25355,7 @@ mod holders {
     fn holder3809() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|P1_N|O2_N nonstrict",
-            &rows3(|m0: E0NN, m1: P1N, m2: Option<OI2N>| Holder3809 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1N, m2: Option<OI2N>| Holder3809Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -24092,7 +25370,7 @@ mod holders {
     fn holder3817() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|P1_S|A2_NN nonstrict",
-            &rows3(|m0: E0NN, m1: P1S, m2: A2NN| Holder3817 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: A2NN| Holder3817Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -24110,7 +25388,7 @@ mod holders {
     fn holder3825() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|P1_S|FT2_NNNnonstrict",
-            &rows3(|m0: E0NN, m1: P1S, m2: FT2NNN| Holder3825 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: FT2NNN| Holder3825Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -24128,7 +25406,7 @@ mod holders {
     fn holder3833() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|P1_S|V2_SS",
-            &rows3(|m0: E0NN, m1: P1S, m2: V2SS| Holder3833 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: V2SS| Holder3833Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'R'),
                 ("Dot,-,Wrap", 'R'),
@@ -24143,7 +25421,7 @@ mod holders {
     fn holder3841() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|T1_NN|O2_Nnonstrict",
-            &rows3(|m0: E0NN, m1: T1NN, m2: Option<OI2N>| Holder3841 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: T1NN, m2: Option<OI2N>| Holder3841Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -24170,7 +25448,7 @@ mod holders {
     fn holder3849() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|V1_NN|E2_NNnonstrict",
-            &rows3(|m0: E0NN, m1: V1NN, m2: E2NN| Holder3849 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: V1NN, m2: E2NN| Holder3849Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -24197,7 +25475,7 @@ mod holders {
     fn holder3857() -> Vec<String> {
         check(
             "main3:H3N1:E0_NN|V1_NN|P2_Snonstrict",
-            &rows3(|m0: E0NN, m1: V1NN, m2: P2S| Holder3857 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: V1NN, m2: P2S| Holder3857Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
                 ("Dot,Wrap,-", 'E'),
@@ -24212,7 +25490,7 @@ mod holders {
     fn holder3865() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|A1_NN|FO2_SS",
-            &rows3(|m0: E0SS, m1: A1NN, m2: FO2SS| Holder3865 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1NN, m2: FO2SS| Holder3865Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'R'),
                 ("Dot,Rect,-", 'R'),
@@ -24230,7 +25508,7 @@ mod holders {
     fn holder3873() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|A1_NN|T2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: A1NN, m2: T2NN| Holder3873 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1NN, m2: T2NN| Holder3873Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -24266,7 +25544,7 @@ mod holders {
     fn holder3881() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|A1_SS|FO2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: A1SS, m2: FO2NN| Holder3881 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1SS, m2: FO2NN| Holder3881Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -24284,7 +25562,7 @@ mod holders {
     fn holder3889() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|A1_SS|P2_S nonstrict",
-            &rows3(|m0: E0SS, m1: A1SS, m2: P2S| Holder3889 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1SS, m2: P2S| Holder3889Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -24302,7 +25580,7 @@ mod holders {
     fn holder3897() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|E1_NN|E2_SS nonstrict",
-            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder3897 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder3897Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -24338,7 +25616,7 @@ mod holders {
     fn holder3905() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|E1_NN|P2_N nonstrict",
-            &rows3(|m0: E0SS, m1: E1NN, m2: P2N| Holder3905 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: P2N| Holder3905Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -24356,7 +25634,7 @@ mod holders {
     fn holder3913() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|E1_SS|E2_NN nonstrict",
-            &rows3(|m0: E0SS, m1: E1SS, m2: E2NN| Holder3913 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1SS, m2: E2NN| Holder3913Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -24392,7 +25670,7 @@ mod holders {
     fn holder3921() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|E1_SS|O2_S nonstrict",
-            &rows3(|m0: E0SS, m1: E1SS, m2: Option<OI2S>| Holder3921 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1SS, m2: Option<OI2S>| Holder3921Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -24419,7 +25697,7 @@ mod holders {
     fn holder3929() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|FO1_NN|A2_SSnonstrict",
-            &rows3(|m0: E0SS, m1: FO1NN, m2: A2SS| Holder3929 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FO1NN, m2: A2SS| Holder3929Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -24437,7 +25715,7 @@ mod holders {
     fn holder3937() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|FO1_NN|P2_Nnonstrict",
-            &rows3(|m0: E0SS, m1: FO1NN, m2: P2N| Holder3937 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FO1NN, m2: P2N| Holder3937Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -24445,7 +25723,7 @@ mod holders {
     fn holder3945() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|FP1_NN|FO2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: FP1NN, m2: FO2NN| Holder3945 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FP1NN, m2: FO2NN| Holder3945Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -24453,7 +25731,7 @@ mod holders {
     fn holder3953() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|FP1_NN|V2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: FP1NN, m2: V2NN| Holder3953 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FP1NN, m2: V2NN| Holder3953Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -24468,7 +25746,7 @@ mod holders {
     fn holder3961() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|FT1_NNN|O2_Nnonstrict",
-            &rows3(|m0: E0SS, m1: FT1NNN, m2: Option<OI2N>| Holder3961 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: FT1NNN, m2: Option<OI2N>| Holder3961Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -24495,7 +25773,7 @@ mod holders {
     fn holder3969() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|O1_N|E2_NN nonstrict",
-            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2NN| Holder3969 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2NN| Holder3969Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -24522,12 +25800,14 @@ mod holders {
     fn holder3977() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|O1_N|O2_S nonstrict",
-            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: Option<OI2S>| Holder3977 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: E0SS, m1: Option<OI1N>, m2: Option<OI2S>| Holder3977Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -24548,7 +25828,7 @@ mod holders {
     fn holder3985() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|O1_S|A2_SS nonstrict",
-            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: A2SS| Holder3985 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: A2SS| Holder3985Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -24575,12 +25855,14 @@ mod holders {
     fn holder3993() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|O1_S|O2_N nonstrict",
-            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: Option<OI2N>| Holder3993 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: E0SS, m1: Option<OI1S>, m2: Option<OI2N>| Holder3993Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("Dot,None,None", 'E'),
                 ("Dot,None,Some", 'E'),
@@ -24601,7 +25883,7 @@ mod holders {
     fn holder4001() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|P1_N|A2_NN nonstrict",
-            &rows3(|m0: E0SS, m1: P1N, m2: A2NN| Holder4001 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: A2NN| Holder4001Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -24619,7 +25901,7 @@ mod holders {
     fn holder4009() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|P1_N|FT2_NNNnonstrict",
-            &rows3(|m0: E0SS, m1: P1N, m2: FT2NNN| Holder4009 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: FT2NNN| Holder4009Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -24637,7 +25919,7 @@ mod holders {
     fn holder4017() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|P1_N|V2_SS",
-            &rows3(|m0: E0SS, m1: P1N, m2: V2SS| Holder4017 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: V2SS| Holder4017Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'R'),
                 ("Dot,-,Wrap", 'R'),
@@ -24652,7 +25934,7 @@ mod holders {
     fn holder4025() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|P1_S|FP2_SS",
-            &rows3(|m0: E0SS, m1: P1S, m2: FP2SS| Holder4025 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1S, m2: FP2SS| Holder4025Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'R'), ("Rect,-,-", 'R'), ("Wrap,-,-", 'R')],
         )
     }
@@ -24660,7 +25942,7 @@ mod holders {
     fn holder4033() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|P1_S|V2_NNnonstrict",
-            &rows3(|m0: E0SS, m1: P1S, m2: V2NN| Holder4033 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1S, m2: V2NN| Holder4033Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -24675,7 +25957,7 @@ mod holders {
     fn holder4041() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|T1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: E0SS, m1: T1NN, m2: FT2NNN| Holder4041 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: T1NN, m2: FT2NNN| Holder4041Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -24711,7 +25993,7 @@ mod holders {
     fn holder4049() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|V1_NN|A2_SSnonstrict",
-            &rows3(|m0: E0SS, m1: V1NN, m2: A2SS| Holder4049 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: V1NN, m2: A2SS| Holder4049Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -24738,7 +26020,7 @@ mod holders {
     fn holder4057() -> Vec<String> {
         check(
             "main3:H3N1:E0_SS|V1_NN|P2_Nnonstrict",
-            &rows3(|m0: E0SS, m1: V1NN, m2: P2N| Holder4057 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: V1NN, m2: P2N| Holder4057Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
                 ("Dot,Wrap,-", 'E'),
@@ -24753,7 +26035,7 @@ mod holders {
     fn holder4065() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|A1_NN|FO2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: A1NN, m2: FO2NN| Holder4065 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1NN, m2: FO2NN| Holder4065Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -24761,7 +26043,7 @@ mod holders {
     fn holder4073() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|A1_NN|V2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: A1NN, m2: V2NN| Holder4073 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1NN, m2: V2NN| Holder4073Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
                 ("-,Dot,Wrap", 'E'),
@@ -24776,7 +26058,7 @@ mod holders {
     fn holder4081() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|A1_SS|O2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: A1SS, m2: Option<OI2N>| Holder4081 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: A1SS, m2: Option<OI2N>| Holder4081Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -24791,7 +26073,7 @@ mod holders {
     fn holder4089() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|E1_NN|E2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: E1NN, m2: E2NN| Holder4089 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: E1NN, m2: E2NN| Holder4089Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -24809,7 +26091,7 @@ mod holders {
     fn holder4097() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|E1_NN|P2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: E1NN, m2: P2S| Holder4097 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: E1NN, m2: P2S| Holder4097Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -24817,7 +26099,7 @@ mod holders {
     fn holder4105() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|E1_SS|FP2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: E1SS, m2: FP2NN| Holder4105 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: E1SS, m2: FP2NN| Holder4105Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -24825,7 +26107,7 @@ mod holders {
     fn holder4113() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|FO1_NN|A2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: FO1NN, m2: A2NN| Holder4113 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: A2NN| Holder4113Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -24833,7 +26115,7 @@ mod holders {
     fn holder4121() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|FO1_NN|O2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: FO1NN, m2: Option<OI2S>| Holder4121 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FO1NN, m2: Option<OI2S>| Holder4121Draft { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -24841,7 +26123,7 @@ mod holders {
     fn holder4129() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|FP1_NN|E2_SSnonstrict",
-            &rows3(|m0: FO0NN, m1: FP1NN, m2: E2SS| Holder4129 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: E2SS| Holder4129Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -24849,7 +26131,7 @@ mod holders {
     fn holder4137() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|FP1_NN|T2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: FP1NN, m2: T2NN| Holder4137 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FP1NN, m2: T2NN| Holder4137Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -24857,7 +26139,7 @@ mod holders {
     fn holder4145() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|FT1_NNN|FT2_NNNnonstrict",
-            &rows3(|m0: FO0NN, m1: FT1NNN, m2: FT2NNN| Holder4145 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: FT1NNN, m2: FT2NNN| Holder4145Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -24875,7 +26157,7 @@ mod holders {
     fn holder4153() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|O1_N|A2_SSnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: A2SS| Holder4153 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: A2SS| Holder4153Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -24890,7 +26172,7 @@ mod holders {
     fn holder4161() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|O1_N|P2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: P2N| Holder4161 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1N>, m2: P2N| Holder4161Draft { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -24898,7 +26180,7 @@ mod holders {
     fn holder4169() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|O1_S|FO2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: FO2NN| Holder4169 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: FO2NN| Holder4169Draft { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -24906,7 +26188,7 @@ mod holders {
     fn holder4177() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|O1_S|V2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: V2NN| Holder4177 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: Option<OI1S>, m2: V2NN| Holder4177Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Rect", 'E'),
                 ("-,None,Wrap", 'E'),
@@ -24919,7 +26201,7 @@ mod holders {
     fn holder4185() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|P1_N|O2_Nnonstrict",
-            &rows3(|m0: FO0NN, m1: P1N, m2: Option<OI2N>| Holder4185 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: P1N, m2: Option<OI2N>| Holder4185Draft { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -24927,7 +26209,7 @@ mod holders {
     fn holder4193() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|P1_S|E2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: P1S, m2: E2NN| Holder4193 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: P1S, m2: E2NN| Holder4193Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -24935,7 +26217,7 @@ mod holders {
     fn holder4201() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|P1_S|P2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: P1S, m2: P2S| Holder4201 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: P1S, m2: P2S| Holder4201Draft { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -24943,7 +26225,7 @@ mod holders {
     fn holder4209() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|T1_NN|FP2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: T1NN, m2: FP2NN| Holder4209 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: T1NN, m2: FP2NN| Holder4209Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -24951,7 +26233,7 @@ mod holders {
     fn holder4217() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|V1_NN|A2_NNnonstrict",
-            &rows3(|m0: FO0NN, m1: V1NN, m2: A2NN| Holder4217 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: V1NN, m2: A2NN| Holder4217Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
                 ("-,Rect,Rect", 'E'),
@@ -24966,7 +26248,7 @@ mod holders {
     fn holder4225() -> Vec<String> {
         check(
             "main3:H3N1:FO0_NN|V1_NN|O2_Snonstrict",
-            &rows3(|m0: FO0NN, m1: V1NN, m2: Option<OI2S>| Holder4225 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FO0NN, m1: V1NN, m2: Option<OI2S>| Holder4225Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,None", 'E'),
                 ("-,Rect,Some", 'E'),
@@ -24979,7 +26261,7 @@ mod holders {
     fn holder4233() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|A1_NN|E2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: A1NN, m2: E2SS| Holder4233 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1NN, m2: E2SS| Holder4233Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -24997,7 +26279,7 @@ mod holders {
     fn holder4241() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|A1_NN|T2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: A1NN, m2: T2NN| Holder4241 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1NN, m2: T2NN| Holder4241Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -25015,7 +26297,7 @@ mod holders {
     fn holder4249() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|A1_SS|FT2_NNNnonstrict",
-            &rows3(|m0: FP0NN, m1: A1SS, m2: FT2NNN| Holder4249 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: A1SS, m2: FT2NNN| Holder4249Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -25033,7 +26315,7 @@ mod holders {
     fn holder4257() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|E1_NN|A2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: E1NN, m2: A2SS| Holder4257 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1NN, m2: A2SS| Holder4257Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -25051,7 +26333,7 @@ mod holders {
     fn holder4265() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|E1_NN|P2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: E1NN, m2: P2N| Holder4265 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1NN, m2: P2N| Holder4265Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -25059,7 +26341,7 @@ mod holders {
     fn holder4273() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|E1_SS|FO2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: E1SS, m2: FO2NN| Holder4273 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1SS, m2: FO2NN| Holder4273Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -25067,7 +26349,7 @@ mod holders {
     fn holder4281() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|E1_SS|V2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: E1SS, m2: V2NN| Holder4281 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: E1SS, m2: V2NN| Holder4281Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
                 ("-,Dot,Wrap", 'E'),
@@ -25082,7 +26364,7 @@ mod holders {
     fn holder4289() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|FO1_NN|O2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: FO1NN, m2: Option<OI2N>| Holder4289 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FO1NN, m2: Option<OI2N>| Holder4289Draft { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -25090,7 +26372,7 @@ mod holders {
     fn holder4297() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|FP1_NN|E2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: FP1NN, m2: E2NN| Holder4297 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FP1NN, m2: E2NN| Holder4297Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -25098,7 +26380,7 @@ mod holders {
     fn holder4305() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|FP1_NN|P2_Snonstrict",
-            &rows3(|m0: FP0NN, m1: FP1NN, m2: P2S| Holder4305 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FP1NN, m2: P2S| Holder4305Draft { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -25106,7 +26388,7 @@ mod holders {
     fn holder4313() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|FT1_NNN|FP2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: FT1NNN, m2: FP2NN| Holder4313 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: FT1NNN, m2: FP2NN| Holder4313Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -25114,7 +26396,7 @@ mod holders {
     fn holder4321() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|O1_N|A2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: A2NN| Holder4321 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: A2NN| Holder4321Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -25129,12 +26411,14 @@ mod holders {
     fn holder4329() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|O1_N|O2_Snonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1N>, m2: Option<OI2S>| Holder4329 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: FP0NN, m1: Option<OI1N>, m2: Option<OI2S>| Holder4329Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("-,None,None", 'E'),
                 ("-,None,Some", 'E'),
@@ -25147,7 +26431,7 @@ mod holders {
     fn holder4337() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|O1_S|E2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: E2SS| Holder4337 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: E2SS| Holder4337Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -25162,7 +26446,7 @@ mod holders {
     fn holder4345() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|O1_S|T2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: T2NN| Holder4345 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: Option<OI1S>, m2: T2NN| Holder4345Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -25177,7 +26461,7 @@ mod holders {
     fn holder4353() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|P1_N|FT2_NNNnonstrict",
-            &rows3(|m0: FP0NN, m1: P1N, m2: FT2NNN| Holder4353 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: P1N, m2: FT2NNN| Holder4353Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -25185,7 +26469,7 @@ mod holders {
     fn holder4361() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|P1_S|A2_SSnonstrict",
-            &rows3(|m0: FP0NN, m1: P1S, m2: A2SS| Holder4361 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: P1S, m2: A2SS| Holder4361Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -25193,7 +26477,7 @@ mod holders {
     fn holder4369() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|P1_S|P2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: P1S, m2: P2N| Holder4369 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: P1S, m2: P2N| Holder4369Draft { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -25201,7 +26485,7 @@ mod holders {
     fn holder4377() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|T1_NN|FO2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: T1NN, m2: FO2NN| Holder4377 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: T1NN, m2: FO2NN| Holder4377Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -25209,7 +26493,7 @@ mod holders {
     fn holder4385() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|T1_NN|V2_NNnonstrict",
-            &rows3(|m0: FP0NN, m1: T1NN, m2: V2NN| Holder4385 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: T1NN, m2: V2NN| Holder4385Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
                 ("-,Dot,Wrap", 'E'),
@@ -25224,7 +26508,7 @@ mod holders {
     fn holder4393() -> Vec<String> {
         check(
             "main3:H3N1:FP0_NN|V1_NN|O2_Nnonstrict",
-            &rows3(|m0: FP0NN, m1: V1NN, m2: Option<OI2N>| Holder4393 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FP0NN, m1: V1NN, m2: Option<OI2N>| Holder4393Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,None", 'E'),
                 ("-,Rect,Some", 'E'),
@@ -25237,7 +26521,7 @@ mod holders {
     fn holder4401() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|A1_NN|E2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: A1NN, m2: E2NN| Holder4401 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: A1NN, m2: E2NN| Holder4401Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -25273,7 +26557,7 @@ mod holders {
     fn holder4409() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|A1_NN|P2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: A1NN, m2: P2S| Holder4409 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: A1NN, m2: P2S| Holder4409Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -25291,7 +26575,7 @@ mod holders {
     fn holder4417() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|A1_SS|FP2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: A1SS, m2: FP2NN| Holder4417 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: A1SS, m2: FP2NN| Holder4417Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -25309,7 +26593,7 @@ mod holders {
     fn holder4425() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|E1_NN|A2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: E1NN, m2: A2NN| Holder4425 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: A2NN| Holder4425Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -25345,7 +26629,7 @@ mod holders {
     fn holder4433() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|E1_NN|O2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: E1NN, m2: Option<OI2S>| Holder4433 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1NN, m2: Option<OI2S>| Holder4433Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -25372,7 +26656,7 @@ mod holders {
     fn holder4441() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|E1_SS|E2_SSnonstrict",
-            &rows3(|m0: FT0NNN, m1: E1SS, m2: E2SS| Holder4441 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: E2SS| Holder4441Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -25408,7 +26692,7 @@ mod holders {
     fn holder4449() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|E1_SS|T2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: E1SS, m2: T2NN| Holder4449 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: E1SS, m2: T2NN| Holder4449Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -25444,7 +26728,7 @@ mod holders {
     fn holder4457() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|FO1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: FT0NNN, m1: FO1NN, m2: FT2NNN| Holder4457 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FO1NN, m2: FT2NNN| Holder4457Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -25462,7 +26746,7 @@ mod holders {
     fn holder4465() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|FP1_NN|A2_SSnonstrict",
-            &rows3(|m0: FT0NNN, m1: FP1NN, m2: A2SS| Holder4465 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: A2SS| Holder4465Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -25480,7 +26764,7 @@ mod holders {
     fn holder4473() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|FP1_NN|P2_Nnonstrict",
-            &rows3(|m0: FT0NNN, m1: FP1NN, m2: P2N| Holder4473 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FP1NN, m2: P2N| Holder4473Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -25488,7 +26772,7 @@ mod holders {
     fn holder4481() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|FT1_NNN|FO2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: FO2NN| Holder4481 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: FO2NN| Holder4481Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -25506,7 +26790,7 @@ mod holders {
     fn holder4489() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|FT1_NNN|V2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: V2NN| Holder4489 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: FT1NNN, m2: V2NN| Holder4489Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Rect", 'E'),
                 ("Dot,Dot,Wrap", 'E'),
@@ -25534,7 +26818,12 @@ mod holders {
         check(
             "main3:H3N1:FT0_NNN|O1_N|O2_Nnonstrict",
             &rows3(
-                |m0: FT0NNN, m1: Option<OI1N>, m2: Option<OI2N>| Holder4497 { own: 7, m0, m1, m2 },
+                |m0: FT0NNN, m1: Option<OI1N>, m2: Option<OI2N>| Holder4497Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
             ),
             &[
                 ("Dot,None,None", 'E'),
@@ -25556,7 +26845,7 @@ mod holders {
     fn holder4505() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|O1_S|E2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: E2NN| Holder4505 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: E2NN| Holder4505Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -25583,7 +26872,7 @@ mod holders {
     fn holder4513() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|O1_S|P2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: P2S| Holder4513 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: Option<OI1S>, m2: P2S| Holder4513Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -25598,7 +26887,7 @@ mod holders {
     fn holder4521() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|P1_N|FP2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: P1N, m2: FP2NN| Holder4521 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: P1N, m2: FP2NN| Holder4521Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -25606,7 +26895,7 @@ mod holders {
     fn holder4529() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|P1_S|A2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: P1S, m2: A2NN| Holder4529 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: P1S, m2: A2NN| Holder4529Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -25624,7 +26913,7 @@ mod holders {
     fn holder4537() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|P1_S|O2_Snonstrict",
-            &rows3(|m0: FT0NNN, m1: P1S, m2: Option<OI2S>| Holder4537 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: P1S, m2: Option<OI2S>| Holder4537Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -25639,7 +26928,7 @@ mod holders {
     fn holder4545() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|T1_NN|E2_SSnonstrict",
-            &rows3(|m0: FT0NNN, m1: T1NN, m2: E2SS| Holder4545 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: E2SS| Holder4545Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -25675,7 +26964,7 @@ mod holders {
     fn holder4553() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|T1_NN|T2_NNnonstrict",
-            &rows3(|m0: FT0NNN, m1: T1NN, m2: T2NN| Holder4553 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: T1NN, m2: T2NN| Holder4553Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -25711,7 +27000,7 @@ mod holders {
     fn holder4561() -> Vec<String> {
         check(
             "main3:H3N1:FT0_NNN|V1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: FT0NNN, m1: V1NN, m2: FT2NNN| Holder4561 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: FT0NNN, m1: V1NN, m2: FT2NNN| Holder4561Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -25738,7 +27027,7 @@ mod holders {
     fn holder4569() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|A1_NN|A2_SS nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: A2SS| Holder4569 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: A2SS| Holder4569Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -25765,12 +27054,14 @@ mod holders {
     fn holder4577() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|A1_NN|O2_N nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: Option<OI2N>| Holder4577 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: A1NN, m2: Option<OI2N>| Holder4577Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,Dot,None", 'E'),
                 ("None,Dot,Some", 'E'),
@@ -25791,7 +27082,7 @@ mod holders {
     fn holder4585() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|A1_SS|A2_NN nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: A2NN| Holder4585 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: A2NN| Holder4585Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -25818,7 +27109,7 @@ mod holders {
     fn holder4593() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|A1_SS|FT2_NNNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: FT2NNN| Holder4593 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: FT2NNN| Holder4593Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -25845,7 +27136,7 @@ mod holders {
     fn holder4601() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|A1_SS|V2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: V2SS| Holder4601 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: V2SS| Holder4601Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'R'),
                 ("None,Dot,Wrap", 'R'),
@@ -25866,7 +27157,7 @@ mod holders {
     fn holder4609() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|E1_NN|FP2_SS",
-            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: FP2SS| Holder4609 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: FP2SS| Holder4609Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'R'),
                 ("None,Rect,-", 'R'),
@@ -25881,7 +27172,7 @@ mod holders {
     fn holder4617() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|E1_NN|V2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: V2NN| Holder4617 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: V2NN| Holder4617Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'E'),
                 ("None,Dot,Wrap", 'E'),
@@ -25902,7 +27193,7 @@ mod holders {
     fn holder4625() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|E1_SS|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: FP2NN| Holder4625 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: FP2NN| Holder4625Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -25917,7 +27208,7 @@ mod holders {
     fn holder4633() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|E1_SS|T2_SS",
-            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: T2SS| Holder4633 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: T2SS| Holder4633Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -25944,7 +27235,7 @@ mod holders {
     fn holder4641() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|FO1_NN|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: FP2NN| Holder4641 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FO1NN, m2: FP2NN| Holder4641Draft { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -25952,7 +27243,7 @@ mod holders {
     fn holder4649() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|FP1_NN|A2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: A2NN| Holder4649 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: A2NN| Holder4649Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -25967,12 +27258,14 @@ mod holders {
     fn holder4657() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|FP1_NN|O2_Snonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FP1NN, m2: Option<OI2S>| Holder4657 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: FP1NN, m2: Option<OI2S>| Holder4657Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,-,None", 'E'),
                 ("None,-,Some", 'E'),
@@ -25985,7 +27278,7 @@ mod holders {
     fn holder4665() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|FT1_NNN|E2_SSnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: E2SS| Holder4665 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: E2SS| Holder4665Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26012,7 +27305,7 @@ mod holders {
     fn holder4673() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|FT1_NNN|T2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: T2NN| Holder4673 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: FT1NNN, m2: T2NN| Holder4673Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26039,12 +27332,14 @@ mod holders {
     fn holder4681() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|O1_N|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: FP2NN| Holder4681 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1N>, m2: FP2NN| Holder4681Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,-", 'E'),
                 ("None,Some,-", 'E'),
@@ -26057,12 +27352,14 @@ mod holders {
     fn holder4689() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|O1_N|T2_SS",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: T2SS| Holder4689 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1N>, m2: T2SS| Holder4689Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -26083,12 +27380,14 @@ mod holders {
     fn holder4697() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|O1_S|FO2_SS",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: FO2SS| Holder4697 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1S>, m2: FO2SS| Holder4697Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,-", 'R'),
                 ("None,Some,-", 'R'),
@@ -26101,12 +27400,14 @@ mod holders {
     fn holder4705() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|O1_S|T2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: T2NN| Holder4705 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1S>, m2: T2NN| Holder4705Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'E'),
                 ("None,None,Rect", 'E'),
@@ -26127,7 +27428,7 @@ mod holders {
     fn holder4713() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|P1_N|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1N, m2: FO2NN| Holder4713 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: FO2NN| Holder4713Draft { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -26135,7 +27436,7 @@ mod holders {
     fn holder4721() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|P1_N|P2_S nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1N, m2: P2S| Holder4721 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: P2S| Holder4721Draft { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -26143,7 +27444,7 @@ mod holders {
     fn holder4729() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|P1_S|E2_SS nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder4729 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder4729Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -26158,7 +27459,7 @@ mod holders {
     fn holder4737() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|P1_S|P2_N nonstrict",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: P2N| Holder4737 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: P2N| Holder4737Draft { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -26166,7 +27467,7 @@ mod holders {
     fn holder4745() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|T1_NN|E2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: E2NN| Holder4745 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: E2NN| Holder4745Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26193,7 +27494,7 @@ mod holders {
     fn holder4753() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|T1_NN|P2_Snonstrict",
-            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: P2S| Holder4753 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: T1NN, m2: P2S| Holder4753Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -26208,7 +27509,7 @@ mod holders {
     fn holder4761() -> Vec<String> {
         check(
             "main3:H3N1:O0_N|V1_NN|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: FP2NN| Holder4761 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: V1NN, m2: FP2NN| Holder4761Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Rect,-", 'E'),
                 ("None,Wrap,-", 'E'),
@@ -26221,7 +27522,7 @@ mod holders {
     fn holder4769() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|A1_NN|A2_NN nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: A2NN| Holder4769 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: A2NN| Holder4769Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26248,7 +27549,7 @@ mod holders {
     fn holder4777() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|A1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: FT2NNN| Holder4777 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: FT2NNN| Holder4777Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26275,7 +27576,7 @@ mod holders {
     fn holder4785() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|A1_NN|V2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: V2SS| Holder4785 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: V2SS| Holder4785Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'R'),
                 ("None,Dot,Wrap", 'R'),
@@ -26296,7 +27597,7 @@ mod holders {
     fn holder4793() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|A1_SS|FP2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: FP2SS| Holder4793 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: FP2SS| Holder4793Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'R'),
                 ("None,Rect,-", 'R'),
@@ -26311,7 +27612,7 @@ mod holders {
     fn holder4801() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|A1_SS|V2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: V2NN| Holder4801 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: V2NN| Holder4801Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Rect", 'E'),
                 ("None,Dot,Wrap", 'E'),
@@ -26332,7 +27633,7 @@ mod holders {
     fn holder4809() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|E1_NN|FP2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: FP2NN| Holder4809 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: FP2NN| Holder4809Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -26347,7 +27648,7 @@ mod holders {
     fn holder4817() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|E1_NN|T2_SS",
-            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: T2SS| Holder4817 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: T2SS| Holder4817Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -26374,7 +27675,7 @@ mod holders {
     fn holder4825() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|E1_SS|FO2_SS",
-            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: FO2SS| Holder4825 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: FO2SS| Holder4825Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'R'),
                 ("None,Rect,-", 'R'),
@@ -26389,7 +27690,7 @@ mod holders {
     fn holder4833() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|E1_SS|T2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: T2NN| Holder4833 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: T2NN| Holder4833Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26416,7 +27717,7 @@ mod holders {
     fn holder4841() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|FO1_NN|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: FO2NN| Holder4841 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: FO2NN| Holder4841Draft { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -26424,7 +27725,7 @@ mod holders {
     fn holder4849() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|FO1_NN|V2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: V2NN| Holder4849 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FO1NN, m2: V2NN| Holder4849Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Rect", 'E'),
                 ("None,-,Wrap", 'E'),
@@ -26437,12 +27738,14 @@ mod holders {
     fn holder4857() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|FP1_NN|O2_Nnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FP1NN, m2: Option<OI2N>| Holder4857 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0S>, m1: FP1NN, m2: Option<OI2N>| Holder4857Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,-,None", 'E'),
                 ("None,-,Some", 'E'),
@@ -26455,7 +27758,7 @@ mod holders {
     fn holder4865() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|FT1_NNN|E2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: E2NN| Holder4865 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: E2NN| Holder4865Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26482,7 +27785,7 @@ mod holders {
     fn holder4873() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|FT1_NNN|P2_Snonstrict",
-            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: P2S| Holder4873 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: FT1NNN, m2: P2S| Holder4873Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -26497,12 +27800,14 @@ mod holders {
     fn holder4881() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|O1_N|FO2_SS",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: FO2SS| Holder4881 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1N>, m2: FO2SS| Holder4881Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,-", 'R'),
                 ("None,Some,-", 'R'),
@@ -26515,12 +27820,14 @@ mod holders {
     fn holder4889() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|O1_N|T2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: T2NN| Holder4889 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1N>, m2: T2NN| Holder4889Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'E'),
                 ("None,None,Rect", 'E'),
@@ -26541,12 +27848,14 @@ mod holders {
     fn holder4897() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|O1_S|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: FO2NN| Holder4897 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1S>, m2: FO2NN| Holder4897Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,-", 'E'),
                 ("None,Some,-", 'E'),
@@ -26559,7 +27868,14 @@ mod holders {
     fn holder4905() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|O1_S|P2_S nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: P2S| Holder4905 { own: 7, m0, m1, m2 }),
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1S>, m2: P2S| Holder4905Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,-", 'E'),
                 ("None,Some,-", 'E'),
@@ -26572,7 +27888,7 @@ mod holders {
     fn holder4913() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|P1_N|E2_SS nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder4913 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder4913Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -26587,7 +27903,7 @@ mod holders {
     fn holder4921() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|P1_N|P2_N nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: P2N| Holder4921 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: P2N| Holder4921Draft { own: 7, m0, m1, m2 }),
             &[("None,-,-", 'E'), ("Some,-,-", 'E')],
         )
     }
@@ -26595,7 +27911,7 @@ mod holders {
     fn holder4929() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|P1_S|E2_NN nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2NN| Holder4929 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2NN| Holder4929Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'E'),
                 ("None,-,Rect", 'E'),
@@ -26610,7 +27926,14 @@ mod holders {
     fn holder4937() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|P1_S|O2_S nonstrict",
-            &rows3(|m0: Option<OI0S>, m1: P1S, m2: Option<OI2S>| Holder4937 { own: 7, m0, m1, m2 }),
+            &rows3(
+                |m0: Option<OI0S>, m1: P1S, m2: Option<OI2S>| Holder4937Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,-,None", 'E'),
                 ("None,-,Some", 'E'),
@@ -26623,7 +27946,7 @@ mod holders {
     fn holder4945() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|T1_NN|A2_SSnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: A2SS| Holder4945 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: A2SS| Holder4945Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'E'),
                 ("None,Dot,Rect", 'E'),
@@ -26650,7 +27973,7 @@ mod holders {
     fn holder4953() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|T1_NN|P2_Nnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: P2N| Holder4953 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: T1NN, m2: P2N| Holder4953Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,-", 'E'),
                 ("None,Rect,-", 'E'),
@@ -26665,7 +27988,7 @@ mod holders {
     fn holder4961() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|V1_NN|FO2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: FO2NN| Holder4961 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: FO2NN| Holder4961Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Rect,-", 'E'),
                 ("None,Wrap,-", 'E'),
@@ -26678,7 +28001,7 @@ mod holders {
     fn holder4969() -> Vec<String> {
         check(
             "main3:H3N1:O0_S|V1_NN|V2_NNnonstrict",
-            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: V2NN| Holder4969 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: V1NN, m2: V2NN| Holder4969Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Rect,Rect", 'E'),
                 ("None,Rect,Wrap", 'E'),
@@ -26695,7 +28018,7 @@ mod holders {
     fn holder4977() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|A1_NN|FP2_SS",
-            &rows3(|m0: P0N, m1: A1NN, m2: FP2SS| Holder4977 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1NN, m2: FP2SS| Holder4977Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
         )
     }
@@ -26703,7 +28026,7 @@ mod holders {
     fn holder4985() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|A1_NN|V2_NNnonstrict",
-            &rows3(|m0: P0N, m1: A1NN, m2: V2NN| Holder4985 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1NN, m2: V2NN| Holder4985Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Rect", 'E'),
                 ("-,Dot,Wrap", 'E'),
@@ -26718,7 +28041,7 @@ mod holders {
     fn holder4993() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|A1_SS|FP2_NNnonstrict",
-            &rows3(|m0: P0N, m1: A1SS, m2: FP2NN| Holder4993 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1SS, m2: FP2NN| Holder4993Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -26726,7 +28049,7 @@ mod holders {
     fn holder5001() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|A1_SS|T2_SS",
-            &rows3(|m0: P0N, m1: A1SS, m2: T2SS| Holder5001 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1SS, m2: T2SS| Holder5001Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -26744,7 +28067,7 @@ mod holders {
     fn holder5009() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|E1_NN|FO2_SS",
-            &rows3(|m0: P0N, m1: E1NN, m2: FO2SS| Holder5009 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1NN, m2: FO2SS| Holder5009Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
         )
     }
@@ -26752,7 +28075,7 @@ mod holders {
     fn holder5017() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|E1_NN|T2_NNnonstrict",
-            &rows3(|m0: P0N, m1: E1NN, m2: T2NN| Holder5017 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1NN, m2: T2NN| Holder5017Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -26770,7 +28093,7 @@ mod holders {
     fn holder5025() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|E1_SS|FO2_NNnonstrict",
-            &rows3(|m0: P0N, m1: E1SS, m2: FO2NN| Holder5025 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1SS, m2: FO2NN| Holder5025Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -26778,7 +28101,7 @@ mod holders {
     fn holder5033() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|E1_SS|P2_S nonstrict",
-            &rows3(|m0: P0N, m1: E1SS, m2: P2S| Holder5033 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1SS, m2: P2S| Holder5033Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -26786,7 +28109,7 @@ mod holders {
     fn holder5041() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|FO1_NN|E2_SSnonstrict",
-            &rows3(|m0: P0N, m1: FO1NN, m2: E2SS| Holder5041 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FO1NN, m2: E2SS| Holder5041Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -26794,7 +28117,7 @@ mod holders {
     fn holder5049() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|FO1_NN|T2_NNnonstrict",
-            &rows3(|m0: P0N, m1: FO1NN, m2: T2NN| Holder5049 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FO1NN, m2: T2NN| Holder5049Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -26802,7 +28125,7 @@ mod holders {
     fn holder5057() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|FP1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: P0N, m1: FP1NN, m2: FT2NNN| Holder5057 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FP1NN, m2: FT2NNN| Holder5057Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -26810,7 +28133,7 @@ mod holders {
     fn holder5065() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|FT1_NNN|A2_SSnonstrict",
-            &rows3(|m0: P0N, m1: FT1NNN, m2: A2SS| Holder5065 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FT1NNN, m2: A2SS| Holder5065Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -26828,7 +28151,7 @@ mod holders {
     fn holder5073() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|FT1_NNN|P2_Nnonstrict",
-            &rows3(|m0: P0N, m1: FT1NNN, m2: P2N| Holder5073 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: FT1NNN, m2: P2N| Holder5073Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -26836,7 +28159,7 @@ mod holders {
     fn holder5081() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|O1_N|FO2_NNnonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1N>, m2: FO2NN| Holder5081 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: FO2NN| Holder5081Draft { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -26844,7 +28167,7 @@ mod holders {
     fn holder5089() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|O1_N|P2_S nonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1N>, m2: P2S| Holder5089 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: P2S| Holder5089Draft { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -26852,7 +28175,7 @@ mod holders {
     fn holder5097() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|O1_S|E2_SS nonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder5097 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder5097Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -26867,7 +28190,7 @@ mod holders {
     fn holder5105() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|O1_S|P2_N nonstrict",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: P2N| Holder5105 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: P2N| Holder5105Draft { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -26875,7 +28198,7 @@ mod holders {
     fn holder5113() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|P1_N|E2_NN nonstrict",
-            &rows3(|m0: P0N, m1: P1N, m2: E2NN| Holder5113 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1N, m2: E2NN| Holder5113Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -26883,7 +28206,7 @@ mod holders {
     fn holder5121() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|P1_N|O2_S nonstrict",
-            &rows3(|m0: P0N, m1: P1N, m2: Option<OI2S>| Holder5121 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1N, m2: Option<OI2S>| Holder5121Draft { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -26891,7 +28214,7 @@ mod holders {
     fn holder5129() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|P1_S|A2_SS nonstrict",
-            &rows3(|m0: P0N, m1: P1S, m2: A2SS| Holder5129 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1S, m2: A2SS| Holder5129Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -26899,7 +28222,7 @@ mod holders {
     fn holder5137() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|P1_S|O2_N nonstrict",
-            &rows3(|m0: P0N, m1: P1S, m2: Option<OI2N>| Holder5137 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1S, m2: Option<OI2N>| Holder5137Draft { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -26907,7 +28230,7 @@ mod holders {
     fn holder5145() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|T1_NN|A2_NNnonstrict",
-            &rows3(|m0: P0N, m1: T1NN, m2: A2NN| Holder5145 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: T1NN, m2: A2NN| Holder5145Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -26925,7 +28248,7 @@ mod holders {
     fn holder5153() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|T1_NN|O2_Snonstrict",
-            &rows3(|m0: P0N, m1: T1NN, m2: Option<OI2S>| Holder5153 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: T1NN, m2: Option<OI2S>| Holder5153Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -26940,7 +28263,7 @@ mod holders {
     fn holder5161() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|V1_NN|E2_SSnonstrict",
-            &rows3(|m0: P0N, m1: V1NN, m2: E2SS| Holder5161 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: V1NN, m2: E2SS| Holder5161Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
                 ("-,Rect,Rect", 'E'),
@@ -26955,7 +28278,7 @@ mod holders {
     fn holder5169() -> Vec<String> {
         check(
             "main3:H3N1:P0_N|V1_NN|T2_NNnonstrict",
-            &rows3(|m0: P0N, m1: V1NN, m2: T2NN| Holder5169 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: V1NN, m2: T2NN| Holder5169Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
                 ("-,Rect,Rect", 'E'),
@@ -26970,7 +28293,7 @@ mod holders {
     fn holder5177() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|A1_NN|FP2_NNnonstrict",
-            &rows3(|m0: P0S, m1: A1NN, m2: FP2NN| Holder5177 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1NN, m2: FP2NN| Holder5177Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -26978,7 +28301,7 @@ mod holders {
     fn holder5185() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|A1_NN|T2_SS",
-            &rows3(|m0: P0S, m1: A1NN, m2: T2SS| Holder5185 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1NN, m2: T2SS| Holder5185Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -26996,7 +28319,7 @@ mod holders {
     fn holder5193() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|A1_SS|FO2_SS",
-            &rows3(|m0: P0S, m1: A1SS, m2: FO2SS| Holder5193 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1SS, m2: FO2SS| Holder5193Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'R'), ("-,Rect,-", 'R'), ("-,Wrap,-", 'R')],
         )
     }
@@ -27004,7 +28327,7 @@ mod holders {
     fn holder5201() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|A1_SS|T2_NNnonstrict",
-            &rows3(|m0: P0S, m1: A1SS, m2: T2NN| Holder5201 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1SS, m2: T2NN| Holder5201Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -27022,7 +28345,7 @@ mod holders {
     fn holder5209() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|E1_NN|FO2_NNnonstrict",
-            &rows3(|m0: P0S, m1: E1NN, m2: FO2NN| Holder5209 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1NN, m2: FO2NN| Holder5209Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -27030,7 +28353,7 @@ mod holders {
     fn holder5217() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|E1_NN|P2_S nonstrict",
-            &rows3(|m0: P0S, m1: E1NN, m2: P2S| Holder5217 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1NN, m2: P2S| Holder5217Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -27038,7 +28361,7 @@ mod holders {
     fn holder5225() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|E1_SS|E2_SS nonstrict",
-            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder5225 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder5225Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -27056,7 +28379,7 @@ mod holders {
     fn holder5233() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|E1_SS|P2_N nonstrict",
-            &rows3(|m0: P0S, m1: E1SS, m2: P2N| Holder5233 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: P2N| Holder5233Draft { own: 7, m0, m1, m2 }),
             &[("-,Dot,-", 'E'), ("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -27064,7 +28387,7 @@ mod holders {
     fn holder5241() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|FO1_NN|E2_NNnonstrict",
-            &rows3(|m0: P0S, m1: FO1NN, m2: E2NN| Holder5241 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FO1NN, m2: E2NN| Holder5241Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -27072,7 +28395,7 @@ mod holders {
     fn holder5249() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|FO1_NN|P2_Snonstrict",
-            &rows3(|m0: P0S, m1: FO1NN, m2: P2S| Holder5249 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FO1NN, m2: P2S| Holder5249Draft { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -27080,7 +28403,7 @@ mod holders {
     fn holder5257() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|FP1_NN|FP2_NNnonstrict",
-            &rows3(|m0: P0S, m1: FP1NN, m2: FP2NN| Holder5257 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FP1NN, m2: FP2NN| Holder5257Draft { own: 7, m0, m1, m2 }),
             &[("-,-,-", 'E')],
         )
     }
@@ -27088,7 +28411,7 @@ mod holders {
     fn holder5265() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|FT1_NNN|A2_NNnonstrict",
-            &rows3(|m0: P0S, m1: FT1NNN, m2: A2NN| Holder5265 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FT1NNN, m2: A2NN| Holder5265Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'E'),
                 ("-,Dot,Rect", 'E'),
@@ -27106,7 +28429,7 @@ mod holders {
     fn holder5273() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|FT1_NNN|O2_Snonstrict",
-            &rows3(|m0: P0S, m1: FT1NNN, m2: Option<OI2S>| Holder5273 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: FT1NNN, m2: Option<OI2S>| Holder5273Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -27121,7 +28444,7 @@ mod holders {
     fn holder5281() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|O1_N|E2_SS nonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder5281 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder5281Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -27136,7 +28459,7 @@ mod holders {
     fn holder5289() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|O1_N|P2_N nonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: P2N| Holder5289 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: P2N| Holder5289Draft { own: 7, m0, m1, m2 }),
             &[("-,None,-", 'E'), ("-,Some,-", 'E')],
         )
     }
@@ -27144,7 +28467,7 @@ mod holders {
     fn holder5297() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|O1_S|E2_NN nonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2NN| Holder5297 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2NN| Holder5297Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'E'),
                 ("-,None,Rect", 'E'),
@@ -27159,7 +28482,14 @@ mod holders {
     fn holder5305() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|O1_S|O2_S nonstrict",
-            &rows3(|m0: P0S, m1: Option<OI1S>, m2: Option<OI2S>| Holder5305 { own: 7, m0, m1, m2 }),
+            &rows3(
+                |m0: P0S, m1: Option<OI1S>, m2: Option<OI2S>| Holder5305Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("-,None,None", 'E'),
                 ("-,None,Some", 'E'),
@@ -27172,7 +28502,7 @@ mod holders {
     fn holder5313() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|P1_N|A2_SS nonstrict",
-            &rows3(|m0: P0S, m1: P1N, m2: A2SS| Holder5313 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1N, m2: A2SS| Holder5313Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -27180,7 +28510,7 @@ mod holders {
     fn holder5321() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|P1_N|O2_N nonstrict",
-            &rows3(|m0: P0S, m1: P1N, m2: Option<OI2N>| Holder5321 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1N, m2: Option<OI2N>| Holder5321Draft { own: 7, m0, m1, m2 }),
             &[("-,-,None", 'E'), ("-,-,Some", 'E')],
         )
     }
@@ -27188,7 +28518,7 @@ mod holders {
     fn holder5329() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|P1_S|A2_NN nonstrict",
-            &rows3(|m0: P0S, m1: P1S, m2: A2NN| Holder5329 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: A2NN| Holder5329Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -27196,7 +28526,7 @@ mod holders {
     fn holder5337() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|P1_S|FT2_NNNnonstrict",
-            &rows3(|m0: P0S, m1: P1S, m2: FT2NNN| Holder5337 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: FT2NNN| Holder5337Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'E'), ("-,-,Rect", 'E'), ("-,-,Wrap", 'E')],
         )
     }
@@ -27204,7 +28534,7 @@ mod holders {
     fn holder5345() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|P1_S|V2_SS",
-            &rows3(|m0: P0S, m1: P1S, m2: V2SS| Holder5345 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: V2SS| Holder5345Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -27212,7 +28542,7 @@ mod holders {
     fn holder5353() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|T1_NN|O2_Nnonstrict",
-            &rows3(|m0: P0S, m1: T1NN, m2: Option<OI2N>| Holder5353 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: T1NN, m2: Option<OI2N>| Holder5353Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,None", 'E'),
                 ("-,Dot,Some", 'E'),
@@ -27227,7 +28557,7 @@ mod holders {
     fn holder5361() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|V1_NN|E2_NNnonstrict",
-            &rows3(|m0: P0S, m1: V1NN, m2: E2NN| Holder5361 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: V1NN, m2: E2NN| Holder5361Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Rect,Dot", 'E'),
                 ("-,Rect,Rect", 'E'),
@@ -27242,7 +28572,7 @@ mod holders {
     fn holder5369() -> Vec<String> {
         check(
             "main3:H3N1:P0_S|V1_NN|P2_Snonstrict",
-            &rows3(|m0: P0S, m1: V1NN, m2: P2S| Holder5369 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: V1NN, m2: P2S| Holder5369Draft { own: 7, m0, m1, m2 }),
             &[("-,Rect,-", 'E'), ("-,Wrap,-", 'E')],
         )
     }
@@ -27250,7 +28580,7 @@ mod holders {
     fn holder5377() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|A1_NN|FP2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: A1NN, m2: FP2NN| Holder5377 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: A1NN, m2: FP2NN| Holder5377Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,-", 'E'),
                 ("Dot,Rect,-", 'E'),
@@ -27268,7 +28598,7 @@ mod holders {
     fn holder5385() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|A1_SS|A2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: A1SS, m2: A2NN| Holder5385 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: A1SS, m2: A2NN| Holder5385Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -27304,7 +28634,7 @@ mod holders {
     fn holder5393() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|A1_SS|O2_Snonstrict",
-            &rows3(|m0: T0NN, m1: A1SS, m2: Option<OI2S>| Holder5393 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: A1SS, m2: Option<OI2S>| Holder5393Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -27331,7 +28661,7 @@ mod holders {
     fn holder5401() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|E1_NN|E2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: E1NN, m2: E2SS| Holder5401 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1NN, m2: E2SS| Holder5401Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -27367,7 +28697,7 @@ mod holders {
     fn holder5409() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|E1_NN|T2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: E1NN, m2: T2NN| Holder5409 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1NN, m2: T2NN| Holder5409Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -27403,7 +28733,7 @@ mod holders {
     fn holder5417() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|E1_SS|FT2_NNNnonstrict",
-            &rows3(|m0: T0NN, m1: E1SS, m2: FT2NNN| Holder5417 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: E1SS, m2: FT2NNN| Holder5417Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -27439,7 +28769,7 @@ mod holders {
     fn holder5425() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|FO1_NN|A2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: FO1NN, m2: A2SS| Holder5425 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FO1NN, m2: A2SS| Holder5425Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -27457,7 +28787,7 @@ mod holders {
     fn holder5433() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|FO1_NN|P2_Nnonstrict",
-            &rows3(|m0: T0NN, m1: FO1NN, m2: P2N| Holder5433 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FO1NN, m2: P2N| Holder5433Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -27465,7 +28795,7 @@ mod holders {
     fn holder5441() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|FP1_NN|FO2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: FP1NN, m2: FO2NN| Holder5441 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FP1NN, m2: FO2NN| Holder5441Draft { own: 7, m0, m1, m2 }),
             &[("Dot,-,-", 'E'), ("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -27473,7 +28803,7 @@ mod holders {
     fn holder5449() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|FP1_NN|V2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: FP1NN, m2: V2NN| Holder5449 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FP1NN, m2: V2NN| Holder5449Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Rect", 'E'),
                 ("Dot,-,Wrap", 'E'),
@@ -27488,7 +28818,7 @@ mod holders {
     fn holder5457() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|FT1_NNN|O2_Nnonstrict",
-            &rows3(|m0: T0NN, m1: FT1NNN, m2: Option<OI2N>| Holder5457 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: FT1NNN, m2: Option<OI2N>| Holder5457Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,None", 'E'),
                 ("Dot,Dot,Some", 'E'),
@@ -27515,7 +28845,7 @@ mod holders {
     fn holder5465() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|O1_N|E2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: E2NN| Holder5465 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: E2NN| Holder5465Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'E'),
                 ("Dot,None,Rect", 'E'),
@@ -27542,7 +28872,7 @@ mod holders {
     fn holder5473() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|O1_N|P2_Snonstrict",
-            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: P2S| Holder5473 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: Option<OI1N>, m2: P2S| Holder5473Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -27557,7 +28887,7 @@ mod holders {
     fn holder5481() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|O1_S|FP2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: FP2NN| Holder5481 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: Option<OI1S>, m2: FP2NN| Holder5481Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,-", 'E'),
                 ("Dot,Some,-", 'E'),
@@ -27572,7 +28902,7 @@ mod holders {
     fn holder5489() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|P1_N|A2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: P1N, m2: A2NN| Holder5489 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1N, m2: A2NN| Holder5489Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -27590,7 +28920,7 @@ mod holders {
     fn holder5497() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|P1_N|O2_Snonstrict",
-            &rows3(|m0: T0NN, m1: P1N, m2: Option<OI2S>| Holder5497 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1N, m2: Option<OI2S>| Holder5497Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,None", 'E'),
                 ("Dot,-,Some", 'E'),
@@ -27605,7 +28935,7 @@ mod holders {
     fn holder5505() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|P1_S|E2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: P1S, m2: E2SS| Holder5505 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1S, m2: E2SS| Holder5505Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -27623,7 +28953,7 @@ mod holders {
     fn holder5513() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|P1_S|T2_NNnonstrict",
-            &rows3(|m0: T0NN, m1: P1S, m2: T2NN| Holder5513 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: P1S, m2: T2NN| Holder5513Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'E'),
                 ("Dot,-,Rect", 'E'),
@@ -27641,7 +28971,7 @@ mod holders {
     fn holder5521() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|T1_NN|FT2_NNNnonstrict",
-            &rows3(|m0: T0NN, m1: T1NN, m2: FT2NNN| Holder5521 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: T1NN, m2: FT2NNN| Holder5521Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'E'),
                 ("Dot,Dot,Rect", 'E'),
@@ -27677,7 +29007,7 @@ mod holders {
     fn holder5529() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|V1_NN|A2_SSnonstrict",
-            &rows3(|m0: T0NN, m1: V1NN, m2: A2SS| Holder5529 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: V1NN, m2: A2SS| Holder5529Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,Dot", 'E'),
                 ("Dot,Rect,Rect", 'E'),
@@ -27704,7 +29034,7 @@ mod holders {
     fn holder5537() -> Vec<String> {
         check(
             "main3:H3N1:T0_NN|V1_NN|P2_Nnonstrict",
-            &rows3(|m0: T0NN, m1: V1NN, m2: P2N| Holder5537 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: T0NN, m1: V1NN, m2: P2N| Holder5537Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Rect,-", 'E'),
                 ("Dot,Wrap,-", 'E'),
@@ -27719,7 +29049,7 @@ mod holders {
     fn holder5545() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|A1_NN|FO2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: A1NN, m2: FO2NN| Holder5545 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1NN, m2: FO2NN| Holder5545Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -27734,7 +29064,7 @@ mod holders {
     fn holder5553() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|A1_NN|V2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: A1NN, m2: V2NN| Holder5553 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1NN, m2: V2NN| Holder5553Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Rect", 'E'),
                 ("Rect,Dot,Wrap", 'E'),
@@ -27755,7 +29085,7 @@ mod holders {
     fn holder5561() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|A1_SS|O2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: A1SS, m2: Option<OI2N>| Holder5561 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: A1SS, m2: Option<OI2N>| Holder5561Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,None", 'E'),
                 ("Rect,Dot,Some", 'E'),
@@ -27776,7 +29106,7 @@ mod holders {
     fn holder5569() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|E1_NN|E2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: E1NN, m2: E2NN| Holder5569 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: E1NN, m2: E2NN| Holder5569Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -27803,7 +29133,7 @@ mod holders {
     fn holder5577() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|E1_NN|P2_Snonstrict",
-            &rows3(|m0: V0NN, m1: E1NN, m2: P2S| Holder5577 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: E1NN, m2: P2S| Holder5577Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -27818,7 +29148,7 @@ mod holders {
     fn holder5585() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|E1_SS|FP2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: E1SS, m2: FP2NN| Holder5585 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: E1SS, m2: FP2NN| Holder5585Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -27833,7 +29163,7 @@ mod holders {
     fn holder5593() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|FO1_NN|A2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: FO1NN, m2: A2NN| Holder5593 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FO1NN, m2: A2NN| Holder5593Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
                 ("Rect,-,Rect", 'E'),
@@ -27848,7 +29178,7 @@ mod holders {
     fn holder5601() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|FO1_NN|O2_Snonstrict",
-            &rows3(|m0: V0NN, m1: FO1NN, m2: Option<OI2S>| Holder5601 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FO1NN, m2: Option<OI2S>| Holder5601Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,None", 'E'),
                 ("Rect,-,Some", 'E'),
@@ -27861,7 +29191,7 @@ mod holders {
     fn holder5609() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|FP1_NN|E2_SSnonstrict",
-            &rows3(|m0: V0NN, m1: FP1NN, m2: E2SS| Holder5609 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FP1NN, m2: E2SS| Holder5609Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
                 ("Rect,-,Rect", 'E'),
@@ -27876,7 +29206,7 @@ mod holders {
     fn holder5617() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|FP1_NN|T2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: FP1NN, m2: T2NN| Holder5617 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FP1NN, m2: T2NN| Holder5617Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
                 ("Rect,-,Rect", 'E'),
@@ -27891,7 +29221,7 @@ mod holders {
     fn holder5625() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|FT1_NNN|FT2_NNNnonstrict",
-            &rows3(|m0: V0NN, m1: FT1NNN, m2: FT2NNN| Holder5625 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: FT1NNN, m2: FT2NNN| Holder5625Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,Dot", 'E'),
                 ("Rect,Dot,Rect", 'E'),
@@ -27918,7 +29248,7 @@ mod holders {
     fn holder5633() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|O1_N|A2_SSnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: A2SS| Holder5633 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: A2SS| Holder5633Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,None,Dot", 'E'),
                 ("Rect,None,Rect", 'E'),
@@ -27939,7 +29269,7 @@ mod holders {
     fn holder5641() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|O1_N|P2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: P2N| Holder5641 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1N>, m2: P2N| Holder5641Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,None,-", 'E'),
                 ("Rect,Some,-", 'E'),
@@ -27952,7 +29282,7 @@ mod holders {
     fn holder5649() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|O1_S|FO2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: FO2NN| Holder5649 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: FO2NN| Holder5649Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,None,-", 'E'),
                 ("Rect,Some,-", 'E'),
@@ -27965,7 +29295,7 @@ mod holders {
     fn holder5657() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|O1_S|V2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: V2NN| Holder5657 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: Option<OI1S>, m2: V2NN| Holder5657Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,None,Rect", 'E'),
                 ("Rect,None,Wrap", 'E'),
@@ -27982,7 +29312,7 @@ mod holders {
     fn holder5665() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|P1_N|O2_Nnonstrict",
-            &rows3(|m0: V0NN, m1: P1N, m2: Option<OI2N>| Holder5665 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: P1N, m2: Option<OI2N>| Holder5665Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,None", 'E'),
                 ("Rect,-,Some", 'E'),
@@ -27995,7 +29325,7 @@ mod holders {
     fn holder5673() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|P1_S|E2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: P1S, m2: E2NN| Holder5673 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: P1S, m2: E2NN| Holder5673Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,-,Dot", 'E'),
                 ("Rect,-,Rect", 'E'),
@@ -28010,7 +29340,7 @@ mod holders {
     fn holder5681() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|P1_S|P2_Snonstrict",
-            &rows3(|m0: V0NN, m1: P1S, m2: P2S| Holder5681 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: P1S, m2: P2S| Holder5681Draft { own: 7, m0, m1, m2 }),
             &[("Rect,-,-", 'E'), ("Wrap,-,-", 'E')],
         )
     }
@@ -28018,7 +29348,7 @@ mod holders {
     fn holder5689() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|T1_NN|FP2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: T1NN, m2: FP2NN| Holder5689 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: T1NN, m2: FP2NN| Holder5689Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Dot,-", 'E'),
                 ("Rect,Rect,-", 'E'),
@@ -28033,7 +29363,7 @@ mod holders {
     fn holder5697() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|V1_NN|A2_NNnonstrict",
-            &rows3(|m0: V0NN, m1: V1NN, m2: A2NN| Holder5697 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: V1NN, m2: A2NN| Holder5697Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Rect,Dot", 'E'),
                 ("Rect,Rect,Rect", 'E'),
@@ -28054,7 +29384,7 @@ mod holders {
     fn holder5705() -> Vec<String> {
         check(
             "main3:H3N1:V0_NN|V1_NN|O2_Snonstrict",
-            &rows3(|m0: V0NN, m1: V1NN, m2: Option<OI2S>| Holder5705 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: V0NN, m1: V1NN, m2: Option<OI2S>| Holder5705Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Rect,Rect,None", 'E'),
                 ("Rect,Rect,Some", 'E'),
@@ -28071,7 +29401,7 @@ mod holders {
     fn holder5713() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|A1_NN|E2_SS",
-            &rows3(|m0: A0NN, m1: A1NN, m2: E2SS| Holder5713 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: E2SS| Holder5713Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28107,7 +29437,7 @@ mod holders {
     fn holder5721() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|A1_SS|E2_SS",
-            &rows3(|m0: A0NN, m1: A1SS, m2: E2SS| Holder5721 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1SS, m2: E2SS| Holder5721Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28143,7 +29473,7 @@ mod holders {
     fn holder5729() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|E1_NN|E2_SS",
-            &rows3(|m0: A0NN, m1: E1NN, m2: E2SS| Holder5729 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1NN, m2: E2SS| Holder5729Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28179,7 +29509,7 @@ mod holders {
     fn holder5737() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|E1_SS|E2_SS",
-            &rows3(|m0: A0NN, m1: E1SS, m2: E2SS| Holder5737 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1SS, m2: E2SS| Holder5737Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28215,7 +29545,7 @@ mod holders {
     fn holder5745() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|O1_N|E2_SS",
-            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: E2SS| Holder5745 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: E2SS| Holder5745Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28242,7 +29572,7 @@ mod holders {
     fn holder5753() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|O1_S|E2_SS",
-            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: E2SS| Holder5753 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: E2SS| Holder5753Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28269,7 +29599,7 @@ mod holders {
     fn holder5761() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|P1_N|E2_SS",
-            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder5761 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder5761Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28287,7 +29617,7 @@ mod holders {
     fn holder5769() -> Vec<String> {
         check(
             "main3:H3S0:A0_NN|P1_S|E2_SS",
-            &rows3(|m0: A0NN, m1: P1S, m2: E2SS| Holder5769 { m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1S, m2: E2SS| Holder5769Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28305,7 +29635,7 @@ mod holders {
     fn holder5777() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|A1_NN|E2_SS",
-            &rows3(|m0: A0SS, m1: A1NN, m2: E2SS| Holder5777 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1NN, m2: E2SS| Holder5777Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28341,7 +29671,7 @@ mod holders {
     fn holder5785() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|A1_SS|E2_SS",
-            &rows3(|m0: A0SS, m1: A1SS, m2: E2SS| Holder5785 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1SS, m2: E2SS| Holder5785Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28377,7 +29707,7 @@ mod holders {
     fn holder5793() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|E1_NN|E2_SS",
-            &rows3(|m0: A0SS, m1: E1NN, m2: E2SS| Holder5793 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1NN, m2: E2SS| Holder5793Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28413,7 +29743,7 @@ mod holders {
     fn holder5801() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|E1_SS|E2_SS",
-            &rows3(|m0: A0SS, m1: E1SS, m2: E2SS| Holder5801 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1SS, m2: E2SS| Holder5801Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28449,7 +29779,7 @@ mod holders {
     fn holder5809() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|O1_N|E2_SS",
-            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: E2SS| Holder5809 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: E2SS| Holder5809Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28476,7 +29806,7 @@ mod holders {
     fn holder5817() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|O1_S|E2_SS",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder5817 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder5817Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28503,7 +29833,7 @@ mod holders {
     fn holder5825() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|P1_N|E2_SS",
-            &rows3(|m0: A0SS, m1: P1N, m2: E2SS| Holder5825 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1N, m2: E2SS| Holder5825Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28521,7 +29851,7 @@ mod holders {
     fn holder5833() -> Vec<String> {
         check(
             "main3:H3S0:A0_SS|P1_S|E2_SS",
-            &rows3(|m0: A0SS, m1: P1S, m2: E2SS| Holder5833 { m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1S, m2: E2SS| Holder5833Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28539,7 +29869,7 @@ mod holders {
     fn holder5841() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|A1_NN|E2_SS",
-            &rows3(|m0: E0NN, m1: A1NN, m2: E2SS| Holder5841 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1NN, m2: E2SS| Holder5841Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28575,7 +29905,7 @@ mod holders {
     fn holder5849() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|A1_SS|E2_SS",
-            &rows3(|m0: E0NN, m1: A1SS, m2: E2SS| Holder5849 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1SS, m2: E2SS| Holder5849Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28611,7 +29941,7 @@ mod holders {
     fn holder5857() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|E1_NN|E2_SS",
-            &rows3(|m0: E0NN, m1: E1NN, m2: E2SS| Holder5857 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1NN, m2: E2SS| Holder5857Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28647,7 +29977,7 @@ mod holders {
     fn holder5865() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|E1_SS|E2_SS",
-            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder5865 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder5865Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28683,7 +30013,7 @@ mod holders {
     fn holder5873() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|O1_N|E2_SS",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder5873 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder5873Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28710,7 +30040,7 @@ mod holders {
     fn holder5881() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|O1_S|E2_SS",
-            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2SS| Holder5881 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2SS| Holder5881Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28737,7 +30067,7 @@ mod holders {
     fn holder5889() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|P1_N|E2_SS",
-            &rows3(|m0: E0NN, m1: P1N, m2: E2SS| Holder5889 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1N, m2: E2SS| Holder5889Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28755,7 +30085,7 @@ mod holders {
     fn holder5897() -> Vec<String> {
         check(
             "main3:H3S0:E0_NN|P1_S|E2_SS",
-            &rows3(|m0: E0NN, m1: P1S, m2: E2SS| Holder5897 { m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: E2SS| Holder5897Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28773,7 +30103,7 @@ mod holders {
     fn holder5905() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|A1_NN|E2_SS",
-            &rows3(|m0: E0SS, m1: A1NN, m2: E2SS| Holder5905 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1NN, m2: E2SS| Holder5905Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28809,7 +30139,7 @@ mod holders {
     fn holder5913() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|A1_SS|E2_SS",
-            &rows3(|m0: E0SS, m1: A1SS, m2: E2SS| Holder5913 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1SS, m2: E2SS| Holder5913Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28845,7 +30175,7 @@ mod holders {
     fn holder5921() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|E1_NN|E2_SS",
-            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder5921 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder5921Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28881,7 +30211,7 @@ mod holders {
     fn holder5929() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|E1_SS|E2_SS",
-            &rows3(|m0: E0SS, m1: E1SS, m2: E2SS| Holder5929 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1SS, m2: E2SS| Holder5929Draft { m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -28917,7 +30247,7 @@ mod holders {
     fn holder5937() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|O1_N|E2_SS",
-            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2SS| Holder5937 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2SS| Holder5937Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28944,7 +30274,7 @@ mod holders {
     fn holder5945() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|O1_S|E2_SS",
-            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: E2SS| Holder5945 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: E2SS| Holder5945Draft { m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -28971,7 +30301,7 @@ mod holders {
     fn holder5953() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|P1_N|E2_SS",
-            &rows3(|m0: E0SS, m1: P1N, m2: E2SS| Holder5953 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: E2SS| Holder5953Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -28989,7 +30319,7 @@ mod holders {
     fn holder5961() -> Vec<String> {
         check(
             "main3:H3S0:E0_SS|P1_S|E2_SS",
-            &rows3(|m0: E0SS, m1: P1S, m2: E2SS| Holder5961 { m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1S, m2: E2SS| Holder5961Draft { m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -29007,7 +30337,7 @@ mod holders {
     fn holder5969() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|A1_NN|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: E2SS| Holder5969 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: E2SS| Holder5969Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29034,7 +30364,7 @@ mod holders {
     fn holder5977() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|A1_SS|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: E2SS| Holder5977 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: E2SS| Holder5977Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29061,7 +30391,7 @@ mod holders {
     fn holder5985() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|E1_NN|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: E2SS| Holder5985 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: E2SS| Holder5985Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29088,7 +30418,7 @@ mod holders {
     fn holder5993() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|E1_SS|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: E2SS| Holder5993 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: E2SS| Holder5993Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29115,7 +30445,7 @@ mod holders {
     fn holder6001() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|O1_N|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: E2SS| Holder6001 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: E2SS| Holder6001Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -29136,7 +30466,7 @@ mod holders {
     fn holder6009() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|O1_S|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: E2SS| Holder6009 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: E2SS| Holder6009Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -29157,7 +30487,7 @@ mod holders {
     fn holder6017() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|P1_N|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: P1N, m2: E2SS| Holder6017 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: E2SS| Holder6017Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -29172,7 +30502,7 @@ mod holders {
     fn holder6025() -> Vec<String> {
         check(
             "main3:H3S0:O0_N|P1_S|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder6025 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder6025Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -29187,7 +30517,7 @@ mod holders {
     fn holder6033() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|A1_NN|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: E2SS| Holder6033 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: E2SS| Holder6033Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29214,7 +30544,7 @@ mod holders {
     fn holder6041() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|A1_SS|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: E2SS| Holder6041 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: E2SS| Holder6041Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29241,7 +30571,7 @@ mod holders {
     fn holder6049() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|E1_NN|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: E2SS| Holder6049 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: E2SS| Holder6049Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29268,7 +30598,7 @@ mod holders {
     fn holder6057() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|E1_SS|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: E2SS| Holder6057 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: E2SS| Holder6057Draft { m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -29295,7 +30625,7 @@ mod holders {
     fn holder6065() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|O1_N|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: E2SS| Holder6065 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: E2SS| Holder6065Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -29316,7 +30646,7 @@ mod holders {
     fn holder6073() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|O1_S|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: E2SS| Holder6073 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: E2SS| Holder6073Draft { m0, m1, m2 }),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -29337,7 +30667,7 @@ mod holders {
     fn holder6081() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|P1_N|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder6081 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder6081Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -29352,7 +30682,7 @@ mod holders {
     fn holder6089() -> Vec<String> {
         check(
             "main3:H3S0:O0_S|P1_S|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2SS| Holder6089 { m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2SS| Holder6089Draft { m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -29367,7 +30697,7 @@ mod holders {
     fn holder6097() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|A1_NN|E2_SS",
-            &rows3(|m0: P0N, m1: A1NN, m2: E2SS| Holder6097 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1NN, m2: E2SS| Holder6097Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29385,7 +30715,7 @@ mod holders {
     fn holder6105() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|A1_SS|E2_SS",
-            &rows3(|m0: P0N, m1: A1SS, m2: E2SS| Holder6105 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1SS, m2: E2SS| Holder6105Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29403,7 +30733,7 @@ mod holders {
     fn holder6113() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|E1_NN|E2_SS",
-            &rows3(|m0: P0N, m1: E1NN, m2: E2SS| Holder6113 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1NN, m2: E2SS| Holder6113Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29421,7 +30751,7 @@ mod holders {
     fn holder6121() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|E1_SS|E2_SS",
-            &rows3(|m0: P0N, m1: E1SS, m2: E2SS| Holder6121 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1SS, m2: E2SS| Holder6121Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29439,7 +30769,7 @@ mod holders {
     fn holder6129() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|O1_N|E2_SS",
-            &rows3(|m0: P0N, m1: Option<OI1N>, m2: E2SS| Holder6129 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: E2SS| Holder6129Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -29454,7 +30784,7 @@ mod holders {
     fn holder6137() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|O1_S|E2_SS",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder6137 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder6137Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -29469,7 +30799,7 @@ mod holders {
     fn holder6145() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|P1_N|E2_SS",
-            &rows3(|m0: P0N, m1: P1N, m2: E2SS| Holder6145 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1N, m2: E2SS| Holder6145Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -29477,7 +30807,7 @@ mod holders {
     fn holder6153() -> Vec<String> {
         check(
             "main3:H3S0:P0_N|P1_S|E2_SS",
-            &rows3(|m0: P0N, m1: P1S, m2: E2SS| Holder6153 { m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1S, m2: E2SS| Holder6153Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -29485,7 +30815,7 @@ mod holders {
     fn holder6161() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|A1_NN|E2_SS",
-            &rows3(|m0: P0S, m1: A1NN, m2: E2SS| Holder6161 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1NN, m2: E2SS| Holder6161Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29503,7 +30833,7 @@ mod holders {
     fn holder6169() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|A1_SS|E2_SS",
-            &rows3(|m0: P0S, m1: A1SS, m2: E2SS| Holder6169 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1SS, m2: E2SS| Holder6169Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29521,7 +30851,7 @@ mod holders {
     fn holder6177() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|E1_NN|E2_SS",
-            &rows3(|m0: P0S, m1: E1NN, m2: E2SS| Holder6177 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1NN, m2: E2SS| Holder6177Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29539,7 +30869,7 @@ mod holders {
     fn holder6185() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|E1_SS|E2_SS",
-            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder6185 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder6185Draft { m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -29557,7 +30887,7 @@ mod holders {
     fn holder6193() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|O1_N|E2_SS",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder6193 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder6193Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -29572,7 +30902,7 @@ mod holders {
     fn holder6201() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|O1_S|E2_SS",
-            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2SS| Holder6201 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2SS| Holder6201Draft { m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -29587,7 +30917,7 @@ mod holders {
     fn holder6209() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|P1_N|E2_SS",
-            &rows3(|m0: P0S, m1: P1N, m2: E2SS| Holder6209 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1N, m2: E2SS| Holder6209Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -29595,7 +30925,7 @@ mod holders {
     fn holder6217() -> Vec<String> {
         check(
             "main3:H3S0:P0_S|P1_S|E2_SS",
-            &rows3(|m0: P0S, m1: P1S, m2: E2SS| Holder6217 { m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: E2SS| Holder6217Draft { m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -29603,7 +30933,7 @@ mod holders {
     fn holder6225() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|A1_NN|E2_SS",
-            &rows3(|m0: A0NN, m1: A1NN, m2: E2SS| Holder6225 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1NN, m2: E2SS| Holder6225Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29639,7 +30969,7 @@ mod holders {
     fn holder6233() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|A1_SS|E2_SS",
-            &rows3(|m0: A0NN, m1: A1SS, m2: E2SS| Holder6233 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: A1SS, m2: E2SS| Holder6233Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29675,7 +31005,7 @@ mod holders {
     fn holder6241() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|E1_NN|E2_SS",
-            &rows3(|m0: A0NN, m1: E1NN, m2: E2SS| Holder6241 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1NN, m2: E2SS| Holder6241Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29711,7 +31041,7 @@ mod holders {
     fn holder6249() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|E1_SS|E2_SS",
-            &rows3(|m0: A0NN, m1: E1SS, m2: E2SS| Holder6249 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: E1SS, m2: E2SS| Holder6249Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29747,7 +31077,7 @@ mod holders {
     fn holder6257() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|O1_N|E2_SS",
-            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: E2SS| Holder6257 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1N>, m2: E2SS| Holder6257Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -29774,7 +31104,7 @@ mod holders {
     fn holder6265() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|O1_S|E2_SS",
-            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: E2SS| Holder6265 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: Option<OI1S>, m2: E2SS| Holder6265Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -29801,7 +31131,7 @@ mod holders {
     fn holder6273() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|P1_N|E2_SS",
-            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder6273 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1N, m2: E2SS| Holder6273Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -29819,7 +31149,7 @@ mod holders {
     fn holder6281() -> Vec<String> {
         check(
             "main3:H3S1:A0_NN|P1_S|E2_SS",
-            &rows3(|m0: A0NN, m1: P1S, m2: E2SS| Holder6281 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0NN, m1: P1S, m2: E2SS| Holder6281Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -29837,7 +31167,7 @@ mod holders {
     fn holder6289() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|A1_NN|E2_SS",
-            &rows3(|m0: A0SS, m1: A1NN, m2: E2SS| Holder6289 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1NN, m2: E2SS| Holder6289Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29873,7 +31203,7 @@ mod holders {
     fn holder6297() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|A1_SS|E2_SS",
-            &rows3(|m0: A0SS, m1: A1SS, m2: E2SS| Holder6297 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: A1SS, m2: E2SS| Holder6297Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29909,7 +31239,7 @@ mod holders {
     fn holder6305() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|E1_NN|E2_SS",
-            &rows3(|m0: A0SS, m1: E1NN, m2: E2SS| Holder6305 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1NN, m2: E2SS| Holder6305Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29945,7 +31275,7 @@ mod holders {
     fn holder6313() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|E1_SS|E2_SS",
-            &rows3(|m0: A0SS, m1: E1SS, m2: E2SS| Holder6313 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: E1SS, m2: E2SS| Holder6313Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -29981,7 +31311,7 @@ mod holders {
     fn holder6321() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|O1_N|E2_SS",
-            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: E2SS| Holder6321 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1N>, m2: E2SS| Holder6321Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -30008,7 +31338,7 @@ mod holders {
     fn holder6329() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|O1_S|E2_SS",
-            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder6329 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: Option<OI1S>, m2: E2SS| Holder6329Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -30035,7 +31365,7 @@ mod holders {
     fn holder6337() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|P1_N|E2_SS",
-            &rows3(|m0: A0SS, m1: P1N, m2: E2SS| Holder6337 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1N, m2: E2SS| Holder6337Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -30053,7 +31383,7 @@ mod holders {
     fn holder6345() -> Vec<String> {
         check(
             "main3:H3S1:A0_SS|P1_S|E2_SS",
-            &rows3(|m0: A0SS, m1: P1S, m2: E2SS| Holder6345 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: A0SS, m1: P1S, m2: E2SS| Holder6345Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -30071,7 +31401,7 @@ mod holders {
     fn holder6353() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|A1_NN|E2_SS",
-            &rows3(|m0: E0NN, m1: A1NN, m2: E2SS| Holder6353 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1NN, m2: E2SS| Holder6353Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30107,7 +31437,7 @@ mod holders {
     fn holder6361() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|A1_SS|E2_SS",
-            &rows3(|m0: E0NN, m1: A1SS, m2: E2SS| Holder6361 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: A1SS, m2: E2SS| Holder6361Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30143,7 +31473,7 @@ mod holders {
     fn holder6369() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|E1_NN|E2_SS",
-            &rows3(|m0: E0NN, m1: E1NN, m2: E2SS| Holder6369 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1NN, m2: E2SS| Holder6369Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30179,7 +31509,7 @@ mod holders {
     fn holder6377() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|E1_SS|E2_SS",
-            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder6377 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: E1SS, m2: E2SS| Holder6377Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30215,7 +31545,7 @@ mod holders {
     fn holder6385() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|O1_N|E2_SS",
-            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder6385 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1N>, m2: E2SS| Holder6385Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -30242,7 +31572,7 @@ mod holders {
     fn holder6393() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|O1_S|E2_SS",
-            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2SS| Holder6393 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: Option<OI1S>, m2: E2SS| Holder6393Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -30269,7 +31599,7 @@ mod holders {
     fn holder6401() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|P1_N|E2_SS",
-            &rows3(|m0: E0NN, m1: P1N, m2: E2SS| Holder6401 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1N, m2: E2SS| Holder6401Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -30287,7 +31617,7 @@ mod holders {
     fn holder6409() -> Vec<String> {
         check(
             "main3:H3S1:E0_NN|P1_S|E2_SS",
-            &rows3(|m0: E0NN, m1: P1S, m2: E2SS| Holder6409 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0NN, m1: P1S, m2: E2SS| Holder6409Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -30305,7 +31635,7 @@ mod holders {
     fn holder6417() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|A1_NN|E2_SS",
-            &rows3(|m0: E0SS, m1: A1NN, m2: E2SS| Holder6417 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1NN, m2: E2SS| Holder6417Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30341,7 +31671,7 @@ mod holders {
     fn holder6425() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|A1_SS|E2_SS",
-            &rows3(|m0: E0SS, m1: A1SS, m2: E2SS| Holder6425 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: A1SS, m2: E2SS| Holder6425Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30377,7 +31707,7 @@ mod holders {
     fn holder6433() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|E1_NN|E2_SS",
-            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder6433 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1NN, m2: E2SS| Holder6433Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30413,7 +31743,7 @@ mod holders {
     fn holder6441() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|E1_SS|E2_SS",
-            &rows3(|m0: E0SS, m1: E1SS, m2: E2SS| Holder6441 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: E1SS, m2: E2SS| Holder6441Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,Dot,Dot", 'R'),
                 ("Dot,Dot,Rect", 'R'),
@@ -30449,7 +31779,7 @@ mod holders {
     fn holder6449() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|O1_N|E2_SS",
-            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2SS| Holder6449 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1N>, m2: E2SS| Holder6449Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -30476,7 +31806,7 @@ mod holders {
     fn holder6457() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|O1_S|E2_SS",
-            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: E2SS| Holder6457 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: Option<OI1S>, m2: E2SS| Holder6457Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,None,Dot", 'R'),
                 ("Dot,None,Rect", 'R'),
@@ -30503,7 +31833,7 @@ mod holders {
     fn holder6465() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|P1_N|E2_SS",
-            &rows3(|m0: E0SS, m1: P1N, m2: E2SS| Holder6465 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1N, m2: E2SS| Holder6465Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -30521,7 +31851,7 @@ mod holders {
     fn holder6473() -> Vec<String> {
         check(
             "main3:H3S1:E0_SS|P1_S|E2_SS",
-            &rows3(|m0: E0SS, m1: P1S, m2: E2SS| Holder6473 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: E0SS, m1: P1S, m2: E2SS| Holder6473Draft { own: 7, m0, m1, m2 }),
             &[
                 ("Dot,-,Dot", 'R'),
                 ("Dot,-,Rect", 'R'),
@@ -30539,7 +31869,7 @@ mod holders {
     fn holder6481() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|A1_NN|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: E2SS| Holder6481 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1NN, m2: E2SS| Holder6481Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30566,7 +31896,7 @@ mod holders {
     fn holder6489() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|A1_SS|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: E2SS| Holder6489 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: A1SS, m2: E2SS| Holder6489Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30593,7 +31923,7 @@ mod holders {
     fn holder6497() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|E1_NN|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: E2SS| Holder6497 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1NN, m2: E2SS| Holder6497Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30620,7 +31950,7 @@ mod holders {
     fn holder6505() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|E1_SS|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: E2SS| Holder6505 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: E1SS, m2: E2SS| Holder6505Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30647,12 +31977,14 @@ mod holders {
     fn holder6513() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|O1_N|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1N>, m2: E2SS| Holder6513 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1N>, m2: E2SS| Holder6513Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -30673,12 +32005,14 @@ mod holders {
     fn holder6521() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|O1_S|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: Option<OI1S>, m2: E2SS| Holder6521 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0N>, m1: Option<OI1S>, m2: E2SS| Holder6521Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -30699,7 +32033,7 @@ mod holders {
     fn holder6529() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|P1_N|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: P1N, m2: E2SS| Holder6529 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1N, m2: E2SS| Holder6529Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -30714,7 +32048,7 @@ mod holders {
     fn holder6537() -> Vec<String> {
         check(
             "main3:H3S1:O0_N|P1_S|E2_SS",
-            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder6537 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0N>, m1: P1S, m2: E2SS| Holder6537Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -30729,7 +32063,7 @@ mod holders {
     fn holder6545() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|A1_NN|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: E2SS| Holder6545 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1NN, m2: E2SS| Holder6545Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30756,7 +32090,7 @@ mod holders {
     fn holder6553() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|A1_SS|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: E2SS| Holder6553 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: A1SS, m2: E2SS| Holder6553Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30783,7 +32117,7 @@ mod holders {
     fn holder6561() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|E1_NN|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: E2SS| Holder6561 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1NN, m2: E2SS| Holder6561Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30810,7 +32144,7 @@ mod holders {
     fn holder6569() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|E1_SS|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: E2SS| Holder6569 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: E1SS, m2: E2SS| Holder6569Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,Dot,Dot", 'R'),
                 ("None,Dot,Rect", 'R'),
@@ -30837,12 +32171,14 @@ mod holders {
     fn holder6577() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|O1_N|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1N>, m2: E2SS| Holder6577 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1N>, m2: E2SS| Holder6577Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -30863,12 +32199,14 @@ mod holders {
     fn holder6585() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|O1_S|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: Option<OI1S>, m2: E2SS| Holder6585 {
-                own: 7,
-                m0,
-                m1,
-                m2,
-            }),
+            &rows3(
+                |m0: Option<OI0S>, m1: Option<OI1S>, m2: E2SS| Holder6585Draft {
+                    own: 7,
+                    m0,
+                    m1,
+                    m2,
+                },
+            ),
             &[
                 ("None,None,Dot", 'R'),
                 ("None,None,Rect", 'R'),
@@ -30889,7 +32227,7 @@ mod holders {
     fn holder6593() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|P1_N|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder6593 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1N, m2: E2SS| Holder6593Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -30904,7 +32242,7 @@ mod holders {
     fn holder6601() -> Vec<String> {
         check(
             "main3:H3S1:O0_S|P1_S|E2_SS",
-            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2SS| Holder6601 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: Option<OI0S>, m1: P1S, m2: E2SS| Holder6601Draft { own: 7, m0, m1, m2 }),
             &[
                 ("None,-,Dot", 'R'),
                 ("None,-,Rect", 'R'),
@@ -30919,7 +32257,7 @@ mod holders {
     fn holder6609() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|A1_NN|E2_SS",
-            &rows3(|m0: P0N, m1: A1NN, m2: E2SS| Holder6609 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1NN, m2: E2SS| Holder6609Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -30937,7 +32275,7 @@ mod holders {
     fn holder6617() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|A1_SS|E2_SS",
-            &rows3(|m0: P0N, m1: A1SS, m2: E2SS| Holder6617 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: A1SS, m2: E2SS| Holder6617Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -30955,7 +32293,7 @@ mod holders {
     fn holder6625() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|E1_NN|E2_SS",
-            &rows3(|m0: P0N, m1: E1NN, m2: E2SS| Holder6625 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1NN, m2: E2SS| Holder6625Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -30973,7 +32311,7 @@ mod holders {
     fn holder6633() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|E1_SS|E2_SS",
-            &rows3(|m0: P0N, m1: E1SS, m2: E2SS| Holder6633 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: E1SS, m2: E2SS| Holder6633Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -30991,7 +32329,7 @@ mod holders {
     fn holder6641() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|O1_N|E2_SS",
-            &rows3(|m0: P0N, m1: Option<OI1N>, m2: E2SS| Holder6641 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1N>, m2: E2SS| Holder6641Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -31006,7 +32344,7 @@ mod holders {
     fn holder6649() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|O1_S|E2_SS",
-            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder6649 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: Option<OI1S>, m2: E2SS| Holder6649Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -31021,7 +32359,7 @@ mod holders {
     fn holder6657() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|P1_N|E2_SS",
-            &rows3(|m0: P0N, m1: P1N, m2: E2SS| Holder6657 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1N, m2: E2SS| Holder6657Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -31029,7 +32367,7 @@ mod holders {
     fn holder6665() -> Vec<String> {
         check(
             "main3:H3S1:P0_N|P1_S|E2_SS",
-            &rows3(|m0: P0N, m1: P1S, m2: E2SS| Holder6665 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0N, m1: P1S, m2: E2SS| Holder6665Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -31037,7 +32375,7 @@ mod holders {
     fn holder6673() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|A1_NN|E2_SS",
-            &rows3(|m0: P0S, m1: A1NN, m2: E2SS| Holder6673 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1NN, m2: E2SS| Holder6673Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -31055,7 +32393,7 @@ mod holders {
     fn holder6681() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|A1_SS|E2_SS",
-            &rows3(|m0: P0S, m1: A1SS, m2: E2SS| Holder6681 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: A1SS, m2: E2SS| Holder6681Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -31073,7 +32411,7 @@ mod holders {
     fn holder6689() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|E1_NN|E2_SS",
-            &rows3(|m0: P0S, m1: E1NN, m2: E2SS| Holder6689 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1NN, m2: E2SS| Holder6689Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -31091,7 +32429,7 @@ mod holders {
     fn holder6697() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|E1_SS|E2_SS",
-            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder6697 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: E1SS, m2: E2SS| Holder6697Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,Dot,Dot", 'R'),
                 ("-,Dot,Rect", 'R'),
@@ -31109,7 +32447,7 @@ mod holders {
     fn holder6705() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|O1_N|E2_SS",
-            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder6705 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1N>, m2: E2SS| Holder6705Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -31124,7 +32462,7 @@ mod holders {
     fn holder6713() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|O1_S|E2_SS",
-            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2SS| Holder6713 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: Option<OI1S>, m2: E2SS| Holder6713Draft { own: 7, m0, m1, m2 }),
             &[
                 ("-,None,Dot", 'R'),
                 ("-,None,Rect", 'R'),
@@ -31139,7 +32477,7 @@ mod holders {
     fn holder6721() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|P1_N|E2_SS",
-            &rows3(|m0: P0S, m1: P1N, m2: E2SS| Holder6721 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1N, m2: E2SS| Holder6721Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -31147,7 +32485,7 @@ mod holders {
     fn holder6729() -> Vec<String> {
         check(
             "main3:H3S1:P0_S|P1_S|E2_SS",
-            &rows3(|m0: P0S, m1: P1S, m2: E2SS| Holder6729 { own: 7, m0, m1, m2 }),
+            &rows3(|m0: P0S, m1: P1S, m2: E2SS| Holder6729Draft { own: 7, m0, m1, m2 }),
             &[("-,-,Dot", 'R'), ("-,-,Rect", 'R'), ("-,-,Wrap", 'R')],
         )
     }
@@ -31155,7 +32493,7 @@ mod holders {
     fn holder6737() -> Vec<String> {
         check(
             "mixed1:H1N0:FP0_SN",
-            &rows1(|m0: FP0SN| Holder6737 { m0 }),
+            &rows1(|m0: FP0SN| Holder6737Draft { m0 }),
             &[("-", 'R')],
         )
     }
@@ -31163,7 +32501,7 @@ mod holders {
     fn holder6745() -> Vec<String> {
         check(
             "mixed1:H1N1:FO0_NSnonstrict",
-            &rows1(|m0: FO0NS| Holder6745 { own: 7, m0 }),
+            &rows1(|m0: FO0NS| Holder6745Draft { own: 7, m0 }),
             &[("-", 'E')],
         )
     }
@@ -31171,7 +32509,7 @@ mod holders {
     fn holder6753() -> Vec<String> {
         check(
             "mixed1:H1N1:T0_SN",
-            &rows1(|m0: T0SN| Holder6753 { own: 7, m0 }),
+            &rows1(|m0: T0SN| Holder6753Draft { own: 7, m0 }),
             &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'E')],
         )
     }
@@ -31179,7 +32517,7 @@ mod holders {
     fn holder6761() -> Vec<String> {
         check(
             "mixed2:H2N0:A0_NN|FT1_NSN",
-            &rows2(|m0: A0NN, m1: FT1NSN| Holder6761 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: FT1NSN| Holder6761Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31197,7 +32535,7 @@ mod holders {
     fn holder6769() -> Vec<String> {
         check(
             "mixed2:H2N0:A0_SS|FP1_NSnonstrict",
-            &rows2(|m0: A0SS, m1: FP1NS| Holder6769 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: FP1NS| Holder6769Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31205,7 +32543,7 @@ mod holders {
     fn holder6777() -> Vec<String> {
         check(
             "mixed2:H2N0:A0_SS|V1_SN",
-            &rows2(|m0: A0SS, m1: V1SN| Holder6777 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: V1SN| Holder6777Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'R'),
                 ("Dot,Wrap", 'E'),
@@ -31220,7 +32558,7 @@ mod holders {
     fn holder6785() -> Vec<String> {
         check(
             "mixed2:H2N0:E0_NN|T1_NS",
-            &rows2(|m0: E0NN, m1: T1NS| Holder6785 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: T1NS| Holder6785Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31238,7 +32576,7 @@ mod holders {
     fn holder6793() -> Vec<String> {
         check(
             "mixed2:H2N0:E0_SS|FT1_NNS",
-            &rows2(|m0: E0SS, m1: FT1NNS| Holder6793 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: FT1NNS| Holder6793Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31256,7 +32594,7 @@ mod holders {
     fn holder6801() -> Vec<String> {
         check(
             "mixed2:H2N0:FO0_NN|FP1_NSnonstrict",
-            &rows2(|m0: FO0NN, m1: FP1NS| Holder6801 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: FP1NS| Holder6801Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31264,7 +32602,7 @@ mod holders {
     fn holder6809() -> Vec<String> {
         check(
             "mixed2:H2N0:FO0_NS|FP1_NSnonstrict",
-            &rows2(|m0: FO0NS, m1: FP1NS| Holder6809 { m0, m1 }),
+            &rows2(|m0: FO0NS, m1: FP1NS| Holder6809Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31272,7 +32610,7 @@ mod holders {
     fn holder6817() -> Vec<String> {
         check(
             "mixed2:H2N0:FP0_NN|FO1_NSnonstrict",
-            &rows2(|m0: FP0NN, m1: FO1NS| Holder6817 { m0, m1 }),
+            &rows2(|m0: FP0NN, m1: FO1NS| Holder6817Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31280,7 +32618,7 @@ mod holders {
     fn holder6825() -> Vec<String> {
         check(
             "mixed2:H2N0:FP0_NS|FP1_NNnonstrict",
-            &rows2(|m0: FP0NS, m1: FP1NN| Holder6825 { m0, m1 }),
+            &rows2(|m0: FP0NS, m1: FP1NN| Holder6825Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31288,7 +32626,7 @@ mod holders {
     fn holder6833() -> Vec<String> {
         check(
             "mixed2:H2N0:FP0_NS|V1_NNnonstrict",
-            &rows2(|m0: FP0NS, m1: V1NN| Holder6833 { m0, m1 }),
+            &rows2(|m0: FP0NS, m1: V1NN| Holder6833Draft { m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -31296,7 +32634,7 @@ mod holders {
     fn holder6841() -> Vec<String> {
         check(
             "mixed2:H2N0:O0_N|FT1_NSN",
-            &rows2(|m0: Option<OI0N>, m1: FT1NSN| Holder6841 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: FT1NSN| Holder6841Draft { m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -31311,7 +32649,7 @@ mod holders {
     fn holder6849() -> Vec<String> {
         check(
             "mixed2:H2N0:O0_S|FP1_NSnonstrict",
-            &rows2(|m0: Option<OI0S>, m1: FP1NS| Holder6849 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: FP1NS| Holder6849Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -31319,7 +32657,7 @@ mod holders {
     fn holder6857() -> Vec<String> {
         check(
             "mixed2:H2N0:O0_S|V1_SN",
-            &rows2(|m0: Option<OI0S>, m1: V1SN| Holder6857 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: V1SN| Holder6857Draft { m0, m1 }),
             &[
                 ("None,Rect", 'R'),
                 ("None,Wrap", 'E'),
@@ -31332,7 +32670,7 @@ mod holders {
     fn holder6865() -> Vec<String> {
         check(
             "mixed2:H2N0:P0_N|T1_NS",
-            &rows2(|m0: P0N, m1: T1NS| Holder6865 { m0, m1 }),
+            &rows2(|m0: P0N, m1: T1NS| Holder6865Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'R')],
         )
     }
@@ -31340,7 +32678,7 @@ mod holders {
     fn holder6873() -> Vec<String> {
         check(
             "mixed2:H2N0:P0_S|FT1_NNS",
-            &rows2(|m0: P0S, m1: FT1NNS| Holder6873 { m0, m1 }),
+            &rows2(|m0: P0S, m1: FT1NNS| Holder6873Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'R')],
         )
     }
@@ -31348,7 +32686,7 @@ mod holders {
     fn holder6881() -> Vec<String> {
         check(
             "mixed2:H2N0:T0_NN|FP1_NSnonstrict",
-            &rows2(|m0: T0NN, m1: FP1NS| Holder6881 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: FP1NS| Holder6881Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31356,7 +32694,7 @@ mod holders {
     fn holder6889() -> Vec<String> {
         check(
             "mixed2:H2N1:A0_NN|FT1_NSN",
-            &rows2(|m0: A0NN, m1: FT1NSN| Holder6889 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: FT1NSN| Holder6889Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31374,7 +32712,7 @@ mod holders {
     fn holder6897() -> Vec<String> {
         check(
             "mixed2:H2N1:A0_SS|FP1_NSnonstrict",
-            &rows2(|m0: A0SS, m1: FP1NS| Holder6897 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: FP1NS| Holder6897Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31382,7 +32720,7 @@ mod holders {
     fn holder6905() -> Vec<String> {
         check(
             "mixed2:H2N1:A0_SS|V1_SN",
-            &rows2(|m0: A0SS, m1: V1SN| Holder6905 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: V1SN| Holder6905Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'R'),
                 ("Dot,Wrap", 'E'),
@@ -31397,7 +32735,7 @@ mod holders {
     fn holder6913() -> Vec<String> {
         check(
             "mixed2:H2N1:E0_NN|T1_NS",
-            &rows2(|m0: E0NN, m1: T1NS| Holder6913 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: T1NS| Holder6913Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31415,7 +32753,7 @@ mod holders {
     fn holder6921() -> Vec<String> {
         check(
             "mixed2:H2N1:E0_SS|FT1_NNS",
-            &rows2(|m0: E0SS, m1: FT1NNS| Holder6921 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: FT1NNS| Holder6921Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31433,7 +32771,7 @@ mod holders {
     fn holder6929() -> Vec<String> {
         check(
             "mixed2:H2N1:FO0_NN|FP1_NSnonstrict",
-            &rows2(|m0: FO0NN, m1: FP1NS| Holder6929 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NN, m1: FP1NS| Holder6929Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31441,7 +32779,7 @@ mod holders {
     fn holder6937() -> Vec<String> {
         check(
             "mixed2:H2N1:FO0_NS|FP1_NSnonstrict",
-            &rows2(|m0: FO0NS, m1: FP1NS| Holder6937 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NS, m1: FP1NS| Holder6937Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31449,7 +32787,7 @@ mod holders {
     fn holder6945() -> Vec<String> {
         check(
             "mixed2:H2N1:FP0_NN|FO1_NSnonstrict",
-            &rows2(|m0: FP0NN, m1: FO1NS| Holder6945 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NN, m1: FO1NS| Holder6945Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31457,7 +32795,7 @@ mod holders {
     fn holder6953() -> Vec<String> {
         check(
             "mixed2:H2N1:FP0_NS|FP1_NNnonstrict",
-            &rows2(|m0: FP0NS, m1: FP1NN| Holder6953 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NS, m1: FP1NN| Holder6953Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -31465,7 +32803,7 @@ mod holders {
     fn holder6961() -> Vec<String> {
         check(
             "mixed2:H2N1:FP0_NS|V1_NNnonstrict",
-            &rows2(|m0: FP0NS, m1: V1NN| Holder6961 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NS, m1: V1NN| Holder6961Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -31473,7 +32811,7 @@ mod holders {
     fn holder6969() -> Vec<String> {
         check(
             "mixed2:H2N1:O0_N|FT1_NSN",
-            &rows2(|m0: Option<OI0N>, m1: FT1NSN| Holder6969 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: FT1NSN| Holder6969Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -31488,7 +32826,7 @@ mod holders {
     fn holder6977() -> Vec<String> {
         check(
             "mixed2:H2N1:O0_S|FP1_NSnonstrict",
-            &rows2(|m0: Option<OI0S>, m1: FP1NS| Holder6977 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: FP1NS| Holder6977Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -31496,7 +32834,7 @@ mod holders {
     fn holder6985() -> Vec<String> {
         check(
             "mixed2:H2N1:O0_S|V1_SN",
-            &rows2(|m0: Option<OI0S>, m1: V1SN| Holder6985 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: V1SN| Holder6985Draft { own: 7, m0, m1 }),
             &[
                 ("None,Rect", 'R'),
                 ("None,Wrap", 'E'),
@@ -31509,7 +32847,7 @@ mod holders {
     fn holder6993() -> Vec<String> {
         check(
             "mixed2:H2N1:P0_N|T1_NS",
-            &rows2(|m0: P0N, m1: T1NS| Holder6993 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: T1NS| Holder6993Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'R')],
         )
     }
@@ -31517,7 +32855,7 @@ mod holders {
     fn holder7001() -> Vec<String> {
         check(
             "mixed2:H2N1:P0_S|FT1_NNS",
-            &rows2(|m0: P0S, m1: FT1NNS| Holder7001 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: FT1NNS| Holder7001Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'R')],
         )
     }
@@ -31525,7 +32863,7 @@ mod holders {
     fn holder7009() -> Vec<String> {
         check(
             "mixed2:H2N1:T0_NN|FP1_NSnonstrict",
-            &rows2(|m0: T0NN, m1: FP1NS| Holder7009 { own: 7, m0, m1 }),
+            &rows2(|m0: T0NN, m1: FP1NS| Holder7009Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31533,7 +32871,7 @@ mod holders {
     fn holder7017() -> Vec<String> {
         check(
             "nest1:H1N0:IN0(FO0_SS)",
-            &rows1(|m0: IN0FO0SS| Holder7017 { m0 }),
+            &rows1(|m0: IN0FO0SS| Holder7017Draft { m0 }),
             &[("-", 'R')],
         )
     }
@@ -31541,7 +32879,7 @@ mod holders {
     fn holder7025() -> Vec<String> {
         check(
             "nest1:H1N0:IN0(P0_S)nonstrict",
-            &rows1(|m0: IN0P0S| Holder7025 { m0 }),
+            &rows1(|m0: IN0P0S| Holder7025Draft { m0 }),
             &[("-", 'E')],
         )
     }
@@ -31549,7 +32887,7 @@ mod holders {
     fn holder7033() -> Vec<String> {
         check(
             "nest1:H1N0:IN1(E0_SS)nonstrict",
-            &rows1(|m0: IN1E0SS| Holder7033 { m0 }),
+            &rows1(|m0: IN1E0SS| Holder7033Draft { m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -31557,7 +32895,7 @@ mod holders {
     fn holder7041() -> Vec<String> {
         check(
             "nest1:H1N0:IN1(P0_N)nonstrict",
-            &rows1(|m0: IN1P0N| Holder7041 { m0 }),
+            &rows1(|m0: IN1P0N| Holder7041Draft { m0 }),
             &[("-", 'E')],
         )
     }
@@ -31565,7 +32903,7 @@ mod holders {
     fn holder7049() -> Vec<String> {
         check(
             "nest1:H1N0:IS0(E0_NN)",
-            &rows1(|m0: IS0E0NN| Holder7049 { m0 }),
+            &rows1(|m0: IS0E0NN| Holder7049Draft { m0 }),
             &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
         )
     }
@@ -31573,7 +32911,7 @@ mod holders {
     fn holder7057() -> Vec<String> {
         check(
             "nest1:H1N0:IS1(E0_NN)",
-            &rows1(|m0: IS1E0NN| Holder7057 { m0 }),
+            &rows1(|m0: IS1E0NN| Holder7057Draft { m0 }),
             &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
         )
     }
@@ -31581,7 +32919,7 @@ mod holders {
     fn holder7065() -> Vec<String> {
         check(
             "nest1:H1N1:IN0(E0_NN)nonstrict",
-            &rows1(|m0: IN0E0NN| Holder7065 { own: 7, m0 }),
+            &rows1(|m0: IN0E0NN| Holder7065Draft { own: 7, m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -31589,7 +32927,7 @@ mod holders {
     fn holder7073() -> Vec<String> {
         check(
             "nest1:H1N1:IN0(O0_S)nonstrict",
-            &rows1(|m0: IN0OptOI0S| Holder7073 { own: 7, m0 }),
+            &rows1(|m0: IN0OptOI0S| Holder7073Draft { own: 7, m0 }),
             &[("None", 'E'), ("Some", 'E')],
         )
     }
@@ -31597,7 +32935,7 @@ mod holders {
     fn holder7081() -> Vec<String> {
         check(
             "nest1:H1N1:IN1(A0_SS)nonstrict",
-            &rows1(|m0: IN1A0SS| Holder7081 { own: 7, m0 }),
+            &rows1(|m0: IN1A0SS| Holder7081Draft { own: 7, m0 }),
             &[("Dot", 'E'), ("Rect", 'E'), ("Wrap", 'E')],
         )
     }
@@ -31605,7 +32943,7 @@ mod holders {
     fn holder7089() -> Vec<String> {
         check(
             "nest1:H1N1:IN1(O0_N)nonstrict",
-            &rows1(|m0: IN1OptOI0N| Holder7089 { own: 7, m0 }),
+            &rows1(|m0: IN1OptOI0N| Holder7089Draft { own: 7, m0 }),
             &[("None", 'E'), ("Some", 'E')],
         )
     }
@@ -31613,7 +32951,7 @@ mod holders {
     fn holder7097() -> Vec<String> {
         check(
             "nest1:H1N1:IS0(A0_NN)",
-            &rows1(|m0: IS0A0NN| Holder7097 { own: 7, m0 }),
+            &rows1(|m0: IS0A0NN| Holder7097Draft { own: 7, m0 }),
             &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
         )
     }
@@ -31621,7 +32959,7 @@ mod holders {
     fn holder7105() -> Vec<String> {
         check(
             "nest1:H1N1:IS1(A0_NN)",
-            &rows1(|m0: IS1A0NN| Holder7105 { own: 7, m0 }),
+            &rows1(|m0: IS1A0NN| Holder7105Draft { own: 7, m0 }),
             &[("Dot", 'R'), ("Rect", 'R'), ("Wrap", 'R')],
         )
     }
@@ -31629,7 +32967,7 @@ mod holders {
     fn holder7113() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IN0(A1_NN)nonstrict",
-            &rows2(|m0: A0NN, m1: IN0A1NN| Holder7113 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN0A1NN| Holder7113Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31647,7 +32985,7 @@ mod holders {
     fn holder7121() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IN0(FT1_NNN)nonstrict",
-            &rows2(|m0: A0NN, m1: IN0FT1NNN| Holder7121 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN0FT1NNN| Holder7121Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31665,7 +33003,7 @@ mod holders {
     fn holder7129() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IN0(V1_SS)",
-            &rows2(|m0: A0NN, m1: IN0V1SS| Holder7129 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN0V1SS| Holder7129Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'R'),
                 ("Dot,Wrap", 'R'),
@@ -31680,7 +33018,7 @@ mod holders {
     fn holder7137() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IN1(FP1_SS)",
-            &rows2(|m0: A0NN, m1: IN1FP1SS| Holder7137 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN1FP1SS| Holder7137Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -31688,7 +33026,7 @@ mod holders {
     fn holder7145() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IN1(V1_NN)nonstrict",
-            &rows2(|m0: A0NN, m1: IN1V1NN| Holder7145 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN1V1NN| Holder7145Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -31703,7 +33041,7 @@ mod holders {
     fn holder7153() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IS0(P1_N)",
-            &rows2(|m0: A0NN, m1: IS0P1N| Holder7153 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IS0P1N| Holder7153Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -31711,7 +33049,7 @@ mod holders {
     fn holder7161() -> Vec<String> {
         check(
             "nest2:H2N0:A0_NN|IS1(P1_N)",
-            &rows2(|m0: A0NN, m1: IS1P1N| Holder7161 { m0, m1 }),
+            &rows2(|m0: A0NN, m1: IS1P1N| Holder7161Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -31719,7 +33057,7 @@ mod holders {
     fn holder7169() -> Vec<String> {
         check(
             "nest2:H2N0:A0_SS|IN0(FP1_NN)nonstrict",
-            &rows2(|m0: A0SS, m1: IN0FP1NN| Holder7169 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN0FP1NN| Holder7169Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31727,7 +33065,7 @@ mod holders {
     fn holder7177() -> Vec<String> {
         check(
             "nest2:H2N0:A0_SS|IN0(T1_SS)",
-            &rows2(|m0: A0SS, m1: IN0T1SS| Holder7177 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN0T1SS| Holder7177Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31745,7 +33083,7 @@ mod holders {
     fn holder7185() -> Vec<String> {
         check(
             "nest2:H2N0:A0_SS|IN1(FO1_SS)",
-            &rows2(|m0: A0SS, m1: IN1FO1SS| Holder7185 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN1FO1SS| Holder7185Draft { m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -31753,7 +33091,7 @@ mod holders {
     fn holder7193() -> Vec<String> {
         check(
             "nest2:H2N0:A0_SS|IN1(T1_NN)nonstrict",
-            &rows2(|m0: A0SS, m1: IN1T1NN| Holder7193 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN1T1NN| Holder7193Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31771,7 +33109,7 @@ mod holders {
     fn holder7201() -> Vec<String> {
         check(
             "nest2:H2N0:A0_SS|IS0(O1_N)",
-            &rows2(|m0: A0SS, m1: IS0OptOI1N| Holder7201 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: IS0OptOI1N| Holder7201Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -31786,7 +33124,7 @@ mod holders {
     fn holder7209() -> Vec<String> {
         check(
             "nest2:H2N0:A0_SS|IS1(O1_N)",
-            &rows2(|m0: A0SS, m1: IS1OptOI1N| Holder7209 { m0, m1 }),
+            &rows2(|m0: A0SS, m1: IS1OptOI1N| Holder7209Draft { m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -31801,7 +33139,7 @@ mod holders {
     fn holder7217() -> Vec<String> {
         check(
             "nest2:H2N0:E0_NN|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: E0NN, m1: IN0FO1NN| Holder7217 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN0FO1NN| Holder7217Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31809,7 +33147,7 @@ mod holders {
     fn holder7225() -> Vec<String> {
         check(
             "nest2:H2N0:E0_NN|IN0(P1_S)nonstrict",
-            &rows2(|m0: E0NN, m1: IN0P1S| Holder7225 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN0P1S| Holder7225Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31817,7 +33155,7 @@ mod holders {
     fn holder7233() -> Vec<String> {
         check(
             "nest2:H2N0:E0_NN|IN1(E1_SS)nonstrict",
-            &rows2(|m0: E0NN, m1: IN1E1SS| Holder7233 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN1E1SS| Holder7233Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31835,7 +33173,7 @@ mod holders {
     fn holder7241() -> Vec<String> {
         check(
             "nest2:H2N0:E0_NN|IN1(P1_N)nonstrict",
-            &rows2(|m0: E0NN, m1: IN1P1N| Holder7241 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN1P1N| Holder7241Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -31843,7 +33181,7 @@ mod holders {
     fn holder7249() -> Vec<String> {
         check(
             "nest2:H2N0:E0_NN|IS0(E1_NN)",
-            &rows2(|m0: E0NN, m1: IS0E1NN| Holder7249 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: IS0E1NN| Holder7249Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31861,7 +33199,7 @@ mod holders {
     fn holder7257() -> Vec<String> {
         check(
             "nest2:H2N0:E0_NN|IS1(E1_NN)",
-            &rows2(|m0: E0NN, m1: IS1E1NN| Holder7257 { m0, m1 }),
+            &rows2(|m0: E0NN, m1: IS1E1NN| Holder7257Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31879,7 +33217,7 @@ mod holders {
     fn holder7265() -> Vec<String> {
         check(
             "nest2:H2N0:E0_SS|IN0(E1_NN)nonstrict",
-            &rows2(|m0: E0SS, m1: IN0E1NN| Holder7265 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN0E1NN| Holder7265Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31897,7 +33235,7 @@ mod holders {
     fn holder7273() -> Vec<String> {
         check(
             "nest2:H2N0:E0_SS|IN0(O1_S)nonstrict",
-            &rows2(|m0: E0SS, m1: IN0OptOI1S| Holder7273 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN0OptOI1S| Holder7273Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -31912,7 +33250,7 @@ mod holders {
     fn holder7281() -> Vec<String> {
         check(
             "nest2:H2N0:E0_SS|IN1(A1_SS)nonstrict",
-            &rows2(|m0: E0SS, m1: IN1A1SS| Holder7281 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN1A1SS| Holder7281Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -31930,7 +33268,7 @@ mod holders {
     fn holder7289() -> Vec<String> {
         check(
             "nest2:H2N0:E0_SS|IN1(O1_N)nonstrict",
-            &rows2(|m0: E0SS, m1: IN1OptOI1N| Holder7289 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN1OptOI1N| Holder7289Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -31945,7 +33283,7 @@ mod holders {
     fn holder7297() -> Vec<String> {
         check(
             "nest2:H2N0:E0_SS|IS0(A1_NN)",
-            &rows2(|m0: E0SS, m1: IS0A1NN| Holder7297 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: IS0A1NN| Holder7297Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31963,7 +33301,7 @@ mod holders {
     fn holder7305() -> Vec<String> {
         check(
             "nest2:H2N0:E0_SS|IS1(A1_NN)",
-            &rows2(|m0: E0SS, m1: IS1A1NN| Holder7305 { m0, m1 }),
+            &rows2(|m0: E0SS, m1: IS1A1NN| Holder7305Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -31981,7 +33319,7 @@ mod holders {
     fn holder7313() -> Vec<String> {
         check(
             "nest2:H2N0:FO0_NN|IN0(A1_NN)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN0A1NN| Holder7313 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN0A1NN| Holder7313Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -31989,7 +33327,7 @@ mod holders {
     fn holder7321() -> Vec<String> {
         check(
             "nest2:H2N0:FO0_NN|IN0(O1_S)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN0OptOI1S| Holder7321 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN0OptOI1S| Holder7321Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -31997,7 +33335,7 @@ mod holders {
     fn holder7329() -> Vec<String> {
         check(
             "nest2:H2N0:FO0_NN|IN1(E1_SS)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN1E1SS| Holder7329 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN1E1SS| Holder7329Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32005,7 +33343,7 @@ mod holders {
     fn holder7337() -> Vec<String> {
         check(
             "nest2:H2N0:FO0_NN|IN1(T1_NN)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN1T1NN| Holder7337 { m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN1T1NN| Holder7337Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32013,7 +33351,7 @@ mod holders {
     fn holder7345() -> Vec<String> {
         check(
             "nest2:H2N0:FP0_NN|IN0(FT1_NNN)nonstrict",
-            &rows2(|m0: FP0NN, m1: IN0FT1NNN| Holder7345 { m0, m1 }),
+            &rows2(|m0: FP0NN, m1: IN0FT1NNN| Holder7345Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32021,7 +33359,7 @@ mod holders {
     fn holder7353() -> Vec<String> {
         check(
             "nest2:H2N0:FP0_NN|IN1(A1_SS)nonstrict",
-            &rows2(|m0: FP0NN, m1: IN1A1SS| Holder7353 { m0, m1 }),
+            &rows2(|m0: FP0NN, m1: IN1A1SS| Holder7353Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32029,7 +33367,7 @@ mod holders {
     fn holder7361() -> Vec<String> {
         check(
             "nest2:H2N0:FP0_NN|IN1(P1_N)nonstrict",
-            &rows2(|m0: FP0NN, m1: IN1P1N| Holder7361 { m0, m1 }),
+            &rows2(|m0: FP0NN, m1: IN1P1N| Holder7361Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32037,7 +33375,7 @@ mod holders {
     fn holder7369() -> Vec<String> {
         check(
             "nest2:H2N0:FT0_NNN|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN0FO1NN| Holder7369 { m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN0FO1NN| Holder7369Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32045,7 +33383,7 @@ mod holders {
     fn holder7377() -> Vec<String> {
         check(
             "nest2:H2N0:FT0_NNN|IN0(V1_NN)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN0V1NN| Holder7377 { m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN0V1NN| Holder7377Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -32060,7 +33398,7 @@ mod holders {
     fn holder7385() -> Vec<String> {
         check(
             "nest2:H2N0:FT0_NNN|IN1(O1_N)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN1OptOI1N| Holder7385 { m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN1OptOI1N| Holder7385Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -32075,7 +33413,7 @@ mod holders {
     fn holder7393() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(A0_NN)|E1_NNnonstrict",
-            &rows2(|m0: IN0A0NN, m1: E1NN| Holder7393 { m0, m1 }),
+            &rows2(|m0: IN0A0NN, m1: E1NN| Holder7393Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32093,7 +33431,7 @@ mod holders {
     fn holder7401() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(A0_NN)|P1_Snonstrict",
-            &rows2(|m0: IN0A0NN, m1: P1S| Holder7401 { m0, m1 }),
+            &rows2(|m0: IN0A0NN, m1: P1S| Holder7401Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32101,7 +33439,7 @@ mod holders {
     fn holder7409() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(A0_SS)|FP1_NNnonstrict",
-            &rows2(|m0: IN0A0SS, m1: FP1NN| Holder7409 { m0, m1 }),
+            &rows2(|m0: IN0A0SS, m1: FP1NN| Holder7409Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32109,7 +33447,7 @@ mod holders {
     fn holder7417() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(E0_NN)|A1_NNnonstrict",
-            &rows2(|m0: IN0E0NN, m1: A1NN| Holder7417 { m0, m1 }),
+            &rows2(|m0: IN0E0NN, m1: A1NN| Holder7417Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32127,7 +33465,7 @@ mod holders {
     fn holder7425() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(E0_NN)|O1_Snonstrict",
-            &rows2(|m0: IN0E0NN, m1: Option<OI1S>| Holder7425 { m0, m1 }),
+            &rows2(|m0: IN0E0NN, m1: Option<OI1S>| Holder7425Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -32142,7 +33480,7 @@ mod holders {
     fn holder7433() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(E0_SS)|E1_SSnonstrict",
-            &rows2(|m0: IN0E0SS, m1: E1SS| Holder7433 { m0, m1 }),
+            &rows2(|m0: IN0E0SS, m1: E1SS| Holder7433Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32160,7 +33498,7 @@ mod holders {
     fn holder7441() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(E0_SS)|T1_NNnonstrict",
-            &rows2(|m0: IN0E0SS, m1: T1NN| Holder7441 { m0, m1 }),
+            &rows2(|m0: IN0E0SS, m1: T1NN| Holder7441Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32178,7 +33516,7 @@ mod holders {
     fn holder7449() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(FO0_NN)|FT1_NNNnonstrict",
-            &rows2(|m0: IN0FO0NN, m1: FT1NNN| Holder7449 { m0, m1 }),
+            &rows2(|m0: IN0FO0NN, m1: FT1NNN| Holder7449Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32186,7 +33524,7 @@ mod holders {
     fn holder7457() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(FP0_NN)|A1_SSnonstrict",
-            &rows2(|m0: IN0FP0NN, m1: A1SS| Holder7457 { m0, m1 }),
+            &rows2(|m0: IN0FP0NN, m1: A1SS| Holder7457Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32194,7 +33532,7 @@ mod holders {
     fn holder7465() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(FP0_NN)|P1_Nnonstrict",
-            &rows2(|m0: IN0FP0NN, m1: P1N| Holder7465 { m0, m1 }),
+            &rows2(|m0: IN0FP0NN, m1: P1N| Holder7465Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32202,7 +33540,7 @@ mod holders {
     fn holder7473() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(FT0_NNN)|FO1_NNnonstrict",
-            &rows2(|m0: IN0FT0NNN, m1: FO1NN| Holder7473 { m0, m1 }),
+            &rows2(|m0: IN0FT0NNN, m1: FO1NN| Holder7473Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32210,7 +33548,7 @@ mod holders {
     fn holder7481() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(FT0_NNN)|V1_NNnonstrict",
-            &rows2(|m0: IN0FT0NNN, m1: V1NN| Holder7481 { m0, m1 }),
+            &rows2(|m0: IN0FT0NNN, m1: V1NN| Holder7481Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -32225,7 +33563,7 @@ mod holders {
     fn holder7489() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(O0_N)|O1_Nnonstrict",
-            &rows2(|m0: IN0OptOI0N, m1: Option<OI1N>| Holder7489 { m0, m1 }),
+            &rows2(|m0: IN0OptOI0N, m1: Option<OI1N>| Holder7489Draft { m0, m1 }),
             &[
                 ("None,None", 'E'),
                 ("None,Some", 'E'),
@@ -32238,7 +33576,7 @@ mod holders {
     fn holder7497() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(O0_S)|E1_NNnonstrict",
-            &rows2(|m0: IN0OptOI0S, m1: E1NN| Holder7497 { m0, m1 }),
+            &rows2(|m0: IN0OptOI0S, m1: E1NN| Holder7497Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -32253,7 +33591,7 @@ mod holders {
     fn holder7505() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(O0_S)|P1_Snonstrict",
-            &rows2(|m0: IN0OptOI0S, m1: P1S| Holder7505 { m0, m1 }),
+            &rows2(|m0: IN0OptOI0S, m1: P1S| Holder7505Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -32261,7 +33599,7 @@ mod holders {
     fn holder7513() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(P0_N)|FP1_NNnonstrict",
-            &rows2(|m0: IN0P0N, m1: FP1NN| Holder7513 { m0, m1 }),
+            &rows2(|m0: IN0P0N, m1: FP1NN| Holder7513Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32269,7 +33607,7 @@ mod holders {
     fn holder7521() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(P0_S)|A1_NNnonstrict",
-            &rows2(|m0: IN0P0S, m1: A1NN| Holder7521 { m0, m1 }),
+            &rows2(|m0: IN0P0S, m1: A1NN| Holder7521Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32277,7 +33615,7 @@ mod holders {
     fn holder7529() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(P0_S)|O1_Snonstrict",
-            &rows2(|m0: IN0P0S, m1: Option<OI1S>| Holder7529 { m0, m1 }),
+            &rows2(|m0: IN0P0S, m1: Option<OI1S>| Holder7529Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -32285,7 +33623,7 @@ mod holders {
     fn holder7537() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(T0_NN)|E1_SSnonstrict",
-            &rows2(|m0: IN0T0NN, m1: E1SS| Holder7537 { m0, m1 }),
+            &rows2(|m0: IN0T0NN, m1: E1SS| Holder7537Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32303,7 +33641,7 @@ mod holders {
     fn holder7545() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(T0_NN)|T1_NNnonstrict",
-            &rows2(|m0: IN0T0NN, m1: T1NN| Holder7545 { m0, m1 }),
+            &rows2(|m0: IN0T0NN, m1: T1NN| Holder7545Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32321,7 +33659,7 @@ mod holders {
     fn holder7553() -> Vec<String> {
         check(
             "nest2:H2N0:IN0(V0_NN)|FT1_NNNnonstrict",
-            &rows2(|m0: IN0V0NN, m1: FT1NNN| Holder7553 { m0, m1 }),
+            &rows2(|m0: IN0V0NN, m1: FT1NNN| Holder7553Draft { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -32336,7 +33674,7 @@ mod holders {
     fn holder7561() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(A0_NN)|A1_SSnonstrict",
-            &rows2(|m0: IN1A0NN, m1: A1SS| Holder7561 { m0, m1 }),
+            &rows2(|m0: IN1A0NN, m1: A1SS| Holder7561Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32354,7 +33692,7 @@ mod holders {
     fn holder7569() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(A0_NN)|P1_Nnonstrict",
-            &rows2(|m0: IN1A0NN, m1: P1N| Holder7569 { m0, m1 }),
+            &rows2(|m0: IN1A0NN, m1: P1N| Holder7569Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32362,7 +33700,7 @@ mod holders {
     fn holder7577() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(A0_SS)|FO1_NNnonstrict",
-            &rows2(|m0: IN1A0SS, m1: FO1NN| Holder7577 { m0, m1 }),
+            &rows2(|m0: IN1A0SS, m1: FO1NN| Holder7577Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32370,7 +33708,7 @@ mod holders {
     fn holder7585() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(A0_SS)|V1_NNnonstrict",
-            &rows2(|m0: IN1A0SS, m1: V1NN| Holder7585 { m0, m1 }),
+            &rows2(|m0: IN1A0SS, m1: V1NN| Holder7585Draft { m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -32385,7 +33723,7 @@ mod holders {
     fn holder7593() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(E0_NN)|O1_Nnonstrict",
-            &rows2(|m0: IN1E0NN, m1: Option<OI1N>| Holder7593 { m0, m1 }),
+            &rows2(|m0: IN1E0NN, m1: Option<OI1N>| Holder7593Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -32400,7 +33738,7 @@ mod holders {
     fn holder7601() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(E0_SS)|E1_NNnonstrict",
-            &rows2(|m0: IN1E0SS, m1: E1NN| Holder7601 { m0, m1 }),
+            &rows2(|m0: IN1E0SS, m1: E1NN| Holder7601Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32418,7 +33756,7 @@ mod holders {
     fn holder7609() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(E0_SS)|P1_Snonstrict",
-            &rows2(|m0: IN1E0SS, m1: P1S| Holder7609 { m0, m1 }),
+            &rows2(|m0: IN1E0SS, m1: P1S| Holder7609Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32426,7 +33764,7 @@ mod holders {
     fn holder7617() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(FO0_NN)|FP1_NNnonstrict",
-            &rows2(|m0: IN1FO0NN, m1: FP1NN| Holder7617 { m0, m1 }),
+            &rows2(|m0: IN1FO0NN, m1: FP1NN| Holder7617Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32434,7 +33772,7 @@ mod holders {
     fn holder7625() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(FP0_NN)|A1_NNnonstrict",
-            &rows2(|m0: IN1FP0NN, m1: A1NN| Holder7625 { m0, m1 }),
+            &rows2(|m0: IN1FP0NN, m1: A1NN| Holder7625Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32442,7 +33780,7 @@ mod holders {
     fn holder7633() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(FP0_NN)|O1_Snonstrict",
-            &rows2(|m0: IN1FP0NN, m1: Option<OI1S>| Holder7633 { m0, m1 }),
+            &rows2(|m0: IN1FP0NN, m1: Option<OI1S>| Holder7633Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -32450,7 +33788,7 @@ mod holders {
     fn holder7641() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(FT0_NNN)|E1_SSnonstrict",
-            &rows2(|m0: IN1FT0NNN, m1: E1SS| Holder7641 { m0, m1 }),
+            &rows2(|m0: IN1FT0NNN, m1: E1SS| Holder7641Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32468,7 +33806,7 @@ mod holders {
     fn holder7649() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(FT0_NNN)|T1_NNnonstrict",
-            &rows2(|m0: IN1FT0NNN, m1: T1NN| Holder7649 { m0, m1 }),
+            &rows2(|m0: IN1FT0NNN, m1: T1NN| Holder7649Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32486,7 +33824,7 @@ mod holders {
     fn holder7657() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(O0_N)|FT1_NNNnonstrict",
-            &rows2(|m0: IN1OptOI0N, m1: FT1NNN| Holder7657 { m0, m1 }),
+            &rows2(|m0: IN1OptOI0N, m1: FT1NNN| Holder7657Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -32501,7 +33839,7 @@ mod holders {
     fn holder7665() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(O0_S)|A1_SSnonstrict",
-            &rows2(|m0: IN1OptOI0S, m1: A1SS| Holder7665 { m0, m1 }),
+            &rows2(|m0: IN1OptOI0S, m1: A1SS| Holder7665Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -32516,7 +33854,7 @@ mod holders {
     fn holder7673() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(O0_S)|P1_Nnonstrict",
-            &rows2(|m0: IN1OptOI0S, m1: P1N| Holder7673 { m0, m1 }),
+            &rows2(|m0: IN1OptOI0S, m1: P1N| Holder7673Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -32524,7 +33862,7 @@ mod holders {
     fn holder7681() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(P0_N)|FO1_NNnonstrict",
-            &rows2(|m0: IN1P0N, m1: FO1NN| Holder7681 { m0, m1 }),
+            &rows2(|m0: IN1P0N, m1: FO1NN| Holder7681Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32532,7 +33870,7 @@ mod holders {
     fn holder7689() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(P0_N)|V1_NNnonstrict",
-            &rows2(|m0: IN1P0N, m1: V1NN| Holder7689 { m0, m1 }),
+            &rows2(|m0: IN1P0N, m1: V1NN| Holder7689Draft { m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32540,7 +33878,7 @@ mod holders {
     fn holder7697() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(P0_S)|O1_Nnonstrict",
-            &rows2(|m0: IN1P0S, m1: Option<OI1N>| Holder7697 { m0, m1 }),
+            &rows2(|m0: IN1P0S, m1: Option<OI1N>| Holder7697Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -32548,7 +33886,7 @@ mod holders {
     fn holder7705() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(T0_NN)|E1_NNnonstrict",
-            &rows2(|m0: IN1T0NN, m1: E1NN| Holder7705 { m0, m1 }),
+            &rows2(|m0: IN1T0NN, m1: E1NN| Holder7705Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32566,7 +33904,7 @@ mod holders {
     fn holder7713() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(T0_NN)|P1_Snonstrict",
-            &rows2(|m0: IN1T0NN, m1: P1S| Holder7713 { m0, m1 }),
+            &rows2(|m0: IN1T0NN, m1: P1S| Holder7713Draft { m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32574,7 +33912,7 @@ mod holders {
     fn holder7721() -> Vec<String> {
         check(
             "nest2:H2N0:IN1(V0_NN)|FP1_NNnonstrict",
-            &rows2(|m0: IN1V0NN, m1: FP1NN| Holder7721 { m0, m1 }),
+            &rows2(|m0: IN1V0NN, m1: FP1NN| Holder7721Draft { m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32582,7 +33920,7 @@ mod holders {
     fn holder7729() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IN0(A1_NN)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN0A1NN| Holder7729 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN0A1NN| Holder7729Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -32597,7 +33935,7 @@ mod holders {
     fn holder7737() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IN0(FT1_NNN)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN0FT1NNN| Holder7737 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN0FT1NNN| Holder7737Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -32612,7 +33950,7 @@ mod holders {
     fn holder7745() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IN0(V1_SS)",
-            &rows2(|m0: Option<OI0N>, m1: IN0V1SS| Holder7745 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN0V1SS| Holder7745Draft { m0, m1 }),
             &[
                 ("None,Rect", 'R'),
                 ("None,Wrap", 'R'),
@@ -32625,7 +33963,7 @@ mod holders {
     fn holder7753() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IN1(FP1_SS)",
-            &rows2(|m0: Option<OI0N>, m1: IN1FP1SS| Holder7753 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN1FP1SS| Holder7753Draft { m0, m1 }),
             &[("None,-", 'R'), ("Some,-", 'R')],
         )
     }
@@ -32633,7 +33971,7 @@ mod holders {
     fn holder7761() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IN1(V1_NN)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN1V1NN| Holder7761 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN1V1NN| Holder7761Draft { m0, m1 }),
             &[
                 ("None,Rect", 'E'),
                 ("None,Wrap", 'E'),
@@ -32646,7 +33984,7 @@ mod holders {
     fn holder7769() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IS0(P1_N)",
-            &rows2(|m0: Option<OI0N>, m1: IS0P1N| Holder7769 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IS0P1N| Holder7769Draft { m0, m1 }),
             &[("None,-", 'R'), ("Some,-", 'R')],
         )
     }
@@ -32654,7 +33992,7 @@ mod holders {
     fn holder7777() -> Vec<String> {
         check(
             "nest2:H2N0:O0_N|IS1(P1_N)",
-            &rows2(|m0: Option<OI0N>, m1: IS1P1N| Holder7777 { m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IS1P1N| Holder7777Draft { m0, m1 }),
             &[("None,-", 'R'), ("Some,-", 'R')],
         )
     }
@@ -32662,7 +34000,7 @@ mod holders {
     fn holder7785() -> Vec<String> {
         check(
             "nest2:H2N0:O0_S|IN0(FP1_NN)nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: IN0FP1NN| Holder7785 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN0FP1NN| Holder7785Draft { m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -32670,7 +34008,7 @@ mod holders {
     fn holder7793() -> Vec<String> {
         check(
             "nest2:H2N0:O0_S|IN0(T1_SS)",
-            &rows2(|m0: Option<OI0S>, m1: IN0T1SS| Holder7793 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN0T1SS| Holder7793Draft { m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -32685,7 +34023,7 @@ mod holders {
     fn holder7801() -> Vec<String> {
         check(
             "nest2:H2N0:O0_S|IN1(FO1_SS)",
-            &rows2(|m0: Option<OI0S>, m1: IN1FO1SS| Holder7801 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN1FO1SS| Holder7801Draft { m0, m1 }),
             &[("None,-", 'R'), ("Some,-", 'R')],
         )
     }
@@ -32693,7 +34031,7 @@ mod holders {
     fn holder7809() -> Vec<String> {
         check(
             "nest2:H2N0:O0_S|IN1(T1_NN)nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: IN1T1NN| Holder7809 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN1T1NN| Holder7809Draft { m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -32708,7 +34046,7 @@ mod holders {
     fn holder7817() -> Vec<String> {
         check(
             "nest2:H2N0:O0_S|IS0(O1_N)",
-            &rows2(|m0: Option<OI0S>, m1: IS0OptOI1N| Holder7817 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IS0OptOI1N| Holder7817Draft { m0, m1 }),
             &[
                 ("None,None", 'R'),
                 ("None,Some", 'R'),
@@ -32721,7 +34059,7 @@ mod holders {
     fn holder7825() -> Vec<String> {
         check(
             "nest2:H2N0:O0_S|IS1(O1_N)",
-            &rows2(|m0: Option<OI0S>, m1: IS1OptOI1N| Holder7825 { m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IS1OptOI1N| Holder7825Draft { m0, m1 }),
             &[
                 ("None,None", 'R'),
                 ("None,Some", 'R'),
@@ -32734,7 +34072,7 @@ mod holders {
     fn holder7833() -> Vec<String> {
         check(
             "nest2:H2N0:P0_N|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: P0N, m1: IN0FO1NN| Holder7833 { m0, m1 }),
+            &rows2(|m0: P0N, m1: IN0FO1NN| Holder7833Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32742,7 +34080,7 @@ mod holders {
     fn holder7841() -> Vec<String> {
         check(
             "nest2:H2N0:P0_N|IN0(P1_S)nonstrict",
-            &rows2(|m0: P0N, m1: IN0P1S| Holder7841 { m0, m1 }),
+            &rows2(|m0: P0N, m1: IN0P1S| Holder7841Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32750,7 +34088,7 @@ mod holders {
     fn holder7849() -> Vec<String> {
         check(
             "nest2:H2N0:P0_N|IN1(E1_SS)nonstrict",
-            &rows2(|m0: P0N, m1: IN1E1SS| Holder7849 { m0, m1 }),
+            &rows2(|m0: P0N, m1: IN1E1SS| Holder7849Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32758,7 +34096,7 @@ mod holders {
     fn holder7857() -> Vec<String> {
         check(
             "nest2:H2N0:P0_N|IN1(P1_N)nonstrict",
-            &rows2(|m0: P0N, m1: IN1P1N| Holder7857 { m0, m1 }),
+            &rows2(|m0: P0N, m1: IN1P1N| Holder7857Draft { m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -32766,7 +34104,7 @@ mod holders {
     fn holder7865() -> Vec<String> {
         check(
             "nest2:H2N0:P0_N|IS0(E1_NN)",
-            &rows2(|m0: P0N, m1: IS0E1NN| Holder7865 { m0, m1 }),
+            &rows2(|m0: P0N, m1: IS0E1NN| Holder7865Draft { m0, m1 }),
             &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -32774,7 +34112,7 @@ mod holders {
     fn holder7873() -> Vec<String> {
         check(
             "nest2:H2N0:P0_N|IS1(E1_NN)",
-            &rows2(|m0: P0N, m1: IS1E1NN| Holder7873 { m0, m1 }),
+            &rows2(|m0: P0N, m1: IS1E1NN| Holder7873Draft { m0, m1 }),
             &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -32782,7 +34120,7 @@ mod holders {
     fn holder7881() -> Vec<String> {
         check(
             "nest2:H2N0:P0_S|IN0(E1_NN)nonstrict",
-            &rows2(|m0: P0S, m1: IN0E1NN| Holder7881 { m0, m1 }),
+            &rows2(|m0: P0S, m1: IN0E1NN| Holder7881Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32790,7 +34128,7 @@ mod holders {
     fn holder7889() -> Vec<String> {
         check(
             "nest2:H2N0:P0_S|IN0(O1_S)nonstrict",
-            &rows2(|m0: P0S, m1: IN0OptOI1S| Holder7889 { m0, m1 }),
+            &rows2(|m0: P0S, m1: IN0OptOI1S| Holder7889Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -32798,7 +34136,7 @@ mod holders {
     fn holder7897() -> Vec<String> {
         check(
             "nest2:H2N0:P0_S|IN1(A1_SS)nonstrict",
-            &rows2(|m0: P0S, m1: IN1A1SS| Holder7897 { m0, m1 }),
+            &rows2(|m0: P0S, m1: IN1A1SS| Holder7897Draft { m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -32806,7 +34144,7 @@ mod holders {
     fn holder7905() -> Vec<String> {
         check(
             "nest2:H2N0:P0_S|IN1(O1_N)nonstrict",
-            &rows2(|m0: P0S, m1: IN1OptOI1N| Holder7905 { m0, m1 }),
+            &rows2(|m0: P0S, m1: IN1OptOI1N| Holder7905Draft { m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -32814,7 +34152,7 @@ mod holders {
     fn holder7913() -> Vec<String> {
         check(
             "nest2:H2N0:P0_S|IS0(A1_NN)",
-            &rows2(|m0: P0S, m1: IS0A1NN| Holder7913 { m0, m1 }),
+            &rows2(|m0: P0S, m1: IS0A1NN| Holder7913Draft { m0, m1 }),
             &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -32822,7 +34160,7 @@ mod holders {
     fn holder7921() -> Vec<String> {
         check(
             "nest2:H2N0:P0_S|IS1(A1_NN)",
-            &rows2(|m0: P0S, m1: IS1A1NN| Holder7921 { m0, m1 }),
+            &rows2(|m0: P0S, m1: IS1A1NN| Holder7921Draft { m0, m1 }),
             &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -32830,7 +34168,7 @@ mod holders {
     fn holder7929() -> Vec<String> {
         check(
             "nest2:H2N0:T0_NN|IN0(A1_NN)nonstrict",
-            &rows2(|m0: T0NN, m1: IN0A1NN| Holder7929 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN0A1NN| Holder7929Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32848,7 +34186,7 @@ mod holders {
     fn holder7937() -> Vec<String> {
         check(
             "nest2:H2N0:T0_NN|IN0(O1_S)nonstrict",
-            &rows2(|m0: T0NN, m1: IN0OptOI1S| Holder7937 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN0OptOI1S| Holder7937Draft { m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -32863,7 +34201,7 @@ mod holders {
     fn holder7945() -> Vec<String> {
         check(
             "nest2:H2N0:T0_NN|IN1(E1_SS)nonstrict",
-            &rows2(|m0: T0NN, m1: IN1E1SS| Holder7945 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN1E1SS| Holder7945Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32881,7 +34219,7 @@ mod holders {
     fn holder7953() -> Vec<String> {
         check(
             "nest2:H2N0:T0_NN|IN1(T1_NN)nonstrict",
-            &rows2(|m0: T0NN, m1: IN1T1NN| Holder7953 { m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN1T1NN| Holder7953Draft { m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32899,7 +34237,7 @@ mod holders {
     fn holder7961() -> Vec<String> {
         check(
             "nest2:H2N0:V0_NN|IN0(FT1_NNN)nonstrict",
-            &rows2(|m0: V0NN, m1: IN0FT1NNN| Holder7961 { m0, m1 }),
+            &rows2(|m0: V0NN, m1: IN0FT1NNN| Holder7961Draft { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -32914,7 +34252,7 @@ mod holders {
     fn holder7969() -> Vec<String> {
         check(
             "nest2:H2N0:V0_NN|IN1(A1_SS)nonstrict",
-            &rows2(|m0: V0NN, m1: IN1A1SS| Holder7969 { m0, m1 }),
+            &rows2(|m0: V0NN, m1: IN1A1SS| Holder7969Draft { m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -32929,7 +34267,7 @@ mod holders {
     fn holder7977() -> Vec<String> {
         check(
             "nest2:H2N0:V0_NN|IN1(P1_N)nonstrict",
-            &rows2(|m0: V0NN, m1: IN1P1N| Holder7977 { m0, m1 }),
+            &rows2(|m0: V0NN, m1: IN1P1N| Holder7977Draft { m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32937,7 +34275,7 @@ mod holders {
     fn holder7985() -> Vec<String> {
         check(
             "nest2:H2N1:A0_NN|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: A0NN, m1: IN0FO1NN| Holder7985 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN0FO1NN| Holder7985Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32945,7 +34283,7 @@ mod holders {
     fn holder7993() -> Vec<String> {
         check(
             "nest2:H2N1:A0_NN|IN0(P1_S)nonstrict",
-            &rows2(|m0: A0NN, m1: IN0P1S| Holder7993 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN0P1S| Holder7993Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32953,7 +34291,7 @@ mod holders {
     fn holder8001() -> Vec<String> {
         check(
             "nest2:H2N1:A0_NN|IN1(E1_SS)nonstrict",
-            &rows2(|m0: A0NN, m1: IN1E1SS| Holder8001 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN1E1SS| Holder8001Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -32971,7 +34309,7 @@ mod holders {
     fn holder8009() -> Vec<String> {
         check(
             "nest2:H2N1:A0_NN|IN1(P1_N)nonstrict",
-            &rows2(|m0: A0NN, m1: IN1P1N| Holder8009 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: IN1P1N| Holder8009Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -32979,7 +34317,7 @@ mod holders {
     fn holder8017() -> Vec<String> {
         check(
             "nest2:H2N1:A0_NN|IS0(E1_NN)",
-            &rows2(|m0: A0NN, m1: IS0E1NN| Holder8017 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: IS0E1NN| Holder8017Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -32997,7 +34335,7 @@ mod holders {
     fn holder8025() -> Vec<String> {
         check(
             "nest2:H2N1:A0_NN|IS1(E1_NN)",
-            &rows2(|m0: A0NN, m1: IS1E1NN| Holder8025 { own: 7, m0, m1 }),
+            &rows2(|m0: A0NN, m1: IS1E1NN| Holder8025Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -33015,7 +34353,7 @@ mod holders {
     fn holder8033() -> Vec<String> {
         check(
             "nest2:H2N1:A0_SS|IN0(E1_NN)nonstrict",
-            &rows2(|m0: A0SS, m1: IN0E1NN| Holder8033 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN0E1NN| Holder8033Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33033,7 +34371,7 @@ mod holders {
     fn holder8041() -> Vec<String> {
         check(
             "nest2:H2N1:A0_SS|IN0(O1_S)nonstrict",
-            &rows2(|m0: A0SS, m1: IN0OptOI1S| Holder8041 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN0OptOI1S| Holder8041Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33048,7 +34386,7 @@ mod holders {
     fn holder8049() -> Vec<String> {
         check(
             "nest2:H2N1:A0_SS|IN1(A1_SS)nonstrict",
-            &rows2(|m0: A0SS, m1: IN1A1SS| Holder8049 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN1A1SS| Holder8049Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33066,7 +34404,7 @@ mod holders {
     fn holder8057() -> Vec<String> {
         check(
             "nest2:H2N1:A0_SS|IN1(O1_N)nonstrict",
-            &rows2(|m0: A0SS, m1: IN1OptOI1N| Holder8057 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: IN1OptOI1N| Holder8057Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33081,7 +34419,7 @@ mod holders {
     fn holder8065() -> Vec<String> {
         check(
             "nest2:H2N1:A0_SS|IS0(A1_NN)",
-            &rows2(|m0: A0SS, m1: IS0A1NN| Holder8065 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: IS0A1NN| Holder8065Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -33099,7 +34437,7 @@ mod holders {
     fn holder8073() -> Vec<String> {
         check(
             "nest2:H2N1:A0_SS|IS1(A1_NN)",
-            &rows2(|m0: A0SS, m1: IS1A1NN| Holder8073 { own: 7, m0, m1 }),
+            &rows2(|m0: A0SS, m1: IS1A1NN| Holder8073Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -33117,7 +34455,7 @@ mod holders {
     fn holder8081() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IN0(A1_NN)nonstrict",
-            &rows2(|m0: E0NN, m1: IN0A1NN| Holder8081 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN0A1NN| Holder8081Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33135,7 +34473,7 @@ mod holders {
     fn holder8089() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IN0(FT1_NNN)nonstrict",
-            &rows2(|m0: E0NN, m1: IN0FT1NNN| Holder8089 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN0FT1NNN| Holder8089Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33153,7 +34491,7 @@ mod holders {
     fn holder8097() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IN0(V1_SS)",
-            &rows2(|m0: E0NN, m1: IN0V1SS| Holder8097 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN0V1SS| Holder8097Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'R'),
                 ("Dot,Wrap", 'R'),
@@ -33168,7 +34506,7 @@ mod holders {
     fn holder8105() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IN1(FP1_SS)",
-            &rows2(|m0: E0NN, m1: IN1FP1SS| Holder8105 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN1FP1SS| Holder8105Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -33176,7 +34514,7 @@ mod holders {
     fn holder8113() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IN1(V1_NN)nonstrict",
-            &rows2(|m0: E0NN, m1: IN1V1NN| Holder8113 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IN1V1NN| Holder8113Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -33191,7 +34529,7 @@ mod holders {
     fn holder8121() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IS0(P1_N)",
-            &rows2(|m0: E0NN, m1: IS0P1N| Holder8121 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IS0P1N| Holder8121Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -33199,7 +34537,7 @@ mod holders {
     fn holder8129() -> Vec<String> {
         check(
             "nest2:H2N1:E0_NN|IS1(P1_N)",
-            &rows2(|m0: E0NN, m1: IS1P1N| Holder8129 { own: 7, m0, m1 }),
+            &rows2(|m0: E0NN, m1: IS1P1N| Holder8129Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -33207,7 +34545,7 @@ mod holders {
     fn holder8137() -> Vec<String> {
         check(
             "nest2:H2N1:E0_SS|IN0(FP1_NN)nonstrict",
-            &rows2(|m0: E0SS, m1: IN0FP1NN| Holder8137 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN0FP1NN| Holder8137Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -33215,7 +34553,7 @@ mod holders {
     fn holder8145() -> Vec<String> {
         check(
             "nest2:H2N1:E0_SS|IN0(T1_SS)",
-            &rows2(|m0: E0SS, m1: IN0T1SS| Holder8145 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN0T1SS| Holder8145Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'R'),
                 ("Dot,Rect", 'R'),
@@ -33233,7 +34571,7 @@ mod holders {
     fn holder8153() -> Vec<String> {
         check(
             "nest2:H2N1:E0_SS|IN1(FO1_SS)",
-            &rows2(|m0: E0SS, m1: IN1FO1SS| Holder8153 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN1FO1SS| Holder8153Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'R'), ("Rect,-", 'R'), ("Wrap,-", 'R')],
         )
     }
@@ -33241,7 +34579,7 @@ mod holders {
     fn holder8161() -> Vec<String> {
         check(
             "nest2:H2N1:E0_SS|IN1(T1_NN)nonstrict",
-            &rows2(|m0: E0SS, m1: IN1T1NN| Holder8161 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: IN1T1NN| Holder8161Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33259,7 +34597,7 @@ mod holders {
     fn holder8169() -> Vec<String> {
         check(
             "nest2:H2N1:E0_SS|IS0(O1_N)",
-            &rows2(|m0: E0SS, m1: IS0OptOI1N| Holder8169 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: IS0OptOI1N| Holder8169Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -33274,7 +34612,7 @@ mod holders {
     fn holder8177() -> Vec<String> {
         check(
             "nest2:H2N1:E0_SS|IS1(O1_N)",
-            &rows2(|m0: E0SS, m1: IS1OptOI1N| Holder8177 { own: 7, m0, m1 }),
+            &rows2(|m0: E0SS, m1: IS1OptOI1N| Holder8177Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'R'),
                 ("Dot,Some", 'R'),
@@ -33289,7 +34627,7 @@ mod holders {
     fn holder8185() -> Vec<String> {
         check(
             "nest2:H2N1:FO0_NN|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN0FO1NN| Holder8185 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN0FO1NN| Holder8185Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33297,7 +34635,7 @@ mod holders {
     fn holder8193() -> Vec<String> {
         check(
             "nest2:H2N1:FO0_NN|IN0(V1_NN)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN0V1NN| Holder8193 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN0V1NN| Holder8193Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33305,7 +34643,7 @@ mod holders {
     fn holder8201() -> Vec<String> {
         check(
             "nest2:H2N1:FO0_NN|IN1(O1_N)nonstrict",
-            &rows2(|m0: FO0NN, m1: IN1OptOI1N| Holder8201 { own: 7, m0, m1 }),
+            &rows2(|m0: FO0NN, m1: IN1OptOI1N| Holder8201Draft { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -33313,7 +34651,7 @@ mod holders {
     fn holder8209() -> Vec<String> {
         check(
             "nest2:H2N1:FP0_NN|IN0(E1_NN)nonstrict",
-            &rows2(|m0: FP0NN, m1: IN0E1NN| Holder8209 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NN, m1: IN0E1NN| Holder8209Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33321,7 +34659,7 @@ mod holders {
     fn holder8217() -> Vec<String> {
         check(
             "nest2:H2N1:FP0_NN|IN0(P1_S)nonstrict",
-            &rows2(|m0: FP0NN, m1: IN0P1S| Holder8217 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NN, m1: IN0P1S| Holder8217Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33329,7 +34667,7 @@ mod holders {
     fn holder8225() -> Vec<String> {
         check(
             "nest2:H2N1:FP0_NN|IN1(FP1_NN)nonstrict",
-            &rows2(|m0: FP0NN, m1: IN1FP1NN| Holder8225 { own: 7, m0, m1 }),
+            &rows2(|m0: FP0NN, m1: IN1FP1NN| Holder8225Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33337,7 +34675,7 @@ mod holders {
     fn holder8233() -> Vec<String> {
         check(
             "nest2:H2N1:FT0_NNN|IN0(A1_NN)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN0A1NN| Holder8233 { own: 7, m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN0A1NN| Holder8233Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33355,7 +34693,7 @@ mod holders {
     fn holder8241() -> Vec<String> {
         check(
             "nest2:H2N1:FT0_NNN|IN0(O1_S)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN0OptOI1S| Holder8241 { own: 7, m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN0OptOI1S| Holder8241Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33370,7 +34708,7 @@ mod holders {
     fn holder8249() -> Vec<String> {
         check(
             "nest2:H2N1:FT0_NNN|IN1(E1_SS)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN1E1SS| Holder8249 { own: 7, m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN1E1SS| Holder8249Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33388,7 +34726,7 @@ mod holders {
     fn holder8257() -> Vec<String> {
         check(
             "nest2:H2N1:FT0_NNN|IN1(T1_NN)nonstrict",
-            &rows2(|m0: FT0NNN, m1: IN1T1NN| Holder8257 { own: 7, m0, m1 }),
+            &rows2(|m0: FT0NNN, m1: IN1T1NN| Holder8257Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33406,7 +34744,7 @@ mod holders {
     fn holder8265() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(A0_NN)|FT1_NNNnonstrict",
-            &rows2(|m0: IN0A0NN, m1: FT1NNN| Holder8265 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0A0NN, m1: FT1NNN| Holder8265Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33424,7 +34762,7 @@ mod holders {
     fn holder8273() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(A0_SS)|A1_SSnonstrict",
-            &rows2(|m0: IN0A0SS, m1: A1SS| Holder8273 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0A0SS, m1: A1SS| Holder8273Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33442,7 +34780,7 @@ mod holders {
     fn holder8281() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(A0_SS)|P1_Nnonstrict",
-            &rows2(|m0: IN0A0SS, m1: P1N| Holder8281 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0A0SS, m1: P1N| Holder8281Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -33450,7 +34788,7 @@ mod holders {
     fn holder8289() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(E0_NN)|FO1_NNnonstrict",
-            &rows2(|m0: IN0E0NN, m1: FO1NN| Holder8289 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0E0NN, m1: FO1NN| Holder8289Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -33458,7 +34796,7 @@ mod holders {
     fn holder8297() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(E0_NN)|V1_NNnonstrict",
-            &rows2(|m0: IN0E0NN, m1: V1NN| Holder8297 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0E0NN, m1: V1NN| Holder8297Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -33473,7 +34811,7 @@ mod holders {
     fn holder8305() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(E0_SS)|O1_Nnonstrict",
-            &rows2(|m0: IN0E0SS, m1: Option<OI1N>| Holder8305 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0E0SS, m1: Option<OI1N>| Holder8305Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33488,7 +34826,7 @@ mod holders {
     fn holder8313() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(FO0_NN)|E1_NNnonstrict",
-            &rows2(|m0: IN0FO0NN, m1: E1NN| Holder8313 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0FO0NN, m1: E1NN| Holder8313Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33496,7 +34834,7 @@ mod holders {
     fn holder8321() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(FO0_NN)|P1_Snonstrict",
-            &rows2(|m0: IN0FO0NN, m1: P1S| Holder8321 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0FO0NN, m1: P1S| Holder8321Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33504,7 +34842,7 @@ mod holders {
     fn holder8329() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(FP0_NN)|FP1_NNnonstrict",
-            &rows2(|m0: IN0FP0NN, m1: FP1NN| Holder8329 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0FP0NN, m1: FP1NN| Holder8329Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33512,7 +34850,7 @@ mod holders {
     fn holder8337() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(FT0_NNN)|A1_NNnonstrict",
-            &rows2(|m0: IN0FT0NNN, m1: A1NN| Holder8337 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0FT0NNN, m1: A1NN| Holder8337Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33530,7 +34868,7 @@ mod holders {
     fn holder8345() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(FT0_NNN)|O1_Snonstrict",
-            &rows2(|m0: IN0FT0NNN, m1: Option<OI1S>| Holder8345 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0FT0NNN, m1: Option<OI1S>| Holder8345Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33545,7 +34883,7 @@ mod holders {
     fn holder8353() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(O0_N)|E1_SSnonstrict",
-            &rows2(|m0: IN0OptOI0N, m1: E1SS| Holder8353 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0OptOI0N, m1: E1SS| Holder8353Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -33560,7 +34898,7 @@ mod holders {
     fn holder8361() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(O0_N)|T1_NNnonstrict",
-            &rows2(|m0: IN0OptOI0N, m1: T1NN| Holder8361 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0OptOI0N, m1: T1NN| Holder8361Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -33575,7 +34913,7 @@ mod holders {
     fn holder8369() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(O0_S)|FT1_NNNnonstrict",
-            &rows2(|m0: IN0OptOI0S, m1: FT1NNN| Holder8369 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0OptOI0S, m1: FT1NNN| Holder8369Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -33590,7 +34928,7 @@ mod holders {
     fn holder8377() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(P0_N)|A1_SSnonstrict",
-            &rows2(|m0: IN0P0N, m1: A1SS| Holder8377 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0P0N, m1: A1SS| Holder8377Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33598,7 +34936,7 @@ mod holders {
     fn holder8385() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(P0_N)|P1_Nnonstrict",
-            &rows2(|m0: IN0P0N, m1: P1N| Holder8385 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0P0N, m1: P1N| Holder8385Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33606,7 +34944,7 @@ mod holders {
     fn holder8393() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(P0_S)|FO1_NNnonstrict",
-            &rows2(|m0: IN0P0S, m1: FO1NN| Holder8393 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0P0S, m1: FO1NN| Holder8393Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33614,7 +34952,7 @@ mod holders {
     fn holder8401() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(P0_S)|V1_NNnonstrict",
-            &rows2(|m0: IN0P0S, m1: V1NN| Holder8401 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0P0S, m1: V1NN| Holder8401Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33622,7 +34960,7 @@ mod holders {
     fn holder8409() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(T0_NN)|O1_Nnonstrict",
-            &rows2(|m0: IN0T0NN, m1: Option<OI1N>| Holder8409 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0T0NN, m1: Option<OI1N>| Holder8409Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33637,7 +34975,7 @@ mod holders {
     fn holder8417() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(V0_NN)|E1_NNnonstrict",
-            &rows2(|m0: IN0V0NN, m1: E1NN| Holder8417 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0V0NN, m1: E1NN| Holder8417Draft { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -33652,7 +34990,7 @@ mod holders {
     fn holder8425() -> Vec<String> {
         check(
             "nest2:H2N1:IN0(V0_NN)|P1_Snonstrict",
-            &rows2(|m0: IN0V0NN, m1: P1S| Holder8425 { own: 7, m0, m1 }),
+            &rows2(|m0: IN0V0NN, m1: P1S| Holder8425Draft { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -33660,7 +34998,7 @@ mod holders {
     fn holder8433() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(A0_NN)|FP1_NNnonstrict",
-            &rows2(|m0: IN1A0NN, m1: FP1NN| Holder8433 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1A0NN, m1: FP1NN| Holder8433Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -33668,7 +35006,7 @@ mod holders {
     fn holder8441() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(A0_SS)|A1_NNnonstrict",
-            &rows2(|m0: IN1A0SS, m1: A1NN| Holder8441 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1A0SS, m1: A1NN| Holder8441Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33686,7 +35024,7 @@ mod holders {
     fn holder8449() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(A0_SS)|O1_Snonstrict",
-            &rows2(|m0: IN1A0SS, m1: Option<OI1S>| Holder8449 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1A0SS, m1: Option<OI1S>| Holder8449Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33701,7 +35039,7 @@ mod holders {
     fn holder8457() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(E0_NN)|E1_SSnonstrict",
-            &rows2(|m0: IN1E0NN, m1: E1SS| Holder8457 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1E0NN, m1: E1SS| Holder8457Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33719,7 +35057,7 @@ mod holders {
     fn holder8465() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(E0_NN)|T1_NNnonstrict",
-            &rows2(|m0: IN1E0NN, m1: T1NN| Holder8465 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1E0NN, m1: T1NN| Holder8465Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33737,7 +35075,7 @@ mod holders {
     fn holder8473() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(E0_SS)|FT1_NNNnonstrict",
-            &rows2(|m0: IN1E0SS, m1: FT1NNN| Holder8473 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1E0SS, m1: FT1NNN| Holder8473Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33755,7 +35093,7 @@ mod holders {
     fn holder8481() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(FO0_NN)|A1_SSnonstrict",
-            &rows2(|m0: IN1FO0NN, m1: A1SS| Holder8481 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1FO0NN, m1: A1SS| Holder8481Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33763,7 +35101,7 @@ mod holders {
     fn holder8489() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(FO0_NN)|P1_Nnonstrict",
-            &rows2(|m0: IN1FO0NN, m1: P1N| Holder8489 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1FO0NN, m1: P1N| Holder8489Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33771,7 +35109,7 @@ mod holders {
     fn holder8497() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(FP0_NN)|FO1_NNnonstrict",
-            &rows2(|m0: IN1FP0NN, m1: FO1NN| Holder8497 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1FP0NN, m1: FO1NN| Holder8497Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -33779,7 +35117,7 @@ mod holders {
     fn holder8505() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(FP0_NN)|V1_NNnonstrict",
-            &rows2(|m0: IN1FP0NN, m1: V1NN| Holder8505 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1FP0NN, m1: V1NN| Holder8505Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33787,7 +35125,7 @@ mod holders {
     fn holder8513() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(FT0_NNN)|O1_Nnonstrict",
-            &rows2(|m0: IN1FT0NNN, m1: Option<OI1N>| Holder8513 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1FT0NNN, m1: Option<OI1N>| Holder8513Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -33802,7 +35140,7 @@ mod holders {
     fn holder8521() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(O0_N)|E1_NNnonstrict",
-            &rows2(|m0: IN1OptOI0N, m1: E1NN| Holder8521 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1OptOI0N, m1: E1NN| Holder8521Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -33817,7 +35155,7 @@ mod holders {
     fn holder8529() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(O0_N)|P1_Snonstrict",
-            &rows2(|m0: IN1OptOI0N, m1: P1S| Holder8529 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1OptOI0N, m1: P1S| Holder8529Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -33825,7 +35163,7 @@ mod holders {
     fn holder8537() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(O0_S)|FP1_NNnonstrict",
-            &rows2(|m0: IN1OptOI0S, m1: FP1NN| Holder8537 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1OptOI0S, m1: FP1NN| Holder8537Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -33833,7 +35171,7 @@ mod holders {
     fn holder8545() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(P0_N)|A1_NNnonstrict",
-            &rows2(|m0: IN1P0N, m1: A1NN| Holder8545 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1P0N, m1: A1NN| Holder8545Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33841,7 +35179,7 @@ mod holders {
     fn holder8553() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(P0_N)|O1_Snonstrict",
-            &rows2(|m0: IN1P0N, m1: Option<OI1S>| Holder8553 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1P0N, m1: Option<OI1S>| Holder8553Draft { own: 7, m0, m1 }),
             &[("-,None", 'E'), ("-,Some", 'E')],
         )
     }
@@ -33849,7 +35187,7 @@ mod holders {
     fn holder8561() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(P0_S)|E1_SSnonstrict",
-            &rows2(|m0: IN1P0S, m1: E1SS| Holder8561 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1P0S, m1: E1SS| Holder8561Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33857,7 +35195,7 @@ mod holders {
     fn holder8569() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(P0_S)|T1_NNnonstrict",
-            &rows2(|m0: IN1P0S, m1: T1NN| Holder8569 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1P0S, m1: T1NN| Holder8569Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -33865,7 +35203,7 @@ mod holders {
     fn holder8577() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(T0_NN)|FT1_NNNnonstrict",
-            &rows2(|m0: IN1T0NN, m1: FT1NNN| Holder8577 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1T0NN, m1: FT1NNN| Holder8577Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Dot", 'E'),
                 ("Dot,Rect", 'E'),
@@ -33883,7 +35221,7 @@ mod holders {
     fn holder8585() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(V0_NN)|A1_SSnonstrict",
-            &rows2(|m0: IN1V0NN, m1: A1SS| Holder8585 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1V0NN, m1: A1SS| Holder8585Draft { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -33898,7 +35236,7 @@ mod holders {
     fn holder8593() -> Vec<String> {
         check(
             "nest2:H2N1:IN1(V0_NN)|P1_Nnonstrict",
-            &rows2(|m0: IN1V0NN, m1: P1N| Holder8593 { own: 7, m0, m1 }),
+            &rows2(|m0: IN1V0NN, m1: P1N| Holder8593Draft { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -33906,7 +35244,7 @@ mod holders {
     fn holder8601() -> Vec<String> {
         check(
             "nest2:H2N1:O0_N|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN0FO1NN| Holder8601 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN0FO1NN| Holder8601Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -33914,7 +35252,7 @@ mod holders {
     fn holder8609() -> Vec<String> {
         check(
             "nest2:H2N1:O0_N|IN0(P1_S)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN0P1S| Holder8609 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN0P1S| Holder8609Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -33922,7 +35260,7 @@ mod holders {
     fn holder8617() -> Vec<String> {
         check(
             "nest2:H2N1:O0_N|IN1(E1_SS)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN1E1SS| Holder8617 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN1E1SS| Holder8617Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -33937,7 +35275,7 @@ mod holders {
     fn holder8625() -> Vec<String> {
         check(
             "nest2:H2N1:O0_N|IN1(P1_N)nonstrict",
-            &rows2(|m0: Option<OI0N>, m1: IN1P1N| Holder8625 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IN1P1N| Holder8625Draft { own: 7, m0, m1 }),
             &[("None,-", 'E'), ("Some,-", 'E')],
         )
     }
@@ -33945,7 +35283,7 @@ mod holders {
     fn holder8633() -> Vec<String> {
         check(
             "nest2:H2N1:O0_N|IS0(E1_NN)",
-            &rows2(|m0: Option<OI0N>, m1: IS0E1NN| Holder8633 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IS0E1NN| Holder8633Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -33960,7 +35298,7 @@ mod holders {
     fn holder8641() -> Vec<String> {
         check(
             "nest2:H2N1:O0_N|IS1(E1_NN)",
-            &rows2(|m0: Option<OI0N>, m1: IS1E1NN| Holder8641 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0N>, m1: IS1E1NN| Holder8641Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -33975,7 +35313,7 @@ mod holders {
     fn holder8649() -> Vec<String> {
         check(
             "nest2:H2N1:O0_S|IN0(E1_NN)nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: IN0E1NN| Holder8649 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN0E1NN| Holder8649Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -33990,7 +35328,7 @@ mod holders {
     fn holder8657() -> Vec<String> {
         check(
             "nest2:H2N1:O0_S|IN0(O1_S)nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: IN0OptOI1S| Holder8657 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN0OptOI1S| Holder8657Draft { own: 7, m0, m1 }),
             &[
                 ("None,None", 'E'),
                 ("None,Some", 'E'),
@@ -34003,7 +35341,7 @@ mod holders {
     fn holder8665() -> Vec<String> {
         check(
             "nest2:H2N1:O0_S|IN1(A1_SS)nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: IN1A1SS| Holder8665 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN1A1SS| Holder8665Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'E'),
                 ("None,Rect", 'E'),
@@ -34018,7 +35356,7 @@ mod holders {
     fn holder8673() -> Vec<String> {
         check(
             "nest2:H2N1:O0_S|IN1(O1_N)nonstrict",
-            &rows2(|m0: Option<OI0S>, m1: IN1OptOI1N| Holder8673 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IN1OptOI1N| Holder8673Draft { own: 7, m0, m1 }),
             &[
                 ("None,None", 'E'),
                 ("None,Some", 'E'),
@@ -34031,7 +35369,7 @@ mod holders {
     fn holder8681() -> Vec<String> {
         check(
             "nest2:H2N1:O0_S|IS0(A1_NN)",
-            &rows2(|m0: Option<OI0S>, m1: IS0A1NN| Holder8681 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IS0A1NN| Holder8681Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -34046,7 +35384,7 @@ mod holders {
     fn holder8689() -> Vec<String> {
         check(
             "nest2:H2N1:O0_S|IS1(A1_NN)",
-            &rows2(|m0: Option<OI0S>, m1: IS1A1NN| Holder8689 { own: 7, m0, m1 }),
+            &rows2(|m0: Option<OI0S>, m1: IS1A1NN| Holder8689Draft { own: 7, m0, m1 }),
             &[
                 ("None,Dot", 'R'),
                 ("None,Rect", 'R'),
@@ -34061,7 +35399,7 @@ mod holders {
     fn holder8697() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IN0(A1_NN)nonstrict",
-            &rows2(|m0: P0N, m1: IN0A1NN| Holder8697 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IN0A1NN| Holder8697Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -34069,7 +35407,7 @@ mod holders {
     fn holder8705() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IN0(FT1_NNN)nonstrict",
-            &rows2(|m0: P0N, m1: IN0FT1NNN| Holder8705 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IN0FT1NNN| Holder8705Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -34077,7 +35415,7 @@ mod holders {
     fn holder8713() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IN0(V1_SS)",
-            &rows2(|m0: P0N, m1: IN0V1SS| Holder8713 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IN0V1SS| Holder8713Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -34085,7 +35423,7 @@ mod holders {
     fn holder8721() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IN1(FP1_SS)",
-            &rows2(|m0: P0N, m1: IN1FP1SS| Holder8721 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IN1FP1SS| Holder8721Draft { own: 7, m0, m1 }),
             &[("-,-", 'R')],
         )
     }
@@ -34093,7 +35431,7 @@ mod holders {
     fn holder8729() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IN1(V1_NN)nonstrict",
-            &rows2(|m0: P0N, m1: IN1V1NN| Holder8729 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IN1V1NN| Holder8729Draft { own: 7, m0, m1 }),
             &[("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -34101,7 +35439,7 @@ mod holders {
     fn holder8737() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IS0(P1_N)",
-            &rows2(|m0: P0N, m1: IS0P1N| Holder8737 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IS0P1N| Holder8737Draft { own: 7, m0, m1 }),
             &[("-,-", 'R')],
         )
     }
@@ -34109,7 +35447,7 @@ mod holders {
     fn holder8745() -> Vec<String> {
         check(
             "nest2:H2N1:P0_N|IS1(P1_N)",
-            &rows2(|m0: P0N, m1: IS1P1N| Holder8745 { own: 7, m0, m1 }),
+            &rows2(|m0: P0N, m1: IS1P1N| Holder8745Draft { own: 7, m0, m1 }),
             &[("-,-", 'R')],
         )
     }
@@ -34117,7 +35455,7 @@ mod holders {
     fn holder8753() -> Vec<String> {
         check(
             "nest2:H2N1:P0_S|IN0(FP1_NN)nonstrict",
-            &rows2(|m0: P0S, m1: IN0FP1NN| Holder8753 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: IN0FP1NN| Holder8753Draft { own: 7, m0, m1 }),
             &[("-,-", 'E')],
         )
     }
@@ -34125,7 +35463,7 @@ mod holders {
     fn holder8761() -> Vec<String> {
         check(
             "nest2:H2N1:P0_S|IN0(T1_SS)",
-            &rows2(|m0: P0S, m1: IN0T1SS| Holder8761 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: IN0T1SS| Holder8761Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'R'), ("-,Rect", 'R'), ("-,Wrap", 'R')],
         )
     }
@@ -34133,7 +35471,7 @@ mod holders {
     fn holder8769() -> Vec<String> {
         check(
             "nest2:H2N1:P0_S|IN1(FO1_SS)",
-            &rows2(|m0: P0S, m1: IN1FO1SS| Holder8769 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: IN1FO1SS| Holder8769Draft { own: 7, m0, m1 }),
             &[("-,-", 'R')],
         )
     }
@@ -34141,7 +35479,7 @@ mod holders {
     fn holder8777() -> Vec<String> {
         check(
             "nest2:H2N1:P0_S|IN1(T1_NN)nonstrict",
-            &rows2(|m0: P0S, m1: IN1T1NN| Holder8777 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: IN1T1NN| Holder8777Draft { own: 7, m0, m1 }),
             &[("-,Dot", 'E'), ("-,Rect", 'E'), ("-,Wrap", 'E')],
         )
     }
@@ -34149,7 +35487,7 @@ mod holders {
     fn holder8785() -> Vec<String> {
         check(
             "nest2:H2N1:P0_S|IS0(O1_N)",
-            &rows2(|m0: P0S, m1: IS0OptOI1N| Holder8785 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: IS0OptOI1N| Holder8785Draft { own: 7, m0, m1 }),
             &[("-,None", 'R'), ("-,Some", 'R')],
         )
     }
@@ -34157,7 +35495,7 @@ mod holders {
     fn holder8793() -> Vec<String> {
         check(
             "nest2:H2N1:P0_S|IS1(O1_N)",
-            &rows2(|m0: P0S, m1: IS1OptOI1N| Holder8793 { own: 7, m0, m1 }),
+            &rows2(|m0: P0S, m1: IS1OptOI1N| Holder8793Draft { own: 7, m0, m1 }),
             &[("-,None", 'R'), ("-,Some", 'R')],
         )
     }
@@ -34165,7 +35503,7 @@ mod holders {
     fn holder8801() -> Vec<String> {
         check(
             "nest2:H2N1:T0_NN|IN0(FO1_NN)nonstrict",
-            &rows2(|m0: T0NN, m1: IN0FO1NN| Holder8801 { own: 7, m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN0FO1NN| Holder8801Draft { own: 7, m0, m1 }),
             &[("Dot,-", 'E'), ("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -34173,7 +35511,7 @@ mod holders {
     fn holder8809() -> Vec<String> {
         check(
             "nest2:H2N1:T0_NN|IN0(V1_NN)nonstrict",
-            &rows2(|m0: T0NN, m1: IN0V1NN| Holder8809 { own: 7, m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN0V1NN| Holder8809Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,Rect", 'E'),
                 ("Dot,Wrap", 'E'),
@@ -34188,7 +35526,7 @@ mod holders {
     fn holder8817() -> Vec<String> {
         check(
             "nest2:H2N1:T0_NN|IN1(O1_N)nonstrict",
-            &rows2(|m0: T0NN, m1: IN1OptOI1N| Holder8817 { own: 7, m0, m1 }),
+            &rows2(|m0: T0NN, m1: IN1OptOI1N| Holder8817Draft { own: 7, m0, m1 }),
             &[
                 ("Dot,None", 'E'),
                 ("Dot,Some", 'E'),
@@ -34203,7 +35541,7 @@ mod holders {
     fn holder8825() -> Vec<String> {
         check(
             "nest2:H2N1:V0_NN|IN0(E1_NN)nonstrict",
-            &rows2(|m0: V0NN, m1: IN0E1NN| Holder8825 { own: 7, m0, m1 }),
+            &rows2(|m0: V0NN, m1: IN0E1NN| Holder8825Draft { own: 7, m0, m1 }),
             &[
                 ("Rect,Dot", 'E'),
                 ("Rect,Rect", 'E'),
@@ -34218,7 +35556,7 @@ mod holders {
     fn holder8833() -> Vec<String> {
         check(
             "nest2:H2N1:V0_NN|IN0(P1_S)nonstrict",
-            &rows2(|m0: V0NN, m1: IN0P1S| Holder8833 { own: 7, m0, m1 }),
+            &rows2(|m0: V0NN, m1: IN0P1S| Holder8833Draft { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }
@@ -34226,7 +35564,7 @@ mod holders {
     fn holder8841() -> Vec<String> {
         check(
             "nest2:H2N1:V0_NN|IN1(FP1_NN)nonstrict",
-            &rows2(|m0: V0NN, m1: IN1FP1NN| Holder8841 { own: 7, m0, m1 }),
+            &rows2(|m0: V0NN, m1: IN1FP1NN| Holder8841Draft { own: 7, m0, m1 }),
             &[("Rect,-", 'E'), ("Wrap,-", 'E')],
         )
     }

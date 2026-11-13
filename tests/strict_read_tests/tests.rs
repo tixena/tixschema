@@ -172,7 +172,7 @@ pub struct Settings {
     pub start: u32,
 }
 
-impl Default for Settings {
+impl Default for SettingsDraft {
     fn default() -> Self {
         Self {
             label: "main".to_owned(),
@@ -404,7 +404,7 @@ fn a_unit_struct_refuses_a_key_and_a_nonstrict_one_reads_past_it() {
 
 #[test]
 fn a_member_serde_writes_and_never_reads_keeps_its_own_writes_readable() {
-    let written = serde_json::to_string(&Unread {
+    let written = serde_json::to_string(&UnreadDraft {
         computed: 4,
         name: "a".to_owned(),
     })
@@ -472,7 +472,7 @@ fn a_generic_struct_with_no_member_serde_reads_refuses_a_key_under_the_bounds_se
 fn the_unit_variant_of_a_strict_enum_under_a_tag_alone_refuses_a_key_beside_the_tag() {
     assert_eq!(
         serde_json::from_str::<Tide>(r#"{"kind":"Slack"}"#).unwrap(),
-        Tide::Slack
+        TideDraft::Slack.validate().unwrap()
     );
     let refused = serde_json::from_str::<Tide>(r#"{"kind":"Slack","stray":1}"#)
         .unwrap_err()
@@ -483,19 +483,22 @@ fn the_unit_variant_of_a_strict_enum_under_a_tag_alone_refuses_a_key_beside_the_
     );
     assert_eq!(
         serde_json::from_str::<LenientTide>(r#"{"kind":"Slack","stray":1}"#).unwrap(),
-        LenientTide::Slack
+        LenientTideDraft::Slack.validate().unwrap()
     );
 }
 
 #[test]
 fn the_unit_variant_flattened_last_refuses_a_key_its_holder_leaves_and_reads_its_own_back() {
-    let moored = Mooring {
+    let moored = MooringDraft {
         berth: "north".to_owned(),
-        tide: Tide::Slack,
+        tide: TideDraft::Slack.validate().unwrap(),
     };
     let written = serde_json::to_string(&moored).unwrap();
     assert_eq!(written, r#"{"berth":"north","kind":"Slack"}"#);
-    assert_eq!(serde_json::from_str::<Mooring>(&written).unwrap(), moored);
+    assert_eq!(
+        serde_json::from_str::<Mooring>(&written).unwrap(),
+        moored.validate().unwrap()
+    );
     let refused = serde_json::from_str::<Mooring>(r#"{"berth":"north","kind":"Slack","stray":1}"#)
         .unwrap_err()
         .to_string();
@@ -505,17 +508,20 @@ fn the_unit_variant_flattened_last_refuses_a_key_its_holder_leaves_and_reads_its
 #[test]
 fn a_nonstrict_enum_whose_variant_flattens_a_tagged_enum_reads_back_and_past_a_key() {
     for reading in [
-        Reading::Gauged {
+        ReadingDraft::Gauged {
             station: "pier".to_owned(),
-            gauge: Gauge::Sounded { depth: 4 },
+            gauge: GaugeDraft::Sounded { depth: 4 }.validate().unwrap(),
         },
-        Reading::Missing,
+        ReadingDraft::Missing,
     ] {
         let written = serde_json::to_string(&reading).unwrap();
-        assert_eq!(serde_json::from_str::<Reading>(&written).unwrap(), reading);
+        assert_eq!(
+            serde_json::from_str::<Reading>(&written).unwrap(),
+            reading.validate().unwrap()
+        );
     }
     assert_eq!(
         serde_json::from_str::<Reading>(r#"{"form":"Missing","stray":1}"#).unwrap(),
-        Reading::Missing
+        ReadingDraft::Missing.validate().unwrap()
     );
 }

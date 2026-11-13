@@ -41,7 +41,7 @@ mod on_a_schema_surface {
 
     #[test]
     fn the_tag_is_a_member_whose_only_value_is_the_structs_name() {
-        let written = serde_json::to_value(Tagged {
+        let written = serde_json::to_value(TaggedDraft {
             name: "x".to_owned(),
         })
         .unwrap();
@@ -59,7 +59,7 @@ mod on_a_schema_surface {
 
     #[test]
     fn a_rename_of_the_struct_moves_the_value_and_rename_all_leaves_it() {
-        let written = serde_json::to_value(TaggedRenamed {
+        let written = serde_json::to_value(TaggedRenamedDraft {
             first_name: "x".to_owned(),
         })
         .unwrap();
@@ -77,9 +77,11 @@ mod on_a_schema_surface {
 
     #[test]
     fn serde_reads_the_struct_with_the_key_and_without_it() {
-        let expected = Tagged {
+        let expected = TaggedDraft {
             name: "x".to_owned(),
-        };
+        }
+        .validate()
+        .unwrap();
         for stored in [
             serde_json::json!({ "kind": "Tagged", "name": "x" }),
             serde_json::json!({ "name": "x" }),
@@ -90,11 +92,13 @@ mod on_a_schema_surface {
 
     #[test]
     fn a_struct_that_flattens_a_tagged_one_writes_the_key_it_describes() {
-        let written = serde_json::to_value(TaggedOuter {
+        let written = serde_json::to_value(TaggedOuterDraft {
             id: 1,
-            tagged: Tagged {
+            tagged: TaggedDraft {
                 name: "x".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         })
         .unwrap();
         assert_eq!(
@@ -151,7 +155,7 @@ mod on_a_mobile_surface {
 
     #[test]
     fn serde_writes_the_key_the_three_languages_write() {
-        let written = serde_json::to_value(TaggedMobile {
+        let written = serde_json::to_value(TaggedMobileDraft {
             name: "x".to_owned(),
         })
         .unwrap();

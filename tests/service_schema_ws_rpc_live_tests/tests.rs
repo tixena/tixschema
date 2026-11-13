@@ -138,16 +138,11 @@ impl LedgerBackEnd {
         req: &CreateTransactionRequest,
     ) -> Result<Transaction, CreateError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let transaction = Transaction {
-            account_id: req.account_id.clone(),
-            amount_cents: req.amount_cents,
-            id: format!("tx-{id}"),
-            memo: req.memo.clone(),
-        };
+        let transaction = created(id, req);
         if self.record(user_id, transaction.clone()) {
             Ok(transaction)
         } else {
-            Err(CreateError::AccountNotFound)
+            Err(account_not_found())
         }
     }
 
@@ -166,18 +161,22 @@ impl LedgerBackEnd {
 
     fn seeded() -> Self {
         let seeded = vec![
-            Transaction {
+            TransactionDraft {
                 account_id: "acc-1".to_owned(),
                 amount_cents: 500,
                 id: "tx-1".to_owned(),
                 memo: "seed one".to_owned(),
-            },
-            Transaction {
+            }
+            .validate()
+            .unwrap(),
+            TransactionDraft {
                 account_id: "acc-1".to_owned(),
                 amount_cents: 1_200,
                 id: "tx-2".to_owned(),
                 memo: "seed two".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ];
         let key = ("u-1".to_owned(), "acc-1".to_owned());
         Self {
@@ -209,9 +208,13 @@ impl Ledger<Session> for LedgerBackEnd {
         let transaction = self.insert(&ctx.user_id, &req)?;
         let _: Result<(), _> = ctx
             .events
-            .transaction_posted(TransactionPosted {
-                transaction: transaction.clone(),
-            })
+            .transaction_posted(
+                TransactionPostedDraft {
+                    transaction: transaction.clone(),
+                }
+                .validate()
+                .unwrap(),
+            )
             .await;
         Ok(transaction)
     }
@@ -223,13 +226,13 @@ impl Ledger<Session> for LedgerBackEnd {
     ) -> impl Future<Output = Result<TransactionList, ListError>> {
         let outcome = self
             .transactions(&ctx.user_id, &req.account_id)
-            .ok_or(ListError::AccountNotFound)
-            .map(|items| TransactionList { items });
+            .ok_or_else(|| ListErrorDraft::AccountNotFound.validate().unwrap())
+            .map(|items| TransactionListDraft { items }.validate().unwrap());
         ready(outcome)
     }
 
     fn mark_seen(&self, _ctx: &Session, req: MarkSeen) -> impl Future<Output = ()> {
-        self.seen.lock().unwrap().push(req.transaction_id);
+        self.seen.lock().unwrap().push(req.transaction_id.clone());
         ready(())
     }
 }
@@ -375,19 +378,27 @@ async fn list_transactions_answers_the_seeded_list_and_a_created_transaction_rea
     let (ledger, mut posted) = connect(&format!("ws://{addr}/ledger")).await;
 
     let listed = ledger
-        .list_transactions(ListTransactionsRequest {
-            account_id: "acc-1".to_owned(),
-        })
+        .list_transactions(
+            ListTransactionsRequestDraft {
+                account_id: "acc-1".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(listed.items.len(), 2);
 
     let created = ledger
-        .create_transaction(CreateTransactionRequest {
-            account_id: "acc-1".to_owned(),
-            amount_cents: 1_250,
-            memo: "coffee".to_owned(),
-        })
+        .create_transaction(
+            CreateTransactionRequestDraft {
+                account_id: "acc-1".to_owned(),
+                amount_cents: 1_250,
+                memo: "coffee".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .await
         .unwrap();
     let pushed = posted.recv().await.unwrap();
@@ -403,17 +414,25 @@ async fn mark_seen_is_one_way_and_the_store_records_it() {
     let (ledger, _posted) = connect(&format!("ws://{addr}/ledger")).await;
 
     ledger
-        .mark_seen(MarkSeen {
-            transaction_id: "tx-1".to_owned(),
-        })
+        .mark_seen(
+            MarkSeenDraft {
+                transaction_id: "tx-1".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .await
         .unwrap();
     // Frames arrive in the order they were sent and the server answers one at a time, so this
     // reply cannot land until the one-way notify ahead of it has already been dispatched.
     ledger
-        .list_transactions(ListTransactionsRequest {
-            account_id: "acc-1".to_owned(),
-        })
+        .list_transactions(
+            ListTransactionsRequestDraft {
+                account_id: "acc-1".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -427,16 +446,19 @@ async fn create_transaction_for_an_unknown_account_answers_the_declared_error() 
     let (ledger, _posted) = connect(&format!("ws://{addr}/ledger")).await;
 
     let refused = ledger
-        .create_transaction(CreateTransactionRequest {
-            account_id: "acc-missing".to_owned(),
-            amount_cents: 100,
-            memo: "n/a".to_owned(),
-        })
+        .create_transaction(
+            CreateTransactionRequestDraft {
+                account_id: "acc-missing".to_owned(),
+                amount_cents: 100,
+                memo: "n/a".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )
         .await;
-    assert!(matches!(
-        refused,
-        Err(CallError::Operation(CreateError::AccountNotFound))
-    ));
+    assert!(
+        matches!(refused, Err(CallError::Operation(error)) if matches!(&*error, CreateErrorDraft::AccountNotFound))
+    );
 
     server.abort();
 }
@@ -513,9 +535,13 @@ async fn dropping_the_server_settles_a_waiting_call_with_a_transport_failure_fau
     // call is still unsent when the server's runtime — sockets included — is torn down under it.
     let waiting = tokio::spawn(async move {
         ledger
-            .list_transactions(ListTransactionsRequest {
-                account_id: "acc-1".to_owned(),
-            })
+            .list_transactions(
+                ListTransactionsRequestDraft {
+                    account_id: "acc-1".to_owned(),
+                }
+                .validate()
+                .unwrap(),
+            )
             .await
     });
     server.shutdown_background();
@@ -667,4 +693,19 @@ async fn a_ledger_events_client_exposes_the_transport_it_was_bound_to() {
             "service": "LedgerEvents",
         }),
     );
+}
+
+fn created(id: u64, req: &CreateTransactionRequest) -> Transaction {
+    TransactionDraft {
+        account_id: req.account_id.clone(),
+        amount_cents: req.amount_cents,
+        id: format!("tx-{id}"),
+        memo: req.memo.clone(),
+    }
+    .validate()
+    .unwrap()
+}
+
+fn account_not_found() -> CreateError {
+    CreateErrorDraft::AccountNotFound.validate().unwrap()
 }

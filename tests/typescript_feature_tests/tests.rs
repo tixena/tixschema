@@ -31,16 +31,16 @@ struct TypeScriptTestUser {
 
 #[test]
 fn test_typescript_feature_types_constructible() {
-    let payment = TypeScriptTestPayment::PayPal {
+    let payment = TypeScriptTestPaymentDraft::PayPal {
         email: String::new(),
     };
     assert!(matches!(
         payment,
-        TypeScriptTestPayment::PayPal { email: _email }
+        TypeScriptTestPaymentDraft::PayPal { email: _email }
     ));
-    let status = TypeScriptTestStatus::Active;
-    assert_eq!(status, TypeScriptTestStatus::Active);
-    let user = TypeScriptTestUser {
+    let status = TypeScriptTestStatusDraft::Active;
+    assert_eq!(status, TypeScriptTestStatusDraft::Active);
+    let user = TypeScriptTestUserDraft {
         active: false,
         age: 0,
         id: String::new(),

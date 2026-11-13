@@ -36,9 +36,11 @@ pub struct Host {
 #[test]
 fn the_readme_shows_the_two_stored_forms_of_an_address() {
     assert_declared_and_documented(include_str!("stored_forms.rs"), DECLARED_HOST);
-    let host = Host {
+    let host = HostDraft {
         address: IpAddr::V4(Ipv4Addr::LOCALHOST),
-    };
+    }
+    .validate()
+    .unwrap();
     let stored = host.mongo_written_row().unwrap();
     assert_eq!(stored.to_string(), SHOWN_STORED);
     assert_eq!(

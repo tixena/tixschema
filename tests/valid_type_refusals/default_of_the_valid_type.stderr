@@ -1,0 +1,20 @@
+error[E0599]: no associated function or constant named `default` found for struct `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>` in the current scope
+  --> tests/valid_type_refusals/default_of_the_valid_type.rs:15:31
+   |
+ 7 | #[model_schema()]
+   | ----------------- associated function or constant `default` not found for this struct
+...
+15 |     let _shipment = Shipment::default();
+   |                               ^^^^^^^ associated function or constant not found in `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>`
+   |
+note: if you're trying to build a new `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>` consider using one of the following associated functions:
+      __tixschema_valid_shipment_schema::Shipment::<ModelSchemaDraft>::model_schema_wrap_unjudged
+      _::<impl __tixschema_valid_shipment_schema::Shipment<ShipmentDraft>>::model_schema_read_unjudged
+  --> tests/valid_type_refusals/default_of_the_valid_type.rs:7:1
+   |
+ 7 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following trait defines an item `default`, perhaps you need to implement it:
+           candidate #1: `Default`
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

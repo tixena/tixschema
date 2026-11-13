@@ -12,8 +12,8 @@ use invoice_schema::DecodeWith as _;
 use bson::{Bson, Document, doc};
 use serde_json::{Value, json};
 
-use self::billing::{Invoice, invoice_schema};
-use self::customers::{Customer, customer_schema};
+use self::billing::{Invoice, InvoiceDraft, invoice_schema};
+use self::customers::{Customer, CustomerDraft, customer_schema};
 
 /// An invoice whose customer holds its count of open invoices as text.
 fn stored() -> Document {
@@ -22,13 +22,17 @@ fn stored() -> Document {
 
 /// What every read of [`stored`] settles to.
 fn settled() -> Invoice {
-    Invoice {
-        customer: Customer {
+    InvoiceDraft {
+        customer: CustomerDraft {
             name: "Ada".to_owned(),
             open_invoices: 3,
-        },
+        }
+        .validate()
+        .unwrap(),
         number: "INV-1".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 /// Settles a count of open invoices an older writer stored as text, wherever it sits: one
@@ -134,7 +138,7 @@ fn one_resolver_serves_the_types_of_both_modules() {
     );
     assert_eq!(
         Customer::from_bson_piped(doc! { "name": "Ada", "openInvoices": "3" }, resolvers).ok(),
-        Some(settled().customer)
+        Some(settled().into_draft().customer)
     );
 }
 

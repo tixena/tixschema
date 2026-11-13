@@ -83,23 +83,28 @@ fn holds(swift: &str, written: &[&str]) {
 
 #[test]
 fn each_variant_is_written_as_its_tagging_writes_it() {
-    let kegged = Hold::Kegged {
+    let kegged = HoldDraft::Kegged {
         by_dock: HashMap::from([(
             "d".to_owned(),
-            Keg {
+            KegDraft {
                 contents: "x".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         )]),
     };
     for (held, written) in [
-        (Hold::Closed { deck: 1 }, r#"{"kind":"Closed","deck":1}"#),
-        (Hold::Empty, r#"{"kind":"Empty"}"#),
+        (
+            HoldDraft::Closed { deck: 1 },
+            r#"{"kind":"Closed","deck":1}"#,
+        ),
+        (HoldDraft::Empty, r#"{"kind":"Empty"}"#),
         (
             kegged,
             r#"{"kind":"Kegged","by_dock":{"d":{"contents":"x"}}}"#,
         ),
         (
-            Hold::Laden {
+            HoldDraft::Laden {
                 cargo: vec!["c".to_owned()],
                 deck: 2,
             },
@@ -109,36 +114,36 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
         assert_eq!(read_back(&held), written);
     }
     assert_eq!(
-        read_back(&Lading::Both {
+        read_back(&LadingDraft::Both {
             marked: 3_u32,
             stowed: "s".to_owned()
         }),
         r#"{"Both":{"marked":3,"stowed":"s"}}"#
     );
     assert_eq!(
-        read_back(&Lading::<String, u32>::Marks { marks: vec![1] }),
+        read_back(&LadingDraft::<String, u32>::Marks { marks: vec![1] }),
         r#"{"Marks":{"marks":[1]}}"#
     );
     assert_eq!(
-        read_back(&AdjacentLading::Both {
+        read_back(&AdjacentLadingDraft::Both {
             marked: 3_u32,
             stowed: "s".to_owned()
         }),
         r#"{"kind":"Both","held":{"marked":3,"stowed":"s"}}"#
     );
     assert_eq!(
-        read_back(&AdjacentLading::<String, u32>::Marks { marks: vec![1] }),
+        read_back(&AdjacentLadingDraft::<String, u32>::Marks { marks: vec![1] }),
         r#"{"kind":"Marks","held":{"marks":[1]}}"#
     );
     assert_eq!(
-        read_back(&UntaggedLading::Both {
+        read_back(&UntaggedLadingDraft::Both {
             marked: 3_u32,
             stowed: "s".to_owned()
         }),
         r#"{"marked":3,"stowed":"s"}"#
     );
     assert_eq!(
-        read_back(&UntaggedLading::<String, u32>::Marks { marks: vec![1] }),
+        read_back(&UntaggedLadingDraft::<String, u32>::Marks { marks: vec![1] }),
         r#"{"marks":[1]}"#
     );
 }

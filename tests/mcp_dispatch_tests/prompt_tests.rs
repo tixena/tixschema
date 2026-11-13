@@ -113,7 +113,7 @@ mod over_http {
 }
 
 use crate::CounselServiceSchema;
-use crate::counsel::{Counsel, CounselError, Counsels};
+use crate::counsel::{CounselDraft, CounselErrorDraft, Counsels};
 use crate::counsel_client::{CounselServiceClient, McpMessage, Transport};
 use crate::counsel_mcp::{
     self, McpEndpoint, McpHost, McpHttpRequest, McpHttpSettings, McpInFlight,
@@ -505,7 +505,7 @@ fn the_client_has_one_method_per_prompt() {
     let client = CounselServiceClient::new(seam);
     assert_eq!(
         block_on(client.get_counsel()).unwrap(),
-        Counsel { version: 3 }
+        CounselDraft { version: 3 }.validate().unwrap()
     );
     let text = block_on(client.configure_organization()).unwrap();
     assert_eq!(text, "Apply the entity types in this order.");
@@ -557,10 +557,9 @@ fn the_client_reads_a_declared_error_and_a_fault() {
     let client = CounselServiceClient::new(Dispatching {
         sent: Mutex::new(Vec::new()),
     });
-    assert!(matches!(
-        block_on(client.greet("missing".to_owned())),
-        Err(CallError::Operation(CounselError::NotFound))
-    ));
+    assert!(
+        matches!(block_on(client.greet("missing".to_owned())), Err(CallError::Operation(error)) if matches!(&*error, CounselErrorDraft::NotFound))
+    );
     assert!(matches!(
         block_on(client.greet("boom".to_owned())),
         Err(CallError::Fault(fault)) if fault.kind() == ServiceFaultKind::HandlerPanic

@@ -21,3 +21,9 @@ mod tests;
 #[cfg(test)]
 #[path = "generic_types_tests/whole_type_tests.rs"]
 mod whole_type_tests;
+
+/// What a draft's issues answer as a `validate()` that makes no value.
+#[cfg(all(unix, feature = "serde", feature = "typescript", feature = "zod"))]
+pub(crate) fn judged_issues(found: Vec<String>) -> Result<(), Vec<String>> {
+    if found.is_empty() { Ok(()) } else { Err(found) }
+}

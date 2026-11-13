@@ -392,18 +392,18 @@ pub enum Berth {
     Tagged(String),
 }
 
-fn taking_parcels(_value: &ClosedDock) -> Result<(), Vec<String>> {
+fn taking_parcels(_value: &ClosedDockDraft) -> Result<(), Vec<String>> {
     Err(vec!["a closed dock takes no parcel".to_owned()])
 }
 
-fn with_a_code<CodeType>(value: &Crate<CodeType>) -> Result<(), Vec<String>> {
+fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>> {
     if value.codes.is_empty() {
         return Err(vec!["'codes': a crate holds at least one code".to_owned()]);
     }
     Ok(())
 }
 
-fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
+fn with_entries<IdType>(value: &CasketDraft<IdType>) -> Result<(), Vec<String>> {
     if value.entries.is_empty() {
         return Err(vec![
             "'entries': a casket holds at least one entry".to_owned(),
@@ -412,14 +412,14 @@ fn with_entries<IdType>(value: &Casket<IdType>) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-fn with_a_lift(value: &Lift) -> Result<(), Vec<String>> {
-    if matches!(value, Lift::Unladen) {
+fn with_a_lift(value: &LiftDraft) -> Result<(), Vec<String>> {
+    if matches!(value, LiftDraft::Unladen) {
         return Err(vec!["a lift carries something".to_owned()]);
     }
     Ok(())
 }
 
-fn within_parcel(value: &Parcel) -> Result<(), Vec<String>> {
+fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     let outside: Vec<String> = value
         .fragile_item_codes
         .iter()

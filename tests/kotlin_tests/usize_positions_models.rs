@@ -50,17 +50,17 @@ pub const fn top() -> usize {
 /// absent `defaulted` as `usize::MAX`.
 #[test]
 fn serde_writes_and_reads_each_usize_of_placed() {
-    let placed = Placed {
+    let placed = PlacedDraft {
         at: usize::MAX,
         defaulted: 0,
-        held: Holding { held: usize::MAX },
+        held: HoldingDraft { held: usize::MAX }.validate().unwrap(),
         indexed: BTreeMap::from([(usize::MAX, "x".to_owned())]),
         keyed: BTreeMap::from([("a".to_owned(), usize::MAX)]),
         listed: vec![usize::MAX],
         maybe: Some(usize::MAX),
         paired: (usize::MAX, "y".to_owned()),
         pinned: usize::MAX,
-        slot: SlotIndex::new(usize::MAX).unwrap(),
+        slot: slot_index(usize::MAX),
         span: 0..usize::MAX,
     };
     let written = serde_json::to_string(&placed).unwrap();
@@ -68,10 +68,23 @@ fn serde_writes_and_reads_each_usize_of_placed() {
         written,
         r#"{"at":18446744073709551615,"defaulted":0,"held":{"held":18446744073709551615},"indexed":{"18446744073709551615":"x"},"keyed":{"a":18446744073709551615},"listed":[18446744073709551615],"maybe":18446744073709551615,"paired":[18446744073709551615,"y"],"pinned":18446744073709551615,"slot":18446744073709551615,"span":{"start":0,"end":18446744073709551615}}"#
     );
-    assert_eq!(serde_json::from_str::<Placed>(&written).unwrap(), placed);
+    assert_eq!(
+        serde_json::from_str::<Placed>(&written).unwrap(),
+        placed.validate().unwrap()
+    );
     let absent = r#"{"at":0,"held":{"held":0},"indexed":{},"keyed":{},"listed":[],"paired":[0,"z"],"pinned":18446744073709551615,"slot":0,"span":{"start":0,"end":0}}"#;
     assert_eq!(
         serde_json::from_str::<Placed>(absent).unwrap().defaulted,
         usize::MAX
     );
+}
+
+#[cfg(feature = "serde")]
+fn slot_index(value: usize) -> SlotIndex {
+    SlotIndex::new(value).unwrap()
+}
+
+#[cfg(not(feature = "serde"))]
+fn slot_index(value: usize) -> SlotIndex {
+    SlotIndexDraft(value).validate().unwrap()
 }

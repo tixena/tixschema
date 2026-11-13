@@ -117,9 +117,12 @@ struct Timed {
 #[test]
 fn what_serde_wrote_through_an_alias_is_read_and_the_decider_never_runs() {
     let mut calls = 0_u32;
-    let tally = Tally {
+    let tally = TallyDraft {
         counts: HashMap::from([("a".to_owned(), 1_i32)]),
-        marks: Marks::from([("k".to_owned(), vec![declared::Mark { weight: 2_i32 }])]),
+        marks: Marks::from([(
+            "k".to_owned(),
+            vec![declared::MarkDraft { weight: 2_i32 }.validate().unwrap()],
+        )]),
     };
     let written = serde_json::to_value(&tally).unwrap();
     assert_eq!(
@@ -128,7 +131,7 @@ fn what_serde_wrote_through_an_alias_is_read_and_the_decider_never_runs() {
     );
     assert_eq!(
         read_counting!(Tally, tally_schema, written, calls),
-        Ok(tally)
+        Ok(tally.validate().unwrap())
     );
     let empty = json!({ "counts": {}, "marks": {} });
     read_counting!(Tally, tally_schema, empty, calls).unwrap();
@@ -202,9 +205,11 @@ fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
     let stored = json!({ "a": 1_u8, "b": 2_u8 });
     assert_eq!(
         read_counting!(Block, block_schema, stored, calls),
-        Ok(Block {
+        Ok(BlockDraft {
             properties: HashMap::from([("a".to_owned(), 1), ("b".to_owned(), 2)]),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
 }
@@ -263,9 +268,11 @@ fn a_type_of_another_crate_is_read_whole() {
     let whole = json!({ "timeout": { "nanos": 0_i32, "secs": 5_i32 } });
     assert_eq!(
         read_counting!(Timed, timed_schema, whole, calls),
-        Ok(Timed {
+        Ok(TimedDraft {
             timeout: Duration::from_secs(5),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(calls, 0);
     assert_eq!(

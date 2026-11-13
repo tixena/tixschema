@@ -50,41 +50,47 @@ mod tests {
     pub struct Sku(String);
 
     fn note() -> Note {
-        Note {
+        NoteDraft {
             due_on: None,
-            source: Source::Web {
+            source: SourceDraft::Web {
                 url: "https://example.com/a".to_owned(),
-            },
-            status: Status::Draft,
+            }
+            .validate()
+            .unwrap(),
+            status: StatusDraft::Draft.validate().unwrap(),
             tags: vec!["parser".to_owned()],
             title: "Notes".to_owned(),
             views: 7,
         }
+        .validate()
+        .unwrap()
     }
 
     fn text(written: &str) -> Value {
         Value::String(written.to_owned())
     }
 
+    /// The value serde writes for [`note`], under `title`.
+    fn note_value(title: &str) -> Value {
+        Value::Mapping(Mapping::from([
+            (
+                "source".to_owned(),
+                Value::Mapping(Mapping::from([
+                    ("kind".to_owned(), text("Web")),
+                    ("url".to_owned(), text("https://example.com/a")),
+                ])),
+            ),
+            ("status".to_owned(), text("Draft")),
+            ("tags".to_owned(), Value::Sequence(vec![text("parser")])),
+            ("title".to_owned(), text(title)),
+            ("views".to_owned(), Value::Integer(7)),
+        ]))
+    }
+
     #[test]
     fn a_model_converts_to_the_value_serde_writes() {
         let value: Value = (&note()).try_into().unwrap();
-        assert_eq!(
-            value,
-            Value::Mapping(Mapping::from([
-                (
-                    "source".to_owned(),
-                    Value::Mapping(Mapping::from([
-                        ("kind".to_owned(), text("Web")),
-                        ("url".to_owned(), text("https://example.com/a")),
-                    ])),
-                ),
-                ("status".to_owned(), text("Draft")),
-                ("tags".to_owned(), Value::Sequence(vec![text("parser")])),
-                ("title".to_owned(), text("Notes")),
-                ("views".to_owned(), Value::Integer(7)),
-            ]))
-        );
+        assert_eq!(value, note_value("Notes"));
     }
 
     #[test]
@@ -95,12 +101,13 @@ mod tests {
 
     #[test]
     fn a_model_with_a_parameter_converts_at_any_filling() {
-        let tagged = Tagged {
+        let tagged = TaggedDraft {
             id: 7_u32,
             label: "seven".to_owned(),
         };
-        let value = Value::try_from(&tagged).unwrap();
-        assert_eq!(Tagged::<u32>::try_from(&value).unwrap(), tagged);
+        let valid = tagged.validate().unwrap();
+        let value = Value::try_from(&valid).unwrap();
+        assert_eq!(Tagged::<u32>::try_from(&value).unwrap(), valid);
     }
 
     #[test]
@@ -119,9 +126,7 @@ mod tests {
     /// The read is the model's own, which runs `validate()`.
     #[test]
     fn the_read_refuses_what_validate_refuses() {
-        let mut empty = note();
-        empty.title = String::new();
-        let value = Value::try_from(&empty).unwrap();
+        let value = note_value("");
         assert_eq!(
             Note::try_from(&value).unwrap_err().to_string(),
             "'title': too short: minimum length is 1, got 0"

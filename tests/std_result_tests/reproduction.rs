@@ -33,27 +33,34 @@ pub struct Doc {
 fn a_frontmatter_of_either_arm_is_written_under_the_arm_and_read_back() {
     for (doc, written) in [
         (
-            Doc {
-                frontmatter: Some(Ok(Read {
+            DocDraft {
+                frontmatter: Some(Ok(ReadDraft {
                     title: "Intro".to_owned(),
-                })),
+                }
+                .validate()
+                .unwrap())),
             },
             json!({ "frontmatter": { "Ok": { "title": "Intro" } } }),
         ),
         (
-            Doc {
-                frontmatter: Some(Err(Broken {
+            DocDraft {
+                frontmatter: Some(Err(BrokenDraft {
                     raw: "title: [".to_owned(),
-                })),
+                }
+                .validate()
+                .unwrap())),
             },
             json!({ "frontmatter": { "Err": { "raw": "title: [" } } }),
         ),
-        (Doc { frontmatter: None }, json!({})),
+        (DocDraft { frontmatter: None }, json!({})),
     ] {
         let value = serde_json::to_value(&doc).unwrap();
         assert_eq!(value, written);
         assert!(admits(&Doc::json_schema(), &value), "{value}");
-        assert_eq!(serde_json::from_value::<Doc>(value).unwrap(), doc);
+        assert_eq!(
+            serde_json::from_value::<Doc>(value).unwrap(),
+            doc.validate().unwrap()
+        );
     }
 }
 

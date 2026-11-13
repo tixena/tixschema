@@ -158,17 +158,17 @@ pub struct Payload {
 
 /// A masthead of `slug` titled `title`.
 pub fn masthead(slug: &str, title: &str) -> Masthead {
-    Masthead {
+    Masthead::model_schema_wrap_unjudged(MastheadDraft {
         slug: slug.to_owned(),
         title: title.to_owned(),
-    }
+    })
 }
 
 /// What does not read, for `reason`.
 pub fn unparsed(reason: &str) -> Unparsed {
-    Unparsed {
+    Unparsed::model_schema_wrap_unjudged(UnparsedDraft {
         reason: reason.to_owned(),
-    }
+    })
 }
 
 /// A ballot of `code`.
@@ -177,11 +177,13 @@ pub fn ballot(code: &str) -> Ballot {
 }
 
 /// The README's reply, which reads.
-pub const fn reply() -> Reply {
-    Reply {
+pub fn reply() -> Reply {
+    ReplyDraft {
         outcome: Ok(7),
         stored: Ok(()),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A missive whose frontmatter reads, and whose two bounds break where `broken` says so.
@@ -191,32 +193,34 @@ pub fn missive(broken: bool) -> Missive {
     } else {
         ("intro", "Intro")
     };
-    Missive {
+    Missive::model_schema_wrap_unjudged(MissiveDraft {
         frontmatter: Some(Ok(masthead(slug, title))),
-    }
+    })
 }
 
 /// A `Result` in each position, with `maybe` holding one where `held` says so.
 pub fn postbox(held: bool) -> Postbox {
-    Postbox {
-        filled: Mailbag { held: Ok(1) },
+    PostboxDraft {
+        filled: Mailbag::model_schema_wrap_unjudged(MailbagDraft { held: Ok(1) }),
         keyed: BTreeMap::from([("a".to_owned(), Err("b".to_owned()))]),
         listed: vec![Ok(2), Err("c".to_owned())],
         maybe: held.then_some(Ok(3)),
         nested: Ok(Err("d".to_owned())),
         paired: (Ok(4), "e".to_owned()),
     }
+    .validate()
+    .unwrap()
 }
 
 /// A notebook whose every bound breaks where `broken` says so.
 pub fn notebook(broken: bool) -> Notebook {
     let (code, title) = if broken { ("a", "") } else { ("ab", "Intro") };
-    Notebook {
-        jacket: Jacket {
+    Notebook::model_schema_wrap_unjudged(NotebookDraft {
+        jacket: Jacket::model_schema_wrap_unjudged(JacketDraft {
             keyed: BTreeMap::from([("k".to_owned(), Ok(ballot(code)))]),
-        },
+        }),
         listed: Ok(vec![masthead("intro", title)]),
-    }
+    })
 }
 
 /// What serde writes of `value`, read as `read_as`.
@@ -247,7 +251,7 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "an Err reply",
             "Reply",
-            &Reply {
+            &ReplyDraft {
                 outcome: Err("late".to_owned()),
                 stored: Err("full".to_owned()),
             },
@@ -255,17 +259,21 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "a frontmatter that does not read",
             "Missive",
-            &Missive {
+            &MissiveDraft {
                 frontmatter: Some(Err(unparsed("no title"))),
             },
         ),
-        written("no frontmatter", "Missive", &Missive { frontmatter: None }),
+        written(
+            "no frontmatter",
+            "Missive",
+            &MissiveDraft { frontmatter: None },
+        ),
         written("each position", "Postbox", &postbox(true)),
         written("no maybe", "Postbox", &postbox(false)),
         written(
             "a brand and an alias",
             "Errand",
-            &Errand {
+            &ErrandDraft {
                 ruled: Ruling::new(Err("x".to_owned())).unwrap(),
                 settled: Ok(5),
             },
@@ -273,22 +281,22 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "a Result of a parameter",
             "Attempted",
-            &Attempted::<u32> { outcome: Ok(8) },
+            &AttemptedDraft::<u32> { outcome: Ok(8) },
         ),
         written(
             "a Result in a member of a variant",
             "Turn",
-            &Turn::<u32>::Named { outcome: Ok(1) },
+            &TurnDraft::<u32>::Named { outcome: Ok(1) },
         ),
         written(
             "a Result in the slot of a variant",
             "Turn",
-            &Turn::<u32>::Slot(Err("y".to_owned())),
+            &TurnDraft::<u32>::Slot(Err("y".to_owned())),
         ),
         written(
             "arms of unit, Ok",
             "Summary",
-            &Summary {
+            &SummaryDraft {
                 both: Ok(()),
                 err: Err(()),
                 ok: Ok(()),
@@ -297,7 +305,7 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "arms of unit, Err",
             "Summary",
-            &Summary {
+            &SummaryDraft {
                 both: Err(()),
                 err: Ok(3),
                 ok: Err("z".to_owned()),
@@ -306,21 +314,21 @@ pub fn read_payloads() -> Vec<Payload> {
         written(
             "an untagged variant of a Result of a brand",
             "Bureau",
-            &Bureau::Coded {
+            &BureauDraft::Coded {
                 codes: Ok(ballot("ab")),
             },
         ),
         written(
             "an untagged variant of a Result of a number",
             "Bureau",
-            &Bureau::Plain {
+            &BureauDraft::Plain {
                 counted: Err("w".to_owned()),
             },
         ),
         written(
             "an internally tagged variant of no marks",
             "Errata",
-            &Errata::Listed { marks: None },
+            &ErrataDraft::Listed { marks: None },
         ),
     ]
 }
@@ -381,7 +389,7 @@ pub fn judged_payloads() -> Vec<Payload> {
         written(
             "a broken Err",
             "Missive",
-            &Missive {
+            &MissiveDraft {
                 frontmatter: Some(Err(unparsed(""))),
             },
         ),
@@ -390,14 +398,14 @@ pub fn judged_payloads() -> Vec<Payload> {
         written(
             "a broken tagged variant",
             "Errata",
-            &Errata::Filed {
+            &ErrataDraft::Filed {
                 frontmatter: Ok(masthead("intro", "")),
             },
         ),
         written(
             "broken marks of a tagged variant",
             "Errata",
-            &Errata::Listed {
+            &ErrataDraft::Listed {
                 marks: Some(vec![Err(unparsed("")), Ok(ballot("a"))]),
             },
         ),

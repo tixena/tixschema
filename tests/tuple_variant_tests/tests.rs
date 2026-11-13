@@ -721,7 +721,7 @@ fn test_custom_content_field_zod() {
 
 #[test]
 fn test_adjacent_named_variant_matches_the_serde_wire() {
-    let named = AdjacentNamed::Named {
+    let named = AdjacentNamedDraft::Named {
         x: "y".to_owned(),
         y: Some(3),
     };
@@ -732,11 +732,11 @@ fn test_adjacent_named_variant_matches_the_serde_wire() {
     );
     assert_eq!(
         serde_json::from_value::<AdjacentNamed>(named_json).unwrap(),
-        named
+        named.validate().unwrap()
     );
 
     assert_eq!(
-        serde_json::to_value(AdjacentNamed::Unit).unwrap(),
+        serde_json::to_value(AdjacentNamedDraft::Unit).unwrap(),
         serde_json::json!({ "kind": "Unit" })
     );
 }
@@ -947,17 +947,17 @@ fn test_serde_serialization_compatibility() {
         Text(String),
     }
 
-    let text = SerdeCompat::Text("hello".to_owned());
+    let text = SerdeCompatDraft::Text("hello".to_owned());
     let text_json = serde_json::to_value(&text).unwrap();
     assert_eq!(text_json["type"], "Text");
     assert_eq!(text_json["value"], "hello");
 
-    let number = SerdeCompat::Number(42);
+    let number = SerdeCompatDraft::Number(42);
     let number_json = serde_json::to_value(&number).unwrap();
     assert_eq!(number_json["type"], "Number");
     assert_eq!(number_json["value"], 42_i64);
 
-    let pair = SerdeCompat::Pair("hello".to_owned(), 42);
+    let pair = SerdeCompatDraft::Pair("hello".to_owned(), 42);
     let pair_json = serde_json::to_value(&pair).unwrap();
     assert_eq!(pair_json["type"], "Pair");
     assert!(pair_json["value"].is_array());
@@ -1160,12 +1160,12 @@ fn test_jsdoc_comments() {
 #[test]
 fn test_single_tuple_variant_option_content_writes_null_under_the_key() {
     assert_eq!(
-        serde_json::to_value(SlotContent::Covered(None)).unwrap(),
+        serde_json::to_value(SlotContentDraft::Covered(None)).unwrap(),
         serde_json::json!({ "type": "Covered", "value": null }),
         "A `None` content keeps the key and writes `null` under it"
     );
     assert_eq!(
-        serde_json::to_value(SlotContent::Element(vec![None])).unwrap(),
+        serde_json::to_value(SlotContentDraft::Element(vec![None])).unwrap(),
         serde_json::json!({ "type": "Element", "value": [null] }),
         "A `None` among the items is a `null` among them"
     );
@@ -1259,7 +1259,7 @@ fn test_single_tuple_variant_option_content_json_schema_null_flavor() {
 #[test]
 fn test_multi_tuple_variant_option_element_writes_null_in_place() {
     assert_eq!(
-        serde_json::to_value(SlotElements::Pair("a".to_owned(), None)).unwrap(),
+        serde_json::to_value(SlotElementsDraft::Pair("a".to_owned(), None)).unwrap(),
         serde_json::json!({ "type": "Pair", "value": ["a", null] }),
         "A `None` element keeps its position and writes `null` there"
     );
@@ -1367,7 +1367,7 @@ fn test_multi_tuple_variant_arity_bounds_reject_wrong_length_arrays() {
         .unwrap()["properties"]["value"];
     let admitted = value["minItems"].as_u64().unwrap()..=value["maxItems"].as_u64().unwrap();
 
-    let written = serde_json::to_value(ArityProbe::Pair(1, 2)).unwrap();
+    let written = serde_json::to_value(ArityProbeDraft::Pair(1, 2)).unwrap();
     let written_len = u64::try_from(written["value"].as_array().unwrap().len()).unwrap();
     assert!(
         admitted.contains(&written_len),
@@ -1390,17 +1390,17 @@ fn test_multi_tuple_variant_arity_bounds_reject_wrong_length_arrays() {
 #[test]
 fn test_attribute_less_enum_writes_the_externally_tagged_form() {
     assert_eq!(
-        serde_json::to_value(External::Pair(1, 2)).unwrap(),
+        serde_json::to_value(ExternalDraft::Pair(1, 2)).unwrap(),
         serde_json::json!({ "Pair": [1_u32, 2_u32] }),
         "A tuple variant's name is the key and its elements are the array under it"
     );
     assert_eq!(
-        serde_json::to_value(External::Single("a".to_owned())).unwrap(),
+        serde_json::to_value(ExternalDraft::Single("a".to_owned())).unwrap(),
         serde_json::json!({ "Single": "a" }),
         "A newtype variant's content sits under the key, unwrapped"
     );
     assert_eq!(
-        serde_json::to_value(External::Fields {
+        serde_json::to_value(ExternalDraft::Fields {
             a: "a".to_owned(),
             b: true
         })
@@ -1409,7 +1409,7 @@ fn test_attribute_less_enum_writes_the_externally_tagged_form() {
         "A struct variant's fields sit in an object under the key"
     );
     assert_eq!(
-        serde_json::to_value(External::Bare).unwrap(),
+        serde_json::to_value(ExternalDraft::Bare).unwrap(),
         serde_json::json!("Bare"),
         "A unit variant carries no key at all: it is the bare name"
     );
@@ -1549,11 +1549,11 @@ fn test_attribute_less_enum_round_trips_against_its_schema() {
     let schema = External::json_schema();
 
     for (variant, value) in [
-        ("Pair", External::Pair(1, 2)),
-        ("Single", External::Single("a".to_owned())),
+        ("Pair", ExternalDraft::Pair(1, 2)),
+        ("Single", ExternalDraft::Single("a".to_owned())),
         (
             "Fields",
-            External::Fields {
+            ExternalDraft::Fields {
                 a: "a".to_owned(),
                 b: true,
             },
@@ -1577,23 +1577,23 @@ fn test_attribute_less_enum_round_trips_against_its_schema() {
 
         assert_eq!(
             serde_json::from_value::<External>(written.clone()).unwrap(),
-            value,
+            value.validate().unwrap(),
             "What serde writes must read back. Got: {written}"
         );
     }
 
     // The bare name is the whole value, and reads back as the variant it names.
-    let bare = serde_json::to_value(External::Bare).unwrap();
+    let bare = serde_json::to_value(ExternalDraft::Bare).unwrap();
     assert_eq!(
         serde_json::from_value::<External>(bare).unwrap(),
-        External::Bare
+        ExternalDraft::Bare.validate().unwrap()
     );
 
     // A payload the schema admits deserializes: the key the member requires, holding the content
     // it declares.
     assert_eq!(
         serde_json::from_value::<External>(serde_json::json!({ "Pair": [7_u32, 8_u32] })).unwrap(),
-        External::Pair(7, 8)
+        ExternalDraft::Pair(7, 8).validate().unwrap()
     );
 
     // And the adjacent form the schema no longer describes is one the type cannot read either.
@@ -1610,7 +1610,7 @@ fn test_attribute_less_enum_round_trips_against_its_schema() {
 #[test]
 fn test_explicitly_tagged_twin_keeps_the_adjacent_form() {
     assert_eq!(
-        serde_json::to_value(Adjacent::Pair(1, 2)).unwrap(),
+        serde_json::to_value(AdjacentDraft::Pair(1, 2)).unwrap(),
         serde_json::json!({ "type": "Pair", "value": [1_u32, 2_u32] })
     );
 
@@ -1644,15 +1644,15 @@ fn test_adjacent_variant_reader_reads_the_tag_key_and_ignores_the_content_key() 
 #[test]
 fn test_renamed_variant_key_is_the_wire_name() {
     assert_eq!(
-        serde_json::to_value(RenamedExternal::Mime("x".to_owned())).unwrap(),
+        serde_json::to_value(RenamedExternalDraft::Mime("x".to_owned())).unwrap(),
         serde_json::json!({ "application/pdf": "x" })
     );
     assert_eq!(
-        serde_json::to_value(RenamedExternal::BigThing(1)).unwrap(),
+        serde_json::to_value(RenamedExternalDraft::BigThing(1)).unwrap(),
         serde_json::json!({ "bigThing": 1_u32 })
     );
     assert_eq!(
-        serde_json::to_value(RenamedExternal::UnitThing).unwrap(),
+        serde_json::to_value(RenamedExternalDraft::UnitThing).unwrap(),
         serde_json::json!("unitThing")
     );
 
@@ -1776,7 +1776,7 @@ fn test_explicitly_tagged_twin_keeps_the_adjacent_json_schema_form() {
 #[test]
 fn test_bare_tag_writes_the_variant_data_beside_the_tag() {
     assert_eq!(
-        serde_json::to_value(Internal::Fields {
+        serde_json::to_value(InternalDraft::Fields {
             a: "a".to_owned(),
             b: true
         })
@@ -1785,16 +1785,20 @@ fn test_bare_tag_writes_the_variant_data_beside_the_tag() {
         "A struct variant's fields sit beside the tag"
     );
     assert_eq!(
-        serde_json::to_value(Internal::Wrapped(TagPayload {
-            a: "a".to_owned(),
-            b: true
-        }))
+        serde_json::to_value(InternalDraft::Wrapped(
+            TagPayloadDraft {
+                a: "a".to_owned(),
+                b: true
+            }
+            .validate()
+            .unwrap()
+        ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "a": "a", "b": true }),
         "A newtype variant's inner members sit beside the tag too: no key holds them"
     );
     assert_eq!(
-        serde_json::to_value(Internal::Bare).unwrap(),
+        serde_json::to_value(InternalDraft::Bare).unwrap(),
         serde_json::json!({ "type": "Bare" }),
         "A unit variant is the tag alone"
     );
@@ -1918,15 +1922,19 @@ fn test_bare_tag_round_trips_against_its_schema() {
     let schema = Internal::json_schema();
 
     for value in [
-        Internal::Bare,
-        Internal::Fields {
+        InternalDraft::Bare,
+        InternalDraft::Fields {
             a: "a".to_owned(),
             b: true,
         },
-        Internal::Wrapped(TagPayload {
-            a: "a".to_owned(),
-            b: true,
-        }),
+        InternalDraft::Wrapped(
+            TagPayloadDraft {
+                a: "a".to_owned(),
+                b: true,
+            }
+            .validate()
+            .unwrap(),
+        ),
     ] {
         let written = serde_json::to_value(&value).unwrap();
         let member = schema["oneOf"]
@@ -1954,7 +1962,7 @@ fn test_bare_tag_round_trips_against_its_schema() {
 
         assert_eq!(
             serde_json::from_value::<Internal>(written.clone()).unwrap(),
-            value,
+            value.validate().unwrap(),
             "What serde writes must read back. Got: {written}"
         );
     }
@@ -1973,7 +1981,7 @@ fn test_bare_tag_round_trips_against_its_schema() {
 #[test]
 fn test_adjacent_twin_keeps_its_content_key() {
     assert_eq!(
-        serde_json::to_value(Adjacent::Single("a".to_owned())).unwrap(),
+        serde_json::to_value(AdjacentDraft::Single("a".to_owned())).unwrap(),
         serde_json::json!({ "type": "Single", "value": "a" })
     );
 
@@ -1984,14 +1992,18 @@ fn test_adjacent_twin_keeps_its_content_key() {
 #[test]
 fn test_bare_tag_over_an_external_enum_writes_each_variant_as_its_entry() {
     let written = [
-        InternalOverExternal::Held(InternalTack::Bay(InternalFirst { a: "x".to_owned() })),
-        InternalOverExternal::Held(InternalTack::Calm),
+        InternalOverExternalDraft::Held(
+            InternalTackDraft::Bay(InternalFirstDraft { a: "x".to_owned() }.validate().unwrap())
+                .validate()
+                .unwrap(),
+        ),
+        InternalOverExternalDraft::Held(InternalTackDraft::Calm.validate().unwrap()),
     ];
     for (value, json) in written.into_iter().zip(EXTERNAL_BESIDE_THE_TAG) {
         assert_eq!(serde_json::to_string(&value).unwrap(), json);
         assert_eq!(
             serde_json::from_str::<InternalOverExternal>(json).unwrap(),
-            value,
+            value.validate().unwrap(),
             "serde no longer reads {json} back"
         );
     }
@@ -2065,14 +2077,14 @@ fn test_bare_tag_over_an_external_enum_json_schema_admits_what_serde_reads() {
 #[test]
 fn test_bare_tag_over_an_enum_written_with_an_argument_writes_each_variant_as_its_entry() {
     let written = [
-        InternalOverCarried::Held(InternalCarried::Carried(7)),
-        InternalOverCarried::Held(InternalCarried::Bare),
+        InternalOverCarriedDraft::Held(InternalCarriedDraft::Carried(7).validate().unwrap()),
+        InternalOverCarriedDraft::Held(InternalCarriedDraft::Bare.validate().unwrap()),
     ];
     for (value, json) in written.into_iter().zip(CARRIED_BESIDE_THE_TAG) {
         assert_eq!(serde_json::to_string(&value).unwrap(), json);
         assert_eq!(
             serde_json::from_str::<InternalOverCarried>(json).unwrap(),
-            value,
+            value.validate().unwrap(),
             "serde no longer reads {json} back"
         );
     }
@@ -2169,16 +2181,22 @@ fn test_bare_tag_over_a_struct_documents_byte_identically() {
 #[test]
 fn test_bare_tag_over_an_untagged_enum_writes_the_matched_members_keys() {
     assert_eq!(
-        serde_json::to_value(InternalOverUntagged::Wrapped(InternalEither::First(
-            InternalFirst { a: "x".to_owned() }
-        )))
+        serde_json::to_value(InternalOverUntaggedDraft::Wrapped(
+            InternalEitherDraft::First(
+                InternalFirstDraft { a: "x".to_owned() }.validate().unwrap()
+            )
+            .validate()
+            .unwrap()
+        ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "a": "x" })
     );
     assert_eq!(
-        serde_json::to_value(InternalOverUntagged::Wrapped(InternalEither::Second(
-            InternalSecond { b: true }
-        )))
+        serde_json::to_value(InternalOverUntaggedDraft::Wrapped(
+            InternalEitherDraft::Second(InternalSecondDraft { b: true }.validate().unwrap())
+                .validate()
+                .unwrap()
+        ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "b": true })
     );
@@ -2214,12 +2232,18 @@ fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
 #[test]
 fn test_bare_tag_over_a_later_optional_is_unserializable_for_some_and_none() {
     for held in [
-        InternalLaterMaybe(Some(InternalFirst { a: "x".to_owned() })),
-        InternalLaterMaybe(None),
+        InternalLaterMaybeDraft(Some(
+            InternalFirstDraft { a: "x".to_owned() }.validate().unwrap(),
+        )),
+        InternalLaterMaybeDraft(None),
     ] {
-        let refusal = serde_json::to_value(InternalOverLaterMaybe::Held(held))
-            .unwrap_err()
-            .to_string();
+        let refusal = serde_json::to_value(
+            InternalOverLaterMaybeDraft::Held(held.validate().unwrap())
+                .validate()
+                .unwrap(),
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(
             refusal,
             "cannot serialize tagged newtype variant InternalOverLaterMaybe::Held containing an \
@@ -2239,9 +2263,9 @@ fn test_bare_tag_over_a_later_optional_is_refused_by_the_merge() {
 /// serde writes a flattened `None` as no key and reads it back, and the merge offers both.
 #[test]
 fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
-    let none = FlatOverLaterMaybe {
+    let none = FlatOverLaterMaybeDraft {
         id: "i".to_owned(),
-        maybe: InternalLaterMaybe(None),
+        maybe: InternalLaterMaybeDraft(None).validate().unwrap(),
     };
     assert_eq!(
         serde_json::to_value(&none).unwrap(),
@@ -2249,7 +2273,7 @@ fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
     );
     assert_eq!(
         serde_json::from_value::<FlatOverLaterMaybe>(serde_json::json!({ "id": "i" })).unwrap(),
-        none
+        none.validate().unwrap()
     );
     assert_eq!(
         FlatOverLaterMaybe::json_schema(),
@@ -2275,12 +2299,15 @@ fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
 
 #[test]
 fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
-    let written = serde_json::to_value(ExternalDroppedSlots::Lead("s".to_owned(), 7_u32)).unwrap();
+    let written =
+        serde_json::to_value(ExternalDroppedSlotsDraft::Lead("s".to_owned(), 7_u32)).unwrap();
     assert_eq!(written, serde_json::json!({ "Lead": [7_u32] }));
 
     assert_eq!(
         serde_json::from_value::<ExternalDroppedSlots>(written).unwrap(),
-        ExternalDroppedSlots::Lead(String::new(), 7_u32)
+        ExternalDroppedSlotsDraft::Lead(String::new(), 7_u32)
+            .validate()
+            .unwrap()
     );
     assert!(
         serde_json::from_str::<ExternalDroppedSlots>(r#"{"Lead":["s",7]}"#).is_err(),
@@ -2291,11 +2318,11 @@ fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
 #[test]
 fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Trailing("s".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(ExternalDroppedSlotsDraft::Trailing("s".to_owned(), 1_u32)).unwrap(),
         serde_json::json!({ "Trailing": ["s"] })
     );
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Middle(
+        serde_json::to_value(ExternalDroppedSlotsDraft::Middle(
             "a".to_owned(),
             Some("s".to_owned()),
             7_u32
@@ -2304,7 +2331,7 @@ fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
         serde_json::json!({ "Middle": ["a", 7_u32] })
     );
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Every("s".to_owned(), 1_u32)).unwrap(),
+        serde_json::to_value(ExternalDroppedSlotsDraft::Every("s".to_owned(), 1_u32)).unwrap(),
         serde_json::json!({ "Every": [] })
     );
 }
@@ -2312,12 +2339,14 @@ fn test_serde_writes_the_variant_slots_it_still_carries_in_their_new_places() {
 #[test]
 fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
     assert_eq!(
-        serde_json::to_value(ExternalDroppedSlots::Lone("s".to_owned())).unwrap(),
+        serde_json::to_value(ExternalDroppedSlotsDraft::Lone("s".to_owned())).unwrap(),
         serde_json::json!("Lone")
     );
     assert_eq!(
         serde_json::from_str::<ExternalDroppedSlots>(r#""Lone""#).unwrap(),
-        ExternalDroppedSlots::Lone(String::new())
+        ExternalDroppedSlotsDraft::Lone(String::new())
+            .validate()
+            .unwrap()
     );
     assert!(
         serde_json::from_str::<ExternalDroppedSlots>(r#"{"Lone":"s"}"#).is_err(),
@@ -2329,11 +2358,11 @@ fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
 fn test_serde_writes_a_dropped_variant_slot_the_same_way_under_a_content_key() {
     for (held, written) in [
         (
-            AdjacentDroppedSlots::Lead("s".to_owned(), 7_u32),
+            AdjacentDroppedSlotsDraft::Lead("s".to_owned(), 7_u32),
             serde_json::json!({ "type": "Lead", "value": [7_u32] }),
         ),
         (
-            AdjacentDroppedSlots::Every("s".to_owned(), 1_u32),
+            AdjacentDroppedSlotsDraft::Every("s".to_owned(), 1_u32),
             serde_json::json!({ "type": "Every", "value": [] }),
         ),
     ] {
@@ -2382,11 +2411,13 @@ fn test_serde_reads_back_the_adjacent_payload_a_declared_unit_variant_writes() {
 
 #[test]
 fn test_serde_writes_a_dropped_lone_slot_as_the_tag_alone_under_a_bare_tag() {
-    let written = serde_json::to_value(InternalDroppedSlot::Lone("s".to_owned())).unwrap();
+    let written = serde_json::to_value(InternalDroppedSlotDraft::Lone("s".to_owned())).unwrap();
     assert_eq!(written, serde_json::json!({ "type": "Lone" }));
     assert_eq!(
         serde_json::from_value::<InternalDroppedSlot>(written).unwrap(),
-        InternalDroppedSlot::Lone(String::new())
+        InternalDroppedSlotDraft::Lone(String::new())
+            .validate()
+            .unwrap()
     );
 }
 
@@ -2496,11 +2527,11 @@ fn test_a_dropped_variant_slot_shrinks_the_content_key_in_json_schema() {
 
 #[test]
 fn test_the_declared_unit_remedy_writes_the_payload_the_refused_collapse_wrote() {
-    let written = serde_json::to_value(AdjacentDroppedSlots::Lone).unwrap();
+    let written = serde_json::to_value(AdjacentDroppedSlotsDraft::Lone).unwrap();
     assert_eq!(written, serde_json::json!({ "type": "Lone" }));
     assert_eq!(
         serde_json::from_value::<AdjacentDroppedSlots>(written).unwrap(),
-        AdjacentDroppedSlots::Lone
+        AdjacentDroppedSlotsDraft::Lone.validate().unwrap()
     );
 }
 

@@ -242,26 +242,32 @@ fn assert_documented(shown: &str) {
 
 /// An invoice of the customer named `customer`, past due, with nothing the checks do not name.
 fn invoice(number: &str, customer: &str, total: f64) -> Invoice {
-    Invoice {
+    InvoiceDraft {
         billing: None,
-        customer: Customer {
-            address: Address {
+        customer: CustomerDraft {
+            address: AddressDraft {
                 city: "Moca".to_owned(),
                 postal_code: "56000".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             name: customer.to_owned(),
             open_invoices: 1,
-        },
+        }
+        .validate()
+        .unwrap(),
         details: HashMap::new(),
         id: ObjectId::new(),
         items: Vec::new(),
         number: number.to_owned(),
         paid_at: None,
-        payment: Payment::Cash,
-        status: InvoiceStatus::PastDue,
+        payment: PaymentDraft::Cash.validate().unwrap(),
+        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
         tags: Vec::new(),
         total,
     }
+    .validate()
+    .unwrap()
 }
 
 fn readme() -> &'static str {

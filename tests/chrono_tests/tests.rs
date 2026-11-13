@@ -55,7 +55,9 @@ use serde::de::DeserializeOwned;
 
 use super::documents::admits;
 #[cfg(feature = "serde")]
-use super::untagged_millis_models::{MILLIS_ROWS, MillisNamed, MillisOrFlag, serde_written};
+use super::untagged_millis_models::{
+    MILLIS_ROWS, MillisNamed, MillisNamedDraft, MillisOrFlag, MillisOrFlagDraft, serde_written,
+};
 #[cfg(feature = "serde")]
 use super::untagged_millis_models::{MillisLater, MillisMaybe};
 
@@ -309,7 +311,7 @@ fn test_chrono_types_constructible() {
     let utc_dt = DateTime::<Utc>::from_timestamp(0, 0).unwrap();
     let local_dt = utc_dt.with_timezone(&Local);
 
-    let all = AllChronoTypes {
+    let all = AllChronoTypesDraft {
         date,
         local_datetime: naive_dt,
         local_timestamp: local_dt,
@@ -317,23 +319,26 @@ fn test_chrono_types_constructible() {
         utc_datetime: utc_dt,
     };
     assert_eq!(all.date, date);
-    let date_list = DateList {
+    let date_list = DateListDraft {
         dates: Vec::new(),
         name: String::new(),
     };
     assert_eq!(date_list.dates, Vec::<NaiveDate>::new());
-    let date_map = DateMap {
+    let date_map = DateMapDraft {
         events: HashMap::new(),
         name: String::new(),
     };
     assert!(date_map.events.is_empty());
-    let slot_schedule = SlotSchedule {
-        dates: HashMap::from([(ScheduleSlot::Opening, date), (ScheduleSlot::Closing, date)]),
+    let slot_schedule = SlotScheduleDraft {
+        dates: HashMap::from([
+            (ScheduleSlotDraft::Opening.validate().unwrap(), date),
+            (ScheduleSlotDraft::Closing.validate().unwrap(), date),
+        ]),
         timestamps: HashMap::new(),
     };
     assert_eq!(slot_schedule.dates.len(), 2);
     assert!(slot_schedule.timestamps.is_empty());
-    let chrono_value_maps = ChronoValueMaps {
+    let chrono_value_maps = ChronoValueMapsDraft {
         dates: HashMap::from([("opening".to_owned(), date)]),
         local_datetimes: HashMap::new(),
         optional_dates: HashMap::from([("closing".to_owned(), None)]),
@@ -344,7 +349,7 @@ fn test_chrono_types_constructible() {
     assert_eq!(chrono_value_maps.dates.len(), 1);
     assert_eq!(chrono_value_maps.optional_dates["closing"], None);
     assert_eq!(chrono_value_maps.windows["opening"], vec![time]);
-    let nested_chrono_maps = NestedChronoMaps {
+    let nested_chrono_maps = NestedChronoMapsDraft {
         dates_by_group: HashMap::from([(
             "opening".to_owned(),
             HashMap::from([("first".to_owned(), date)]),
@@ -365,26 +370,26 @@ fn test_chrono_types_constructible() {
     assert!(chrono_value_maps.timestamps.is_empty());
     assert!(chrono_value_maps.times.is_empty());
     let values = [
-        FixedValue::Alphanumeric(String::new()),
-        FixedValue::Boolean(false),
-        FixedValue::Date(date),
-        FixedValue::DateTime(local_dt),
-        FixedValue::Decimal(0.0),
-        FixedValue::Integer(0),
-        FixedValue::Time(time),
+        FixedValueDraft::Alphanumeric(String::new()),
+        FixedValueDraft::Boolean(false),
+        FixedValueDraft::Date(date),
+        FixedValueDraft::DateTime(local_dt),
+        FixedValueDraft::Decimal(0.0),
+        FixedValueDraft::Integer(0),
+        FixedValueDraft::Time(time),
     ];
     assert_eq!(values.len(), 7);
-    let local_event = LocalEvent {
+    let local_event = LocalEventDraft {
         local_datetime: naive_dt,
         title: String::new(),
     };
     assert_eq!(local_event.title, String::new());
-    let local_timestamp = LocalTimestamp {
+    let local_timestamp = LocalTimestampDraft {
         id: String::new(),
         local_time: local_dt,
     };
     assert_eq!(local_timestamp.id, String::new());
-    let optional_timestamp = OptionalTimestamp {
+    let optional_timestamp = OptionalTimestampDraft {
         id: String::new(),
         updated_at: None,
     };
@@ -796,17 +801,17 @@ fn test_enum_with_datetime_zod() {
 
 #[test]
 fn test_chrono_compilation_smoke_test() {
-    let event = EventWithDate {
+    let event = EventWithDateDraft {
         name: "Test Event".to_owned(),
         date: NaiveDate::from_ymd_opt(2025, 11, 29).unwrap(),
     };
 
-    let schedule = Schedule {
+    let schedule = ScheduleDraft {
         task: "Meeting".to_owned(),
         start_time: NaiveTime::from_hms_opt(14, 30, 0).unwrap(),
     };
 
-    let timestamp = TimestampedRecord {
+    let timestamp = TimestampedRecordDraft {
         id: "123".to_owned(),
         created_at: Utc::now(),
     };
@@ -891,20 +896,20 @@ fn test_tuple_variant_datetime_zod_honors_as_number() {
 #[test]
 fn test_as_number_types_constructible() {
     let dt = DateTime::<Utc>::from_timestamp(0, 0).unwrap();
-    let sample = Sample {
+    let sample = SampleDraft {
         created_at: dt,
         due_at: dt,
         start_time: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
     };
     assert_eq!(sample.created_at, dt);
-    let values = [DynamicValue::Native(dt), DynamicValue::Number(dt)];
+    let values = [DynamicValueDraft::Native(dt), DynamicValueDraft::Number(dt)];
     assert_eq!(values.len(), 2);
 }
 
 #[cfg(feature = "serde")]
 #[test]
 fn an_as_number_field_crosses_the_wire_as_epoch_milliseconds() {
-    let sample = Sample {
+    let sample = SampleDraft {
         created_at: DateTime::from_timestamp_millis(1_758_000_000_000).unwrap(),
         due_at: DateTime::from_timestamp_millis(1_758_000_000_000).unwrap(),
         start_time: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
@@ -919,14 +924,14 @@ fn an_as_number_field_crosses_the_wire_as_epoch_milliseconds() {
         "a DateTime without the flag keeps chrono's string. Got: {json}"
     );
     let back: Sample = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, sample);
-    let variant = serde_json::to_string(&DynamicValue::Number(sample.created_at)).unwrap();
+    assert_eq!(back, sample.clone().validate().unwrap());
+    let variant = serde_json::to_string(&DynamicValueDraft::Number(sample.created_at)).unwrap();
     assert_eq!(variant, r#"{"type":"Number","value":1758000000000}"#);
 }
 
 #[test]
 fn as_number_holds_back_where_the_author_wrote_their_own_hook() {
-    let value = CustomEpochHook {
+    let value = CustomEpochHookDraft {
         stamp: DateTime::from_timestamp(1_758_000_000, 0).unwrap(),
     };
     let json = serde_json::to_string(&value).unwrap();
@@ -935,7 +940,7 @@ fn as_number_holds_back_where_the_author_wrote_their_own_hook() {
         "the author's own seconds hook must run, not the injected milliseconds one. Got: {json}"
     );
     let back: CustomEpochHook = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, value);
+    assert_eq!(back, value.validate().unwrap());
 }
 
 /// The JSON Schema of a `NaiveTime`: the text serde writes, its seconds written, whole. No
@@ -993,25 +998,28 @@ fn a_date_under_as_number_is_described_as_the_integer_serde_writes() {
     let at = DateTime::from_timestamp_millis(MILLIS).unwrap();
     let start_time = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
     held_to_the_millis_serde_writes(
-        &Sample {
+        &SampleDraft {
             created_at: at,
             due_at: at,
             start_time,
         },
         &Sample::json_schema(),
     );
-    held_to_the_millis_serde_writes(&DynamicValue::Number(at), &DynamicValue::json_schema());
+    held_to_the_millis_serde_writes(&DynamicValueDraft::Number(at), &DynamicValue::json_schema());
     held_to_the_millis_serde_writes(
-        &HeldMillis {
+        &HeldMillisDraft {
             later: Some(at),
             settled: Some(at),
         },
         &HeldMillis::json_schema(),
     );
-    held_to_the_millis_serde_writes(&MillisEvent::Logged { at }, &MillisEvent::json_schema());
-    held_to_the_millis_serde_writes(&MillisPair(at, 1), &MillisPair::json_schema());
+    held_to_the_millis_serde_writes(
+        &MillisEventDraft::Logged { at },
+        &MillisEvent::json_schema(),
+    );
+    held_to_the_millis_serde_writes(&MillisPairDraft(at, 1), &MillisPair::json_schema());
 
-    let absent = serde_json::to_value(HeldMillis {
+    let absent = serde_json::to_value(HeldMillisDraft {
         later: None,
         settled: None,
     })
@@ -1042,7 +1050,7 @@ fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zo
     let date = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
     let time = NaiveTime::from_hms_milli_opt(10, 20, 30, 125).unwrap();
     let utc = date.and_time(time).and_utc();
-    let written = serde_json::to_value(AllChronoTypes {
+    let written = serde_json::to_value(AllChronoTypesDraft {
         date,
         local_datetime: date.and_time(time),
         local_timestamp: utc.with_timezone(&Local),
@@ -1074,7 +1082,7 @@ fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zo
     }
 
     let tagged = FixedValue::json_schema();
-    let slot = serde_json::to_value(FixedValue::Time(time)).unwrap();
+    let slot = serde_json::to_value(FixedValueDraft::Time(time)).unwrap();
     assert!(
         admits(&tagged, &slot),
         "the JSON Schema refuses {slot}, which serde writes: {tagged}"
@@ -1097,11 +1105,11 @@ fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zo
 fn an_untagged_member_under_as_number_crosses_the_wire_as_epoch_milliseconds() {
     let at = DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
     assert_eq!(
-        serde_json::to_string(&MillisOrFlag::Millis(at)).unwrap(),
+        serde_json::to_string(&MillisOrFlagDraft::Millis(at)).unwrap(),
         "1704164645678"
     );
     assert_eq!(
-        serde_json::to_string(&MillisNamed::Logged { at }).unwrap(),
+        serde_json::to_string(&MillisNamedDraft::Logged { at }).unwrap(),
         r#"{"at":1704164645678}"#
     );
     for (read_as, json, written, _) in MILLIS_ROWS {
@@ -1165,23 +1173,23 @@ fn an_untagged_member_under_as_number_is_described_as_a_number() {
 #[test]
 fn an_untagged_member_under_as_number_keeps_its_own_hook_and_its_check() {
     let at = DateTime::from_timestamp(1_758_000_000, 0).unwrap();
-    let written = serde_json::to_string(&SecondsOrFlag::Seconds(at)).unwrap();
+    let written = serde_json::to_string(&SecondsOrFlagDraft::Seconds(at)).unwrap();
     assert_eq!(
         written, "1758000000",
         "the author's own seconds hook must run, not the injected milliseconds one"
     );
     assert_eq!(
         serde_json::from_str::<SecondsOrFlag>(&written).unwrap(),
-        SecondsOrFlag::Seconds(at)
+        SecondsOrFlagDraft::Seconds(at).validate().unwrap()
     );
 
     let checked =
-        CheckedMillis::Millis(DateTime::from_timestamp_millis(1_758_000_000_000).unwrap());
+        CheckedMillisDraft::Millis(DateTime::from_timestamp_millis(1_758_000_000_000).unwrap());
     let millis = serde_json::to_string(&checked).unwrap();
     assert_eq!(millis, "1758000000000");
     assert_eq!(
         serde_json::from_str::<CheckedMillis>(&millis).unwrap(),
-        checked
+        checked.validate().unwrap()
     );
     let refused = serde_json::from_str::<CheckedMillis>("-5")
         .unwrap_err()
@@ -1199,7 +1207,7 @@ fn an_untagged_member_under_as_number_keeps_its_own_hook_and_its_check() {
 #[test]
 fn a_date_under_as_number_with_a_hook_of_its_own_in_one_direction_is_written_as_a_number() {
     let at = DateTime::from_timestamp_millis(1_758_000_000_000).unwrap();
-    let value = OneWayMillis {
+    let value = OneWayMillisDraft {
         read_by_hand: at,
         written_by_hand: at,
     };
@@ -1210,7 +1218,7 @@ fn a_date_under_as_number_with_a_hook_of_its_own_in_one_direction_is_written_as_
     );
     assert_eq!(
         serde_json::from_str::<OneWayMillis>(&written).unwrap(),
-        value
+        value.validate().unwrap()
     );
 }
 
@@ -1219,7 +1227,7 @@ fn a_date_under_as_number_with_a_hook_of_its_own_in_one_direction_is_written_as_
 #[cfg(feature = "serde")]
 #[test]
 fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
-    let empty = DroppedMillis {
+    let empty = DroppedMillisDraft {
         later: None,
         settled: None,
     };
@@ -1227,20 +1235,22 @@ fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
     assert_eq!(written, r#"{"settled":null}"#);
     assert_eq!(
         serde_json::from_str::<DroppedMillis>(&written).unwrap(),
-        empty
+        empty.clone().validate().unwrap()
     );
     assert_eq!(
         serde_json::from_str::<DroppedMillis>("{}").unwrap(),
-        empty,
+        empty.validate().unwrap(),
         "an absent key of the nullable date is not read as `None`"
     );
     let at = DateTime::from_timestamp_millis(1_758_000_000_000).unwrap();
     assert_eq!(
         serde_json::from_str::<DroppedMillis>(r#"{"later":1758000000000}"#).unwrap(),
-        DroppedMillis {
+        DroppedMillisDraft {
             later: Some(at),
             settled: None,
         }
+        .validate()
+        .unwrap()
     );
 }
 

@@ -130,7 +130,7 @@ do {
         return;
     };
     assert!(run.succeeded, "{}\n{source}", run.stderr);
-    let label = Label {
+    let label = LabelDraft {
         text: LabelText::new("Shipping").unwrap(),
     };
     assert_eq!(label.text.as_inner(), "Shipping");
@@ -139,7 +139,7 @@ do {
         r#"{"text":"Shipping"}"#
     );
     assert_eq!(
-        serde_json::to_string(&Tag("x".to_owned())).unwrap(),
+        serde_json::to_string(&TagDraft("x".to_owned())).unwrap(),
         r#""x""#
     );
     let refused = LabelText::new("").unwrap_err().join("; ");

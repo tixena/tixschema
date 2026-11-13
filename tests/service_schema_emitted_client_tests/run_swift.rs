@@ -20,9 +20,10 @@ use super::tests::stamp_client_service_schema::{
     stamp_client_service_fault_fields_swift, stamp_client_service_fault_kind_swift,
 };
 use super::tests::swift_codec_fixture::{
-    CodecAdjacentTagged, CodecEnvelope, CodecExternalTagged, CodecInternalTagged, CodecMapKeys,
-    CodecOptionsRow, CodecPrimary, CodecReservedMap, CodecTuplePoint, CodecUnitField,
-    CodecUnitPayload, CodecUntagged, codec_adjacent_tagged_swift, codec_envelope_swift,
+    CodecAdjacentTaggedDraft, CodecEnvelopeDraft, CodecExternalTaggedDraft,
+    CodecInternalTaggedDraft, CodecMapKeysDraft, CodecOptionsRowDraft, CodecPrimaryDraft,
+    CodecReservedMapDraft, CodecTuplePointDraft, CodecUnitFieldDraft, CodecUnitPayloadDraft,
+    CodecUntaggedDraft, codec_adjacent_tagged_swift, codec_envelope_swift,
     codec_external_tagged_swift, codec_internal_tagged_swift, codec_map_keys_swift,
     codec_options_row_swift, codec_primary_swift, codec_reserved, codec_reserved_inner_swift,
     codec_reserved_kind_swift, codec_reserved_map_swift, codec_reserved_swift,
@@ -532,7 +533,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "options",
             "CodecOptionsRow",
-            serde_json::to_value(CodecOptionsRow {
+            serde_json::to_value(CodecOptionsRowDraft {
                 nullable_field: None,
                 omitted_optional: None,
                 plain_field: "hello".to_owned(),
@@ -543,7 +544,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "external_tagged",
             "CodecExternalTagged",
-            serde_json::to_value(CodecExternalTagged::Foo {
+            serde_json::to_value(CodecExternalTaggedDraft::Foo {
                 a: "ex-a".to_owned(),
             })
             .unwrap(),
@@ -551,7 +552,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "internal_tagged",
             "CodecInternalTagged",
-            serde_json::to_value(CodecInternalTagged::Foo {
+            serde_json::to_value(CodecInternalTaggedDraft::Foo {
                 a: "in-a".to_owned(),
             })
             .unwrap(),
@@ -559,12 +560,12 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "adjacent_tagged",
             "CodecAdjacentTagged",
-            serde_json::to_value(CodecAdjacentTagged::Flag(true)).unwrap(),
+            serde_json::to_value(CodecAdjacentTaggedDraft::Flag(true)).unwrap(),
         ),
         (
             "untagged",
             "CodecUntagged",
-            serde_json::to_value(CodecUntagged::Text {
+            serde_json::to_value(CodecUntaggedDraft::Text {
                 text: "hi".to_owned(),
             })
             .unwrap(),
@@ -572,7 +573,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "tuple_point",
             "CodecTuplePoint",
-            serde_json::to_value(CodecTuplePoint {
+            serde_json::to_value(CodecTuplePointDraft {
                 label: "pt".to_owned(),
                 pair: ("a".to_owned(), 7),
             })
@@ -581,7 +582,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "envelope",
             "CodecEnvelope<String>",
-            serde_json::to_value(CodecEnvelope {
+            serde_json::to_value(CodecEnvelopeDraft {
                 note: "n1".to_owned(),
                 value: "payload".to_owned(),
             })
@@ -590,18 +591,21 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "map_keys",
             "CodecMapKeys",
-            serde_json::to_value(CodecMapKeys {
+            serde_json::to_value(CodecMapKeysDraft {
                 counters: HashMap::from([(7, "seven".to_owned())]),
-                tiers: HashMap::from([(CodecPrimary::Primary, "p".to_owned())]),
+                tiers: HashMap::from([(
+                    CodecPrimaryDraft::Primary.validate().unwrap(),
+                    "p".to_owned(),
+                )]),
             })
             .unwrap(),
         ),
         (
             "unit_field",
             "CodecUnitField",
-            serde_json::to_value(CodecUnitField {
+            serde_json::to_value(CodecUnitFieldDraft {
                 label: "marker".to_owned(),
-                payload: CodecUnitPayload,
+                payload: CodecUnitPayloadDraft.validate().unwrap(),
             })
             .unwrap(),
         ),
@@ -613,7 +617,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
         (
             "reserved_map",
             "CodecReservedMap",
-            serde_json::to_value(CodecReservedMap {
+            serde_json::to_value(CodecReservedMapDraft {
                 r#for: HashMap::from([(7, "seven".to_owned())]),
             })
             .unwrap(),

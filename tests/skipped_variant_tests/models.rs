@@ -254,22 +254,26 @@ pub fn unread_writes() -> Vec<String> {
         written.unwrap_or_else(|refused| refused.to_string())
     };
     vec![
-        said(serde_json::to_string(&Berthage::Closed {
+        said(serde_json::to_string(&BerthageDraft::Closed {
             reason: "r".to_owned(),
         })),
-        said(serde_json::to_string(&Berthage::Hidden("h".to_owned()))),
-        said(serde_json::to_string(&Wharfage::Closed { reason: None })),
-        said(serde_json::to_string(&Wharfage::Gone)),
-        said(serde_json::to_string(&Pilotage::Closed {
+        said(serde_json::to_string(&BerthageDraft::Hidden(
+            "h".to_owned(),
+        ))),
+        said(serde_json::to_string(&WharfageDraft::Closed {
+            reason: None,
+        })),
+        said(serde_json::to_string(&WharfageDraft::Gone)),
+        said(serde_json::to_string(&PilotageDraft::Closed {
             reason: "r".to_owned(),
         })),
-        said(serde_json::to_string(&Pilotage::Lone(1))),
-        said(serde_json::to_string(&Lighterage::Closed {
+        said(serde_json::to_string(&PilotageDraft::Lone(1))),
+        said(serde_json::to_string(&LighterageDraft::Closed {
             reason: "r".to_owned(),
         })),
-        said(serde_json::to_string(&Keelage::Green)),
-        said(serde_json::to_string(&Cartage::Bulk("b".to_owned()))),
-        said(serde_json::to_string(&Dockage::Closed {
+        said(serde_json::to_string(&KeelageDraft::Green)),
+        said(serde_json::to_string(&CartageDraft::Bulk("b".to_owned()))),
+        said(serde_json::to_string(&DockageDraft::Closed {
             reason: "r".to_owned(),
         })),
     ]

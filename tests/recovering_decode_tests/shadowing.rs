@@ -28,17 +28,27 @@ struct Ticket {
 }
 
 fn ticket() -> Ticket {
-    Ticket {
-        issue: Issue {
+    TicketDraft {
+        issue: IssueDraft {
             title: "Loan".to_owned(),
-        },
-        path: Path {
+        }
+        .validate()
+        .unwrap(),
+        path: PathDraft {
             segments: vec!["a".to_owned()],
-        },
-        related: vec![Issue {
-            title: "Other".to_owned(),
-        }],
+        }
+        .validate()
+        .unwrap(),
+        related: vec![
+            IssueDraft {
+                title: "Other".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ],
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]

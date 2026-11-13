@@ -250,8 +250,8 @@ const fn payload(payload: Value) -> Value {
     payload
 }
 
-fn rated(value: &Rating) -> Result<(), Vec<String>> {
-    if matches!(value, Rating::Unrated) {
+fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
     }
     Ok(())
@@ -335,19 +335,19 @@ fn assert_written(definition: &str, fragment: &str) {
 fn every_declared_type_is_constructible() {
     let texts =
         |written: &[&str]| -> Vec<String> { written.iter().map(|&text| text.to_owned()).collect() };
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         fragile_item_codes: Vec::new(),
         item_code_list: texts(&["x"]),
         label: "A".to_owned(),
     };
-    let manifest = Manifest {
-        parcel: parcel.clone(),
+    let manifest = ManifestDraft {
+        parcel: parcel.clone().validate().unwrap(),
     };
     assert_eq!(manifest.parcel.item_code_list, ["x"]);
     assert_eq!(manifest.parcel.fragile_item_codes, Vec::<String>::new());
-    let ticket = Ticket {
+    let ticket = TicketDraft {
         code_list: texts(&["x"]),
-        held_parcel: parcel,
+        held_parcel: parcel.validate().unwrap(),
         item_label: "A".to_owned(),
         seat_pair: ("a".to_owned(), 1),
         short_note: None,
@@ -355,109 +355,123 @@ fn every_declared_type_is_constructible() {
     assert_eq!(ticket.held_parcel.label, "A");
     assert_eq!(ticket.code_list.len() + ticket.item_label.len(), 2);
     assert_eq!((ticket.seat_pair.1, ticket.short_note), (1, None));
-    assert_eq!(serde_json::to_string(&ClosedDock).unwrap(), "{}");
-    let stack = Stack("a".to_owned(), 2);
+    assert_eq!(serde_json::to_string(&ClosedDockDraft).unwrap(), "{}");
+    let stack = StackDraft("a".to_owned(), 2);
     assert_eq!((stack.0.as_str(), stack.1), ("a", 2));
     assert_eq!(Label::new("A".to_owned()).unwrap().as_inner(), "A");
     assert_eq!(*Tag::new(7_u32).unwrap().as_inner(), 7);
-    let filled = Crate {
+    let filled = CrateDraft {
         codes: vec![7_u32],
         label: "A".to_owned(),
     };
     assert_eq!((filled.codes.len(), filled.label.as_str()), (1, "A"));
     assert_eq!(
-        serde_json::to_string(&[Grade::Express, Grade::Standard]).unwrap(),
+        serde_json::to_string(&[GradeDraft::Express, GradeDraft::Standard]).unwrap(),
         r#"["Express","Standard"]"#
     );
     assert_eq!(
-        serde_json::to_string(&[Rating::Express, Rating::Unrated]).unwrap(),
+        serde_json::to_string(&[RatingDraft::Express, RatingDraft::Unrated]).unwrap(),
         r#"["Express","Unrated"]"#
     );
-    assert_eq!(rated(&Rating::Express), Ok(()));
-    assert_eq!(rated(&Rating::Unrated).unwrap_err(), ["a parcel is rated"]);
-    let tagged = Tagged {
+    assert_eq!(rated(&RatingDraft::Express), Ok(()));
+    assert_eq!(
+        rated(&RatingDraft::Unrated).unwrap_err(),
+        ["a parcel is rated"]
+    );
+    let tagged = TaggedDraft {
         keys: Vec::new(),
         tag: "t".to_owned(),
     };
-    let listed = Listed {
+    let listed = ListedDraft {
         keys: Vec::new(),
         tag: "t".to_owned(),
     };
-    let pinned = Pinned {
+    let pinned = PinnedDraft {
         dock: "north".to_owned(),
-        tagged: tagged.clone(),
+        tagged: tagged.clone().validate().unwrap(),
     };
     assert_eq!(
         (pinned.dock.as_str(), pinned.tagged.tag.as_str()),
         ("north", "t")
     );
-    let sorted = Sorted {
+    let sorted = SortedDraft {
         dock: "north".to_owned(),
-        listed: listed.clone(),
+        listed: listed.clone().validate().unwrap(),
         pier: "p".to_owned(),
     };
     assert_eq!(sorted.dock.len() + sorted.pier.len(), 6);
     assert_eq!(sorted.listed.keys, Vec::<String>::new());
-    assert_eq!(Account { tagged }.tagged.keys, Vec::<String>::new());
+    assert_eq!(
+        AccountDraft {
+            tagged: tagged.validate().unwrap(),
+        }
+        .tagged
+        .keys,
+        Vec::<String>::new()
+    );
     assert_eq!(listed.tag, "t");
     assert_eq!(
-        Renamed {
+        RenamedDraft {
             label: "A".to_owned()
         }
         .label,
         "A"
     );
-    let keyed = Keyed {
+    let keyed = KeyedDraft {
         codes: vec![7_u32],
         label: "A".to_owned(),
     };
     assert_eq!((keyed.codes.len(), keyed.label.as_str()), (1, "A"));
-    let coupled = Coupled("A".to_owned(), 7);
+    let coupled = CoupledDraft("A".to_owned(), 7);
     assert_eq!((coupled.0.as_str(), coupled.1), ("A", 7));
 }
 
 #[test]
 fn every_declared_variant_is_constructible() {
     let transfers = [
-        Transfer::Held,
-        Transfer::Rail("north".to_owned()),
-        Transfer::Road {
+        TransferDraft::Held,
+        TransferDraft::Rail("north".to_owned()),
+        TransferDraft::Road {
             plate: "AB 1".to_owned(),
         },
-        Transfer::Split("a".to_owned(), 2),
+        TransferDraft::Split("a".to_owned(), 2),
     ];
     assert_eq!(transfers.len(), 4);
-    let tagged = Tagged {
+    let tagged = TaggedDraft {
         keys: Vec::new(),
         tag: "t".to_owned(),
     };
     let shipments = [
-        Shipment::Air {
+        ShipmentDraft::Air {
             dock: "north".to_owned(),
-            tagged,
+            tagged: tagged.validate().unwrap(),
         },
-        Shipment::Boxed(Listed {
-            keys: Vec::new(),
-            tag: "t".to_owned(),
-        }),
-        Shipment::Ground,
+        ShipmentDraft::Boxed(
+            ListedDraft {
+                keys: Vec::new(),
+                tag: "t".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+        ShipmentDraft::Ground,
     ];
     assert_eq!(shipments.len(), 3);
     let handovers = [
-        Handover::Left("door".to_owned()),
-        Handover::Signed { by: "A".to_owned() },
+        HandoverDraft::Left("door".to_owned()),
+        HandoverDraft::Signed { by: "A".to_owned() },
     ];
     assert_eq!(handovers.len(), 2);
     let references = [
-        Reference::Named {
+        ReferenceDraft::Named {
             name: "north".to_owned(),
         },
-        Reference::Numbered(7),
+        ReferenceDraft::Numbered(7),
     ];
     assert_eq!(references.len(), 2);
-    let routed = [Routed::Held, Routed::Rail("north".to_owned())];
+    let routed = [RoutedDraft::Held, RoutedDraft::Rail("north".to_owned())];
     assert_eq!(routed.len(), 2);
-    let counted = [Counted::Text("a".to_owned()), Counted::Whole(7)];
+    let counted = [CountedDraft::Text("a".to_owned()), CountedDraft::Whole(7)];
     assert_eq!(counted.len(), 2);
 }
 

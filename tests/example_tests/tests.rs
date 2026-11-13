@@ -18,7 +18,7 @@ pub type Several<Held> = Vec<Held>;
 fn test_simple_enum_example() {
     /// Data type enumeration
     /// ```rust example
-    /// let data_type = DataType::Numeric;
+    /// let data_type = DataTypeDraft::Numeric;
     /// println!("Example: {:?}", data_type);
     /// ```
     #[model_schema()]
@@ -54,7 +54,7 @@ fn test_simple_enum_example() {
 fn test_simple_struct_example() {
     /// User profile
     /// ```rust example
-    /// let user = User {
+    /// let user = UserDraft {
     ///     name: "John Doe".to_string(),
     ///     age: 25,
     /// };
@@ -87,7 +87,7 @@ fn test_complex_struct_with_logic() {
     /// ```rust example
     /// let user_id = "usr_123".to_string();
     /// let tags = vec!["admin".to_string(), "active".to_string()];
-    /// let user = ComplexUser {
+    /// let user = ComplexUserDraft {
     ///     id: user_id,
     ///     tags,
     ///     age: 30,
@@ -122,7 +122,7 @@ fn test_nested_types_example() {
 
     /// Profile with nested types
     /// ```rust example
-    /// let profile = Profile {
+    /// let profile = ProfileDraft {
     ///     tags: vec!["tag1".to_string()],
     ///     metadata: HashMap::from([("key1".to_string(), "value1".to_string())]),
     ///     optional_field: Some("present".to_string()),
@@ -158,7 +158,7 @@ fn test_nested_types_example() {
 fn test_discriminated_enum_example() {
     /// Event types
     /// ```rust example
-    /// let event = Event::UserCreated {
+    /// let event = EventDraft::UserCreated {
     ///     user_id: "user_123".to_string(),
     ///     timestamp: "2024-01-01".to_string(),
     /// };
@@ -186,11 +186,11 @@ fn test_discriminated_enum_example() {
 fn every_example_block_reaches_the_schema() {
     /// Type with multiple examples
     /// ```rust example
-    /// let _: SeveralExamples = SeveralExamples { value: 1 };
+    /// let _: SeveralExamples = SeveralExamplesDraft { value: 1 };
     /// ```
     /// Second description
     /// ```rust example
-    /// let _: SeveralExamples = SeveralExamples { value: 2 };
+    /// let _: SeveralExamples = SeveralExamplesDraft { value: 2 };
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -242,7 +242,7 @@ fn test_no_example_no_method() {
         pub value: String,
     }
 
-    let no_example = NoExample {
+    let no_example = NoExampleDraft {
         value: String::new(),
     };
     assert_eq!(no_example.value, String::new());
@@ -260,7 +260,7 @@ fn test_no_example_no_method() {
 fn test_typescript_zod_format() {
     /// Test type
     /// ```rust example
-    /// Test { name: "test".to_string() }
+    /// TestDraft { name: "test".to_string() }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -283,7 +283,7 @@ fn test_typescript_zod_format() {
 fn test_javascript_zod_format() {
     /// Test type
     /// ```rust example
-    /// Test { name: "test".to_string() }
+    /// TestDraft { name: "test".to_string() }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -305,7 +305,7 @@ fn test_javascript_zod_format() {
 fn test_serde_attributes_in_example() {
     /// User with serde attributes
     /// ```rust example
-    /// let user = UserWithSerde {
+    /// let user = UserWithSerdeDraft {
     ///     user_id: "123".to_string(),
     ///     email_address: "test@example.com".to_string(),
     /// };
@@ -339,7 +339,7 @@ fn test_objectid_example() {
     /// Document with `ObjectId`
     /// ```rust example
     /// let oid = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
-    /// let doc = Document {
+    /// let doc = DocumentDraft {
     ///     id: oid,
     ///     name: "test".to_string(),
     /// };
@@ -373,7 +373,7 @@ fn test_example_fence_must_be_exact() {
         pub value: u32,
     }
 
-    let regular_fence = RegularFence { value: 0 };
+    let regular_fence = RegularFenceDraft { value: 0 };
     assert_eq!(regular_fence.value, 0_u32);
 
     #[cfg(feature = "zod")]
@@ -404,7 +404,7 @@ fn test_empty_example_block() {
 fn test_regex_transform_println() {
     /// Data type with println pattern (for doctest compatibility)
     /// ```rust example
-    /// let data_type = DataType::Integer;
+    /// let data_type = DataTypeDraft::Integer;
     /// println!("data_type: {:?}", data_type);
     /// ```
     #[model_schema()]
@@ -428,7 +428,7 @@ fn test_regex_transform_println() {
 fn test_regex_transform_let_underscore() {
     /// Status with let underscore pattern (for doctest compatibility)
     /// ```rust example
-    /// let _: Status = Status::Active;
+    /// let _: Status = StatusDraft::Active;
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -451,7 +451,7 @@ fn test_description_strips_examples() {
     /// This is a description
     /// with multiple lines
     /// ```rust example
-    /// let _: DescriptionTest = DescriptionTest { value: 42 };
+    /// let _: DescriptionTest = DescriptionTestDraft { value: 42 };
     /// ```
     /// More description after example
     #[model_schema()]
@@ -470,7 +470,7 @@ fn test_description_strips_examples() {
 fn test_description_escapes_quotes() {
     /// Description with "quoted" text
     /// ```rust example
-    /// let _: QuoteTest = QuoteTest::Active;
+    /// let _: QuoteTest = QuoteTestDraft::Active;
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -491,7 +491,7 @@ fn a_generic_struct_renders_its_example_at_its_declared_filling() {
     /// A generic type carrying an example block.
     ///
     /// ```rust example
-    /// Boxed { value: "x".to_owned() }
+    /// BoxedDraft { value: "x".to_owned() }
     /// ```
     #[model_schema(default_types(ValueType = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -511,7 +511,7 @@ fn a_generic_enum_renders_its_example_at_its_declared_fillings() {
     /// A generic enum carrying an example block.
     ///
     /// ```rust example
-    /// Tagged::Held { held: "x".to_owned(), tag: "t".to_owned() }
+    /// TaggedDraft::Held { held: "x".to_owned(), tag: "t".to_owned() }
     /// ```
     #[model_schema(default_types(HeldType = String, TagType = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -531,7 +531,7 @@ fn a_bounded_parameter_renders_its_example_at_its_declared_filling() {
     /// A generic type whose parameter carries a bound `String` does not satisfy.
     ///
     /// ```rust example
-    /// Counted { count: 7u32 }
+    /// CountedDraft { count: 7u32 }
     /// ```
     #[model_schema(default_types(CountType = u32))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -551,7 +551,7 @@ fn a_generic_enum_renders_its_example_at_a_filling_that_is_not_a_string() {
     /// A generic enum carrying an example block.
     ///
     /// ```rust example
-    /// Measured::Held { held: 7u32 }
+    /// MeasuredDraft::Held { held: 7u32 }
     /// ```
     #[model_schema(default_types(HeldType = u32))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -571,7 +571,7 @@ fn an_unfilled_parameter_keeps_the_string_instantiation() {
     /// A generic type declaring no filling.
     ///
     /// ```rust example
-    /// Unfilled { value: "x".to_owned() }
+    /// UnfilledDraft { value: "x".to_owned() }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -591,7 +591,7 @@ fn a_string_filling_and_no_filling_write_the_same_schema() {
     /// A generic type declaring its filling.
     ///
     /// ```rust example
-    /// Written { value: "x".to_owned() }
+    /// WrittenDraft { value: "x".to_owned() }
     /// ```
     #[model_schema(default_types(ValueType = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -602,7 +602,7 @@ fn a_string_filling_and_no_filling_write_the_same_schema() {
     /// A generic type declaring its filling.
     ///
     /// ```rust example
-    /// Omitted { value: "x".to_owned() }
+    /// OmittedDraft { value: "x".to_owned() }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -622,7 +622,7 @@ fn a_factory_carries_its_example_on_the_schema_it_memoizes() {
     /// A generic type carrying an example block.
     ///
     /// ```rust example
-    /// Held { value: "x".to_owned() }
+    /// HeldDraft { value: "x".to_owned() }
     /// ```
     #[model_schema(default_types(ValueType = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -651,7 +651,7 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     /// A type carrying an example block.
     ///
     /// ```rust example
-    /// Kept { value: "x".to_owned() }
+    /// KeptDraft { value: "x".to_owned() }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -681,7 +681,7 @@ fn a_lifetime_item_renders_its_example_with_the_lifetime_elided() {
     /// A borrowing type carrying an example block.
     ///
     /// ```rust example
-    /// Labelled { label: "x" }
+    /// LabelledDraft { label: "x" }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -701,7 +701,7 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
     /// A const-bearing type carrying an example block.
     ///
     /// ```rust example
-    /// Slotted { label: "x".to_owned() }
+    /// SlottedDraft { label: "x".to_owned() }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -709,7 +709,7 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
         pub label: String,
     }
 
-    let slotted = Slotted::<3> {
+    let slotted = SlottedDraft::<3> {
         label: "x".to_owned(),
     };
     assert_eq!(slotted.label, "x");
@@ -726,7 +726,7 @@ fn ends_in_examples(zod: &str, examples: &str) -> bool {
 fn one_block_publishes_one_item_and_no_example_key() {
     /// Type with one example
     /// ```rust example
-    /// Single { value: 7 }
+    /// SingleDraft { value: 7 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -753,12 +753,12 @@ fn one_block_publishes_one_item_and_no_example_key() {
 fn an_empty_block_is_skipped_between_two_filled_ones() {
     /// Type with an empty block
     /// ```rust example
-    /// Sparse { value: 1 }
+    /// SparseDraft { value: 1 }
     /// ```
     /// ```rust example
     /// ```
     /// ```rust example
-    /// Sparse { value: 3 }
+    /// SparseDraft { value: 3 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -785,7 +785,7 @@ fn an_empty_block_is_skipped_between_two_filled_ones() {
 fn a_block_that_is_never_closed_is_published() {
     /// A reading.
     /// ```rust example
-    /// Reading { value: 7 }
+    /// ReadingDraft { value: 7 }
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Reading {
@@ -805,10 +805,10 @@ fn a_block_that_is_never_closed_is_published() {
 fn an_unclosed_block_is_published_after_a_closed_one() {
     /// Two blocks, the second one never closed
     /// ```rust example
-    /// Paired { value: 1 }
+    /// PairedDraft { value: 1 }
     /// ```
     /// ```rust example
-    /// Paired { value: 2 }
+    /// PairedDraft { value: 2 }
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Paired {
@@ -850,11 +850,11 @@ fn each_block_is_built_in_a_scope_of_its_own() {
     /// Two blocks binding the same name
     /// ```rust example
     /// let value = 1;
-    /// Scoped { value }
+    /// ScopedDraft { value }
     /// ```
     /// ```rust example
     /// let value = 2;
-    /// Scoped { value }
+    /// ScopedDraft { value }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -876,10 +876,10 @@ fn each_block_is_built_in_a_scope_of_its_own() {
 fn an_internally_tagged_enum_publishes_one_example_per_variant() {
     /// A shape, one example per variant
     /// ```rust example
-    /// Shape::Circle { radius: 2 }
+    /// ShapeDraft::Circle { radius: 2 }
     /// ```
     /// ```rust example
-    /// Shape::Square { side: 3 }
+    /// ShapeDraft::Square { side: 3 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -916,7 +916,7 @@ fn an_internally_tagged_enum_publishes_one_example_per_variant() {
 fn every_tagging_of_an_enum_carries_its_examples() {
     /// Written under the variant's name
     /// ```rust example
-    /// Outer::Held { held: 1 }
+    /// OuterDraft::Held { held: 1 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -927,7 +927,7 @@ fn every_tagging_of_an_enum_carries_its_examples() {
 
     /// Written under two keys
     /// ```rust example
-    /// Adjacent::Held { held: 1 }
+    /// AdjacentDraft::Held { held: 1 }
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -939,10 +939,10 @@ fn every_tagging_of_an_enum_carries_its_examples() {
 
     /// Written as the variant's own value
     /// ```rust example
-    /// Bare::Text("x".to_owned())
+    /// BareDraft::Text("x".to_owned())
     /// ```
     /// ```rust example
-    /// Bare::Count(2)
+    /// BareDraft::Count(2)
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1021,10 +1021,10 @@ fn every_tagging_of_an_enum_with_no_block_publishes_an_empty_list() {
 fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
     /// A level
     /// ```rust example
-    /// Level::Low
+    /// LevelDraft::Low
     /// ```
     /// ```rust example
-    /// Level::High
+    /// LevelDraft::High
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1068,10 +1068,10 @@ fn a_generic_struct_holds_its_examples_on_the_schema_it_memoizes() {
     /// A generic type carrying two example blocks.
     ///
     /// ```rust example
-    /// Pair { value: "x".to_owned() }
+    /// PairDraft { value: "x".to_owned() }
     /// ```
     /// ```rust example
-    /// Pair { value: "y".to_owned() }
+    /// PairDraft { value: "y".to_owned() }
     /// ```
     #[model_schema(default_types(ValueType = String))]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1229,10 +1229,10 @@ fn a_tuple_struct_and_a_unit_struct_publish_an_empty_list() {
 fn a_tuple_struct_carries_its_examples() {
     /// A point
     /// ```rust example
-    /// Point(1, 2)
+    /// PointDraft(1, 2)
     /// ```
     /// ```rust example
-    /// Point(3, 4)
+    /// PointDraft(3, 4)
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]

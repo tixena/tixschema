@@ -37,14 +37,17 @@ fn a_range_of_usize_is_the_object_in_an_option_a_list_and_a_map() {
         assert!(typescript.contains(&member), "{member} in: {typescript}");
     }
     for held in [true, false] {
-        let passages = Passages {
+        let passages = PassagesDraft {
             keyed: BTreeMap::from([("a".to_owned(), 1..2)]),
             listed: vec![3..4, 7..9],
             maybe: held.then_some(5..6),
         };
         let json = serde_json::to_value(&passages).unwrap();
         assert!(admits(&Passages::json_schema(), &json), "{json}");
-        assert_eq!(serde_json::from_value::<Passages>(json).unwrap(), passages);
+        assert_eq!(
+            serde_json::from_value::<Passages>(json).unwrap(),
+            passages.validate().unwrap()
+        );
     }
 }
 
@@ -62,7 +65,7 @@ fn a_range_of_usize_compiles_and_is_described_as_its_start_and_end() {
         "{}",
         Text::zod_schema()
     );
-    let value = Text {
+    let value = TextDraft {
         span: 8..13,
         value: "word".to_owned(),
     };
@@ -71,7 +74,10 @@ fn a_range_of_usize_compiles_and_is_described_as_its_start_and_end() {
         json["span"],
         serde_json::json!({ "start": 8_usize, "end": 13_usize })
     );
-    assert_eq!(serde_json::from_value::<Text>(json).unwrap(), value);
+    assert_eq!(
+        serde_json::from_value::<Text>(json).unwrap(),
+        value.validate().unwrap()
+    );
     assert_eq!(
         Text::json_schema()["properties"]["span"]["required"],
         serde_json::json!(["start", "end"])

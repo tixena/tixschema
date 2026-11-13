@@ -16,10 +16,10 @@ use tixschema::model_schema;
 
 /// A label whose second example breaks its rule.
 /// ```rust example
-/// Label { text: "fine".to_string() }
+/// LabelDraft { text: "fine".to_string() }
 /// ```
 /// ```rust example
-/// Label { text: String::new() }
+/// LabelDraft { text: String::new() }
 /// ```
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +30,7 @@ pub struct Label {
 
 /// A tag whose example meets its rule.
 /// ```rust example
-/// Tag { text: "fine".to_string() }
+/// TagDraft { text: "fine".to_string() }
 /// ```
 #[model_schema()]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,8 +45,8 @@ use tixschema::model_schema;
 
 /// A tag whose example meets its rule.
 /// ```rust example
-/// use example_rules::Tag;
-/// let _ = Tag { text: "fine".to_string() };
+/// use example_rules::TagDraft;
+/// let _ = TagDraft { text: "fine".to_string() };
 /// ```
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]

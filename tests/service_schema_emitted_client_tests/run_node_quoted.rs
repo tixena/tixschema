@@ -243,13 +243,18 @@ impl ImpostClientService<()> for ImpostBackEnd {
     ) -> Result<(ImpostReceipt, String), (ImpostError, Option<String>)> {
         ready(()).await;
         if label == "refuse" {
-            return Err((ImpostError::Refused, trace.map(|at| format!("at {at}"))));
+            return Err((
+                ImpostErrorDraft::Refused.validate().unwrap(),
+                trace.map(|at| format!("at {at}")),
+            ));
         }
         let age = trace.map_or_else(|| "none".to_owned(), |at| at.to_string());
         Ok((
-            ImpostReceipt {
+            ImpostReceiptDraft {
                 label: format!("{label}|{note}"),
-            },
+            }
+            .validate()
+            .unwrap(),
             format!("age-{age}"),
         ))
     }
@@ -279,9 +284,11 @@ impl ImpostFilingClientService<()> for ImpostBackEnd {
             drained.extend_from_slice(&buf[..read]);
         }
         let content = String::from_utf8(drained).unwrap();
-        Ok(ImpostReceipt {
+        Ok(ImpostReceiptDraft {
             label: format!("{label}|{title}|{content}"),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 

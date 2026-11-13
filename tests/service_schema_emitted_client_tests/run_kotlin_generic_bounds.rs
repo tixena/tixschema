@@ -217,13 +217,13 @@ struct Row {
 }
 
 fn item(label: &str) -> Item {
-    Item {
+    Item::model_schema_wrap_unjudged(ItemDraft {
         label: label.to_owned(),
-    }
+    })
 }
 
 fn rows() -> Vec<Row> {
-    let shelf = |entries: Vec<(Slot, &str)>| Shelf {
+    let shelf = |entries: Vec<(Slot, &str)>| ShelfDraft {
         by_slot: entries
             .into_iter()
             .map(|(slot, label)| (slot, item(label)))
@@ -277,37 +277,45 @@ fn rows() -> Vec<Row> {
             kotlin: "Shelf<Slot>(mapOf(Slot.NorthDock to Item(\"\"), Slot.SouthDock to Item(\"a\"))).validate()",
             swift: "Shelf<Slot>(bySlot: [\"north-dock\": Item(label: \"\"), \"south-dock\": Item(label: \"a\")]).validate()",
             name: "a map keyed by a plain enum",
-            rust: shelf(vec![(Slot::NorthDock, ""), (Slot::SouthDock, "a")]).validate(),
+            rust: shelf(vec![
+                (SlotDraft::NorthDock.validate().unwrap(), ""),
+                (SlotDraft::SouthDock.validate().unwrap(), "a"),
+            ])
+            .validate()
+            .map(|_valid| ()),
         },
         Row {
             dart: "Shelf<Berth>(by_slot: {'b1': Item(label: '')}).validate()",
             kotlin: "Shelf<Berth>(mapOf(Berth.of(\"b1\") to Item(\"\"))).validate()",
             swift: "Shelf<Berth>(bySlot: [\"b1\": Item(label: \"\")]).validate()",
             name: "a map keyed by a brand",
-            rust: Shelf {
+            rust: ShelfDraft {
                 by_slot: BTreeMap::from([(Berth::new("b1".to_owned()).unwrap(), item(""))]),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         },
         Row {
             dart: "Shelf<String>(by_slot: {'k': Item(label: '')}).validate()",
             kotlin: "Shelf<String>(mapOf(\"k\" to Item(\"\"))).validate()",
             swift: "Shelf<String>(bySlot: [\"k\": Item(label: \"\")]).validate()",
             name: "a map keyed by the default",
-            rust: Shelf {
+            rust: ShelfDraft {
                 by_slot: BTreeMap::from([("k".to_owned(), item(""))]),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         },
         Row {
             dart: "Shelf<int>(by_slot: {'7': Item(label: '')}).validate()",
             kotlin: "Shelf<UInt>(mapOf(7u to Item(\"\"))).validate()",
             swift: "Shelf<UInt32>(bySlot: [\"7\": Item(label: \"\")]).validate()",
             name: "a map keyed by a number",
-            rust: Shelf {
+            rust: ShelfDraft {
                 by_slot: BTreeMap::from([(7_u32, item(""))]),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         },
     ]
 }
@@ -386,7 +394,7 @@ fn kotlin_answers_a_generic_brands_bound_and_a_maps_key_as_rust_does() {
 /// serializer reads it, as Rust names it, and by the class's own print for a hand-built value.
 #[test]
 fn kotlin_names_a_key_filled_with_a_generic_brand_as_rust_does_when_it_reads() {
-    let shelf = Shelf {
+    let shelf = ShelfDraft {
         by_slot: BTreeMap::from([(Tag::new("t".to_owned()).unwrap(), item(""))]),
     };
     let messages = shelf.validate().err().unwrap_or_default();
@@ -425,54 +433,59 @@ fn held_reads() -> [HeldRead; 6] {
             "tagged variant",
             "Depot<Tag<String>>",
             r#"{"kind":"Stocked","by_slot":{"t":{"label":""}}}"#,
-            Depot::Stocked { by_slot: stocked() }.validate(),
+            crate::judged_issues(DepotDraft::Stocked { by_slot: stocked() }.validation_issues()),
         ),
         (
             "untagged variant",
             "Pallet<Tag<String>>",
             r#"{"by_slot":{"t":{"label":""}}}"#,
-            Pallet::Loaded { by_slot: stocked() }.validate(),
+            crate::judged_issues(PalletDraft::Loaded { by_slot: stocked() }.validation_issues()),
         ),
         (
             "held type",
             "Aisle",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
-            Aisle {
-                shelf: Shelf { by_slot: stocked() },
+            AisleDraft {
+                shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft { by_slot: stocked() }),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         ),
         (
             "generic holder",
             "Annex<Tag<String>>",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
-            Annex {
-                shelf: Shelf { by_slot: stocked() },
-            }
-            .validate(),
+            crate::judged_issues(
+                AnnexDraft {
+                    shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft { by_slot: stocked() }),
+                }
+                .validation_issues(),
+            ),
         ),
         (
             "brand of the holder's parameter",
             "Armoire<String>",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
-            Armoire {
-                shelf: Shelf { by_slot: stocked() },
+            ArmoireDraft {
+                shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft { by_slot: stocked() }),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         ),
         (
             "brand of a brand of the holder's parameter",
             "Wardrobe<String>",
             r#"{"shelf":{"by_slot":{"t":{"label":""}}}}"#,
-            Wardrobe {
-                shelf: Shelf {
+            WardrobeDraft {
+                shelf: Shelf::model_schema_wrap_unjudged(ShelfDraft {
                     by_slot: BTreeMap::from([(
                         Tag::new(Tag::new("t".to_owned()).unwrap()).unwrap(),
                         item(""),
                     )]),
-                },
+                }),
             }
-            .validate(),
+            .validate()
+            .map(|_valid| ()),
         ),
     ]
 }

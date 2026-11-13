@@ -10,8 +10,10 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
 use super::read_past_models::{
-    Agreement, Booking, Contact, Customer, Delivery, Event, Order, Remark, Signature, Supplier,
-    SupplierContact, Ticket,
+    Agreement, AgreementDraft, Booking, BookingDraft, Contact, ContactDraft, Customer,
+    CustomerDraft, Delivery, DeliveryDraft, Event, EventDraft, Order, OrderDraft, Remark,
+    RemarkDraft, Signature, SignatureDraft, Supplier, SupplierContact, SupplierContactDraft,
+    SupplierDraft, Ticket, TicketDraft,
 };
 #[cfg(feature = "dart")]
 use super::read_past_models::{
@@ -70,20 +72,28 @@ where
 fn contacts() -> [(Contact, SupplierContact); 2] {
     [
         (
-            Contact::Email {
+            ContactDraft::Email {
                 email: "cy@example.com".to_owned(),
-            },
-            SupplierContact::Email {
+            }
+            .validate()
+            .unwrap(),
+            SupplierContactDraft::Email {
                 email: "orders@example.com".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
-            Contact::Phone {
+            ContactDraft::Phone {
                 phone: "557".to_owned(),
-            },
-            SupplierContact::Phone {
+            }
+            .validate()
+            .unwrap(),
+            SupplierContactDraft::Phone {
                 phone: "556".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
     ]
 }
@@ -96,7 +106,7 @@ fn contact_payloads() -> Vec<Payload> {
         written_all.extend([
             written(
                 "Event",
-                &Event::Signed {
+                &EventDraft::Signed {
                     contact: contact.clone(),
                     name: "Cy".to_owned(),
                 },
@@ -105,7 +115,7 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Customer",
-                &Customer {
+                &CustomerDraft {
                     contact: contact.clone(),
                     name: "Ana".to_owned(),
                 },
@@ -114,7 +124,7 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Supplier",
-                &Supplier {
+                &SupplierDraft {
                     contact: supplier_contact.clone(),
                     name: "Mill".to_owned(),
                 },
@@ -123,7 +133,7 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Order",
-                &Order::Placed {
+                &OrderDraft::Placed {
                     contact: supplier_contact.clone(),
                     name: "Forge".to_owned(),
                 },
@@ -132,7 +142,7 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Order",
-                &Order::Signed {
+                &OrderDraft::Signed {
                     contact: contact.clone(),
                     name: "Di".to_owned(),
                 },
@@ -141,16 +151,20 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Agreement",
-                &Agreement::Signed(Signature {
-                    contact,
-                    name: "Eve".to_owned(),
-                }),
+                &AgreementDraft::Signed(
+                    SignatureDraft {
+                        contact,
+                        name: "Eve".to_owned(),
+                    }
+                    .validate()
+                    .unwrap(),
+                ),
                 Some("Signed"),
                 true,
             ),
             written(
                 "Booking",
-                &Booking::Placed {
+                &BookingDraft::Placed {
                     contact: supplier_contact.clone(),
                     name: "Gil".to_owned(),
                 },
@@ -159,7 +173,7 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Remark",
-                &Remark::Placed {
+                &RemarkDraft::Placed {
                     contact: supplier_contact.clone(),
                     name: "Hal".to_owned(),
                 },
@@ -168,7 +182,7 @@ fn contact_payloads() -> Vec<Payload> {
             ),
             written(
                 "Delivery",
-                &Delivery::Placed {
+                &DeliveryDraft::Placed {
                     contact: supplier_contact,
                     name: "Ida".to_owned(),
                 },
@@ -183,26 +197,36 @@ fn contact_payloads() -> Vec<Payload> {
 /// A payload serde writes of each variant of an enum that holds neither [`Contact`] nor
 /// [`SupplierContact`], and of `Booking`'s `Noted` with a stray key beside its tag.
 fn variant_payloads() -> Vec<Payload> {
-    let ticket = || Ticket {
+    let ticket = || TicketDraft {
         code: "t1".to_owned(),
     };
-    let noted = || Booking::Noted {
+    let noted = || BookingDraft::Noted {
         note: "fragile".to_owned(),
     };
     vec![
         written(
             "Agreement",
-            &Agreement::Voided {
+            &AgreementDraft::Voided {
                 reason: "late".to_owned(),
             },
             Some("Voided"),
             false,
         ),
-        written("Delivery", &Delivery::Labelled(ticket()), None, false),
-        written("Remark", &Remark::Ticketed(ticket()), None, false),
         written(
             "Delivery",
-            &Delivery::Loose {
+            &DeliveryDraft::Labelled(ticket().validate().unwrap()),
+            None,
+            false,
+        ),
+        written(
+            "Remark",
+            &RemarkDraft::Ticketed(ticket().validate().unwrap()),
+            None,
+            false,
+        ),
+        written(
+            "Delivery",
+            &DeliveryDraft::Loose {
                 note: "fragile".to_owned(),
             },
             None,
@@ -212,7 +236,7 @@ fn variant_payloads() -> Vec<Payload> {
         written("Booking", &noted(), None, true),
         written(
             "Remark",
-            &Remark::Noted {
+            &RemarkDraft::Noted {
                 note: "fragile".to_owned(),
             },
             None,

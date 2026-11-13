@@ -12,8 +12,8 @@ use super::mcp_auth_rows::{
 use super::mcp_dart_document as document_mcp;
 use super::mcp_dart_services::{
     Archive, AuditService, AuditServiceSchema, DartBillingService as _, DartBillingServiceSchema,
-    DartDocumentService, DartDocumentServiceSchema, McpDocumentId, McpInvoiceRequest,
-    McpVersionError, McpVersionRequest, TaggingService as _, TaggingServiceSchema,
+    DartDocumentService, DartDocumentServiceSchema, McpDocumentId, McpInvoiceRequestDraft,
+    McpVersionErrorDraft, McpVersionRequestDraft, TaggingService as _, TaggingServiceSchema,
     mcp_document_id_dart, mcp_draft_batch_dart, mcp_draft_dart, mcp_format_dart,
     mcp_invoice_list_dart, mcp_invoice_request_dart, mcp_reference_dart, mcp_version_error_dart,
     mcp_version_request_dart, mcp_version_response_dart,
@@ -1578,29 +1578,52 @@ fn the_dart_mcp_server_and_client_have_no_issue() {
 
 #[test]
 fn the_archive_answers_every_operation_of_every_service() {
-    let version = || McpVersionRequest {
+    let version = || McpVersionRequestDraft {
         document_id: "doc-1".to_owned(),
         format: None,
     };
-    let answered = poll_once(DartDocumentService::get_version(&Archive, &(), version())).unwrap();
+    let answered = poll_once(DartDocumentService::get_version(
+        &Archive,
+        &(),
+        version().validate().unwrap(),
+    ))
+    .unwrap();
     assert_eq!(answered.unwrap().version, 5);
     let lookup =
         poll_once(Archive.lookup(&(), McpDocumentId::new("doc-1".to_owned()).unwrap())).unwrap();
-    assert_eq!(lookup.unwrap_err(), McpVersionError::NotFound);
+    assert_eq!(
+        lookup.unwrap_err(),
+        McpVersionErrorDraft::NotFound.validate().unwrap()
+    );
     let tagged = poll_once(Archive.get_tagged(&(), "doc-1".to_owned(), None)).unwrap();
-    assert_eq!(tagged.unwrap_err(), McpVersionError::NotFound);
+    assert_eq!(
+        tagged.unwrap_err(),
+        McpVersionErrorDraft::NotFound.validate().unwrap()
+    );
     let renamed =
         poll_once(Archive.rename_document(&(), "doc-1".to_owned(), "Plan".to_owned())).unwrap();
     assert_eq!(renamed, Ok(()));
     poll_once(Archive.touch_document(&(), "doc-1".to_owned(), "reviewer-7".to_owned())).unwrap();
-    let audited = poll_once(AuditService::get_version(&Archive, &(), version())).unwrap();
-    assert_eq!(audited.unwrap_err(), McpVersionError::NotFound);
-    let invoices = poll_once(Archive.list_invoices(
+    let audited = poll_once(AuditService::get_version(
+        &Archive,
         &(),
-        McpInvoiceRequest {
-            organization: "acme".to_owned(),
-        },
+        version().validate().unwrap(),
     ))
+    .unwrap();
+    assert_eq!(
+        audited.unwrap_err(),
+        McpVersionErrorDraft::NotFound.validate().unwrap()
+    );
+    let invoices = poll_once(
+        Archive.list_invoices(
+            &(),
+            McpInvoiceRequestDraft {
+                organization: "acme".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    )
     .unwrap();
     assert_eq!(invoices.unwrap().invoices, ["acme"]);
     let tagging = poll_once(Archive.retag(

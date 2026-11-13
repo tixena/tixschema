@@ -75,7 +75,7 @@ fn each_brand_is_written_as_serde_writes_it() {
     );
     assert_eq!(read_back(&Coffer::new(held()).unwrap()), r#"{"1":"a"}"#);
     assert_eq!(read_back(&Stash::new(held()).unwrap()), r#"{"1":"a"}"#);
-    assert_eq!(read_back(&Trunk(held(), 2)), r#"[{"1":"a"},2]"#);
+    assert_eq!(read_back(&TrunkDraft(held(), 2)), r#"[{"1":"a"},2]"#);
 }
 
 #[test]

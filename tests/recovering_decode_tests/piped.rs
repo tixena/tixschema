@@ -152,13 +152,17 @@ fn two_resolvers_settle_a_value() {
     let read = Invoice::from_value_piped(stored, &[&customer_as_text, &whole_number_as_text]);
     assert_eq!(
         read,
-        Ok(Invoice {
-            customer: Customer {
+        Ok(InvoiceDraft {
+            customer: CustomerDraft {
                 name: "Acme".to_owned(),
                 open_invoices: 3_u32,
-            },
+            }
+            .validate()
+            .unwrap(),
             number: "INV-0042".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 

@@ -75,7 +75,7 @@ fn a_check_is_read_on_a_type_and_on_a_field_in_this_build() {
     assert_eq!(refusals(tokens.clone()), Vec::new(), "got: {tokens}");
     let rendered = tokens.to_string();
     for written in [
-        "pub fn validate (& self)",
+        "pub fn validation_issues (& self)",
         "without_duplicates (& self . item_code_list)",
         "within_parcel (self)",
     ] {
@@ -340,7 +340,7 @@ fn a_bound_imports_the_schema_module_for_itself_where_the_type_names_a_check() {
         "got: {checked}"
     );
     assert!(
-        !checked.contains(":: string :: String >> { use tagged_schema :: * ;"),
+        !checked.contains(":: string :: String > { use tagged_schema :: * ;"),
         "the import reaches the check: {checked}"
     );
 
@@ -351,7 +351,7 @@ fn a_bound_imports_the_schema_module_for_itself_where_the_type_names_a_check() {
     .to_string();
     assert!(
         unchecked.contains(
-            ":: string :: String >> { use tagged_schema :: * ; let mut errors : :: std :: vec :: \
+            ":: string :: String > { use tagged_schema :: * ; let mut errors : :: std :: vec :: \
              Vec < :: std :: string :: String > = :: std :: vec :: Vec :: new () ; if let :: core \
              :: result :: Result :: Err (reported) = validate_label_value (& self . label)"
         ),
@@ -359,13 +359,20 @@ fn a_bound_imports_the_schema_module_for_itself_where_the_type_names_a_check() {
     );
 }
 
-/// A type that names neither a bound nor a check publishes no `validate()`.
+/// A type that names neither a bound nor a check lists no issue of its own.
 #[test]
-fn a_type_with_no_check_and_no_bound_publishes_no_validate() {
+fn a_type_with_no_check_and_no_bound_lists_no_issue() {
     let plain = expansion("", &parcel("")).to_string();
-    assert!(!plain.contains("fn validate"), "got: {plain}");
+    assert!(
+        plain.contains("Lists every rule the value breaks, of which this type has none"),
+        "got: {plain}"
+    );
     let checked = expansion("check = [\"withinParcel\"]", &parcel("")).to_string();
-    assert_eq!(checked.matches("pub fn validate (& self)").count(), 1);
+    assert_eq!(
+        checked.matches("pub fn validation_issues (& self)").count(),
+        2,
+        "the draft's, and the valid type's that lists the draft's"
+    );
 }
 
 /// The text of one wrap, which copies each issue with `continue: true`.

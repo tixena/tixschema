@@ -19,15 +19,16 @@ use serde_json::Value;
 use tixschema::{model_schema, service_schema};
 
 use super::preprocess_models::{
-    Grade, POSITIONS, Parcel, Pinned, SAMPLE, SAMPLE_ROWS, Tagged, carrier_dart, closed_dock_dart,
-    consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart, grade_dart, handover_dart,
-    label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart, positions, reference_dart,
-    routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart, stack_dart, tagged_dart,
-    transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys, wrapped_dart,
+    Grade, POSITIONS, Parcel, ParcelDraft, Pinned, SAMPLE, SAMPLE_ROWS, Tagged, carrier_dart,
+    closed_dock_dart, consigned_dart, crate_dart, crated_dart, delivery_dart, either_dart,
+    grade_dart, handover_dart, label_dart, manifest_dart, node_dart, parcel_dart, pinned_dart,
+    positions, reference_dart, routed_dart, sample_report, shelf_dart, shipment_dart, slot_dart,
+    stack_dart, tagged_dart, transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys,
+    wrapped_dart,
 };
 use super::run_dart_validate::{dart, from_heading, from_until, module};
 use super::runtime::ran;
-use super::tests::{ShelfError, shelf_error_dart};
+use super::tests::{ShelfError, ShelfErrorDraft, shelf_error_dart};
 
 /// The functions of the counted tally, each counting its calls under the name of what it
 /// corrects, and what prints the counts of one read.
@@ -660,11 +661,13 @@ pub struct Scale;
 impl IntakeClientService<()> for Scale {
     async fn weigh(&self, _ctx: &(), label: String) -> Result<Parcel, ShelfError> {
         ready(()).await;
-        Ok(Parcel {
+        Ok(ParcelDraft {
             fragile_item_codes: Vec::new(),
             item_code_list: vec!["x".to_owned()],
             label,
-        })
+        }
+        .validate()
+        .unwrap())
     }
 }
 
@@ -674,7 +677,7 @@ pub struct Dispenser;
 impl StickerClientService<()> for Dispenser {
     async fn stick(&self, _ctx: &(), text: String) -> Result<Sticker, ShelfError> {
         ready(()).await;
-        Ok(Sticker { label: text })
+        Ok(StickerDraft { label: text }.validate().unwrap())
     }
 }
 

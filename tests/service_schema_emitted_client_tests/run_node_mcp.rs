@@ -793,9 +793,11 @@ impl DocumentService<()> for Stand {
         req: DraftBatch,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse {
+        Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
-        })
+        }
+        .validate()
+        .unwrap())
     }
 
     async fn check_many(
@@ -804,7 +806,7 @@ impl DocumentService<()> for Stand {
         _req: Vec<GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 
     async fn check_maybe(
@@ -813,7 +815,7 @@ impl DocumentService<()> for Stand {
         _req: Option<GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 
     async fn check_named(
@@ -822,7 +824,7 @@ impl DocumentService<()> for Stand {
         _req: BTreeMap<String, GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 
     async fn check_pair(
@@ -832,7 +834,7 @@ impl DocumentService<()> for Stand {
         _second: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 
     async fn get_tagged(
@@ -842,7 +844,10 @@ impl DocumentService<()> for Stand {
         _known_tag: Option<String>,
     ) -> Result<(VersionResponse, String), VersionError> {
         ready(()).await;
-        Ok((VersionResponse { version: 7 }, "\"v7\"".to_owned()))
+        Ok((
+            VersionResponseDraft { version: 7 }.validate().unwrap(),
+            "\"v7\"".to_owned(),
+        ))
     }
 
     async fn get_version(
@@ -851,12 +856,12 @@ impl DocumentService<()> for Stand {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 
     async fn lookup(&self, _ctx: &(), _id: DocumentId) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 
     async fn rename_document(
@@ -866,7 +871,7 @@ impl DocumentService<()> for Stand {
         _title: String,
     ) -> Result<(), VersionError> {
         ready(()).await;
-        Err(VersionError::NotFound)
+        Err(VersionErrorDraft::NotFound.validate().unwrap())
     }
 
     async fn touch_document(&self, _ctx: &(), _document_id: String, _reader: String) {
@@ -881,7 +886,7 @@ impl BillingService<()> for Stand {
         _req: InvoiceRequest,
     ) -> Result<InvoiceList, BillingError> {
         ready(()).await;
-        Err(BillingError::Closed)
+        Err(BillingErrorDraft::Closed.validate().unwrap())
     }
 }
 
@@ -892,7 +897,7 @@ impl ArchiveService<()> for Stand {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponse { version: 7 })
+        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
     }
 }
 
@@ -1624,19 +1629,27 @@ fn the_client_sends_the_request_the_server_reads() {
 #[test]
 fn the_stand_in_answers_what_the_driver_implementations_do() {
     let ctx = ();
-    let request = || GetVersionRequest {
+    let request = || GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     };
     assert_eq!(
-        answered(DocumentService::get_version(&Stand, &ctx, request()))
-            .unwrap()
-            .version,
+        answered(DocumentService::get_version(
+            &Stand,
+            &ctx,
+            request().validate().unwrap()
+        ))
+        .unwrap()
+        .version,
         7
     );
     assert_eq!(
-        answered(ArchiveService::get_version(&Stand, &ctx, request()))
-            .unwrap()
-            .version,
+        answered(ArchiveService::get_version(
+            &Stand,
+            &ctx,
+            request().validate().unwrap()
+        ))
+        .unwrap()
+        .version,
         7
     );
     assert_eq!(
@@ -1676,10 +1689,12 @@ fn the_stand_in_answers_what_the_driver_implementations_do() {
     answered(BillingService::list_invoices(
         &Stand,
         &ctx,
-        InvoiceRequest {
+        InvoiceRequestDraft {
             limit: 1,
             load: 1.0,
-        },
+        }
+        .validate()
+        .unwrap(),
     ))
     .unwrap_err();
 }

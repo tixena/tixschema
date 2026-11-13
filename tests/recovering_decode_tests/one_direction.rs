@@ -99,21 +99,25 @@ struct Dispatch {
 }
 
 fn read_cased() -> ReadCased {
-    ReadCased {
+    ReadCasedDraft {
         first_name: "Ada".to_owned(),
         kept_note: String::new(),
         last_name: "Lovelace".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
 fn a_record_under_the_keys_serde_reads_lists_no_issue() {
     let stored = json!({ "read_too": 2_u32, "read": 1_u32, "plain": 3_u32 });
-    let renamed = ReadRenamed {
+    let renamed = ReadRenamedDraft {
         both_ways: 2_u32,
         one_way: 1_u32,
         plain: 3_u32,
-    };
+    }
+    .validate()
+    .unwrap();
     assert_eq!(
         serde_json::from_value::<ReadRenamed>(stored.clone()).unwrap(),
         renamed
@@ -155,11 +159,13 @@ fn a_wrong_value_under_a_read_key_is_listed_at_that_key_and_fixed_there() {
     );
     assert_eq!(
         read,
-        Ok(ReadRenamed {
+        Ok(ReadRenamedDraft {
             both_ways: 2_u32,
             one_way: 1_u32,
             plain: 3_u32,
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -179,7 +185,7 @@ fn a_field_renamed_for_reading_is_missing_under_any_other_key() {
             "one_way: unknown: found Number(1)",
         ]
     );
-    let written = serde_json::to_value(ReadRenamed {
+    let written = serde_json::to_value(ReadRenamedDraft {
         both_ways: 2_u32,
         one_way: 1_u32,
         plain: 3_u32,
@@ -224,9 +230,10 @@ fn a_rule_written_for_reading_cases_the_keys_serde_reads() {
             "firstName: invalid: expected String, found Number(7): invalid type: integer `7`, expected a string"
         ]
     );
-    let written = serde_json::to_value(ReadCased {
+    let written = serde_json::to_value(ReadCasedDraft {
+        first_name: "Ada".to_owned(),
         kept_note: "n".to_owned(),
-        ..read_cased()
+        last_name: "Lovelace".to_owned(),
     })
     .unwrap();
     assert_eq!(
@@ -250,21 +257,27 @@ fn a_tag_names_a_variant_by_the_name_serde_reads() {
     for (stored, haulage) in [
         (
             json!({ "mode": "air", "flightCode": "IB6500" }),
-            Haulage::Air {
+            HaulageDraft::Air {
                 flight_code: "IB6500".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
             json!({ "mode": "over-land", "roadName": "DR-1" }),
-            Haulage::OverLand {
+            HaulageDraft::OverLand {
                 road_name: "DR-1".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
             json!({ "mode": "sea", "SHIP_NAME": "Caribe" }),
-            Haulage::Sea {
+            HaulageDraft::Sea {
                 ship_name: "Caribe".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
     ] {
         assert_eq!(
@@ -299,7 +312,7 @@ fn a_tag_names_a_variant_by_the_name_serde_reads() {
             "flight_code: unknown: found String(\"IB6500\")",
         ]
     );
-    let written = serde_json::to_value(Haulage::Air {
+    let written = serde_json::to_value(HaulageDraft::Air {
         flight_code: "IB6500".to_owned(),
     })
     .unwrap();
@@ -318,17 +331,22 @@ fn a_variant_is_under_the_key_serde_reads_it_as() {
     for (stored, relay) in [
         (
             json!({ "relay": { "byHand": { "badge_number": 7_u32 } } }),
-            Relay::Courier {
+            RelayDraft::Courier {
                 badge_number: 7_u32,
-            },
+            }
+            .validate()
+            .unwrap(),
         ),
         (
             json!({ "relay": { "drop-box": 12_u32 } }),
-            Relay::DropBox(12_u32),
+            RelayDraft::DropBox(12_u32).validate().unwrap(),
         ),
-        (json!({ "relay": "not-sent" }), Relay::NotSent),
+        (
+            json!({ "relay": "not-sent" }),
+            RelayDraft::NotSent.validate().unwrap(),
+        ),
     ] {
-        let dispatch = Dispatch { relay };
+        let dispatch = DispatchDraft { relay }.validate().unwrap();
         assert_eq!(
             serde_json::from_value::<Dispatch>(stored.clone()).unwrap(),
             dispatch

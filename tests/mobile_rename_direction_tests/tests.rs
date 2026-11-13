@@ -37,7 +37,7 @@ pub enum Carriage {
 
 #[test]
 fn serde_writes_and_reads_each_agreed_key() {
-    let parcel = Parcel {
+    let parcel = ParcelDraft {
         reference: "P-1".to_owned(),
         weight_grams: 450,
     };
@@ -45,18 +45,18 @@ fn serde_writes_and_reads_each_agreed_key() {
     assert_eq!(serde_json::to_value(&parcel).unwrap(), parcel_written);
     assert_eq!(
         serde_json::from_value::<Parcel>(parcel_written).unwrap(),
-        parcel
+        parcel.validate().unwrap()
     );
 
     for (carriage, written) in [
         (
-            Carriage::Air {
+            CarriageDraft::Air {
                 flight_code: "IB6500".to_owned(),
             },
             json!({ "mode": "byAir", "flightCode": "IB6500" }),
         ),
         (
-            Carriage::OverLand {
+            CarriageDraft::OverLand {
                 road_name: "DR-1".to_owned(),
             },
             json!({ "mode": "over-land", "roadName": "DR-1" }),
@@ -65,7 +65,7 @@ fn serde_writes_and_reads_each_agreed_key() {
         assert_eq!(serde_json::to_value(&carriage).unwrap(), written);
         assert_eq!(
             serde_json::from_value::<Carriage>(written).unwrap(),
-            carriage
+            carriage.validate().unwrap()
         );
     }
 }

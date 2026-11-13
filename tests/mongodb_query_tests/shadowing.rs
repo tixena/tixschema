@@ -130,13 +130,15 @@ fn named(name: &str) -> String {
 }
 
 fn search() -> Search {
-    Search {
-        element: Element { name: named("a") },
-        field: Field { name: named("b") },
-        filter: Filter { name: named("c") },
-        model: Model { name: named("d") },
-        update: Update { name: named("e") },
+    SearchDraft {
+        element: ElementDraft { name: named("a") }.validate().unwrap(),
+        field: FieldDraft { name: named("b") }.validate().unwrap(),
+        filter: FilterDraft { name: named("c") }.validate().unwrap(),
+        model: ModelDraft { name: named("d") }.validate().unwrap(),
+        update: UpdateDraft { name: named("e") }.validate().unwrap(),
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -154,12 +156,14 @@ fn a_type_named_like_a_query_type_is_read_as_the_authors() {
 #[test]
 fn the_authors_type_and_the_added_one_of_its_name_are_two_types() {
     let paths = Search::MONGO_FIELDS;
-    let matching: search_schema::Filter<Search> = paths.filter().eq(search().filter).unwrap();
+    let matching: search_schema::Filter<Search> =
+        paths.filter().eq(search().filter.clone()).unwrap();
     assert_eq!(
         shown(matching),
         r#"{ "filter": { "$eq": { "name": "c" } } }"#
     );
-    let changed: search_schema::Update<Search> = paths.update().set(search().update).unwrap();
+    let changed: search_schema::Update<Search> =
+        paths.update().set(search().update.clone()).unwrap();
     assert_eq!(
         shown(changed),
         r#"{ "$set": { "update": { "name": "e" } } }"#
@@ -201,13 +205,16 @@ fn a_type_named_like_what_nest_is_declared_with_is_read_as_the_authors() {
         "nested": { "name": "c" },
         "nests": { "name": "d" },
     };
-    let marked = Marked {
-        as_filter: AsFilter { name: named("a") },
-        as_update: AsUpdate { name: named("b") },
-        nested: Nested { name: named("c") },
-        nests: Nests { name: named("d") },
+    let marked = MarkedDraft {
+        as_filter: AsFilterDraft { name: named("a") }.validate().unwrap(),
+        as_update: AsUpdateDraft { name: named("b") }.validate().unwrap(),
+        nested: NestedDraft { name: named("c") }.validate().unwrap(),
+        nests: NestsDraft { name: named("d") }.validate().unwrap(),
     };
-    assert_eq!(Marked::from_bson_piped(stored, &[]), Ok(marked.clone()));
+    assert_eq!(
+        Marked::from_bson_piped(stored, &[]),
+        Ok(marked.clone().validate().unwrap())
+    );
     let paths = Marked::MONGO_FIELDS;
     assert_eq!(
         shown(
@@ -239,10 +246,17 @@ fn a_type_named_like_what_nest_is_declared_with_is_read_as_the_authors() {
 #[test]
 fn a_type_named_like_what_an_arm_is_declared_with_is_read_as_the_authors() {
     let stored = doc! { "kind": "upper", "name": "left" };
-    let left = Limb::Upper(Arm {
-        name: named("left"),
-    });
-    assert_eq!(Limb::from_bson_piped(stored, &[]), Ok(left));
+    let left = LimbDraft::Upper(
+        ArmDraft {
+            name: named("left"),
+        }
+        .validate()
+        .unwrap(),
+    );
+    assert_eq!(
+        Limb::from_bson_piped(stored, &[]),
+        Ok(left.validate().unwrap())
+    );
     let upper: limb_schema::ArmFilter<Limb, Arm> = Limb::MONGO_FIELDS.kind__upper();
     assert_eq!(
         shown(upper.and(Arm::MONGO_FIELDS.name().eq(named("left")).unwrap())),

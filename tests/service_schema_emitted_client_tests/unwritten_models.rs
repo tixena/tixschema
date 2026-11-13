@@ -191,28 +191,28 @@ fn serde_reads_the_member_of_a_variant_and_never_writes_it() {
     let serde_wrote = [
         written_back(
             VARIANTS[0].1,
-            &Dousing::Furled {
+            &DousingDraft::Furled {
                 label: label(),
                 spare: Some(3),
             },
         ),
         written_back(
             VARIANTS[1].1,
-            &Wearing::Furled {
+            &WearingDraft::Furled {
                 label: label(),
                 spare: Some(3),
             },
         ),
         written_back(
             VARIANTS[2].1,
-            &Shackling::Furled {
+            &ShacklingDraft::Furled {
                 label: label(),
                 spare: Some(3),
             },
         ),
         written_back(
             VARIANTS[3].1,
-            &Ratcheting::Furled {
+            &RatchetingDraft::Furled {
                 label: label(),
                 spare: Some(3),
             },
@@ -232,19 +232,25 @@ fn serde_reads_the_member_and_never_writes_it() {
     let reefing: Reefing = serde_json::from_str(PAYLOAD).unwrap();
     assert_eq!(
         furling,
-        Furling {
+        FurlingDraft {
             label: "north".to_owned(),
             spare: Some(3),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(
         reefing,
-        Reefing {
-            braiding: Braiding {
+        ReefingDraft {
+            braiding: BraidingDraft {
                 label: "north".to_owned(),
-            },
+            }
+            .validate()
+            .unwrap(),
             spare: Some(3),
         }
+        .validate()
+        .unwrap()
     );
     assert_eq!(serde_json::to_string(&furling).unwrap(), WRITTEN);
     assert_eq!(serde_json::to_string(&reefing).unwrap(), WRITTEN);
@@ -259,26 +265,36 @@ fn serde_reads_a_flattened_member_and_never_writes_it() {
     let ranging: Ranging = serde_json::from_str(FLATTENED[2].1).unwrap();
     assert_eq!(
         flemishing,
-        Flemishing {
-            braiding: Some(Braiding {
-                label: "north".to_owned(),
-            }),
+        FlemishingDraft {
+            braiding: Some(
+                BraidingDraft {
+                    label: "north".to_owned(),
+                }
+                .validate()
+                .unwrap()
+            ),
             note: "n".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         "serde reads the flattened struct"
     );
     assert_eq!(
         splaying.braiding,
-        Braiding {
+        BraidingDraft {
             label: "north".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         "serde reads the flattened struct that is no `Option`"
     );
     assert_eq!(
         ranging,
-        Ranging {
+        RangingDraft {
             counts: BTreeMap::from([("north".to_owned(), 2)]),
-        },
+        }
+        .validate()
+        .unwrap(),
         "serde reads the flattened map"
     );
     assert_eq!(

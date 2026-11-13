@@ -23,11 +23,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::flattened_models::{
-    BELTING, Belting, CHAFING, CLEATING, Chafing, Cleating, FRAYING, Fraying, HEAVING, Heaving,
-    Luffing, SCUDDING, STOWING, Scudding, Stowing, Tacking, UNDER_AN_ALIAS, Yawing, belting_swift,
-    bunting_swift, chafing_swift, cleating_swift, fraying_swift, heaving_swift, jibing_swift,
-    luffing_swift, quaying_swift, scudding_swift, snubber_swift, stowing_swift, tacking_swift,
-    yawing_swift,
+    BELTING, Belting, BeltingDraft, CHAFING, CLEATING, Chafing, Cleating, FRAYING, Fraying,
+    HEAVING, Heaving, Luffing, SCUDDING, STOWING, Scudding, Stowing, StowingDraft, Tacking,
+    TackingDraft, UNDER_AN_ALIAS, YawingDraft, belting_swift, bunting_swift, chafing_swift,
+    cleating_swift, fraying_swift, heaving_swift, jibing_swift, luffing_swift, quaying_swift,
+    scudding_swift, snubber_swift, stowing_swift, tacking_swift, yawing_swift,
 };
 use super::run_kotlin_refusals::{Becalming, becalming_swift};
 use super::runtime::judged;
@@ -497,34 +497,34 @@ fn a_holder_of_a_flattened_enum_writes_back_in_swift_what_serde_writes_back() {
 fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
     let tackings = [
         (
-            Tacking::Bay {
+            TackingDraft::Bay {
                 label: "n".to_owned(),
             },
             ".bay(TackingBayPayload(label: \"n\"))",
         ),
-        (Tacking::Calm, ".calm"),
+        (TackingDraft::Calm, ".calm"),
         (
-            Tacking::Dock {
+            TackingDraft::Dock {
                 label: "s".to_owned(),
             },
             ".dock(TackingDockPayload(label: \"s\"))",
         ),
-        (Tacking::Held("x".to_owned()), ".held(\"x\")"),
+        (TackingDraft::Held("x".to_owned()), ".held(\"x\")"),
     ];
     let note = || "a".to_owned();
     let mut rows = Vec::new();
     for (tacking, built) in tackings {
-        let stowing = Stowing {
+        let stowing = StowingDraft {
             note: note(),
-            tacking: tacking.clone(),
+            tacking: tacking.clone().validate().unwrap(),
         };
-        let belting = Belting {
+        let belting = BeltingDraft {
             note: note(),
-            tacking: Some(tacking.clone()),
+            tacking: Some(tacking.clone().validate().unwrap()),
         };
-        let yawing = Yawing {
+        let yawing = YawingDraft {
             note: note(),
-            tacking,
+            tacking: tacking.validate().unwrap(),
         };
         rows.extend([
             ("Stowing", json(&stowing), built),
@@ -532,7 +532,7 @@ fn a_flattened_enum_writes_in_swift_as_serde_writes_it() {
             ("Yawing", json(&yawing), built),
         ]);
     }
-    let unheld = Belting {
+    let unheld = BeltingDraft {
         note: note(),
         tacking: None,
     };

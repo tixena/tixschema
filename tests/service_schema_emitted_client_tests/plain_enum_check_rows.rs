@@ -25,8 +25,8 @@ pub enum Verdict {
 }
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-/// A plain enum that names a check and a function, one variant of which is read under an alias.
 #[model_schema(check = ["allowed"], preprocess = ["tidied"])]
+/// A plain enum that names a check and a function, one variant of which is read under an alias.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Ruling {
     #[serde(alias = "Overruled")]
@@ -35,8 +35,8 @@ pub enum Ruling {
 }
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-/// A plain enum that names no check.
 #[model_schema()]
+/// A plain enum that names no check.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Bench {
     Lower,
@@ -44,16 +44,16 @@ pub enum Bench {
 }
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-/// A holder of the enum in a member.
 #[model_schema()]
+/// A holder of the enum in a member.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Appeal {
     pub verdict: Verdict,
 }
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-/// A holder of the enum in a list and in a map.
 #[model_schema()]
+/// A holder of the enum in a list and in a map.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Hearing {
     pub by_court: BTreeMap<String, Verdict>,
@@ -82,9 +82,11 @@ impl AppraisalClientService<()> for Court {
     async fn appraise(&self, _ctx: &(), case_number: String) -> Result<Verdict, AppraisalError> {
         ready(()).await;
         if case_number.is_empty() {
-            return Err(AppraisalError::Missing);
+            return Err(AppraisalErrorDraft::Missing.validate().unwrap());
         }
-        Ok(Verdict::Overturned)
+        Ok(Verdict::model_schema_wrap_unjudged(
+            VerdictDraft::Overturned,
+        ))
     }
 }
 
@@ -100,15 +102,15 @@ pub struct Row {
 }
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-fn allowed(value: &Ruling) -> Result<(), Vec<String>> {
-    if matches!(value, Ruling::Denied) {
+fn allowed(value: &RulingDraft) -> Result<(), Vec<String>> {
+    if matches!(value, RulingDraft::Denied) {
         return Err(vec!["a ruling is allowed".to_owned()]);
     }
     Ok(())
 }
 
-fn affirmed(value: &Verdict) -> Result<(), Vec<String>> {
-    if matches!(value, Verdict::Overturned) {
+fn affirmed(value: &VerdictDraft) -> Result<(), Vec<String>> {
+    if matches!(value, VerdictDraft::Overturned) {
         return Err(vec!["a verdict is upheld".to_owned()]);
     }
     Ok(())

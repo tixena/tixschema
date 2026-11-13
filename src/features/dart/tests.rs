@@ -4,6 +4,7 @@ use proc_macro2::TokenTree;
 
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+#[cfg(feature = "serde")]
 use crate::utils::{AliasKind, register_alias_info};
 
 /// The class of a struct whose one field is named after the unjudged read, which

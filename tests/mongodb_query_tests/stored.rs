@@ -7,9 +7,13 @@ use bson::oid::ObjectId;
 use bson::{Bson, Document};
 use serde::Serialize as _;
 
-use super::shapes::{Audit, Delivery, Payment, Rebate, Reference, Wrapper};
+use super::shapes::{
+    Audit, AuditDraft, Delivery, DeliveryDraft, Payment, PaymentDraft, Rebate, RebateDraft,
+    Reference, ReferenceDraft, Wrapper, WrapperDraft,
+};
 use super::{
-    Address, Customer, Invoice, InvoiceId, InvoiceStatus, LineItem, Point, shown, shown_value,
+    Address, AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceId,
+    InvoiceStatusDraft, LineItem, LineItemDraft, Point, PointDraft, shown, shown_value,
 };
 
 /// What `key` leads to in `value`: a key of a document, a position in an array, or the key in
@@ -52,66 +56,88 @@ where
 }
 
 fn address() -> Address {
-    Address {
+    AddressDraft {
         city: "Santo Domingo".to_owned(),
         postal_code: "10101".to_owned(),
     }
+    .validate()
+    .unwrap()
 }
 
 fn invoice() -> Invoice {
-    Invoice {
-        audit: Audit {
+    InvoiceDraft {
+        audit: AuditDraft {
             created_by: "eduardo".to_owned(),
             revision: 4_u32,
-        },
+        }
+        .validate()
+        .unwrap(),
         billing: Some(address()),
-        customer: Customer {
+        customer: CustomerDraft {
             address: address(),
             name: "Acme Ltd".to_owned(),
             open_invoices: 3_u32,
-        },
-        delivery: Delivery::Courier {
+        }
+        .validate()
+        .unwrap(),
+        delivery: DeliveryDraft::Courier {
             carrier: "dhl".to_owned(),
             tracking: "JD0146".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         details: HashMap::from([("po".to_owned(), "7781".to_owned())]),
-        discount: Rebate::Coupon {
+        discount: RebateDraft::Coupon {
             code: "FALL".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         id: InvoiceId::new(ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap()).unwrap(),
         items: vec![
-            LineItem {
+            LineItemDraft {
                 article: "A-1".to_owned(),
                 price: 9.5_f64,
                 quantity: 2_u32,
-            },
-            LineItem {
+            }
+            .validate()
+            .unwrap(),
+            LineItemDraft {
                 article: "B-7".to_owned(),
                 price: 120.0_f64,
                 quantity: 1_u32,
-            },
+            }
+            .validate()
+            .unwrap(),
         ],
         number: "INV-0042".to_owned(),
-        origin: Point(18.47_f64, -69.9_f64),
+        origin: PointDraft(18.47_f64, -69.9_f64).validate().unwrap(),
         paid_at: Some("2026-10-01".to_owned()),
-        payment: Payment::Card {
+        payment: PaymentDraft::Card {
             exp_month: 7_u32,
             last4: "4242".to_owned(),
-        },
-        reference: Reference::Detailed {
+        }
+        .validate()
+        .unwrap(),
+        reference: ReferenceDraft::Detailed {
             code: "R-9".to_owned(),
             issuer: "bank".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         scores: vec![72_u32, 84_u32],
-        shipping: Wrapper {
+        shipping: WrapperDraft {
             history: vec![address()],
             inner: address(),
             label: "warehouse".to_owned(),
-        },
-        status: InvoiceStatus::PastDue,
+        }
+        .validate()
+        .unwrap(),
+        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
         tags: vec!["export".to_owned(), "priority".to_owned()],
         total: 1250.5_f64,
     }
+    .validate()
+    .unwrap()
 }
 
 /// The paths of the row's own values, of the models it holds bare, and of the list of plain
@@ -121,8 +147,8 @@ fn plain_paths(stored: &Document) -> Vec<(String, String)> {
     let (place, point) = (Address::MONGO_FIELDS, Point::MONGO_FIELDS);
     let row = invoice();
     vec![
-        looked_up(stored, paths.id().eq(row.id).unwrap()),
-        looked_up(stored, paths.number().eq(row.number).unwrap()),
+        looked_up(stored, paths.id().eq(row.id.clone()).unwrap()),
+        looked_up(stored, paths.number().eq(row.number.clone()).unwrap()),
         looked_up(stored, paths.total().eq(row.total).unwrap()),
         looked_up(stored, paths.status().eq(row.status).unwrap()),
         looked_up(stored, paths.paid_at().exists(true)),

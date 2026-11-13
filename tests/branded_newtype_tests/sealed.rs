@@ -46,7 +46,7 @@ fn new_answers_the_messages_validate_gives() {
     assert_eq!(LabelText::new("").unwrap_err(), vec![TOO_SHORT.to_owned()]);
     let built = LabelText::new("ok").unwrap();
     assert_eq!(built.as_inner(), "ok");
-    assert_eq!(built.validate(), Ok(()));
+    assert_eq!(built.validation_issues(), Vec::<String>::new());
 }
 
 #[test]
@@ -119,5 +119,5 @@ fn a_brand_with_a_named_field_is_sealed() {
 #[test]
 fn the_unjudged_reads_stay_callable_and_skip_the_rule() {
     let unjudged = LabelText::model_schema_read_unjudged(serde_json::json!("")).unwrap();
-    assert_eq!(unjudged.validate().unwrap_err(), vec![TOO_SHORT.to_owned()]);
+    assert_eq!(unjudged.validation_issues(), vec![TOO_SHORT.to_owned()]);
 }

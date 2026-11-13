@@ -93,17 +93,21 @@ fn the_shared_resolver_settles_the_same_repair_for_every_type() {
     let order = Order::from_bson_piped(doc! { "lines": "3", "number": "ORD-0007" }, STORED);
     assert_eq!(
         invoice,
-        Ok(Invoice {
+        Ok(InvoiceDraft {
             number: "INV-0042".to_owned(),
             open_lines: 3,
-        })
+        }
+        .validate()
+        .unwrap())
     );
     assert_eq!(
         order,
-        Ok(Order {
+        Ok(OrderDraft {
             lines: 3,
             number: "ORD-0007".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
 }
 
@@ -161,10 +165,12 @@ fn a_type_with_a_repair_of_its_own_reads_through_a_list_of_its_own() {
     let own = Order::from_bson_piped(stored(), &[&whole_number_as_text, &order_number_as_integer]);
     assert_eq!(
         own,
-        Ok(Order {
+        Ok(OrderDraft {
             lines: 2,
             number: "ORD-0007".to_owned(),
-        })
+        }
+        .validate()
+        .unwrap())
     );
     let shown = Order::from_bson_piped(stored(), STORED)
         .unwrap_err()
@@ -195,6 +201,6 @@ fn one_generic_function_reads_two_types_of_a_crate_from_json() {
 fn a_generic_type_is_read_through_the_same_bound() {
     let held: Holder<u32> = read_stored(doc! { "held": 4_i32 });
     let from_json: Holder<u32> = read_json(json!({ "held": 4_i32 }));
-    assert_eq!(held, Holder { held: 4 });
+    assert_eq!(held, HolderDraft { held: 4 }.validate().unwrap());
     assert_eq!(from_json, held);
 }

@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::renamed_generics_models::{
-    AdjacentScroll, Catalog, Diptych, Folio, Leaves, Lectern, Library, Margin, Quire, Scroll,
-    Shelfmark, Spread, TaggedScroll, Tome, UntaggedScroll, Volume, adjacent_scroll_swift,
-    catalog_swift, diptych_swift, leaves_swift, lectern_swift, library_swift, margin_swift,
-    quire_swift, scroll_swift, shelfmark_swift, spread_swift, tagged_scroll_swift, tome_swift,
-    untagged_scroll_swift, volume_swift,
+    AdjacentScrollDraft, Catalog, DiptychDraft, Folio, FolioDraft, Leaves, LecternDraft,
+    LibraryDraft, Margin, Quire, ScrollDraft, Shelfmark, Spread, TaggedScrollDraft, TomeDraft,
+    UntaggedScrollDraft, Volume, adjacent_scroll_swift, catalog_swift, diptych_swift, leaves_swift,
+    lectern_swift, library_swift, margin_swift, quire_swift, scroll_swift, shelfmark_swift,
+    spread_swift, tagged_scroll_swift, tome_swift, untagged_scroll_swift, volume_swift,
 };
 
 /// An alias that declares no parameter.
@@ -80,10 +80,12 @@ fn holds(swift: &str, written: &[&str]) {
 
 /// A folio of `leaf` at page 1.
 fn folio(leaf: &str) -> Folio<String> {
-    Folio {
+    FolioDraft {
         leaf: leaf.to_owned(),
         page: 1,
     }
+    .validate()
+    .unwrap()
 }
 
 #[test]
@@ -100,45 +102,57 @@ fn each_model_is_written_as_serde_writes_it() {
     assert_eq!(read_back(&spread), r#"["a",1]"#);
     let quire: Quire<String> = HashMap::from([(1, "a".to_owned())]);
     assert_eq!(read_back(&quire), r#"{"1":"a"}"#);
-    let lectern = Lectern {
-        adjacent_scroll: AdjacentScroll::Sealed("a".to_owned()),
-        diptych: Diptych("b".to_owned(), 1),
-        scroll: Scroll::Paired("c".to_owned(), 2),
+    let lectern = LecternDraft {
+        adjacent_scroll: AdjacentScrollDraft::Sealed("a".to_owned())
+            .validate()
+            .unwrap(),
+        diptych: DiptychDraft("b".to_owned(), 1).validate().unwrap(),
+        scroll: ScrollDraft::Paired("c".to_owned(), 2).validate().unwrap(),
         shelfmark: Shelfmark::new("d".to_owned()).unwrap(),
         spread: ("e".to_owned(), 3),
-        tagged_scroll: TaggedScroll::Bound(folio("f")),
-        tome: Tome {
+        tagged_scroll: TaggedScrollDraft::Bound(folio("f")).validate().unwrap(),
+        tome: TomeDraft {
             folio: folio("g"),
             leaf: "h".to_owned(),
-        },
-        untagged_scroll: UntaggedScroll::Sealed("i".to_owned()),
+        }
+        .validate()
+        .unwrap(),
+        untagged_scroll: UntaggedScrollDraft::Sealed("i".to_owned())
+            .validate()
+            .unwrap(),
         volume: folio("j"),
     };
     assert_eq!(
         read_back(&lectern),
         r#"{"adjacent_scroll":{"kind":"Sealed","held":"a"},"diptych":["b",1],"scroll":{"Paired":["c",2]},"shelfmark":"d","spread":["e",3],"tagged_scroll":{"kind":"Bound","leaf":"f","page":1},"tome":{"folio":{"leaf":"g","page":1},"leaf":"h"},"untagged_scroll":"i","volume":{"leaf":"j","page":1}}"#
     );
-    let library = Library {
-        adjacent_scroll: AdjacentScroll::Unrolled {
+    let library = LibraryDraft {
+        adjacent_scroll: AdjacentScrollDraft::Unrolled {
             folio: folio("a"),
             leaf: "b".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         catalog,
         diptych: lectern.diptych,
         leaves,
         margin: None,
-        scroll: Scroll::Sealed("c".to_owned()),
+        scroll: ScrollDraft::Sealed("c".to_owned()).validate().unwrap(),
         shelfmark: lectern.shelfmark,
         spread: lectern.spread,
-        tagged_scroll: TaggedScroll::Unrolled {
+        tagged_scroll: TaggedScrollDraft::Unrolled {
             folio: folio("d"),
             leaf: "e".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         tome: lectern.tome,
-        untagged_scroll: UntaggedScroll::Unrolled {
+        untagged_scroll: UntaggedScrollDraft::Unrolled {
             folio: folio("f"),
             leaf: "g".to_owned(),
-        },
+        }
+        .validate()
+        .unwrap(),
         volume: lectern.volume,
     };
     assert_eq!(
@@ -306,16 +320,16 @@ fn an_item_that_declares_no_parameter_republishes_its_ident_as_it_did() {
     assert_eq!(read_back(&gathering), r#"["a"]"#);
     assert_eq!(read_back(&Isbn::new("a".to_owned()).unwrap()), r#""a""#);
     assert_eq!(
-        read_back(&Stanza {
+        read_back(&StanzaDraft {
             line: "a".to_owned()
         }),
         r#"{"line":"a"}"#
     );
     assert_eq!(
-        read_back(&Chapter::Opening {
+        read_back(&ChapterDraft::Opening {
             line: "a".to_owned()
         }),
         r#"{"kind":"Opening","line":"a"}"#
     );
-    assert_eq!(read_back(&Genre::Poetry), r#""Poetry""#);
+    assert_eq!(read_back(&GenreDraft::Poetry), r#""Poetry""#);
 }

@@ -26,8 +26,10 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::flatten_order_models::{
-    BareParcel, ClosedParcel, Hue, Ink, LastParcel, Lid, MapParcel, OpenParcel, Seal, Shape, Stamp,
-    TwoOpenParcel,
+    BareParcel, BareParcelDraft, ClosedParcel, ClosedParcelDraft, Hue, HueDraft, Ink, InkDraft,
+    LastParcel, LastParcelDraft, Lid, LidDraft, MapParcel, MapParcelDraft, OpenParcel,
+    OpenParcelDraft, Seal, SealDraft, Shape, ShapeDraft, Stamp, StampDraft, TwoOpenParcel,
+    TwoOpenParcelDraft,
 };
 #[cfg(feature = "dart")]
 use super::flatten_order_models::{
@@ -57,72 +59,74 @@ use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 
 /// Each holder's name and every payload serde writes of it.
 fn payloads() -> Vec<(&'static str, String)> {
-    let stamp = || Stamp {
+    let stamp = || StampDraft {
         at: "noon".to_owned(),
     };
     let mut rows = Vec::new();
     let mut add = |name: &'static str, value: &dyn erased::Written| rows.push((name, value.json()));
     for lid in [
-        Lid::Hinged {
+        LidDraft::Hinged {
             hinge: "left".to_owned(),
         },
-        Lid::Loose,
+        LidDraft::Loose,
     ] {
         add(
             "ClosedParcel",
-            &ClosedParcel {
+            &ClosedParcelDraft {
                 label: "n".to_owned(),
-                lid,
-                stamp: stamp(),
+                lid: lid.validate().unwrap(),
+                stamp: stamp().validate().unwrap(),
             },
         );
     }
     add(
         "BareParcel",
-        &BareParcel {
-            ink: Ink {
+        &BareParcelDraft {
+            ink: InkDraft {
                 colour: "red".to_owned(),
-            },
-            stamp: stamp(),
+            }
+            .validate()
+            .unwrap(),
+            stamp: stamp().validate().unwrap(),
         },
     );
-    for hue in [Hue::Cold, Hue::Warm { warmth: 3 }] {
+    for hue in [HueDraft::Cold, HueDraft::Warm { warmth: 3 }] {
         add(
             "OpenParcel",
-            &OpenParcel {
-                hue: hue.clone(),
+            &OpenParcelDraft {
+                hue: hue.clone().validate().unwrap(),
                 label: "n".to_owned(),
-                stamp: stamp(),
+                stamp: stamp().validate().unwrap(),
             },
         );
         for seal in [
-            Seal::Foil { foil: 2 },
-            Seal::Wax {
+            SealDraft::Foil { foil: 2 },
+            SealDraft::Wax {
                 wax: "red".to_owned(),
             },
         ] {
             add(
                 "TwoOpenParcel",
-                &TwoOpenParcel {
-                    hue: hue.clone(),
-                    seal,
+                &TwoOpenParcelDraft {
+                    hue: hue.clone().validate().unwrap(),
+                    seal: seal.validate().unwrap(),
                 },
             );
         }
     }
-    for shape in [Shape::Flat, Shape::Round { radius: 4 }] {
+    for shape in [ShapeDraft::Flat, ShapeDraft::Round { radius: 4 }] {
         add(
             "LastParcel",
-            &LastParcel {
+            &LastParcelDraft {
                 label: "n".to_owned(),
-                postmark: stamp(),
-                shape,
+                postmark: stamp().validate().unwrap(),
+                shape: shape.validate().unwrap(),
             },
         );
     }
     add(
         "MapParcel",
-        &MapParcel {
+        &MapParcelDraft {
             counts: BTreeMap::from([("north".to_owned(), 2)]),
         },
     );

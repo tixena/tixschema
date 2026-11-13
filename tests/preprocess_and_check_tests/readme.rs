@@ -132,7 +132,7 @@ fn each_rust_and_typescript_function_of_the_table_is_one_a_test_compiles() {
     compiles(trimmed, &preprocess, " {");
     for signature in [
         "fn without_duplicates(value: &[String]) -> Result<(), Vec<String>>",
-        "fn within_parcel(value: &Parcel) -> Result<(), Vec<String>>",
+        "fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>>",
     ] {
         compiles(signature, checks, " {");
     }
@@ -238,8 +238,8 @@ fn each_error_of_a_name_with_no_function_is_one_a_run_asserts() {
             KOTLIN_CHECK,
         ),
         (
-            "``error[E0592]: duplicate definitions with name `validate` ``",
-            "/// error[E0592]: duplicate definitions with name `validate`\n",
+            "``error[E0592]: duplicate definitions with name `validation_issues` ``",
+            "/// error[E0592]: duplicate definitions with name `validation_issues`\n",
             include_str!("../../src/model_schema.rs"),
         ),
     ] {
@@ -461,11 +461,11 @@ fn every_section_the_section_names_is_a_heading_of_the_guide() {
 fn the_parcel_of_the_section_answers_the_13_lines() {
     use core::fmt::Write as _;
 
-    use super::models::{Manifest, Parcel};
+    use super::models::{ManifestDraft, Parcel, ParcelDraft};
 
     let parcel = |label: &str, item_code_list: &[&str], fragile_item_codes: &[&str]| {
         let texts = |written: &[&str]| written.iter().map(|&text| text.to_owned()).collect();
-        Parcel {
+        ParcelDraft {
             fragile_item_codes: texts(fragile_item_codes),
             item_code_list: texts(item_code_list),
             label: label.to_owned(),
@@ -489,12 +489,15 @@ fn the_parcel_of_the_section_answers_the_13_lines() {
         parcel("", &["x", "x"], &["y"]),
     ];
     for (number, held) in (1_u8..).zip(&parcels) {
-        print(&format!("case {number}"), held.validate());
+        print(
+            &format!("case {number}"),
+            crate::judged_issues(held.validation_issues()),
+        );
     }
-    let manifest = Manifest {
-        parcel: parcel("A", &["x"], &["x", "y"]),
+    let manifest = ManifestDraft {
+        parcel: Parcel::model_schema_wrap_unjudged(parcel("A", &["x"], &["x", "y"])),
     };
-    print("case 6", manifest.validate());
+    print("case 6", crate::judged_issues(manifest.validation_issues()));
     assert_eq!(printed, TABLE);
 }
 
