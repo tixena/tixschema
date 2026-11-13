@@ -53,6 +53,10 @@ enum Helper {
     /// carries no `kotlinSchemaAtFilling()`: a type declared below the holder. A brand answers
     /// with a member of its own, which is found ahead of this.
     AtFilling,
+    /// What a held value of a declared type answers for the type a check takes where its type has
+    /// no draft to hand over: itself. The valid class of a draft answers with a member of its
+    /// own, which is found ahead of this.
+    Checked,
     /// What a held value answers where its type carries no `validate()`: a type of the
     /// consumer's own, and an alias of a string or of a list. A member is found ahead of it.
     Fallback,
@@ -131,8 +135,6 @@ struct Noted {
     /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
     /// for an alias, which is whatever it names.
     bound: Option<bool>,
-    /// Whether the type is a model with a draft, whose rules a holder asks of `draft`.
-    drafted: Answers,
     /// Whether the type carries `kotlinSchemaAtFilling()`, a brand whose declared default is a
     /// list.
     filling: Answers,
@@ -191,6 +193,7 @@ impl Helper {
                 "private fun Any?.kotlinSchemaAtFilling(filling: String): List<String> = \
                  emptyList()"
             }
+            Self::Checked => "private fun <T> T.kotlinSchemaChecked(): T = this",
             Self::Fallback => "private fun Any?.validationIssues(): List<String> = emptyList()",
             Self::Key => {
                 "private fun <T> kotlinSchemaKey(key: T, serializer: KSerializer<T>?): String = \
@@ -357,12 +360,13 @@ impl<'item> Rules<'item> {
         let Some(meta) = member.def.model_schema_prop_meta.as_ref() else {
             return Vec::new();
         };
-        let handed = if let FieldDefType::SiblingType(name, _) = &member.def.field_type
+        let handed = if !meta.check.is_empty()
+            && matches!(member.def.field_type, FieldDefType::SiblingType(..))
             && member.def.array_depth == 0
             && !member.def.is_optional()
-            && drafted(name)
         {
-            format!("{read}.draft")
+            self.helpers.insert(Helper::Checked);
+            format!("{read}.kotlinSchemaChecked()")
         } else {
             read.to_owned()
         };
@@ -1226,7 +1230,6 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
             filling: Answers::No,
             length,
             text,
-            drafted: Answers::No,
             unjudged: false,
             validates: false,
         },
@@ -1251,7 +1254,6 @@ pub fn note_brand(
             filling: Answers::of(filling),
             length: Answers::of(length),
             text,
-            drafted: Answers::No,
             unjudged: true,
             validates: true,
         },
@@ -1268,7 +1270,6 @@ pub fn note_model(rust_ident: &str) {
             filling: Answers::No,
             length: Answers::No,
             text: false,
-            drafted: Answers::of(super::valid::drafted()),
             unjudged: true,
             validates: true,
         },
@@ -1286,7 +1287,6 @@ pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
             filling: Answers::No,
             length: Answers::No,
             text: false,
-            drafted: Answers::No,
             unjudged,
             validates: true,
         },
@@ -1407,15 +1407,6 @@ fn text_statements(meta: &ModelSchemaPropMeta, text: &str, place: Option<&str>) 
         ));
     }
     statements
-}
-
-/// Whether the emitter wrote a model with a draft under `rust_ident`.
-fn drafted(rust_ident: &str) -> bool {
-    NOTED.with(|seen| {
-        seen.borrow()
-            .get(rust_ident)
-            .is_some_and(|noted| noted.drafted == Answers::Yes)
-    })
 }
 
 /// Whether the emitter wrote a type that carries `validate()` under `rust_ident`.

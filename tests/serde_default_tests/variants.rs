@@ -710,8 +710,8 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          key '\" + it + \"'\") }; TideSlack } else -> throw SerializationException(\"unknown tag \
          \" + tag) } } } } @ConsistentCopyVisibility @Serializable(with = TideSerializer::class) \
          data class Tide private constructor(val draft: TideDraft) { fun validationIssues(): \
-         List<String> = draft.validationIssues(); companion object { internal fun checked(draft: \
-         TideDraft): Tide = Tide(draft) } } @OptIn(ExperimentalSerializationApi::class) private \
+         List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): TideDraft = draft; \
+         companion object { internal fun checked(draft: TideDraft): Tide = Tide(draft) } } @OptIn(ExperimentalSerializationApi::class) private \
          object TideUnjudged : KSerializer<Tide> { override val descriptor: SerialDescriptor = \
          TideDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Tide) = \
          TideDraftUnjudged.serialize(encoder, value.draft); override fun deserialize(decoder: \

@@ -46,6 +46,7 @@ data class Parcel private constructor(val draft: ParcelDraft) {
   val itemCodeList: List<String> get() = draft.itemCodeList;
   val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
   fun validationIssues(): List<String> = draft.validationIssues();
+  fun kotlinSchemaChecked(): ParcelDraft = draft;
   companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft) }
 }
 @OptIn(ExperimentalSerializationApi::class)
@@ -95,6 +96,7 @@ object ManifestDraftUnjudged : KSerializer<ManifestDraft> by ManifestDraft.gener
 data class Manifest private constructor(val draft: ManifestDraft) {
   val parcel: Parcel get() = draft.parcel;
   fun validationIssues(): List<String> = draft.validationIssues();
+  fun kotlinSchemaChecked(): ManifestDraft = draft;
   companion object { internal fun checked(draft: ManifestDraft): Manifest = Manifest(draft) }
 }
 @OptIn(ExperimentalSerializationApi::class)
@@ -237,7 +239,7 @@ fun withinParcel(value: ParcelDraft): List<String> =
         .map { "'fragileItemCodes.${it.index}': ${it.value} is outside of itemCodeList" }
 ```
 
-A field's check names no path, and `validationIssues()` writes its messages under the field. A function takes the draft, `ParcelDraft`, as Rust's takes `&ParcelDraft`, and so does the function a member's check names where the member is a model, which is called with that member's `draft`; `fun withinParcel(value: Parcel)` is ``error: argument type mismatch: actual type is 'ParcelDraft', but 'Parcel' was expected.`` A type's check leads each message with the path of what it refuses, as [in Rust](checks.md#the-messages). The check of a nullable member is called only where the member holds a value, and the check of a brand takes the value class.
+A field's check names no path, and `validationIssues()` writes its messages under the field. A function takes the draft, `ParcelDraft`, as Rust's takes `&ParcelDraft`, and so does the function a member's check names where the member is a model, which is called with that member's `draft`, whether its type is declared above the holder, below it or in another crate; `fun withinParcel(value: Parcel)` is ``error: argument type mismatch: actual type is 'ParcelDraft', but 'Parcel' was expected.`` A type's check leads each message with the path of what it refuses, as [in Rust](checks.md#the-messages). The check of a nullable member is called only where the member holds a value, and the check of a brand takes the value class.
 
 **A name with no Kotlin function does not compile**, and the Kotlin compiler says so at the call:
 
@@ -435,6 +437,7 @@ data class Parcel private constructor(val draft: ParcelDraft) {
   val itemCodeList: List<String> get() = draft.itemCodeList;
   val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
   fun validationIssues(): List<String> = draft.validationIssues();
+  fun kotlinSchemaChecked(): ParcelDraft = draft;
   companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft) }
 }
 @OptIn(ExperimentalSerializationApi::class)

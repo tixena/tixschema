@@ -133,7 +133,7 @@ pub fn valid_class(
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {export_name}Serializer::class) data class \
          {export_name}{declared} private constructor(val draft: {draft}{generic_params}) {{ \
-         {members}companion object {{ internal fun {checked_params}checked(draft: \
+         {members}fun kotlinSchemaChecked(): {draft}{generic_params} = draft; companion object {{ internal fun {checked_params}checked(draft: \
          {draft}{generic_params}): {export_name}{generic_params} = {export_name}(draft) }} }}"
     )
 }

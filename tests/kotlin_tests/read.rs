@@ -174,8 +174,8 @@ pub fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
          {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
-         validationIssues(): List<String> = draft.validationIssues(); companion object {{ internal \
-         fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
+         validationIssues(): List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): \
+         {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
     )
 }
 

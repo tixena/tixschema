@@ -1631,6 +1631,12 @@ mod run_swift_plain_enum_reads;
 #[path = "service_schema_emitted_client_tests/run_kotlin_plain_enum_reads.rs"]
 mod run_kotlin_plain_enum_reads;
 
+/// A check a member names, called with the same Kotlin whatever the order the member's type is
+/// declared in, and in whatever crate.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_check_order.rs"]
+mod run_kotlin_check_order;
+
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.
 #[cfg(test)]
