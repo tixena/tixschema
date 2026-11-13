@@ -997,6 +997,9 @@ use service_schema::exec_service_schema;
 ///   compiled as a value of `T`, and the values are also written into Zod's `.meta({ examples })`.
 /// - `T::enum_members() -> Vec<String>`, on an enum whose variants carry no data, in every build:
 ///   the names serde writes.
+/// - `T::wire_name(&self) -> &'static str`, a `const fn` on the draft of an enum whose variants are
+///   all unit variants serde writes as a string (with `serde`): the text serde writes for the value.
+///   An enum under `tag`, with a variant that holds data or one serde skips has none.
 /// - `{type}_dart::dart_definition()`, `{type}_swift::swift_definition()` and
 ///   `{type}_kotlin::kotlin_definition()` (`dart`, `swift`, `kotlin`): functions in modules beside
 ///   the type, not methods on it. Each returns the type in that language, with its JSON codec and a
@@ -2074,6 +2077,9 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///   `Fault(ServiceFault)` or `Operation(E)`. For a dispatcher written by hand it also holds, per
 ///   operation, `{Operation}Message`, `unjudged_{operation}` (the message's read alone) and
 ///   `validated_{operation}` (the message's `validate()`, or `Ok(())` where it has none).
+/// - In that module, whatever `transports` holds, `Operation`, an enum with one variant per
+///   operation and `const fn name(self) -> &'static str` answering its wire name, and
+///   `OPERATIONS: &'static [&'static str]`, every wire name in declaration order.
 /// - `{Service}Schema`, whose functions return the text of each language's side. None of them
 ///   holds a message, success or error type you declared, so a bundle adds each one's own surfaces:
 ///   - `ts_definition()` under `typescript`: the messages the macro declared, with their Zod

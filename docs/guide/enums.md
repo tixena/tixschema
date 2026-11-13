@@ -16,6 +16,16 @@ pub enum UserStatus {
 }
 ```
 
+An enum like this, with the `serde` feature on, has `wire_name(&self) -> &'static str` on its draft, a `const fn` answering the text serde writes for the value: a variant's `rename` wins over `rename_all`, the `serialize` side of a list-form rename is the one used, and an alias changes nothing. A valid value reaches it through `Deref`:
+
+```rust
+const MAX: &str = DateMinMaxTypeDraft::MaxIsCurrentDate.wire_name(); // "MaxIsCurrentDate"
+let bound: DateMinMaxType = DateMinMaxTypeDraft::Custom.validate()?;
+lines.tag("DateMinMaxType", bound.wire_name());
+```
+
+An enum serde writes in any other way has no `wire_name`: one under `tag` (with or without `content`), one with a variant that holds data, one with a variant under `skip` or `skip_serializing`, and one with a variant under `with` or `serialize_with`. Without the `serde` feature no attribute is read, and the method is not written. A plain enum a service declares for itself, its fault kind, has no draft and carries the method on the one enum.
+
 #### Discriminated Unions (Tagged Enums)
 
 Enums with `#[serde(tag = "...")]` generate TypeScript discriminated unions.

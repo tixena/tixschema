@@ -12992,8 +12992,11 @@ fn plain_enum_output(
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, added.validate.is_some());
     let drafted_read = &judged.draft;
+    let wire_name = enum_wire_name(item_enum);
     let output = quote! {
         #item_enum
+
+        #wire_name
 
         pub mod #module_ident {
             use super::*;
@@ -13022,6 +13025,48 @@ fn plain_enum_output(
     };
     log::trace!("{output}");
     output
+}
+
+/// `wire_name()` on an enum whose every variant is a unit variant that serde writes as a string:
+/// what `serde_json` writes for the value. An enum serde writes any other way gets none.
+#[cfg(feature = "serde")]
+fn enum_wire_name(item_enum: &syn::ItemEnum) -> proc_macro2::TokenStream {
+    let meta = parse_serde_type_attributes(&item_enum.attrs);
+    let written_as_text = meta.tag.is_none()
+        && !meta.untagged
+        && !item_enum.variants.is_empty()
+        && item_enum.variants.iter().all(|variant| {
+            matches!(variant.fields, syn::Fields::Unit)
+                && !parse_serde_key_omission(&variant.attrs).omits_key
+                && !written_and_read_by_the_author(&variant.attrs)
+        });
+    if !written_as_text {
+        return proc_macro2::TokenStream::new();
+    }
+    let name = &item_enum.ident;
+    let (impl_generics, type_generics, where_clause) = item_enum.generics.split_for_impl();
+    let idents = item_enum.variants.iter().map(|variant| &variant.ident);
+    let texts = item_enum.variants.iter().map(|variant| {
+        variant_wire_names(item_enum, variant)
+            .into_iter()
+            .next()
+            .map_or_else(String::new, |(_, written)| written)
+    });
+    quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            /// The text serde writes for this value.
+            pub const fn wire_name(&self) -> &'static str {
+                match self {
+                    #(Self::#idents => #texts),*
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "serde"))]
+fn enum_wire_name(_item_enum: &syn::ItemEnum) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
 }
 
 /// The kind a variant publishes, which is not always the kind it declares.
