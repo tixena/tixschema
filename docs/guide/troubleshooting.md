@@ -36,7 +36,7 @@ error: `ObjectId` is read as a MongoDB ObjectId under tixschema's `mongodb` feat
 
 **Solution:**
 ```toml
-tixschema = { version = "0.4", features = ["mongodb"] }
+tixschema = { version = "0.5", features = ["mongodb"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `ObjectId`, above the type that holds it, is not refused: the name is that type.
@@ -57,7 +57,7 @@ error: `NaiveDate` is read as a date or a time under tixschema's `chrono` featur
 
 **Solution:**
 ```toml
-tixschema = { version = "0.4", features = ["chrono"] }
+tixschema = { version = "0.5", features = ["chrono"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own under one of these names, above the type that holds it, is not refused: the name is that type.
@@ -78,7 +78,7 @@ error: `IndexMap` is read as a map under tixschema's `indexmap` feature: add `fe
 
 **Solution:**
 ```toml
-tixschema = { version = "0.4", features = ["indexmap"] }
+tixschema = { version = "0.5", features = ["indexmap"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
@@ -117,7 +117,7 @@ Every model type the type holds lists the entry too: the type's document calls e
 
 **Solution:**
 ```toml
-tixschema = { version = "0.4", features = ["zod"] }
+tixschema = { version = "0.5", features = ["zod"] }
 ```
 
 #### Serde Attributes Ignored
@@ -128,7 +128,7 @@ tixschema = { version = "0.4", features = ["zod"] }
 
 **Solution:**
 ```toml
-tixschema = { version = "0.4", features = ["serde"] }
+tixschema = { version = "0.5", features = ["serde"] }
 ```
 
 ### Compilation Errors

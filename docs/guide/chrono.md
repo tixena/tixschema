@@ -3,7 +3,7 @@
 Enable the `chrono` feature for chrono date/time type support. All chrono types map to `string` in TypeScript, with appropriate Zod validation for the specific date/time format.
 
 ```toml
-tixschema = { version = "0.4", features = ["chrono"] }
+tixschema = { version = "0.5", features = ["chrono"] }
 ```
 
 A consumer enabling `chrono` on tixschema must also enable `serde` on its own `chrono` dependency — `as_number` (below) injects a `chrono::serde::ts_milliseconds` hook that only exists there.
