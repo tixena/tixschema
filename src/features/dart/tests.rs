@@ -38,6 +38,7 @@ fn plain_args() -> DartTypeArgs<'static> {
         pattern: None,
         preprocess: &[],
         type_name: "Probe",
+        undrafted: false,
     }
 }
 
@@ -98,7 +99,7 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     };
     let (cleat_from, bollard_from) = (only("'kind', 'turns'"), only("'kind', 'body'"));
     let expected = format!(
-        "Belaying(cleat: _readFlattened(() => ({cleat_from}.keys.any(const ['kind'].contains) ? \
+        "BelayingDraft(cleat: _readFlattened(() => ({cleat_from}.keys.any(const ['kind'].contains) ? \
          Cleat.fromJsonUnjudged({cleat_from}) : null)),bollard: _readFlattened(() => \
          ({bollard_from}.keys.any(const ['kind', 'body'].contains) ? \
          Bollard.fromJsonUnjudged({bollard_from}) : null)),bitt: _readFlattened(() => (() {{ try \
@@ -150,6 +151,25 @@ fn a_field_named_after_the_unjudged_read_keeps_its_name_and_its_key() {
         definition(struct_dart_tokens(&item, &plain_args())),
         LEDGER.trim_end()
     );
+}
+
+/// A field named after a member the pair of classes declares moves off the name and keeps its key.
+#[test]
+fn a_field_named_after_a_member_of_the_pair_moves_and_keeps_its_key() {
+    let item: ItemStruct = syn::parse_quote! {
+        pub struct Ticket {
+            pub toDraft: bool,
+            pub validationIssues: bool,
+        }
+    };
+    let dart = definition(struct_dart_tokens(&item, &plain_args()));
+    for written in [
+        "final bool toDraft_;final bool validationIssues_;",
+        "'toDraft': toDraft_,'validationIssues': validationIssues_,",
+        "TicketDraft toDraft() => _draft;",
+    ] {
+        assert!(dart.contains(written), "no `{written}` in: {dart}");
+    }
 }
 
 /// A brand that keys a map is judged under the key's text, its value read from the text with no
@@ -233,14 +253,14 @@ fn a_struct_under_its_own_tag_checks_the_object_its_members_are_read_from() {
             ..plain_args()
         },
     ));
-    let expected = "factory Halyard.fromJsonUnjudged(dynamic payload) { final json = \
+    let expected = "factory HalyardDraft.fromJson(dynamic payload) { final json = \
                     asGiven(payload) as Map<String, dynamic>; final named = <String, dynamic>{}; \
                     for (final entry in json.entries) { final key = switch (entry.key) { 'name' => \
                     'label', final other => other }; if (named.containsKey(key)) throw \
                     FormatException('duplicate field `$key`'); named[key] = entry.value; } if \
                     (!named.containsKey('kind')) throw FormatException('missing field `kind`'); if \
                     (named['kind'] != 'Halyard') throw FormatException('expected tag \"Halyard\", \
-                    found ' + jsonEncode(named['kind'])); return Halyard(label: _readAt(named, \
+                    found ' + jsonEncode(named['kind'])); return HalyardDraft(label: _readAt(named, \
                     'label', () => named['label'] as String),); }";
     assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
 }

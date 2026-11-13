@@ -64,23 +64,23 @@ void main() async {
   final touched = <String>[];
   final tags = <String?>[];
   final documents = DartDocumentServiceHandlers<void>(
-    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
-    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
-    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
-    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
-    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
+    checkDrafts: (ctx, req) async => McpVersionResponseDraft(version: req.drafts.length).validate(),
+    checkMany: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkMaybe: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkNamed: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkPair: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
     getTagged: (ctx, req, known_tag) async {
       tags.add(known_tag);
-      return (McpVersionResponse(version: 7), '"v7"');
+      return (McpVersionResponseDraft(version: 7).validate(), '"v7"');
     },
     getVersion: (ctx, req) async {
       if (req.document_id == 'missing') throw const McpVersionErrorNotFound();
       if (req.document_id == 'panic') throw 'the handler came apart';
-      return McpVersionResponse(version: 7);
+      return McpVersionResponseDraft(version: 7).validate();
     },
     lookup: (ctx, req) async {
       if (req.value == 'panic') throw 'the handler came apart';
-      return McpVersionResponse(version: req.value.length);
+      return McpVersionResponseDraft(version: req.value.length).validate();
     },
     renameDocument: (ctx, req) async {},
     touchDocument: (ctx, req) async {
@@ -88,7 +88,7 @@ void main() async {
     },
   );
   final billing = DartBillingServiceHandlers<void>(
-    listInvoices: (ctx, req) async => McpInvoiceList(invoices: <String>['inv-1', req.organization]),
+    listInvoices: (ctx, req) async => McpInvoiceListDraft(invoices: <String>['inv-1', req.organization]).validate(),
   );
   final documentRoute = createDartDocumentServiceMcpRoute<void>(documents);
   final billingRoute = createDartBillingServiceMcpRoute<void>(billing);
@@ -218,14 +218,14 @@ const proper = <String, String>{
 
 void main() async {
   final documents = DartDocumentServiceHandlers<void>(
-    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
-    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
-    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
-    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
-    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
-    getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
-    getVersion: (ctx, req) async => McpVersionResponse(version: 7),
-    lookup: (ctx, req) async => McpVersionResponse(version: 7),
+    checkDrafts: (ctx, req) async => McpVersionResponseDraft(version: req.drafts.length).validate(),
+    checkMany: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkMaybe: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkNamed: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkPair: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    getTagged: (ctx, req, known_tag) async => (McpVersionResponseDraft(version: 7).validate(), '"v7"'),
+    getVersion: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    lookup: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
     renameDocument: (ctx, req) async {},
     touchDocument: (ctx, req) async {},
   );
@@ -294,22 +294,22 @@ void main() async {
   final input = jsonDecode(inputText) as Map<String, dynamic>;
   var reached = 0;
   final documents = DartDocumentServiceHandlers<void>(
-    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
-    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
-    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
-    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
-    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
+    checkDrafts: (ctx, req) async => McpVersionResponseDraft(version: req.drafts.length).validate(),
+    checkMany: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkMaybe: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkNamed: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkPair: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
     getTagged: (ctx, req, known_tag) async {
       reached += 1;
-      return (McpVersionResponse(version: 7), '"v7"');
+      return (McpVersionResponseDraft(version: 7).validate(), '"v7"');
     },
     getVersion: (ctx, req) async {
       reached += 1;
-      return McpVersionResponse(version: req.document_id.length);
+      return McpVersionResponseDraft(version: req.document_id.length).validate();
     },
     lookup: (ctx, req) async {
       reached += 1;
-      return McpVersionResponse(version: 7);
+      return McpVersionResponseDraft(version: 7).validate();
     },
     renameDocument: (ctx, req) async {
       reached += 1;
@@ -455,7 +455,7 @@ void main() async {
   ]);
   final client = DartDocumentServiceMcpClient(canned);
   for (var call = 0; call < 8; call += 1) {
-    lines.add(summary(await client.getVersion(McpVersionRequest(document_id: 'doc-1'))));
+    lines.add(summary(await client.getVersion(McpVersionRequestDraft(document_id: 'doc-1').validate())));
   }
 
   final more = Canned([
@@ -519,7 +519,7 @@ void main() async {
   final handlers = TaggingServiceHandlers<void>(
     retag: (ctx, req, arguments_, result_, members_, failure_) async {
       seen.add([req, arguments_, result_, members_, failure_].join(':'));
-      if (req == 'missing') throw const McpVersionErrorNotFound();
+      if (req == 'missing') throw McpVersionErrorNotFound().validate();
       return seen.last;
     },
   );
@@ -618,7 +618,7 @@ void main() async {
         observed = ctx.cancelled;
       }
     },
-    getVersion: (ctx, req) async => WriterVersion(version: 7),
+    getVersion: (ctx, req) async => WriterVersionDraft(version: 7).validate(),
   );
   final dispatch = createWriterServiceMcpDispatcher<WriterServiceMcpCall>(handlers);
   final running = <Future<void>>[];
@@ -682,7 +682,7 @@ void main() async {
           await ctx.progress(1, total: 3, message: 'exported 1 of 3 files');
           if (folder == 'held') await opened;
         },
-        getVersion: (ctx, req) async => WriterVersion(version: 7),
+        getVersion: (ctx, req) async => WriterVersionDraft(version: 7).validate(),
       );
 
   Future<WriterServiceMcpHttpResponse?> Function(WriterServiceMcpHttpRequest, WriterServiceMcpHttpStream) serving(
@@ -767,14 +767,14 @@ String call(int id, String name, Map<String, dynamic> arguments) => jsonEncode({
 
 void main() async {
   final documents = DartDocumentServiceHandlers<void>(
-    checkDrafts: (ctx, req) async => McpVersionResponse(version: req.drafts.length),
-    checkMany: (ctx, req) async => McpVersionResponse(version: 7),
-    checkMaybe: (ctx, req) async => McpVersionResponse(version: 7),
-    checkNamed: (ctx, req) async => McpVersionResponse(version: 7),
-    checkPair: (ctx, req) async => McpVersionResponse(version: 7),
-    getTagged: (ctx, req, known_tag) async => (McpVersionResponse(version: 7), '"v7"'),
+    checkDrafts: (ctx, req) async => McpVersionResponseDraft(version: req.drafts.length).validate(),
+    checkMany: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkMaybe: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkNamed: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    checkPair: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
+    getTagged: (ctx, req, known_tag) async => (McpVersionResponseDraft(version: 7).validate(), '"v7"'),
     getVersion: (ctx, req) async => throw 'the handler came apart',
-    lookup: (ctx, req) async => McpVersionResponse(version: 7),
+    lookup: (ctx, req) async => McpVersionResponseDraft(version: 7).validate(),
     renameDocument: (ctx, req) async {},
     touchDocument: (ctx, req) async => throw 'the handler came apart',
   );

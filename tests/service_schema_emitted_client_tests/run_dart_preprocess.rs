@@ -123,7 +123,7 @@ void main() async {
 
 /// The function the check of the weighed model names.
 const CHECK: &str = "
-List<String> withinLimit(Weighed value) =>
+List<String> withinLimit(WeighedDraft value) =>
     value.grams > 1000 ? [\"'grams': ${value.grams} is over the limit of 1000\"] : const [];
 ";
 
@@ -1058,7 +1058,7 @@ fn a_type_that_names_no_function_keeps_the_payload_its_read_types() {
         "{sticker}"
     );
     assert!(
-        sticker.contains("factory Sticker.fromJsonUnjudged(dynamic payload)"),
+        sticker.contains("factory StickerDraft.fromJson(dynamic payload)"),
         "{sticker}"
     );
 }
@@ -1473,16 +1473,12 @@ fn the_readme_shows_the_read_that_is_emitted_and_what_it_answers() {
     let parcel_class = parcel_dart::dart_definition();
     let emitted = packed(from_until(
         &parcel_class,
-        "factory Parcel.fromJsonUnjudged(",
+        "factory ParcelDraft.fromJson(",
         " static Read _readAt",
     ));
-    let shown = from_until(
-        section,
-        "```dart\nfactory Parcel.fromJsonUnjudged(",
-        "\n```",
-    )
-    .strip_prefix("```dart\n")
-    .unwrap();
+    let shown = from_until(section, "```dart\nfactory ParcelDraft.fromJson(", "\n```")
+        .strip_prefix("```dart\n")
+        .unwrap();
     assert_eq!(shown.lines().count(), 8, "{shown}");
     for line in shown.lines() {
         assert!(

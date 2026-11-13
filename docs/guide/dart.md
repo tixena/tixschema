@@ -1,6 +1,6 @@
 ### `validate()` in Dart
 
-With the `dart` feature, every Dart type `dart_definition()` writes has `List<String> validate()`: a class, the wrapper of a [branded newtype](generics-and-brands.md#branded-newtypes) and of a type alias, a tuple struct, a plain enum, and a sealed enum with each of its variants. It runs what the Rust [`validate()`](validation.md#the-validate-method) of the same type runs, in the same order, and answers the messages as a list, empty for a value that keeps every rule. A type with no rule answers `const []`.
+With the `dart` feature, every Dart type `dart_definition()` writes has `List<String> validationIssues()`: a class, the wrapper of a [branded newtype](generics-and-brands.md#branded-newtypes) and of a type alias, a tuple struct, a plain enum, and a sealed enum with each of its variants. It runs what the Rust [`validation_issues()`](validation.md#the-validate-method) of the same type runs, in the same order, and answers the messages as a list, empty for a value that keeps every rule. A type with no rule answers `const []`. [A class, a tuple struct and an enum are a draft and a valid type](#a-draft-and-a-valid-type), and `validate()` is the draft's: it answers the valid type, and throws where `validationIssues()` is not empty.
 
 ```rust
 #[model_schema(check = ["withinParcel"])]
@@ -21,10 +21,10 @@ pub struct Manifest {
 }
 ```
 
-`parcel_dart::dart_definition()` writes the class with its constructor, its fields, [its two reads](#the-dart-read-refuses-what-validate-refuses) and `toJson`, and after them:
+`parcel_dart::dart_definition()` writes the class `ParcelDraft` with its constructor, its fields, [its read](#the-dart-read-refuses-what-validate-refuses) and `toJson`, and after them:
 
 ```dart
-List<String> validate() => [
+List<String> validationIssues() => [
   for (final violation in withoutDuplicates(item_code_list)) _under('itemCodeList', violation),
   if (label.runes.length < 1) "'label': too short: minimum length is 1, got ${label.runes.length}",
   ...withinParcel(this),
@@ -37,13 +37,19 @@ static String _under(String place, String violation) {
   }
   return "'$place': $violation";
 }
+
+Parcel validate() {
+  final found = validationIssues();
+  if (found.isNotEmpty) throw FormatException(found.join('; '));
+  return Parcel._(this);
+}
 ```
 
 `Manifest` holds a parcel, and runs it under the key it holds it at:
 
 ```dart
-List<String> validate() => [
-  for (final violation in parcel.validate()) _under('parcel', violation),
+List<String> validationIssues() => [
+  for (final violation in parcel.validationIssues()) _under('parcel', violation),
 ];
 ```
 
@@ -54,8 +60,8 @@ A check is called under the name the attribute writes, `withinParcel`, from insi
 | | Dart |
 |---|---|
 | A field's check | `List<String> withoutDuplicates(List<String> value)` |
-| A type's check | `List<String> withinParcel(Parcel value)` |
-| The check of a type with a parameter, written once | `List<String> withACode<CodeType>(Crate<CodeType> value)` |
+| A type's check | `List<String> withinParcel(ParcelDraft value)` |
+| The check of a type with a parameter, written once | `List<String> withACode<CodeType>(CrateDraft<CodeType> value)` |
 
 ```dart
 List<String> withoutDuplicates(List<String> value) {
@@ -66,17 +72,17 @@ List<String> withoutDuplicates(List<String> value) {
   return const [];
 }
 
-List<String> withinParcel(Parcel value) => [
+List<String> withinParcel(ParcelDraft value) => [
       for (final (index, code) in value.fragile_item_codes.indexed)
         if (!value.item_code_list.contains(code)) "'fragileItemCodes.$index': $code is outside of itemCodeList",
     ];
 ```
 
-- **A field's check takes the field's own value** and names no place: `validate()` writes each message under the field's key. Under an `Option` it is called where a value is held.
-- **A type's check takes the whole value** and leads each message with the place of what it refuses, in single quotes, as [the Rust function does](checks.md#the-messages). The check of an enum takes the enum, and each variant hands itself over. The check of a brand takes the wrapper.
+- **A field's check takes the field's own value** and names no place: `validationIssues()` writes each message under the field's key. Under an `Option` it is called where a value is held.
+- **A type's check takes the whole value**, the draft, and leads each message with the place of what it refuses, in single quotes, as [the Rust function does](checks.md#the-messages). The check of an enum takes the sealed draft, and each variant hands itself over. The check of a brand takes the wrapper. A check that takes the valid type, `List<String> withinParcel(Parcel value)`, stops `dart analyze` with `The argument type 'ParcelDraft' can't be assigned to the parameter type 'Parcel'.`
 - **A check may share a name with a member of its type.** A check named `label` on a type with a field `label` is called through a private forwarder declared ahead of the class (`final _parcelCheckLabel = label;`), which names your function where the class would read the member. A check that shares a name with no member is called by that name.
 
-With those two functions, the `validate()` of six values, each read with `fromJsonUnjudged` from the payload serde writes for it, answers what the Rust `validate()` answers of the same values:
+With those two functions, the `validationIssues()` of six values, each read with `fromJsonUnjudged` from the payload serde writes for it, answers what the Rust `validate()` answers of the same values:
 
 ```text
 case 1: passes
@@ -97,8 +103,26 @@ case 6: refused
 **A name with no function does not compile.** The emitted class calls it, and the Dart compiler reports the call:
 
 ```text
-Error: The method 'withinParcel' isn't defined for the type 'Parcel'.
+Error: The method 'withinParcel' isn't defined for the type 'ParcelDraft'.
 ```
+
+#### A draft and a valid type
+
+A struct, a tuple struct and an enum that is no plain enum are two Dart classes. `ParcelDraft` is the class you build: the members the Rust type declares, a public `const` constructor, `fromJson`, `toJson`, `validationIssues()` and `validate()`. `Parcel` is the valid type, which holds a draft that passed: its only constructor is private to the library `dart_definition()` writes into, so only `ParcelDraft.validate()` and a read make one. It has a getter for each member of the draft, `toDraft()`, `toJson()`, `fromJson`, `fromJsonUnjudged` and `validationIssues()`.
+
+```dart
+final parcel = ParcelDraft(fragile_item_codes: [], item_code_list: [], label: 'A').validate();
+print(parcel.label);                          // A
+print(jsonEncode(parcel.toJson()) == jsonEncode(parcel.toDraft().toJson()));   // true
+final changed = ParcelDraft(fragile_item_codes: parcel.fragile_item_codes, item_code_list: parcel.item_code_list, label: '');
+try { changed.validate(); } on FormatException catch (e) { print(e.message); }   // 'label': too short: minimum length is 1, got 0
+```
+
+- **`validate()` throws what `fromJson` throws.** Its `FormatException` holds the `validationIssues()` joined by `; `, the text the read of the same value throws, and the Rust `validate()` answers the same messages as a list.
+- **A member that holds a model names its valid type**, so a draft is built from values that already passed: `ManifestDraft(parcel: parcel)`. A value that breaks a rule reaches a draft through `fromJsonUnjudged` alone.
+- **A second library cannot build the valid type.** `Parcel(...)`, `const Parcel(...)` and `Parcel._(draft)` written in another library fail `dart analyze`, with `The class 'Parcel' doesn't have an unnamed constructor.`, `The class 'Parcel' doesn't have an unnamed constant constructor.` and `The class 'Parcel' doesn't have a constructor named '_'.`
+- **A sealed enum has a sealed draft.** `FreightDraft` is the sealed base, and each variant keeps its name and extends it: `FreightBoxed(parcel)` is a draft. `Freight` is the valid type, which has no variant to match on: read it as `switch (freight.toDraft()) { case FreightBoxed(:final value) => .. }`. A handler that answers a model builds it through `validate()`. A handler that throws a declared error may throw the variant as it is, `throw const FreightErrorNotFound()`, or the valid type, `throw FreightErrorNotFound().validate()`: the `mcp` server and the `ws_rpc` attachment answer both the same declared error, with the same code, fields and bytes. A thrown variant that breaks a rule answers `handler-panic` with the `validationIssues()` messages joined by `; `.
+- **A type that has no draft lists its messages the same way**: a brand, a plain enum and an alias have `validationIssues()`, and a service's own messages and results are the classes the service writes, built by their constructors.
 
 #### What Dart checks
 
@@ -115,9 +139,9 @@ Error: The method 'withinParcel' isn't defined for the type 'Parcel'.
 - **The sentence is the one Rust and Zod write**, from the same source. A whole number is quoted back without `.0`: `too large: maximum is 3, got 4` for a `double` holding `4.0`.
 - **The order is Rust's**: each member as declared, what the value it holds reports, then its bounds, then its checks, and the type's own checks last. The repeat of a set, which Rust never reports, runs ahead of the set's count.
 - **An optional member is measured where it holds a value.** A member typed with a branded string is measured on the text the wrapper holds.
-- **A holder runs the `validate()` of what it holds**, through an optional, each level of a list, a map's values and the positions of a tuple, and writes the place in front: `'parcelList.1.fragileItemCodes.1'`, `'parcelsByDock.north.label'`. An entry of a map is named by the text its key is written as, in the order the map holds its keys. A value behind one of the type's own parameters is not reached, as in Rust.
+- **A holder runs the `validationIssues()` of what it holds**, through an optional, each level of a list, a map's values and the positions of a tuple, and writes the place in front: `'parcelList.1.fragileItemCodes.1'`, `'parcelsByDock.north.label'`. An entry of a map is named by the text its key is written as, in the order the map holds its keys. A value behind one of the type's own parameters is not reached, as in Rust.
 - **A brand runs its own string check on the value it wraps**, under no place. A brand over one of its own parameters holds its declared default and no other filling: `if (value case final String held) ...`. A brand over a list counts its items at every filling.
-- **A brand is sealed.** Its constructor is private to the library `dart_definition()` writes into, so a second library cannot write `LabelText('')` or `const LabelText('')`. `LabelText.of(value)` builds one: it throws a `FormatException` whose message is the `validate()` messages joined by `; `, as `fromJson` does, and answers the brand otherwise (`LabelText.of('Shipping').value == 'Shipping'`). `fromJsonUnjudged` stays public, as Rust's unjudged read does, because a holder in another file calls it. A tuple struct and an alias keep their public constructor.
+- **A brand is sealed.** Its constructor is private to the library `dart_definition()` writes into, so a second library cannot write `LabelText('')` or `const LabelText('')`. `LabelText.of(value)` builds one: it throws a `FormatException` whose message is the `validationIssues()` messages joined by `; `, as `fromJson` does, and answers the brand otherwise (`LabelText.of('Shipping').value == 'Shipping'`). A brand has no draft: `validationIssues()` is the list of what it holds. `fromJsonUnjudged` stays public, as Rust's unjudged read does, because a holder in another file calls it. An alias keeps its public constructor, and a tuple struct is [a draft and a valid type](#a-draft-and-a-valid-type).
 - **An enum's own string check** reaches in Dart the fields it reaches in Rust.
 
 A message names a value by the steps serde writes on the way to it: a key, a position in an array, or nothing where serde writes the value itself.
@@ -141,21 +165,14 @@ The step of a variant is the name serde writes it under: its own `rename`, or th
 
 #### The Dart read refuses what `validate()` refuses
 
-`fromJson` of every emitted type is its own unjudged read followed by its `validate()`, as [the Rust read](validation.md#a-read-refuses-what-validate-refuses) is. A payload whose value breaks a bound or a check is refused with a `FormatException`, and no object is handed back. Its `message` holds what `validate()` answers of the value read, every message, joined by `; `. Each class carries the two constructors:
+`fromJson` of every emitted type is its own unjudged read followed by its `validationIssues()`, as [the Rust read](validation.md#a-read-refuses-what-validate-refuses) is. A payload whose value breaks a bound or a check is refused with a `FormatException`, and no object is handed back. Its `message` holds what `validationIssues()` answers of the value read, every message, joined by `; `. The draft of a type holds the read alone, and the valid type carries the judged read and the unjudged one:
 
 ```dart
-factory Parcel.fromJson(Map<String, dynamic> json) {
-  final read = Parcel.fromJsonUnjudged(json);
-  final violations = read.validate();
-  if (violations.isNotEmpty) throw FormatException(violations.join('; '));
-  return read;
-}
-
-factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) {
+factory ParcelDraft.fromJson(Map<String, dynamic> json) {
   for (final key in json.keys) {
     if (!const <String>{'fragileItemCodes', 'itemCodeList', 'label'}.contains(key)) throw FormatException('Unknown key of a Parcel: $key', <Object>[key]);
   }
-  return Parcel(
+  return ParcelDraft(
     fragile_item_codes: _readAt(json, 'fragileItemCodes', () => (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as String)).toList()),
     item_code_list: _readAt(json, 'itemCodeList', () => (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as String)).toList()),
     label: _readAt(json, 'label', () => json['label'] as String),
@@ -165,14 +182,27 @@ factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) {
 
 `_readAt`, a static helper of each class, reads a value under its step, a member's key or an item's index, and puts the step ahead of the path a refusal of the value carries.
 
+The valid type reads through its draft, and judges what the draft read:
+
+```dart
+factory Parcel.fromJson(Map<String, dynamic> json) {
+  final read = ParcelDraft.fromJson(json);
+  final violations = read.validationIssues();
+  if (violations.isNotEmpty) throw FormatException(violations.join('; '));
+  return Parcel._(read);
+}
+
+factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) => Parcel._(ParcelDraft.fromJson(json));
+```
+
 A type that holds another reads it with `fromJsonUnjudged`, so the whole value is judged once, by the type the read was asked for:
 
 ```dart
-factory Manifest.fromJsonUnjudged(Map<String, dynamic> json) {
+factory ManifestDraft.fromJson(Map<String, dynamic> json) {
   for (final key in json.keys) {
     if (!const <String>{'parcel'}.contains(key)) throw FormatException('Unknown key of a Manifest: $key', <Object>[key]);
   }
-  return Manifest(
+  return ManifestDraft(
     parcel: _readAt(json, 'parcel', () => Parcel.fromJsonUnjudged(json['parcel'])),
   );
 }
@@ -214,10 +244,10 @@ Crate<Parcel>, the second code broken: refused (FormatException)
 Terminal with no spareParcel key, all good: read
 ```
 
-- **`fromJsonUnjudged` is the read alone.** It is public, because a holder in another file calls it. Call it yourself for the value and its messages together: `Parcel.fromJsonUnjudged(json).validate()`.
+- **`fromJsonUnjudged` is the read alone.** It is public, because a holder in another file calls it. Call it yourself for the value and its messages together: `Parcel.fromJsonUnjudged(json).validationIssues()`.
 - **Every refusal the read writes itself is a `FormatException`**, the exception it throws for a value that breaks a rule, so a caller that catches it catches each. With `enum Drizzling { Calm, Gust { knots: u32 }, Held(String) }`, `"Gale"` and `{"Gale":{}}` are refused with `Unknown Drizzling: Gale`, and `{"Calm":1}` with `Drizzling: Calm takes no value`. A tag no variant has is refused in the same words under every tagging, and so is a name no variant of a plain enum has. A payload no variant of an untagged enum `Misting` reads is refused with `No variant of Misting matched`, a range of a key it does not write with `Unknown key of a Range: (start, end, step)`, and a `Result` of both its keys with `expected value`, serde's words for text that is not the document, which a `ws_rpc` attachment and client answer as `undeserializable-payload`, as serde refuses each. An externally tagged enum is read from an object of one key, and a tuple from an array of its length, as serde and Zod read each: with `enum Fogging { Boxed(String), Split(String, u32) }`, `{"Boxed":"a","Split":["b",1]}`, `{}` and a value that is neither a string nor an object, `1`, are refused with `expected value`, serde's words for text that is not the document, `{"Split":["b",1,2]}` with `invalid length 3, expected 2` and `{"Split":["b"]}` with `invalid length 1, expected 2`, as serde and Zod refuse each. The array of a tuple struct, of a member's tuple and of a tuple a tuple holds is refused in the same words wherever its length is another. A fixed array `[T; N]` is read from an array of `N` items alone, at each level: with `struct Clenching { pair: [u8; 2] }`, `{"pair":[1,2,3]}` is refused with `invalid length 3, expected 2` and `{"pair":[1]}` with `invalid length 1, expected 2`, and a `[[u8; 2]; 3]` refuses an inner array of another length in the same words, as serde and Zod refuse each. A payload that is not the kind its type is read from, an array where an object is read, is refused by the Dart language with an error of its own, which is no `FormatException`: the `TypeError` of a cast. Either way no value was read for `validate()` to judge.
 - **A refusal carries the path of the value refused**, as the `FormatException`'s `source`, a list of steps, and its `message` and what it prints are the words of the refusal alone. Each holder puts the step it read the value under ahead of the path: a member's key, an item's index, a map's key, under which its value is read and a brand that keys it is judged, a variant's name under serde's own tagging, the content key under a tag and a content key, a `Result`'s arm, and a tuple's position. With `pitches: BTreeMap<Pitch, u32>` over a brand whose `check` refuses a pitch above 12, `{"pitches":{"13":1}}` is refused with the source `[pitches, 13]`, and with `tally: Result<u32, String>`, `{"tally":{"Ok":"x"}}` with `[tally, Ok]`, as the Rust dispatcher names each. A key that does not read is refused at its map, `[pitches]` for `{"pitches":{"x":1}}`, as the Rust dispatcher names it. `{"parcel":{"fragileItemCodes":[],"itemCodeList":[],"label":"a","stray":1}}` read as a `Manifest` is refused with `Unknown key of a Parcel: stray` and the source `[parcel, stray]`. A key the payload does not hold, for a member whose read refuses the `null` it reads as, is refused with ``missing field `parcel` ``, as serde words it, and the source `[parcel]`. A value below the payload that Dart cannot take apart, such as a text where a number is read, is refused with a `FormatException` of the words of the cast's `TypeError` and its path, and so is a refusal a Dart parser writes, which keeps its message. A value inside a `#[serde(flatten)]` member is refused at its holder, as serde names the holder: with `pub struct Frame { #[serde(flatten)] pub beam: Beam, pub span: u32 }` over `pub struct Beam { pub oak: u32 }` held under `frame`, `{"frame":{"span":1,"oak":"x"}}` is refused with the source `[frame]`, and a key the member misses or a key it refuses keeps that key, `[frame, oak]` for `{"frame":{"span":1}}`. The Dart `ws_rpc` attachment and client name the path as the fault's `field`, and a `validate()` refusal by the place its first message opens with.
-- **A value `validate()` does not reach judges itself as it is read**, and the first one that breaks a rule ends the read with its own messages, which name no place of the holder: a value behind one of the holder's own type parameters, read by the function the caller hands in (`Crate<Parcel>.fromJson(json, (e) => Parcel.fromJson(e))`), the key of a map, and what a brand wraps.
+- **A value `validationIssues()` does not reach judges itself as it is read**, and the first one that breaks a rule ends the read with its own messages, which name no place of the holder: a value behind one of the holder's own type parameters, read by the function the caller hands in (`Crate<Parcel>.fromJson(json, (e) => Parcel.fromJson(e))`), the key of a map, and what a brand wraps.
 - **A sealed enum judges in its base.** The unjudged read of the base chooses the variant by the tag, and a variant with named members carries the two constructors as a class does.
 - **An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged read takes the first variant whose payload decodes and whose bounds hold: each member's own, and the bound a brand it holds carries. A brand with a `pattern`, a `minLength` or a `maxLength` answers for that bound alone in `validateBound()`. A check, and what a model it holds reports, choose no variant: the variant is taken, and `fromJson` then refuses the value.
 - **A plain enum judges where it names a check**, and carries `fromJsonUnjudged` in every case. `fromJson` takes a `dynamic`, a string or an object of one key over `null`, as serde reads it: another kind of value is a `FormatException` of ``expected value``, and a value under the key other than `null` is one whose path names the key.
@@ -242,7 +272,7 @@ Terminal with no spareParcel key, all good: read
 
 #### What stays yours
 
-- **`validate()` is for a value built in code**, before it is sent, and for a value changed after it was read: [`fromJson` judges what it reads](#the-dart-read-refuses-what-validate-refuses). It calls no [`preprocess`](preprocess.md#a-preprocess-in-the-dart-client): a read does, ahead of it.
-- **A class of your own that a model holds** declares `List<String> validate()` and the constructor `fromJsonUnjudged` as the emitted ones do: a holder reads it and calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it. [`ObjectId`](object-id.md#mongodb-objectid-support) is the one exception, read through its `fromJson` and asked nothing.
-- **A field named `validate`** is the member `validate_`, and keeps its key, as [a reserved word does](features.md#a-member-named-after-a-word-the-client-language-reserves).
-- **The Dart `validate()` holds each bound and calls each check whatever the other features**, and a brand's own `minLength`, `maxLength` and `pattern` in every build with `serde`, the feature a brand needs.
+- **`validate()` is for a value built in code**, before it is sent: it answers the valid type a client takes, and throws where [`fromJson` would refuse](#the-dart-read-refuses-what-validate-refuses). A value changed after it was read is a draft again, `parcel.toDraft()`, which `validate()` judges. It calls no [`preprocess`](preprocess.md#a-preprocess-in-the-dart-client): a read does, ahead of it.
+- **A class of your own that a model holds** declares `List<String> validationIssues()` and the constructor `fromJsonUnjudged` as the emitted ones do: a holder reads it and calls it with no knowledge of what the held type declares, whether that type is declared above the holder or below it. [`ObjectId`](object-id.md#mongodb-objectid-support) is the one exception, read through its `fromJson` and asked nothing.
+- **A field named `validate`, `validationIssues` or `toDraft`** is the member `validate_`, `validationIssues_` or `toDraft_`, and keeps its key, as [a reserved word does](features.md#a-member-named-after-a-word-the-client-language-reserves).
+- **The Dart `validationIssues()` holds each bound and calls each check whatever the other features**, and a brand's own `minLength`, `maxLength` and `pattern` in every build with `serde`, the feature a brand needs.

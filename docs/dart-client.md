@@ -1,12 +1,59 @@
 # The Dart Client
 
-`validate()`, the read and `preprocess` on the Dart types.
+The draft and the valid type, `validationIssues()`, the read and `preprocess` on the Dart types.
 
-#### `validate()` on the Dart types
+#### The draft and the valid type
 
-Every type `src/features/dart.rs` writes has `List<String> validate()`, which runs what the Rust
-`validate()` of the type runs, in its order. `docs/guide/dart.md`'s "`validate()` in Dart" section is the
-consumer's view; this is what a change has to keep.
+A struct, a tuple struct, a unit struct and an enum that is no plain enum are two classes
+(`struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens` write the pair). The class the
+emitter wrote before is the draft, named `{Name}Draft` (`draft_name`): its constructor, its fields,
+its one read, `toJson` and `validationIssues()` are the class as it was, and `validate_method` adds
+`{Name} validate()`, which answers `{Name}._(this)` where `validationIssues()` is empty and throws a
+`FormatException` of the issues joined by `; ` otherwise. `valid_class` writes `{Name}`: the only
+constructor `const {Name}._(this._draft)`, a getter for each member of the draft
+(`forwarding_getters`; `value` for a tuple struct, none for an enum), `toDraft()`, `fromJson`, which
+is `judged_body_returning` over the draft's read, `fromJsonUnjudged`, which is `{Name}._` over it
+and stays public for a holder in another library, `toJson`, which forwards the converters of a type
+with a parameter (`GenericCodec::to_json_args`), and `validationIssues()`.
+
+- **Every message stays as it was.** A class names the type in a message as the type is named
+  (`ClassNames::message`), not as the draft is: `Unknown key of a Parcel: stray`. Only a name the
+  consumer writes carries `Draft`: a constructor, a check function's argument, the type a Dart
+  error prints. The `ReadForm::Draft` read of a draft is `draft_read`, one `fromJson`; `ReadForm::Whole`
+  is `read_pair`, the pair a type without a draft keeps.
+- **A holder calls `validationIssues()` on everything it holds.** `held_at` writes
+  `expr.validationIssues()` for a model, a brand, an alias and a plain enum alike, so a type
+  declared below its holder, or in another crate, is held without being known. A brand, an alias
+  and a plain enum have no draft and list their messages under that name. `validate()` is the
+  draft's alone.
+- **A holder reads a held model through `{Name}.fromJsonUnjudged`**, public on the valid type, which
+  builds the valid type with no check; the holder judges the whole value once, so each answer is
+  byte-identical to the answer before the pair.
+- **An enum's draft is the sealed base, and a variant keeps its subclass name.** `enum_base`,
+  `enum_reads` and `enum_classes` write `sealed class {Name}Draft`, then `{Name}`, then each variant
+  `{Name}{Variant} extends {Name}Draft`, whose read is `fromJson` (`VariantClass::form`). The base
+  declares `validationIssues()` (`VALIDATE_DECLARED`), each variant overrides it, and `validate()` is
+  written once on the base. A variant is a draft: it does not fill a member typed `{Name}`.
+- **A check function takes the draft.** `validationIssues()` calls `withinParcel(this)` on the
+  draft, so `List<String> withinParcel(ParcelDraft value)` and, for a type with a parameter,
+  `withACode<CodeType>(CrateDraft<CodeType> value)`.
+- **A type a service writes for itself has no draft** (`DartTypeArgs::undrafted`, from the
+  `__tixschema_undrafted` argument): the pair's one-class form, so a client builds its requests and
+  its results with the constructors it had, with `validationIssues()` in place of `validate()`.
+- **`toDraft`, `validate` and `validationIssues` are taken names** in `DART_FIELD_NAMES_TAKEN`, so a
+  member of that name is `toDraft_`, `validate_` or `validationIssues_`; `validationIssues` is also
+  taken in a plain enum (`DART_ENUM_NAMES_TAKEN`).
+- **The tests.** `tests/service_schema_emitted_client_tests/run_dart_valid_types.rs` analyzes a
+  second library that writes `Cargo(...)`, `const Cargo(...)` and `Cargo._(draft)`, and runs one
+  that builds through the draft: the getters, `toDraft()`, `toJson()`, a `validate()` whose message
+  is the Rust `validation_issues()` joined by `; `, and a holder in another library that reads
+  through `fromJsonUnjudged`.
+
+#### `validationIssues()` on the Dart types
+
+Every type `src/features/dart.rs` writes has `List<String> validationIssues()`, which runs what the
+Rust `validation_issues()` of the type runs, in its order. `docs/guide/dart.md`'s "`validate()` in
+Dart" section is the consumer's view; this is what a change has to keep.
 
 - **A class refuses a key no member reads**, as TypeScript, Zod and serde refuse it
   (`closed_keys`, `unknown_keys_refused`): `tag_checked_reads` opens the unjudged read of a struct
@@ -43,9 +90,9 @@ consumer's view; this is what a change has to keep.
 - **A check is called under the name the attribute writes**, a function of the consumer's that
   answers its messages as a list: `List<String> withoutDuplicates(List<String> value)` for a
   field's, which takes the field's own value and names no place,
-  `List<String> withinParcel(Parcel value)` for a type's, which is handed `this` and leads each
-  message with a place, and `List<String> withACode<CodeType>(Crate<CodeType> value)` for a type
-  with a parameter, written once. A missing function is the Dart compiler's to report.
+  `List<String> withinParcel(ParcelDraft value)` for a type's, which is handed `this`, the draft, and
+  leads each message with a place, and `List<String> withACode<CodeType>(CrateDraft<CodeType> value)`
+  for a type with a parameter, written once. A missing function is the Dart compiler's to report.
 - **A length** is `runes.length` on a string, its Unicode code points, and `length` on a list. A
   member typed with a named type is measured on `_boundText(...)`, and a `double` is quoted back
   through `_number`, a whole one without `.0`. `_under` writes a place in front of a message, as
@@ -63,17 +110,16 @@ consumer's view; this is what a change has to keep.
   an untagged variant and a `#[serde(flatten)]` member add no step, and a slot of several is its
   position on the wire.
 - **A brand** (`brand_validate`) runs the type's string check on `value` under no place, then its
-  checks, and no `validate()` of what it wraps. Over a bare parameter it measures the declared
+  checks, and no `validationIssues()` of what it wraps. Over a bare parameter it measures the declared
   default (`declared_default`) behind `if (value case final String held)`. An alias runs its
-  target's `validate()` where the target is a declared type written as itself.
-- **A sealed enum** declares `List<String> validate();` on its base (`VALIDATE_DECLARED`), and
+  target's `validationIssues()` where the target is a declared type written as itself.
+- **A sealed enum** declares `List<String> validationIssues();` on its base (`VALIDATE_DECLARED`), and
   `variant_validate` writes each variant's override, the enum's checks last, each handed `this`.
   A plain enum runs its checks.
-- **`validate` is a taken name** in `DART_FIELD_NAMES_TAKEN` and `DART_ENUM_NAMES_TAKEN`.
-- **`toJson` is untouched.** `validate()` is the last member of each class, after its codec.
-  `the_codec_of_each_type_is_the_text_it_was` in `tests/dart_tests/validate.rs` holds every piece
-  of the codec's text, in its order: the two reads, and `toJson` as it was before any type had
-  `validate()`.
+- **`toJson` is untouched.** `validationIssues()` is the last member of each draft class but its
+  helpers and `validate()`, after its codec. `the_codec_of_each_type_is_the_text_it_was` in
+  `tests/dart_tests/validate.rs` holds every piece of the emitted text but each
+  `validationIssues()`, in its order: the read, `toJson` and the valid type.
 - **The tests.** `tests/dart_tests/validate.rs` pins the text of each shape and calls no Rust
   `validate()`. `tests/dart_tests/bounded_brands.rs` pins a brand's string check.
   `tests/service_schema_emitted_client_tests/run_dart_validate.rs` runs the emitted source under
@@ -85,18 +131,19 @@ consumer's view; this is what a change has to keep.
 #### The Dart read refuses what `validate()` refuses
 
 `fromJson` of every type `src/features/dart.rs` writes is its own unjudged read followed by its
-`validate()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
+`validationIssues()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
 read joins it. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
 consumer's view; this is what a change has to keep.
 
-- **One writer of the pair.** `read_pair` writes `fromJson` over `fromJsonUnjudged` for a class, a
-  wrapper (a brand, a tuple struct, an alias), a variant with named members and the base of a
-  sealed enum. `judged_body` writes the judgement, which the static `fromJson` of a plain enum
-  takes too. A generic type takes its converters in both reads.
+- **One writer of the read.** A draft holds one read, `draft_read`: `fromJson` over the body
+  `unjudged_read` writes, with no judgement. `valid_class` writes the valid type's `fromJson` over
+  it, and `fromJsonUnjudged`. `read_pair` writes `fromJson` over `fromJsonUnjudged` for what has no
+  draft: a brand, an alias and a type a service writes. `judged_body` writes the judgement, which the
+  static `fromJson` of a plain enum takes too. A generic type takes its converters in each read.
 - **A brand is sealed.** `struct_dart_tokens` hands `value_wrapper_tokens` `Held::Brand` for a
   brand alone: the class writes `const X._(this.value)`, the only constructor, and `factory X.of(value)`
   (`judged_body` over `X._(value)`, so it throws the `FormatException` `fromJson` throws, the messages
-  of `validate()` joined by `; `). `fromJsonUnjudged` stays public under that name and builds through
+  of `validationIssues()` joined by `; `). `fromJsonUnjudged` stays public under that name and builds through
   `X._`, as Rust keeps `model_schema_read_unjudged` public: a holder in another file, which is another
   library, or in another crate calls it, so a holder reads a brand as it reads any type. A name
   starting with an underscore is private to the library, so a second library builds a brand through
@@ -452,8 +499,8 @@ resort; this is what a change has to keep.
   unjudged read: a class, a wrapper (a brand, a tuple struct), the base of a sealed enum and a
   plain enum. Where the type names functions the read takes its payload as `payload` and holds
   what they answer as `json`, cast as the read types it (`final json = withoutFragile(payload)
-  as Map<String, dynamic>;`), and a read of no member holds it under no name. `read_pair` writes
-  `fromJson` as it was: it calls no function. A sealed enum calls them in its base alone
+  as Map<String, dynamic>;`), and a read of no member holds it under no name. `read_pair` and
+  `valid_class` write `fromJson` as it was: it calls no function. A sealed enum calls them in its base alone
   (`Corrects::of_a_variant`), and a plain enum that names one and no check delegates `fromJson`
   to `fromJsonUnjudged`.
 - **A member's functions are called by `member_decode`**, around the payload its own read is
@@ -513,6 +560,8 @@ resort; this is what a change has to keep.
 `src/features/service_schema/dart_mcp.rs` writes `dart_mcp_service()` and `dart_mcp_client()` on the registry of a service that asks for `mcp`.
 
 - **Two halves of the text.** The emitted text holds markers for what only a compiled type knows: the tool list (`mcp_tools()`, one Dart string literal per tool with `$` written `\$`), the names (`MCP_NAMES`), the instructions, the crate version (`env!("CARGO_PKG_VERSION")`) and `wrapped_{operation}()`. The accessor writes them over the markers when it runs in the consuming program, as `ts_http_service()` writes `openapi()`. An operation whose wrapping depends on the type it names reads a `const` table of its answers; one whose message is generated, or which binds a `header_in`, has it fixed at expansion.
+- **A draft a handler throws is answered as its valid type.** Every class and enum `dart_definition()` writes declares `static Object $thrown<T>(Object thrown)`: a draft answers `validate()`, a type with no draft and any other object answers what it was handed. `guarded_call` in `dart_ws_client.rs` wraps the handler's call in a `catch` that rethrows `Error.throwWithStackTrace(DeclaredError.$thrown(thrown), trace)`, with the type arguments the declared error is written with and, for a `header_out` tuple, the first element converted and the rest kept, so the `on` clause that answers the declared error answers the draft as well. The dispatcher names only the declared error's class, which exists in the library that declares it whatever its kind, so no registry of the expansion decides what it writes, and a type declared below the service or in another crate compiles. The `mcp` server and the attachment share it.
+
 - **The server reuses the WebSocket attachment's seams.** Each tool is a private function that reads the message with `message_decode`, the read of `dart_ws_client.rs` (the generated type's `fromJson`, which judges), then the `header_in` arguments, calls the handler, and renders the outcome with `split_reply_record` as the attachment does. The read's refusal is handed whole to `_McpUnreadFault`, which answers it as the Rust dispatcher answers a refusal of the arguments it reads out of a `Value`: ``invalid value: expected key to be a number in quotes`` is `undeserializable-payload` naming no field, ``expected value`` (a `Result` of other than one key) names the path its `FormatException` carries (`_WsRefusedAt`) ahead of the walk's, and so does a refusal inside a flattened member, whose walk path (`frame.oak`) is below the holder the read refused at (`frame`) as serde names it, the walk's entries below the holder dropped (`run_carillon_mcp.rs` holds each to the Rust dispatcher, beside a refusal under each shape of tag and under an untagged enum), and any other answers `failed-validation`: `_McpMismatches` walks the tool's JSON schema from the catalog (`_McpMessageSchema`) beside the arguments, past the `header_in` keys and the form's answers, and collects every value that does not match in the order met: the dotted path of the first (`drafts.1.title`) is the field, and the detail opens with that path in single quotes before the decoder's words. A key an object's schema does not declare under `"additionalProperties": false` is such a value, so a stray key is the field. Where the walk finds two or more, `_McpUnreadFault(..., every: true)` joins the others to the detail in the walk's words and lists each in `issues`, as the Rust dispatcher does, for a tool, a prompt (`_McpPromptSchema`) and a resource template (`_McpReadSchema`, over the `mcp_read_inputs()` the text embeds); a completion names the first alone. Where the walk finds none, the fault names no field. The walk follows `$ref`, the first alternative of an `anyOf` that has no mismatch (else the first one's), `enum`, an object's `properties`, `required` and `additionalProperties`, an array's `items`, and the type of a leaf. It does not follow `oneOf` or `const`, which the schema of an enum under a tag, adjacently tagged, externally tagged or untagged holds, so a value inside such an enum reaches no mismatch of the walk and the fault names the path the read refused at, as serde does (`run_carillon_mcp.rs` holds the field of each shape to the Rust dispatcher's). A wrapped message missing its `value` key answers `failed-validation` with the field `value`. The client's methods write the attachment's `_WsRefused`, and the `_WsFailedValidation` that names a header (`header_refused_fault`), as `_McpReadFailed`, so a success, a declared error, and a `header_out` or `error_header_out` value beside either that its read refuses answer `undeserializable-payload` naming no field, as the Rust client answers them.
 - **Keys are sorted.** `_McpJson` writes every object with its keys in order, the bytes a `serde_json` build without `preserve_order` writes. Tool, resource and prompt texts are embedded as they were handed in, so a schema keeps the digits Rust wrote; `mcp_tools()`, `mcp_resources()` and `mcp_resource_templates()` return their members in key order for that reason.
 - **Resources.** `resource_functions` writes one private function for each resource, template, listing and completion, built as a tool's is (`message_decode`, the handler, the outcome rendered by `dart_json_encode`) and answering a `-32602` where a tool answers a tool error: `_McpUnread` for a fault, `_McpRefused` for a declared error. `_McpRead` tries a fixed URI ahead of the templates, `_McpCaptured` matches a template as the Rust dispatcher does, and a `(Vec<u8>, String)` success is `base64Encode` of the record's bytes. `{Service}McpResource` and `{Service}McpResourcePage` are written once per service that lists, named after it.

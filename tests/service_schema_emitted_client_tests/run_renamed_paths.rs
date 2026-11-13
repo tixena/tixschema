@@ -122,22 +122,22 @@ class _KeyedRecorder implements KeyedPathClientServiceHttpTransport {
 void main() async {
   final recorder = _KeyedRecorder();
   final client = KeyedPathClientServiceHttpClient(recorder);
-  await client.besideFlatten(KeyedBeside(document_id: 'd1', extra: KeyedExtra(title: 't')));
+  await client.besideFlatten(KeyedBesideDraft(document_id: 'd1', extra: KeyedExtraDraft(title: 't').validate()).validate());
   await client.keyedGenerated(KeyedGeneratedRequest(document_id: 'd1', title: 't'));
   await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ['x', 'y'], title: 't'));
   await client.keyedGenList(KeyedGenListRequest(pages: [1, 2, 3], title: 't'));
-  await client.labelled(KeyedLabelled(labels: ['a b', 'c/d'], title: 't'));
-  await client.listed(KeyedListed(pages: [1, 2, 3], title: 't'));
-  await client.ownKey(KeyedOwn(document_id: 'd1', title: 't'));
-  await client.paged(KeyedPaged(page_size: 7, title: 't'));
-  await client.pinned(KeyedPinned(pinned: true, title: 't'));
-  await client.plain(KeyedPlain(document_id: 'd1', title: 't'));
-  await client.quotedKey(KeyedQuoted(document_id: 'd1', title: 't'));
-  await client.renamed(KeyedRenamed(document_id: 'd1', title: 't'));
-  await client.tallied(KeyedTally(tally: -9007199254740993, title: 't'));
-  await client.twoPlaceholders(KeyedRenamed(document_id: 'd1', title: 't'));
+  await client.labelled(KeyedLabelledDraft(labels: ['a b', 'c/d'], title: 't').validate());
+  await client.listed(KeyedListedDraft(pages: [1, 2, 3], title: 't').validate());
+  await client.ownKey(KeyedOwnDraft(document_id: 'd1', title: 't').validate());
+  await client.paged(KeyedPagedDraft(page_size: 7, title: 't').validate());
+  await client.pinned(KeyedPinnedDraft(pinned: true, title: 't').validate());
+  await client.plain(KeyedPlainDraft(document_id: 'd1', title: 't').validate());
+  await client.quotedKey(KeyedQuotedDraft(document_id: 'd1', title: 't').validate());
+  await client.renamed(KeyedRenamedDraft(document_id: 'd1', title: 't').validate());
+  await client.tallied(KeyedTallyDraft(tally: -9007199254740993, title: 't').validate());
+  await client.twoPlaceholders(KeyedRenamedDraft(document_id: 'd1', title: 't').validate());
   await client.keyedGenLabelled(KeyedGenLabelledRequest(labels: ['a,b', 'c'], title: 't'));
-  await client.labelled(KeyedLabelled(labels: ['a,b', 'c'], title: 't'));
+  await client.labelled(KeyedLabelledDraft(labels: ['a,b', 'c'], title: 't').validate());
   print(jsonEncode(recorder.sent));
 }
 ";

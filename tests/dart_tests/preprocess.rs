@@ -11,7 +11,7 @@ use super::held_numbers::u32_held;
 use super::unknown_keys::{READ_AT, READ_BUFFERED, READ_FLATTENED, plain_enum_read, refusing};
 
 /// What a judged read does with the value its unjudged read answered.
-const JUDGED: &str = "final violations = read.validate(); if (violations.isNotEmpty) throw \
+const JUDGED: &str = "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
      FormatException(violations.join('; ')); return read; }";
 
 /// The parcel of the documents: a function on the type, and one on a field held to a bound.
@@ -285,14 +285,10 @@ const fn without_fragile(payload: Value) -> Value {
     payload
 }
 
-/// The judged read of `named` and the head of its unjudged one, which takes its payload as a
-/// `kind` under `taken`, each with `converters` after the payload and `handed` after `json`.
-fn pair(named: &str, kind: &str, taken: &str, converters: &str, handed: &str) -> String {
-    format!(
-        "factory {named}.fromJson({kind} json{converters}) {{ final read = \
-         {named}.fromJsonUnjudged(json{handed}); {JUDGED} factory \
-         {named}.fromJsonUnjudged({kind} {taken}{converters}) "
-    )
+/// The one read of a draft named `named`, which takes its payload as a `kind` under `taken`, with
+/// `converters` after the payload.
+fn draft(named: &str, kind: &str, taken: &str, converters: &str) -> String {
+    format!("factory {named}.fromJson({kind} {taken}{converters}) ")
 }
 
 /// The pair of a brand: `of` builds it through its rules, then the judged read and the unjudged
@@ -316,11 +312,6 @@ fn sealed_pair(
             "IdType"
         },
     )
-}
-
-/// The pair of a type with no parameter.
-fn plain_pair(named: &str, kind: &str, taken: &str) -> String {
-    pair(named, kind, taken, "", "")
 }
 
 /// Asserts that `definition` holds `fragment`.
@@ -484,14 +475,14 @@ fn a_class_calls_its_function_on_its_payload_and_a_fields_on_its_key() {
         &parcel_dart::dart_definition(),
         &format!(
             "{}{{ final json = withoutFragile(payload) as Map<String, dynamic>; return \
-             Parcel(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
+             ParcelDraft(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
              (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
              () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
              (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              e.$2 as String)).toList()),label: _readAt(json, 'label', () => \
              (json.containsKey('label') ? trimmed(json['label']) : null) as String),); }} \
              {READ_AT} Map<String, dynamic> toJson() =>",
-            plain_pair("Parcel", "dynamic", "payload")
+            draft("ParcelDraft", "dynamic", "payload", "")
         ),
     );
 }
@@ -503,10 +494,10 @@ fn a_holder_reads_a_model_through_the_models_own_read() {
     assert_written(
         &manifest_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Manifest(parcel: _readAt(json, 'parcel', () => \
+            "{}{{ {}return ManifestDraft(parcel: _readAt(json, 'parcel', () => \
              Parcel.fromJsonUnjudged(json['parcel'])),); }} {READ_AT} Map<String, dynamic> \
              toJson() =>",
-            plain_pair("Manifest", "Map<String, dynamic>", "json"),
+            draft("ManifestDraft", "Map<String, dynamic>", "json", ""),
             refusing("Manifest", &["parcel"])
         ),
     );
@@ -522,7 +513,7 @@ fn a_fields_function_is_called_ahead_of_the_fields_read_whatever_it_holds() {
     assert_written(
         &ticket_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Ticket(code_list: _readAt(json, 'codeList', () => \
+            "{}{{ {}return TicketDraft(code_list: _readAt(json, 'codeList', () => \
              ((json.containsKey('codeList') ? unwrapped(json['codeList']) : null) as \
              List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => e.$2 as \
              String)).toList()),held_parcel: _readAt(json, 'heldParcel', () => \
@@ -537,7 +528,7 @@ fn a_fields_function_is_called_ahead_of_the_fields_read_whatever_it_holds() {
              switch (json.containsKey('shortNote') ? trimmed(json['shortNote']) : null) {{ final \
              corrected => (corrected == null ? null : corrected as String) }}),); }} {READ_AT} \
              Map<String, dynamic> toJson() =>",
-            plain_pair("Ticket", "Map<String, dynamic>", "json"),
+            draft("TicketDraft", "Map<String, dynamic>", "json", ""),
             refusing(
                 "Ticket",
                 &[
@@ -558,9 +549,9 @@ fn a_unit_struct_calls_its_function_on_its_payload() {
     assert_written(
         &closed_dock_dart::dart_definition(),
         &format!(
-            "{}{{ unwrapped(payload) as Map<String, dynamic>; return ClosedDock(); }} Map<String, \
+            "{}{{ unwrapped(payload) as Map<String, dynamic>; return ClosedDockDraft(); }} Map<String, \
              dynamic> toJson() =>",
-            plain_pair("ClosedDock", "dynamic", "payload")
+            draft("ClosedDockDraft", "dynamic", "payload", "")
         ),
     );
 }
@@ -572,11 +563,11 @@ fn a_tuple_struct_calls_its_function_on_its_payload_and_a_slots_on_its_position(
     assert_written(
         &stack_dart::dart_definition(),
         &format!(
-            "{}{{ final json = unwrapped(payload); return Stack(switch (json as List<dynamic>) \
+            "{}{{ final json = unwrapped(payload); return StackDraft(switch (json as List<dynamic>) \
              {{ final tuple when tuple.length == 2 => (_readAt(null, 0, () => trimmed(tuple[0]) \
              as String), {second}), final tuple => throw FormatException('invalid length \
              ${{tuple.length}}, expected 2') }}); }} {READ_AT} dynamic toJson() =>",
-            plain_pair("Stack", "dynamic", "payload"),
+            draft("StackDraft", "dynamic", "payload", ""),
         ),
     );
 }
@@ -617,18 +608,12 @@ fn a_type_with_a_parameter_calls_its_function_at_every_filling() {
     assert_written(
         &crate_dart::dart_definition(),
         &format!(
-            "{}{{ final json = unwrapped(payload) as Map<String, dynamic>; return Crate(codes: \
+            "{}{{ final json = unwrapped(payload) as Map<String, dynamic>; return CrateDraft(codes: \
              _readAt(json, 'codes', () => (json['codes'] as List<dynamic>).indexed.map((e) => \
              _readAt(null, e.$1, () => codeTypeFromJson(e.$2))).toList()),label: _readAt(json, \
              'label', () => (json.containsKey('label') ? trimmed(json['label']) : null) as \
              String),); }} {READ_AT} Map<String, dynamic> toJson(",
-            pair(
-                "Crate",
-                "dynamic",
-                "payload",
-                code_converter,
-                ", codeTypeFromJson"
-            )
+            draft("CrateDraft", "dynamic", "payload", code_converter)
         ),
     );
 }
@@ -683,13 +668,13 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
              TransferHeld() : throw FormatException('Transfer: ' + tag + ' takes no value')); \
              case 'Rail': return _readAt(null, tag, () => TransferRail(trimmed(map['Rail']) as \
              String)); case 'Road': return _readAt(null, tag, () => \
-             TransferRoad.fromJsonUnjudged(map['Road'])); case 'Split': return _readAt(null, tag, \
+             TransferRoad.fromJson(map['Road'])); case 'Split': return _readAt(null, tag, \
              () => TransferSplit(switch (map['Split'] as List<dynamic>) {{ final tuple when \
              tuple.length == 2 => (_readAt(null, 0, () => trimmed(tuple[0]) as String), \
              {second}), final tuple => throw FormatException('invalid length ${{tuple.length}}, \
              expected 2') }})); default: throw FormatException('Unknown Transfer: ' + tag); }} }} \
              {READ_AT} dynamic toJson();",
-            plain_pair("Transfer", "dynamic", "payload"),
+            draft("TransferDraft", "dynamic", "payload", ""),
         ),
     );
     assert_written(
@@ -698,7 +683,7 @@ fn an_enum_under_its_variants_name_calls_its_function_in_its_base() {
             "{}{{ {}return TransferRoad(plate: _readAt(json, 'plate', () => \
              (json.containsKey('plate') ? trimmed(json['plate']) : null) as String),); }} \
              {READ_AT} @override dynamic toJson() =>",
-            plain_pair("TransferRoad", "Map<String, dynamic>", "json"),
+            draft("TransferRoad", "Map<String, dynamic>", "json", ""),
             refusing("TransferRoad", &["plate"])
         ),
     );
@@ -715,11 +700,11 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
         &format!(
             "{}{{ final json = unwrapped(payload) as Map<String, dynamic>; final tag = \
              _readAt(json, 'kind', () => json['kind'] as String); switch (tag) {{ case 'Air': \
-             return _readFlattened(() => ShipmentAir.fromJsonUnjudged(json)); case 'Boxed': return \
+             return _readFlattened(() => ShipmentAir.fromJson(json)); case 'Boxed': return \
              ShipmentBoxed(Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('kind'))))); \
              case 'Ground': return ShipmentGround(); default: throw FormatException('Unknown \
              Shipment: ' + tag); }} }} {READ_AT} {READ_BUFFERED} {READ_FLATTENED} dynamic toJson();",
-            plain_pair("Shipment", "dynamic", "payload")
+            draft("ShipmentDraft", "dynamic", "payload", "")
         ),
     );
     assert_written(
@@ -729,7 +714,7 @@ fn an_enum_under_a_tag_key_hands_a_function_the_object_without_the_tag() {
              _readFlattened(() => \
              Tagged.fromJsonUnjudged(({{...json}}..remove('kind')..remove('dock')))),); \
              {READ_AT} {READ_BUFFERED} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
-            plain_pair("ShipmentAir", "Map<String, dynamic>", "json")
+            draft("ShipmentAir", "Map<String, dynamic>", "json", "")
         ),
     );
 }
@@ -745,9 +730,9 @@ fn an_enum_under_a_content_key_calls_a_slots_function_where_the_key_is_held() {
              _readAt(json, 'kind', () => json['kind'] as String); switch (tag) {{ case 'Left': \
              return _readAt(json, 'detail', () => HandoverLeft((json.containsKey('detail') ? \
              trimmed(json['detail']) : null) as String)); case 'Signed': return _readAt(json, \
-             'detail', () => HandoverSigned.fromJsonUnjudged(json['detail'])); default: throw \
+             'detail', () => HandoverSigned.fromJson(json['detail'])); default: throw \
              FormatException('Unknown Handover: ' + tag); }} }} {READ_AT} dynamic toJson();",
-            plain_pair("Handover", "dynamic", "payload")
+            draft("HandoverDraft", "dynamic", "payload", "")
         ),
     );
 }
@@ -761,12 +746,12 @@ fn an_untagged_enum_calls_its_function_ahead_of_every_attempt() {
         &reference,
         &format!(
             "{}{{ final json = unwrapped(payload); try {{ final read = \
-             ReferenceNamed.fromJsonUnjudged(json as Map<String, dynamic>); if \
+             ReferenceNamed.fromJson(json as Map<String, dynamic>); if \
              (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final read = \
              ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; \
              }} catch (_) {{}} throw FormatException('No variant of Reference matched'); }} \
              dynamic toJson();",
-            plain_pair("Reference", "dynamic", "payload"),
+            draft("ReferenceDraft", "dynamic", "payload", ""),
             numbered = u32_held("unwrapped(json) as int")
         ),
     );
@@ -776,7 +761,7 @@ fn an_untagged_enum_calls_its_function_ahead_of_every_attempt() {
             "{}{{ {}return ReferenceNamed(name: _readAt(json, 'name', () => \
              (json.containsKey('name') ? trimmed(json['name']) : null) as String),); }} {READ_AT} \
             Map<String, dynamic> toJson() =>",
-            plain_pair("ReferenceNamed", "Map<String, dynamic>", "json"),
+            draft("ReferenceNamed", "Map<String, dynamic>", "json", ""),
             refusing("ReferenceNamed", &["name"])
         ),
     );
@@ -790,29 +775,29 @@ fn a_flattened_member_is_read_from_the_keys_its_holder_does_not_take() {
     assert_written(
         &pinned_dart::dart_definition(),
         &format!(
-            "{}=> Pinned(dock: _readAt(json, 'dock', () => json['dock'] as String),tagged: \
+            "{}=> PinnedDraft(dock: _readAt(json, 'dock', () => json['dock'] as String),tagged: \
              _readFlattened(() => Tagged.fromJsonUnjudged(({{...json}}..remove('dock')))),); \
              {READ_AT} {READ_BUFFERED} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
-            plain_pair("Pinned", "Map<String, dynamic>", "json")
+            draft("PinnedDraft", "Map<String, dynamic>", "json", "")
         ),
     );
     assert_written(
         &sorted_dart::dart_definition(),
         &format!(
-            "{}=> Sorted(dock: _readAt(json, 'dock', () => json['dock'] as String),listed: \
+            "{}=> SortedDraft(dock: _readAt(json, 'dock', () => json['dock'] as String),listed: \
              _readFlattened(() => \
              Listed.fromJsonUnjudged(withItsKeys(({{...json}}..remove('dock')..remove('pier'))))),pier: \
              _readAt(json, 'pier', () => json['pier'] as String),); {READ_AT} {READ_BUFFERED} {READ_FLATTENED} \
              Map<String, dynamic> toJson() =>",
-            plain_pair("Sorted", "Map<String, dynamic>", "json")
+            draft("SortedDraft", "Map<String, dynamic>", "json", "")
         ),
     );
     assert_written(
         &account_dart::dart_definition(),
         &format!(
-            "{}=> Account(tagged: _readFlattened(() => Tagged.fromJsonUnjudged(json)),); \
+            "{}=> AccountDraft(tagged: _readFlattened(() => Tagged.fromJsonUnjudged(json)),); \
              {READ_BUFFERED} {READ_FLATTENED} Map<String, dynamic> toJson() =>",
-            plain_pair("Account", "Map<String, dynamic>", "json")
+            draft("AccountDraft", "Map<String, dynamic>", "json", "")
         ),
     );
 }
@@ -825,10 +810,10 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
     assert_written(
         &renamed_dart::dart_definition(),
         &format!(
-            "{}{{ final json2 = payload(payload2) as Map<String, dynamic>; return Renamed(label: \
+            "{}{{ final json2 = payload(payload2) as Map<String, dynamic>; return RenamedDraft(label: \
              _readAt(json2, 'label', () => (json2.containsKey('label') ? json(json2['label']) : \
              null) as String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
-            plain_pair("Renamed", "dynamic", "payload2")
+            draft("RenamedDraft", "dynamic", "payload2", "")
         ),
     );
     assert_written(
@@ -843,7 +828,7 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
              'Rail': return _readAt(null, tag2, () => RoutedRail(map(map2['Rail']) as String)); \
              default: throw FormatException('Unknown Routed: ' + tag2); }} }} {READ_AT} dynamic \
              toJson();",
-            plain_pair("Routed", "dynamic", "payload")
+            draft("RoutedDraft", "dynamic", "payload", "")
         ),
     );
     assert_written(
@@ -853,7 +838,7 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
              = CountedWhole({whole}); if (read2._bounds().isEmpty) return read2; }} \
              catch (_) {{}} throw FormatException('No variant of Counted matched'); }} dynamic \
              toJson();",
-            plain_pair("Counted", "dynamic", "json"),
+            draft("CountedDraft", "dynamic", "json", ""),
             whole = u32_held("read(json) as int")
         ),
     );
@@ -861,27 +846,26 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
     assert_written(
         &coupled_dart::dart_definition(),
         &format!(
-            "{}=> Coupled(switch (json as List<dynamic>) {{ final tuple2 when tuple2.length == 2 \
+            "{}=> CoupledDraft(switch (json as List<dynamic>) {{ final tuple2 when tuple2.length == 2 \
              => (_readAt(null, 0, () => tuple(tuple2[0]) as String), {second}), final tuple2 => \
              throw FormatException('invalid length ${{tuple2.length}}, expected 2') }});",
-            plain_pair("Coupled", "dynamic", "json"),
+            draft("CoupledDraft", "dynamic", "json", ""),
         ),
     );
     assert_written(
         &keyed_dart::dart_definition(),
         &format!(
-            "{}{{ {}return Keyed(codes: _readAt(json, 'codes', () => (json['codes'] as \
+            "{}{{ {}return KeyedDraft(codes: _readAt(json, 'codes', () => (json['codes'] as \
              List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              codeTypeFromJson2(e.$2))).toList()),label: _readAt(json, \
              'label', () => (json.containsKey('label') ? codeTypeFromJson(json['label']) : null) as \
              String),); }} {READ_AT} Map<String, dynamic> toJson(dynamic Function(CodeType) \
              codeTypeToJson) =>",
-            pair(
-                "Keyed",
+            draft(
+                "KeyedDraft",
                 "Map<String, dynamic>",
                 "json",
-                ", CodeType Function(dynamic) codeTypeFromJson2",
-                ", codeTypeFromJson2"
+                ", CodeType Function(dynamic) codeTypeFromJson2"
             ),
             refusing("Keyed", &["codes", "label"])
         ),

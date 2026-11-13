@@ -81,7 +81,7 @@ fn a_structs_names_are_escaped_in_its_dart_text() {
             r"final key = switch (entry.key) { 'cost\'s' => 'cost\$usd', final other => other };",
             r"if (!named.containsKey('ki\$nd')) throw FormatException('missing field `ki\$nd`');",
             r#"if (named['ki\$nd'] != 'Price\'s\$Tag\\') throw FormatException('expected tag "Price\'s\$Tag\\", found ' + jsonEncode(named['ki\$nd']));"#,
-            r#"return Tariffed(backslash: _readAt(named, 'back\\slash', () => named['back\\slash'] as String),cost: _readAt(named, 'cost\$usd', () => named['cost\$usd'] as String),quoted: _readAt(named, 'say "hi"', () => named['say "hi"'] as String),);"#,
+            r#"return TariffedDraft(backslash: _readAt(named, 'back\\slash', () => named['back\\slash'] as String),cost: _readAt(named, 'cost\$usd', () => named['cost\$usd'] as String),quoted: _readAt(named, 'say "hi"', () => named['say "hi"'] as String),);"#,
             r#"Map<String, dynamic> toJson() => { 'ki\$nd': 'Price\'s\$Tag\\','back\\slash': backslash,'cost\$usd': cost,'say "hi"': quoted, };"#,
         ],
     );
@@ -104,7 +104,7 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
         &tolled_dart::dart_definition(),
         &[
             r#"case 'Calm"': return TolledStill();"#,
-            r"case 'Bid\$Ask' || 'O\'Neil': return _readAt(null, tag, () => TolledBid.fromJsonUnjudged(map[tag]));",
+            r"case 'Bid\$Ask' || 'O\'Neil': return _readAt(null, tag, () => TolledBid.fromJson(map[tag]));",
             r"case 'C:\\Path': return _readAt(null, tag, () => TolledHeld(map['C:\\Path'] as String));",
             &read,
             &written,
@@ -129,7 +129,7 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
         &dutied_dart::dart_definition(),
         &[
             r"final tag = _readAt(json, 'ki\$nd', () => json['ki\$nd'] as String);",
-            r"case 'Bid\$Ask': return _readAt(json, 'bo\'dy', () => DutiedBid.fromJsonUnjudged(json['bo\'dy']));",
+            r"case 'Bid\$Ask': return _readAt(json, 'bo\'dy', () => DutiedBid.fromJson(json['bo\'dy']));",
             r"case 'Calm\\': return json.containsKey('bo\'dy') ? throw",
             &format!(
                 r"@override dynamic toJson() => {{ 'ki\$nd': 'Bid\$Ask', 'bo\'dy': {{ 'lot': {}, }} }};",
@@ -155,7 +155,7 @@ fn a_flattened_members_names_are_escaped_in_its_holders_dart_text() {
     holds_each(
         &tithed_dart::dart_definition(),
         &[
-            "Tithed(leveed: _readFlattened(() => Leveed.fromJsonUnjudged((switch \
+            "TithedDraft(leveed: _readFlattened(() => Leveed.fromJsonUnjudged((switch \
              (({...json}..remove('no\\'te'))) { final whole => { for (final key in const \
              ['cost\\$usd']) if (whole.containsKey(key)) key: whole[key] } }))),",
         ],

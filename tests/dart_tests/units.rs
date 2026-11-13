@@ -97,7 +97,7 @@ fn an_untagged_enum_over_unit_is_refused_where_its_key_is_absent() {
 fn a_tuple_struct_of_no_slot_reads_and_writes_an_empty_array() {
     let slotless = probe_slotless_dart::dart_definition();
     for read in [
-        "ProbeSlotless(switch (json as List<dynamic>) { final tuple when tuple.length == 0 => (), \
+        "ProbeSlotlessDraft(switch (json as List<dynamic>) { final tuple when tuple.length == 0 => (), \
          final tuple => throw FormatException('invalid length ${tuple.length}, expected 0') });",
         "dynamic toJson() => [];",
     ] {

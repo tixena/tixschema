@@ -16,7 +16,7 @@ mod dart {
     const DRIVER: &str = "
 void told(int at, String payload) {
   try {
-    print('$at: ${Fastening.fromJson(jsonDecode(payload)).runtimeType}');
+    print('$at: ${Fastening.fromJson(jsonDecode(payload)).toDraft().runtimeType}');
   } on FormatException {
     print('$at: refused');
   }

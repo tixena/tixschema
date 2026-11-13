@@ -152,7 +152,7 @@ fn a_second_library_cannot_build_a_brand() {
 
 #[test]
 fn a_second_library_builds_a_tuple_struct_and_an_alias_and_reads_them() {
-    let user = "import 'models.dart';\n\nvoid main() {\n  const PennantCount(3);\n  PennantCount.fromJsonUnjudged(3);\n  PennantNote.fromJsonUnjudged('a');\n  PennantNote('a');\n}\n";
+    let user = "import 'models.dart';\n\nvoid main() {\n  const PennantCountDraft(3);\n  PennantCount.fromJsonUnjudged(3);\n  PennantNote.fromJsonUnjudged('a');\n  PennantNote('a');\n}\n";
     let Some((clean, said)) = dart_files(
         "sealed-public",
         &["analyze"],

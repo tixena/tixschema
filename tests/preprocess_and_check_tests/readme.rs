@@ -156,7 +156,11 @@ fn each_client_function_of_the_table_is_one_the_run_of_that_client_compiles() {
             DART_CHECK,
             " {",
         ),
-        ("List<String> withinParcel(Parcel value)", DART_CHECK, " =>"),
+        (
+            "List<String> withinParcel(ParcelDraft value)",
+            DART_CHECK,
+            " =>",
+        ),
         (
             "func trimmed(_ payload: Any) -> Any",
             SWIFT_PREPROCESS,
@@ -213,8 +217,8 @@ fn each_error_of_a_name_with_no_function_is_one_a_run_asserts() {
             DART_PREPROCESS,
         ),
         (
-            "`Error: The method 'withinParcel' isn't defined for the type 'Parcel'.`",
-            "Error: The method 'withinParcel' isn't defined for the type 'Parcel'.",
+            "`Error: The method 'withinParcel' isn't defined for the type 'ParcelDraft'.`",
+            "Error: The method 'withinParcel' isn't defined for the type 'ParcelDraft'.",
             DART_CHECK,
         ),
         (

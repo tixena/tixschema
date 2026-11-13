@@ -52,8 +52,8 @@ fn source() -> String {
         "  row('broken', () => {broken_name}.fromJson(jsonDecode(r'{broken_json}')).toJson());"
     );
     main.push_str(
-        "  print(Shelf(entries: [Entry(name: 'a')], keyed: {}, maybe: null, nullable: [], \
-         slot: ([], 1)).validate());\n}\n",
+        "  print(ShelfDraft(entries: [Entry.fromJsonUnjudged({'name': 'a'})], keyed: {}, maybe: null, nullable: [], \
+         slot: ([], 1)).validationIssues());\n}\n",
     );
     module(&definitions(), &[ROW], &main)
 }
