@@ -9,7 +9,8 @@ pub struct Shipment {
     pub parcel_count: u32,
 }
 
-fn main() {
-    let mut shipment = ShipmentDraft { parcel_count: 3 }.validate().unwrap();
+fn change(shipment: &mut Shipment) {
     shipment.parcel_count = 1;
 }
+
+fn main() {}
