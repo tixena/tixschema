@@ -12,7 +12,7 @@ use super::mcp_guide_rows::{
 use super::run_dart_validate::analyzed;
 use super::runtime::ran;
 use crate::mcp_streams::dart_respond;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
@@ -26,12 +26,13 @@ final handlers = GuideServiceHandlers<void>(
   },
   getGuideVersion: (ctx, req) async {
     reached.add(<Object?>['get-guide-version']);
-    return GuideVersion(version: 3);
+    return GuideVersionDraft(version: 3).validate();
   },
   greet: (ctx, req) async {
     reached.add(<Object?>['greet', req]);
     if (req == 'boom') throw 'the handler came apart';
     if (req == 'missing') throw const GuideErrorNotFound();
+    if (req == 'missing-validated') throw GuideErrorNotFound().validate();
     return 'Say hello to $req.';
   },
   reviewDocumentType: (ctx, req) async {
@@ -200,6 +201,41 @@ fn the_dart_server_answers_the_bytes_the_rust_dispatcher_answers() {
         return;
     };
     assert_matches(&report);
+}
+
+#[test]
+fn a_thrown_draft_of_the_declared_error_is_answered_as_the_valid_error_is() {
+    let asking = |name: &str| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 3_u8,
+            "method": "prompts/get",
+            "params": {
+                "name": "greet",
+                "arguments": { "name": name },
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                },
+            },
+        })
+        .to_string()
+    };
+    let given = json!({
+        "requests": { "draft": asking("missing"), "valid": asking("missing-validated") },
+        "http": [],
+        "queries": [],
+    });
+    let Some(report) = driven("mcp_guide_draft", SERVER_DRIVER, &given) else {
+        return;
+    };
+    assert_eq!(report["answers"]["draft"], report["answers"]["valid"]);
+    assert!(
+        report["answers"]["draft"]
+            .as_str()
+            .is_some_and(|text| text.contains("not-found")),
+        "the declared error is answered, not a fault. Got: {report}"
+    );
 }
 
 #[test]

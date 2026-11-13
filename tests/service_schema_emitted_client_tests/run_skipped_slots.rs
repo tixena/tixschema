@@ -178,12 +178,12 @@ fn dart_reads_and_writes_the_slots_serde_writes() {
 fn the_dart_text_declares_no_slot_serde_drops() {
     let bowsed = bowsed_dart::dart_definition();
     for held in [
-        "class BowsedDuo extends Bowsed { const BowsedDuo(this.value); final (String,) value;",
-        "class BowsedGone extends Bowsed { const BowsedGone(this.value); final List<()> value;",
-        "class BowsedLone extends Bowsed { const BowsedLone();",
-        "class BowsedPair extends Bowsed { const BowsedPair(this.value); final (String, int) \
+        "class BowsedDuo extends BowsedDraft { const BowsedDuo(this.value); final (String,) value;",
+        "class BowsedGone extends BowsedDraft { const BowsedGone(this.value); final List<()> value;",
+        "class BowsedLone extends BowsedDraft { const BowsedLone();",
+        "class BowsedPair extends BowsedDraft { const BowsedPair(this.value); final (String, int) \
          value;",
-        "class BowsedTallied extends Bowsed { const BowsedTallied(this.value); final (String, \
+        "class BowsedTallied extends BowsedDraft { const BowsedTallied(this.value); final (String, \
          int) value;",
     ] {
         assert!(bowsed.contains(held), "no `{held}` in: {bowsed}");

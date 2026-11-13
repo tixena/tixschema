@@ -6,7 +6,8 @@ use super::dart_http_client::{dart_call, dart_parameter, message_type};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::dart::{
-    dart_json_decode, dart_json_encode, dart_typename, quoted, read_at_function, reading_at,
+    dart_json_decode, dart_json_encode, dart_named_class_of, dart_typename, quoted,
+    read_at_function, reading_at,
 };
 use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -1138,6 +1139,49 @@ fn one_way_dispatch_arm(
     arm
 }
 
+/// `await handlers.{call}(...)` with the draft of a declared error that the handler throws turned
+/// into its valid type, so the `on` clause that answers the declared error also answers the draft.
+/// Every model type answers `$thrown`, which turns a draft into its valid type and hands any other
+/// object back, so the call is the same whatever the declared error's kind or where it is declared.
+/// A draft that breaks its rules throws what `validate()` throws, which is answered as the
+/// handler's own panic.
+pub(super) fn guarded_call(
+    call: &str,
+    error: &Type,
+    header_names: &[String],
+    arguments: &str,
+) -> String {
+    let plain = format!("await handlers.{call}({arguments})");
+    let converted = if header_names.is_empty() {
+        let Some((class, type_arguments)) = dart_named_class_of(error) else {
+            return plain;
+        };
+        format!("{class}.$thrown{type_arguments}(thrown)")
+    } else {
+        let elements: Vec<&Type> = tuple_elements(error).into_iter().flatten().collect();
+        let Some((class, type_arguments)) =
+            elements.first().and_then(|head| dart_named_class_of(head))
+        else {
+            return plain;
+        };
+        let mut types = vec!["Object".to_owned()];
+        let mut members = vec![format!("{class}.$thrown{type_arguments}(thrown.$1)")];
+        for (at, element) in elements.iter().enumerate().skip(1) {
+            types.push(dart_type_of(element));
+            members.push(format!("thrown.${}", at + 1));
+        }
+        format!(
+            "thrown is ({}) ? ({}) : thrown",
+            types.join(", "),
+            members.join(", ")
+        )
+    };
+    format!(
+        "await (() async {{ try {{ return await handlers.{call}({arguments}); }} catch (thrown, \
+         trace) {{ Error.throwWithStackTrace({converted}, trace); }} }})()"
+    )
+}
+
 /// [`dispatch_arm`]'s own `Reply` arm: splits a header-tuple success or declared error apart.
 fn reply_dispatch_arm(
     naming: &DispatchNaming<'_>,
@@ -1154,10 +1198,16 @@ fn reply_dispatch_arm(
     } = naming;
     let error_ty = dart_type_of(error);
     let unit = is_unit_type(success);
+    let awaited = guarded_call(
+        call,
+        error,
+        &shape.error_header_out,
+        &format!("ctx, decoded{header_args}"),
+    );
     let call_stmt = if unit {
-        format!("await handlers.{call}(ctx, decoded{header_args});\n")
+        format!("{awaited};\n")
     } else {
-        format!("final answered = await handlers.{call}(ctx, decoded{header_args});\n")
+        format!("final answered = {awaited};\n")
     };
     let mut arm = format!(
         "          try {{\n            \

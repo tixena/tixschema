@@ -56,8 +56,8 @@ fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     }
     let splaying = splaying_dart::dart_definition();
     for held in [
-        "const Splaying({required this.braiding,required this.note,});",
-        "Splaying(braiding: _readFlattened(() => Braiding.fromJsonUnjudged((switch \
+        "const SplayingDraft({required this.braiding,required this.note,});",
+        "SplayingDraft(braiding: _readFlattened(() => Braiding.fromJsonUnjudged((switch \
          (({...json}..remove('note'))) { final whole => { for (final key in const ['label']) if \
          (whole.containsKey(key)) key: whole[key] } }))),",
         "Map<String, dynamic> toJson() => { 'note': note, };",
@@ -66,7 +66,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     }
     let ranging = ranging_dart::dart_definition();
     for held in [
-        "const Ranging({required this.counts,}); final Map<String, int> counts;",
+        "const RangingDraft({required this.counts,}); final Map<String, int> counts;",
         "Map<String, dynamic> toJson() => {  };",
     ] {
         assert!(ranging.contains(held), "no `{held}` in: {ranging}");

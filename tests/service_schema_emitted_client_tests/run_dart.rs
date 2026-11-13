@@ -30,8 +30,8 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 /// whose own name it will not take, and round-trips it.
 const RESERVED_DRIVER: &str = "
 void main() {
-  final value = CodecReserved(
-    as: CodecReservedInner(for_: 4, object: 'o'),
+  final value = CodecReservedDraft(
+    as: CodecReservedInnerDraft(for_: 4, object: 'o').validate(),
     class_: 'c',
     fun: 'f',
     in_: 'i',
@@ -47,7 +47,7 @@ void main() {
     type: 't',
     var_: 'v',
     while_: ['w'],
-  );
+  ).validate();
   final encoded = jsonEncode(value.toJson());
   final decoded = CodecReserved.fromJson(jsonDecode(encoded) as Map<String, dynamic>);
   print(jsonEncode(decoded.toJson()));
@@ -58,7 +58,7 @@ void main() {
 /// back, and re-encodes — proving the round trip stays `{}` both ways.
 const UNIT_FIELD_DRIVER: &str = "
 void main() {
-  final value = CodecUnitField(label: 'marker', payload: CodecUnitPayload());
+  final value = CodecUnitFieldDraft(label: 'marker', payload: CodecUnitPayloadDraft().validate()).validate();
   final encoded = jsonEncode(value.toJson());
   final decoded = CodecUnitField.fromJson(jsonDecode(encoded) as Map<String, dynamic>);
   print(jsonEncode(decoded.toJson()));
@@ -297,7 +297,7 @@ class _MediaRecorder implements MediaClientServiceHttpTransport {
 }
 
 void main() async {
-  final upload = MediaUpload(sha256: MediaId.of('abc123'), caption: 'c');
+  final upload = MediaUploadDraft(sha256: MediaId.of('abc123'), caption: 'c').validate();
   final recorder = _MediaRecorder(<(String, String)>[('x-media-id', 'abc123')]);
   final client = MediaClientServiceHttpClient(recorder);
   await client.upload(upload);

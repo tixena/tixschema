@@ -272,7 +272,7 @@ fn the_emitted_holders_of_a_flattened_unit_variant_have_no_issue() {
             becalming_dart::dart_definition(),
         ],
         &[AS_GIVEN],
-        "void main() => print(jsonEncode(Stowing(note: 'a', tacking: TackingCalm()).toJson()));\n",
+        "void main() => print(jsonEncode(StowingDraft(note: 'a', tacking: TackingCalm().validate()).validate().toJson()));\n",
     );
     let Some((clean, said)) = dart("unit-entries-analyze", &["analyze"], &source) else {
         return;

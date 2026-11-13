@@ -62,7 +62,7 @@ void main() async {
   final client = LookupClientServiceHttpClient(recorder);
   await client.import(ImportRequest(class_: 'k', object: 'o', default_: 'd', var_: 'v'));
   await client.for_(ForRequest(in_: 'i', final_: 'f'), 't', 'n');
-  await client.object(LookupThing(class_: 'c', var_: 'w'));
+  await client.object(LookupThingDraft(class_: 'c', var_: 'w').validate());
   await client.shadow(ShadowRequest(message: 'm', sending: 's'), 'b', 'p', 't');
   print(jsonEncode(recorder.sent));
 }

@@ -79,7 +79,7 @@ pub fn dart_value(held_by: &str, json: &str) -> String {
 /// The model of `row` holding its value as it was handed.
 fn dart_handed(row: &WireFormRow) -> String {
     let value = dart_value(row.held_by, row.handed);
-    constructed(
+    let built = constructed(
         row.held_by,
         "NAME: ",
         &|key| format!("{{{key}: true}}"),
@@ -92,7 +92,9 @@ fn dart_handed(row: &WireFormRow) -> String {
         },
         &value,
         &value,
-    )
+    );
+    let (held_by, arguments) = built.split_at(row.held_by.len());
+    format!("{held_by}Draft{arguments}.validate()")
 }
 
 /// Runs `dart` over `source` under `TZ=UTC`, in a directory of its own named for `named`, and

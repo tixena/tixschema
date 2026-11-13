@@ -231,49 +231,49 @@ fn rows() -> Vec<Row> {
     };
     vec![
         Row {
-            dart: "Wrapped<Tag<String>>._(Tag<String>._('ab')).validate()",
+            dart: "Wrapped<Tag<String>>._(Tag<String>._('ab')).validationIssues()",
             kotlin: "refusedBy { Wrapped.of<Tag<String>>(Tag.of(\"ab\")) }",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"ab\")).validate()",
             name: "the default, below the bound",
             rust: Wrapped::new(Tag::new("ab".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<Tag<String>>._(Tag<String>._('abcdef')).validate()",
+            dart: "Wrapped<Tag<String>>._(Tag<String>._('abcdef')).validationIssues()",
             kotlin: "refusedBy { Wrapped.of<Tag<String>>(Tag.of(\"abcdef\")) }",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abcdef\")).validate()",
             name: "the default, past the bound",
             rust: Wrapped::new(Tag::new("abcdef".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<Tag<String>>._(Tag<String>._('abc')).validate()",
+            dart: "Wrapped<Tag<String>>._(Tag<String>._('abc')).validationIssues()",
             kotlin: "refusedBy { Wrapped.of<Tag<String>>(Tag.of(\"abc\")) }",
             swift: "Wrapped<Tag<String>>(value: Tag<String>(value: \"abc\")).validate()",
             name: "the default, within the bound",
             rust: Wrapped::new(Tag::new("abc".to_owned()).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<Tag<int>>._(Tag<int>._(1)).validate()",
+            dart: "Wrapped<Tag<int>>._(Tag<int>._(1)).validationIssues()",
             kotlin: "refusedBy { Wrapped.of<Tag<UInt>>(Tag.of(1u)) }",
             swift: "Wrapped<Tag<UInt32>>(value: Tag<UInt32>(value: 1)).validate()",
             name: "another filling of the class",
             rust: Wrapped::new(Tag::new(1_u32).unwrap()).map(|_| ()),
         },
         Row {
-            dart: "Wrapped<String>._('a').validate()",
+            dart: "Wrapped<String>._('a').validationIssues()",
             kotlin: "refusedBy { Wrapped.of<String>(\"a\") }",
             swift: "Wrapped<String>(value: \"a\").validate()",
             name: "another type",
             rust: Wrapped::new("a".to_owned()).map(|_| ()),
         },
         Row {
-            dart: "Plain<String>._('ab').validate()",
+            dart: "Plain<String>._('ab').validationIssues()",
             kotlin: "refusedBy { Plain.of<String>(\"ab\") }",
             swift: "Plain<String>(value: \"ab\").validate()",
             name: "a default written with no argument",
             rust: Plain::new("ab".to_owned()).map(|_| ()),
         },
         Row {
-            dart: "Shelf<Slot>(by_slot: {'north-dock': Item(label: ''), 'south-dock': Item(label: 'a')}).validate()",
+            dart: "ShelfDraft<Slot>(by_slot: {'north-dock': Item.fromJsonUnjudged({'label': ''}), 'south-dock': Item.fromJsonUnjudged({'label': 'a'})}).validationIssues()",
             kotlin: "Shelf<Slot>(mapOf(Slot.NorthDock to Item(\"\"), Slot.SouthDock to Item(\"a\"))).validate()",
             swift: "Shelf<Slot>(bySlot: [\"north-dock\": Item(label: \"\"), \"south-dock\": Item(label: \"a\")]).validate()",
             name: "a map keyed by a plain enum",
@@ -285,7 +285,7 @@ fn rows() -> Vec<Row> {
             .map(|_valid| ()),
         },
         Row {
-            dart: "Shelf<Berth>(by_slot: {'b1': Item(label: '')}).validate()",
+            dart: "ShelfDraft<Berth>(by_slot: {'b1': Item.fromJsonUnjudged({'label': ''})}).validationIssues()",
             kotlin: "Shelf<Berth>(mapOf(Berth.of(\"b1\") to Item(\"\"))).validate()",
             swift: "Shelf<Berth>(bySlot: [\"b1\": Item(label: \"\")]).validate()",
             name: "a map keyed by a brand",
@@ -296,7 +296,7 @@ fn rows() -> Vec<Row> {
             .map(|_valid| ()),
         },
         Row {
-            dart: "Shelf<String>(by_slot: {'k': Item(label: '')}).validate()",
+            dart: "ShelfDraft<String>(by_slot: {'k': Item.fromJsonUnjudged({'label': ''})}).validationIssues()",
             kotlin: "Shelf<String>(mapOf(\"k\" to Item(\"\"))).validate()",
             swift: "Shelf<String>(bySlot: [\"k\": Item(label: \"\")]).validate()",
             name: "a map keyed by the default",
@@ -307,7 +307,7 @@ fn rows() -> Vec<Row> {
             .map(|_valid| ()),
         },
         Row {
-            dart: "Shelf<int>(by_slot: {'7': Item(label: '')}).validate()",
+            dart: "ShelfDraft<int>(by_slot: {'7': Item.fromJsonUnjudged({'label': ''})}).validationIssues()",
             kotlin: "Shelf<UInt>(mapOf(7u to Item(\"\"))).validate()",
             swift: "Shelf<UInt32>(bySlot: [\"7\": Item(label: \"\")]).validate()",
             name: "a map keyed by a number",

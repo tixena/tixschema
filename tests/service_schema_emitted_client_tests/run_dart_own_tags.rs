@@ -128,16 +128,16 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         (
             flag_dart::dart_definition(),
             format!(
-                "factory Flag.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Flag(label: _readAt(json, 'label', () => json['label'] as String),); }}",
+                "factory FlagDraft.fromJson(Map<String, dynamic> json) {{ {} return \
+                 FlagDraft(label: _readAt(json, 'label', () => json['label'] as String),); }}",
                 tag_held("json", "Flag")
             ),
         ),
         (
             gonfalon_dart::dart_definition(),
             format!(
-                "factory Gonfalon.fromJsonUnjudged(Map<String, dynamic> json, Held Function(dynamic) \
-                 heldFromJson) {{ {} return Gonfalon(label: _readAt(json, 'label', () => \
+                "factory GonfalonDraft.fromJson(Map<String, dynamic> json, Held Function(dynamic) \
+                 heldFromJson) {{ {} return GonfalonDraft(label: _readAt(json, 'label', () => \
                  heldFromJson(json['label'])),); }}",
                 tag_held("json", "Gonfalon")
             ),
@@ -146,7 +146,7 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
             semaphore_dart::dart_definition(),
             format!(
                 "throw FormatException('duplicate field `$key`'); named[key] = entry.value; }} {} \
-                 return Semaphore(label: _readAt(named, 'label', () => named['label'] as \
+                 return SemaphoreDraft(label: _readAt(named, 'label', () => named['label'] as \
                  String),); }}",
                 tag_held("named", "Semaphore")
             ),
@@ -154,8 +154,8 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         (
             pennant_dart::dart_definition(),
             format!(
-                "factory Pennant.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Pennant(labelling: _readFlattened(() => \
+                "factory PennantDraft.fromJson(Map<String, dynamic> json) {{ {} return \
+                 PennantDraft(labelling: _readFlattened(() => \
                  Labelling.fromJsonUnjudged((switch (({{...json}}..remove('note'))) {{ final whole \
                  => {{ for (final key in const ['label']) if (whole.containsKey(key)) key: \
                  whole[key] }} }}))),note: _readAt(json, 'note', () => json['note'] as String),); \
@@ -165,7 +165,7 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         ),
         (
             dressing_dart::dart_definition(),
-            "Dressing(ensign: _readFlattened(() => \
+            "DressingDraft(ensign: _readFlattened(() => \
              Ensign.fromJsonUnjudged(({...json}..remove('north')))),north: \
              _readAt(json, 'north', () => (switch (json['north'] as \
              int) { final number when number >= 0 && number <= 255 => number, final number => \
@@ -175,8 +175,8 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         (
             ensign_dart::dart_definition(),
             format!(
-                "factory Ensign.fromJsonUnjudged(Map<String, dynamic> json) {{ {} return \
-                 Ensign(label: _readAt(json, 'label', () => json['label'] as String),); }}",
+                "factory EnsignDraft.fromJson(Map<String, dynamic> json) {{ {} return \
+                 EnsignDraft(label: _readAt(json, 'label', () => json['label'] as String),); }}",
                 tag_held("json", "Ensign")
             ),
         ),
@@ -269,7 +269,7 @@ fn the_emitted_structs_under_their_own_tag_have_no_issue() {
     let source = module(
         &definitions(),
         &[],
-        "void main() => print(jsonEncode(Flag(label: 'n').toJson()));\n",
+        "void main() => print(jsonEncode(FlagDraft(label: 'n').validate().toJson()));\n",
     );
     let Some((clean, said)) = dart("own-tags-analyze", &["analyze"], &source) else {
         return;

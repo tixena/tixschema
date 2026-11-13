@@ -47,7 +47,7 @@ void told(String at, Object Function() read) {
   String printed;
   try {
     final dynamic value = read();
-    printed = 'read ${value.runtimeType} ${jsonEncode(value.toJson())}';
+    printed = 'read ${value.toDraft().runtimeType} ${jsonEncode(value.toJson())}';
   } catch (_) {
     printed = 'refused';
   }

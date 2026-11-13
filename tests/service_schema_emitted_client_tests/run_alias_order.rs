@@ -18,7 +18,7 @@ mod dart {
             "
 void told(int at, String payload) {{
   try {{
-    print('$at: ${{{held}.fromJson(jsonDecode(payload)).runtimeType}}');
+    print('$at: ${{{held}.fromJson(jsonDecode(payload)).toDraft().runtimeType}}');
   }} on FormatException {{
     print('$at: refused');
   }}

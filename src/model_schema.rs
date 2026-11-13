@@ -2622,6 +2622,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
+            undrafted: args.undrafted,
         },
     )
 }

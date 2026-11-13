@@ -50,7 +50,7 @@ fn each_limit_holds_in_dart_as_it_is_written() {
     for (name, read_as, json) in ROWS {
         let _ = writeln!(
             main,
-            "  report('{name}', {read_as}.fromJsonUnjudged(jsonDecode(r'{json}')).validate(), () \
+            "  report('{name}', {read_as}.fromJsonUnjudged(jsonDecode(r'{json}')).validationIssues(), () \
              => {read_as}.fromJson(jsonDecode(r'{json}')));"
         );
     }

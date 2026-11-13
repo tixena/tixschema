@@ -291,8 +291,8 @@ what a change has to keep.
   without the flag, where Rust runs every one, and `tsc --strict` refuses to set the flag on a
   pushed issue (TS2540).
 - **The clients call each check.** The Dart, Swift and Kotlin emitters write a call of the
-  function, under the name as written, in the `validate()` every emitted type carries: see
-  "`validate()` on the Dart types", "The Swift `validate()`" and "The Kotlin client's
+  function, under the name as written, in the `validate()` every emitted type carries (the
+  `validationIssues()` of a Dart type): see "`validationIssues()` on the Dart types", "The Swift `validate()`" and "The Kotlin client's
   `validate()`" below. The JSON Schema and the TypeScript type write what they wrote, and no
   expected output of a type without the key changes.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
