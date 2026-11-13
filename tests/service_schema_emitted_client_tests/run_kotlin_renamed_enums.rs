@@ -45,8 +45,8 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
      import kotlinx.serialization.builtins.*";
 
 const CALM: &str = r#"
-fun calm(value: Temper): List<String> =
-    if (value == Temper.Frantic) listOf("a mood is calm") else emptyList()
+fun calm(value: TemperDraft): List<String> =
+    if (value == TemperDraft.Frantic) listOf("a mood is calm") else emptyList()
 "#;
 
 const HARNESS: &str = r#"
