@@ -2833,7 +2833,8 @@ impl FieldDef {
     }
 
     /// Builds the Zod schema string for a numeric field: the range of its integer type, then any
-    /// min/max constraints. A side of the range a declared bound narrows is left to the bound.
+    /// min/max constraints. The width check stays ahead of a declared bound that narrows it, with
+    /// no message of its own, so a flattened holder can tell a width refusal from the bound's.
     #[cfg(feature = "zod")]
     fn zod_number_type(&self, base: &str) -> String {
         let mut result = base.to_owned();
@@ -2841,14 +2842,10 @@ impl FieldDef {
         let minimum = declared.and_then(|meta| meta.minimum.as_ref());
         let maximum = declared.and_then(|meta| meta.maximum.as_ref());
         let (least, most) = self.field_type.integer_range();
-        if let Some(width) = least
-            && minimum.is_none_or(|bound| limit_number(bound) < width)
-        {
+        if let Some(width) = least {
             result = format!("{result}.min({width})");
         }
-        if let Some(width) = most
-            && maximum.is_none_or(|bound| limit_number(bound) > width)
-        {
+        if let Some(width) = most {
             result = format!("{result}.max({width})");
         }
         if let Some(min) = minimum {

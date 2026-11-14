@@ -2089,7 +2089,7 @@ fn test_untagged_numeric_slot_json_schema() {
 #[cfg(feature = "zod")]
 fn test_untagged_numeric_slot_zod() {
     let zod = CountArm::zod_schema();
-    let member = "z.union([z.number().int().min(1, { error: (issue) => `too small: minimum is 1, \
+    let member = "z.union([z.number().int().min(0).max(4294967295).min(1, { error: (issue) => `too small: minimum is 1, \
                   got ${String(issue.input)}` }).max(10, { error: (issue) => `too large: maximum \
                   is 10, got ${String(issue.input)}` }), KnownMimeType$Schema])";
     assert!(zod.contains(member), "Got:\n{zod}");

@@ -23,7 +23,7 @@ pub const STRUCK: &str = r#"{"bells":[{"weight":3},{"weight":4}],"towers":{"nort
 
 /// What each case of [`CASES`] changes in [`STRUCK`]: the dotted place, and the value written
 /// there, `None` taking the key out.
-pub const CASES: [(&str, &str, Option<&str>); 158] = [
+pub const CASES: [(&str, &str, Option<&str>); 162] = [
     ("read whole", "", None),
     ("a key beside a list item", "bells.1.stray", Some("1")),
     ("a key beside a map value", "towers.north.stray", Some("1")),
@@ -88,6 +88,26 @@ pub const CASES: [(&str, &str, Option<&str>); 158] = [
         "a weight above its bound in a flattened member",
         "frame.oak",
         Some("101"),
+    ),
+    (
+        "a number beyond a u32 in a flattened member with a bound",
+        "frame.oak",
+        Some("4294967296"),
+    ),
+    (
+        "a negative number in a flattened member with a bound",
+        "frame.oak",
+        Some("-1"),
+    ),
+    (
+        "a number beyond a u32 in an internal variant with a bound",
+        "turn.arc",
+        Some("4294967296"),
+    ),
+    (
+        "a negative number in an internal variant with a bound",
+        "turn.arc",
+        Some("-1"),
     ),
     ("a key beside a flattened member", "frame.stray", Some("1")),
     ("a number beyond a u32", "strokes", Some("4294967296")),
@@ -431,10 +451,26 @@ pub const CASES: [(&str, &str, Option<&str>); 158] = [
 /// key of an integer type it reads as a float; and it names the variant under a member for a
 /// string naming a variant that carries data and for a value under a plain enum's key. Every
 /// emitted read names the place the Rust dispatcher names.
-pub const NAMED_BY_SERDE: [(&str, &str); 32] = [
+pub const NAMED_BY_SERDE: [(&str, &str); 36] = [
     ("a text for a number in a flattened member", "frame"),
     ("a number beyond a u32 in a flattened member", "frame"),
     ("a negative number in a flattened member", "frame"),
+    (
+        "a number beyond a u32 in a flattened member with a bound",
+        "frame",
+    ),
+    (
+        "a negative number in a flattened member with a bound",
+        "frame",
+    ),
+    (
+        "a number beyond a u32 in an internal variant with a bound",
+        "turn",
+    ),
+    (
+        "a negative number in an internal variant with a bound",
+        "turn",
+    ),
     (
         "a flattened member without its nested member",
         "frame.inner",

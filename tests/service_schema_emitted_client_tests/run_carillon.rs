@@ -476,8 +476,7 @@ async function main() {
   const refused = unsent.ok
     ? "read"
     : { kind: unsent.error.fault.kind, field: unsent.error.fault.field, detail: unsent.error.fault.detail, sent };
-  console.log(JSON.stringify({ attached, read, refused }));
-  process.exit(0);
+  process.stdout.write(JSON.stringify({ attached, read, refused }) + "\n", () => process.exit(0));
 }
 main().catch((error) => { console.error(error); process.exit(1); });
 "#;

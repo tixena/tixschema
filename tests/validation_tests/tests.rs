@@ -3550,7 +3550,7 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
     let code = "z.string().check(z.regex(/^[A-Z]{3}$/, { error: \"does not match pattern \
                 '^[A-Z]{3}$'\" })),";
     let pair = "z.tuple([z.string().min(2, { error: (issue) => `too short: minimum length is 2, \
-                got ${[...String(issue.input)].length}` }), z.number().int().max(4294967295).min(1, { error: (issue) \
+                got ${[...String(issue.input)].length}` }), z.number().int().min(0).max(4294967295).min(1, { error: (issue) \
                 => `too small: minimum is 1, got ${String(issue.input)}` })]),";
     let external = ZodExternal::zod_schema();
     let adjacent = ZodAdjacent::zod_schema();
