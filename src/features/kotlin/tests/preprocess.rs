@@ -421,12 +421,13 @@ fn a_member_the_plugin_reads_is_read_through_a_serializer_of_its_own() {
     };
     let kotlin = plain(&chit);
     let opens = format!(
-        "{} data class ChitDraft(@Serializable(with = ChitCodePreprocess::class) val code: String, \
-         @Serializable(with = ChitNotePreprocess::class) val note: String? = null, \
+        "{} {} data class ChitDraft(@Serializable(with = ChitCodePreprocess::class) val code: \
+         String, @Serializable(with = ChitNotePreprocess::class) val note: String? = null, \
          @Serializable(with = ChitParcelsPreprocess::class) val parcels: List<Parcel>, val \
          plain: String, @SerialName(\"spare_parcel\") @Serializable(with = \
          ChitSpareParcelPreprocess::class) val spareParcel: Parcel? = null) {{ fun \
          validationIssues(): ",
+        held("KotlinHeld1", "Parcel"),
         kept_draft("Chit")
     );
     assert!(kotlin.starts_with(&opens), "got: {kotlin}");
@@ -463,14 +464,14 @@ fn a_member_the_plugin_reads_is_read_through_a_serializer_of_its_own() {
         member(
             "ChitParcelsPreprocess",
             "List<Parcel>",
-            "ListSerializer(ParcelUnjudged)",
+            "ListSerializer(KotlinHeld1)",
             "unwrapped(element)",
             "parcels"
         ),
         member(
             "ChitSpareParcelPreprocess",
             "Parcel?",
-            "ParcelUnjudged.nullable",
+            "KotlinHeld1.nullable",
             "unwrapped(element)",
             "spare_parcel"
         )
@@ -586,7 +587,7 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
          ?: throw SerializationException(\"missing field `dock`\"))), \"dock\", \".dock\");",
         "val note = obj[\"note\"]?.let { kotlinSchemaDecoded(input.json, serializer<String?>(), \
          lowered(trimmed(it)), \"note\", \".note\") };",
-        "val parcel = kotlinSchemaFlattened { input.json.decodeFromString(ParcelUnjudged, \
+        "val parcel = kotlinSchemaFlattened { input.json.decodeFromString(KotlinHeld1, \
          JsonObject(obj.filterKeys { it in setOf(\"label\") }).toString()) };",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
@@ -638,17 +639,17 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     };
     let kotlin = plain(&fastened);
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
-    let whole = "val base = kotlinSchemaFlattened { input.json.decodeFromString(BaseUnjudged, \
+    let whole = "val base = kotlinSchemaFlattened { input.json.decodeFromString(KotlinHeld1, \
                  JsonObject(obj.filterKeys { it in setOf(\"name\") }).toString()) };";
     for held in [
         whole.to_owned(),
         format!(
-            "val keyed = kotlinSchemaFlattened {{ lenient.decodeFromString(KeyedUnjudged, \
+            "val keyed = kotlinSchemaFlattened {{ lenient.decodeFromString(KotlinHeld2, \
              {rest}.toString()) }};"
         ),
         format!(
-            "val later = kotlinSchemaFlattened {{ lenient.decodeFromString(serializer<Later>(), \
-             kotlinSchemaFlat(serializer<Later>(), {rest}).toString()) }};"
+            "val later = kotlinSchemaFlattened {{ lenient.decodeFromString(KotlinHeld3, \
+             kotlinSchemaFlat(KotlinHeld3, {rest}).toString()) }};"
         ),
         whole.replace("val base", "val again"),
     ] {
@@ -665,7 +666,7 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let around = plain(&outer);
     assert!(
         around.contains(
-            "val fastened = kotlinSchemaFlattened { lenient.decodeFromString(FastenedUnjudged, \
+            "val fastened = kotlinSchemaFlattened { lenient.decodeFromString(KotlinHeld4, \
              JsonObject(obj - setOf(\"yard\")).toString()) };"
         ),
         "got: {around}"
@@ -681,7 +682,7 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let named_by_the_member = plain(&girdled);
     assert!(
         named_by_the_member.contains(
-            "val base = kotlinSchemaFlattened { lenient.decodeFromString(BaseUnjudged, \
+            "val base = kotlinSchemaFlattened { lenient.decodeFromString(KotlinHeld5, \
              withItsKeys(JsonObject(obj - setOf(\"dock\"))).toString()) };"
         ),
         "got: {named_by_the_member}"
@@ -759,7 +760,7 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
     };
     let lift = definition(enum_kotlin_tokens(&under_a_tag, &plain_args()));
     for held in [
-        "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, ParcelUnjudged, \
+        "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, KotlinHeld1, \
          unwrapped(JsonObject(obj - \"kind\")), \"Boxed\", \"\")); "
             .to_owned(),
         "\"Loose\" -> kotlinSchemaFlattened { kotlinSchemaInner(input.json, \"\", \

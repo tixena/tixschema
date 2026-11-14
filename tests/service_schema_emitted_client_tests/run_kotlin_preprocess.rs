@@ -20,7 +20,7 @@ use tixschema::{model_schema, service_schema};
 use self::packet_client_service_schema::{
     packet_client_service_fault_fields_kotlin, packet_client_service_fault_kind_kotlin,
 };
-use super::runtime::{ran_kotlin, refused_by_kotlinc};
+use super::runtime::{held_through, ran_kotlin, refused_by_kotlinc};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.coroutines.flow.*\n\
@@ -1491,10 +1491,11 @@ fn a_variant_under_a_tag_alone_reads_what_it_holds_through_its_functions() {
     );
     let emitted = handoff_kotlin::kotlin_definition();
     assert!(
-        emitted.contains(
+        emitted.contains(&format!(
             "@SerialName(\"Held\") @Serializable data class HandoffHeld(@Serializable(with = \
-             PacketUnjudged::class) val value: Packet) : Handoff"
-        ),
+             {}::class) val value: Packet) : Handoff",
+            held_through(&emitted, "Packet")
+        )),
         "got: {emitted}"
     );
 }

@@ -254,7 +254,7 @@ mod on_a_mobile_surface {
                  validationIssues(): List<String> = draft.validationIssues(); fun \
                  kotlinSchemaChecked(): TaggedMobileDraft = draft; companion object {{ internal fun \
                  checked(draft: TaggedMobileDraft): TaggedMobile = \
-                 TaggedMobile(draft); fun of(name: String): TaggedMobile = TaggedMobileDraft(name = name).validate() }} }} @OptIn(ExperimentalSerializationApi::class) private \
+                 TaggedMobile(draft); internal fun kotlinSchemaUnjudged(own: KSerializer<TaggedMobile>): KSerializer<TaggedMobile> = TaggedMobileUnjudged; fun of(name: String): TaggedMobile = TaggedMobileDraft(name = name).validate() }} }} @OptIn(ExperimentalSerializationApi::class) private \
                  object TaggedMobileUnjudged : KSerializer<TaggedMobile> {{ override val \
                  descriptor: SerialDescriptor = TaggedMobileDraftUnjudged.descriptor; override fun \
                  serialize(encoder: Encoder, value: TaggedMobile) = \

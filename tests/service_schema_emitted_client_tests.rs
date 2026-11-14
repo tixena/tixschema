@@ -1672,6 +1672,12 @@ mod run_kotlin_plain_enum_reads;
 #[path = "service_schema_emitted_client_tests/run_kotlin_check_order.rs"]
 mod run_kotlin_check_order;
 
+/// A holder that reads each model it holds unjudged, whatever the order the model is declared in,
+/// and in whatever crate.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_held_models.rs"]
+mod run_kotlin_held_models;
+
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.
 #[cfg(test)]

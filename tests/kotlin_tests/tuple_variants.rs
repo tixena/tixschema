@@ -404,8 +404,8 @@ fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
 fn reads_the_model_unjudged(definition: &str, wrapper: &str) {
     for held in [
         format!("data class {wrapper}(val slot0: Stencil, val slot1: UByte)"),
-        "add(output.json.encodeToJsonElement(StencilUnjudged, value.slot0))".to_owned(),
-        "kotlinSchemaDecoded(input.json, StencilUnjudged, array[0], \"0\", \"[0]\")".to_owned(),
+        "add(output.json.encodeToJsonElement(KotlinHeld1, value.slot0))".to_owned(),
+        "kotlinSchemaDecoded(input.json, KotlinHeld1, array[0], \"0\", \"[0]\")".to_owned(),
     ] {
         assert!(definition.contains(&held), "no `{held}` in: {definition}");
     }

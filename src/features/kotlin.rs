@@ -680,6 +680,10 @@ fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs
 /// bounds need this filled in separately, as `process_field` does for the other three surfaces.
 fn field_def_with_prop_meta(name: &str, field: &Field, args: &KotlinArgs<'_>) -> FieldDef {
     let mut field_def = kotlin_field_def(name, &field.ty);
+    read::note_written(&field.ty);
+    if field.attrs.iter().any(|attr| attr.path().is_ident("cfg")) {
+        read::note_uncertain(&field_def);
+    }
     field_def.model_schema_prop_meta = Some((args.member_meta)(field));
     field_def
 }
@@ -1935,12 +1939,20 @@ fn result_serializer(
 /// range's class, a `Result`'s interface and the serializer of a text of one form and of an array
 /// of one length among them, each once: the next item numbers its own.
 pub fn kotlin_declarations() -> Vec<String> {
+    let asked = kotlin_declarations_asking();
+    read::held_resolved(asked)
+}
+
+/// [`kotlin_declarations`] where the read of a held type that may have no companion is still the
+/// placeholder [`read::held_filled`] fills.
+fn kotlin_declarations_asking() -> Vec<String> {
     KOTLIN_RANGES.with(|ranges| ranges.borrow_mut().clear());
     KOTLIN_RESULTS.with(|results| results.borrow_mut().clear());
     KOTLIN_TUPLES.with(|tuples| tuples.borrow_mut().clear());
     KOTLIN_TUPLE_NAMING.with(|held| held.set(TupleNaming::Counted));
     texts::clear();
     arrays::clear();
+    read::clear();
     KOTLIN_TUPLE_AUX.with(RefCell::take)
 }
 
@@ -1979,7 +1991,7 @@ fn kotlin_module_tokens(
     kotlin_source: &str,
     defaults: &SerdeDefaults,
 ) -> TokenStream {
-    let full_source = kotlin_declarations()
+    let full_source = kotlin_declarations_asking()
         .into_iter()
         .chain(once(kotlin_source.to_owned()))
         .chain(preprocess::serializers())
@@ -1989,7 +2001,11 @@ fn kotlin_module_tokens(
     let holder = defaults.holder();
     let written = proc_macro2::Ident::new("written", proc_macro2::Span::call_site());
     let escaped = [('\\', "\\\\"), ('"', "\\\""), ('$', "\\$")];
-    let (beside, keys) = unmet_keys_filled(&written, &module_ident, kotlin_quoted, '"', &escaped);
+    let (keys_beside, mut keys) =
+        unmet_keys_filled(&written, &module_ident, kotlin_quoted, '"', &escaped);
+    let (held_inside, held_beside, held_statements) = read::held_filled(&written, &module_ident);
+    keys.extend(held_statements);
+    let beside = quote! { #keys_beside #held_beside };
     if holder.is_empty() && keys.is_empty() {
         return quote! {
             pub mod #module_ident {
@@ -2009,6 +2025,7 @@ fn kotlin_module_tokens(
     quote! {
         pub mod #module_ident {
             #holder
+            #held_inside
 
             pub fn kotlin_definition() -> ::std::string::String {
                 let mut #written = ::std::string::String::from(#full_source);
@@ -3278,8 +3295,9 @@ fn brand_factory(
     format!(
         "companion object {{ fun {declared}of(value: {value_type}): {export_name}{generic_params} \
          {{ val read = {export_name}{generic_params}(value); val violations = read.validate(); \
-         if (violations.isNotEmpty()) throw {}; return read }} }}",
-        read::JUDGED
+         if (violations.isNotEmpty()) throw {}; return read }}; {} }}",
+        read::JUDGED,
+        read::unjudged_member(export_name, generic_params, type_parameters, false)
     )
 }
 
@@ -3668,7 +3686,7 @@ fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream
         if valid::drafted() {
             validate::note_model(&rust_ident);
         } else {
-            validate::note_plain_enum(&rust_ident, !args.check.is_empty());
+            validate::note_plain_enum(&rust_ident);
         }
         plain_enum_kotlin_source(item_enum, &export_name, args)
     } else {

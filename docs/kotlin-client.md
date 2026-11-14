@@ -635,11 +635,25 @@ the consumer's view; this is what a change has to keep.
   and `member_serializer` composes the serializer where the emitter writes the read. What a brand
   holds, a type argument and a member with a bound of its own on a brand are read by the type's
   own serializer.
-- **A holder names only a serializer the emitter has written.** `reads_unjudged` answers for a
-  type written above. A type declared below its holder, an alias and a type of the consumer's are
-  read by their own serializer and judge themselves as they are read: an annotation names a class,
-  and no fallback stands in for one. Rust reads a model declared below unjudged, so the two differ
-  there, and `run_kotlin_read.rs` pins the Kotlin text.
+- **A holder asks each type it holds for its unjudged serializer, and never names one.**
+  `unjudged_of` answers for every type but an alias written above (`validate::is_alias`): a
+  private serializer, `KotlinHeld{N}`, declared once per item by `held_unjudged`, which an
+  annotation can name as the class it needs. It reads through the held type's companion,
+  `Type.kotlinSchemaUnjudged(serializer<Type>())`, and a type written with a type argument passes
+  the serializer of each argument besides. `unjudged_member` writes that member into the companion
+  of each valid class (`valid_class`) and of each brand (`brand_factory`), where it answers the
+  type's `{Type}Unjudged`. A type that has none, an undrafted type among them, answers its own
+  serializer through `HELD_FALLBACK`, a private extension in the serializer's body: a member is
+  found ahead of an extension. A held name may be a `typealias` of a list or of a map, with or
+  without a parameter, or a type of the consumer's, which has no companion to name: the read is a
+  placeholder that `kotlin_definition()` fills (`held_filled`) from the hidden
+  `__TIXSCHEMA_MODELLED` constant of the type's path, which only a `#[model_schema]` type
+  publishes, read at the type arguments the member writes (`note_written`), with the companion's
+  read or with the type's own serializer. A member under a `cfg`, and a type argument that is a
+  type parameter of the holder, cannot be asked and keep the companion's read. The order the types
+  are declared in, and the crate each is in, decide nothing, and `run_kotlin_held_models.rs` holds
+  the messages of a holder in each layout to Rust's and compiles a holder of an alias of a list,
+  of a map and of a list with a parameter in two.
 - **A tuple a `validate()` walks reads its positions unjudged, by its walked wrapper wherever the
   emitter reads it.** `tuple_wrapper_typename` takes `walked`: `annotated_base` and
   `unjudged_serializer` ask for the wrapper of a walked tuple, at any depth of the member, and

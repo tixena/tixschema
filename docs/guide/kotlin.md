@@ -47,7 +47,7 @@ data class Parcel private constructor(val draft: ParcelDraft) {
   val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
   fun validationIssues(): List<String> = draft.validationIssues();
   fun kotlinSchemaChecked(): ParcelDraft = draft;
-  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft); fun of(label: String, itemCodeList: List<String>, fragileItemCodes: List<String>): Parcel = ParcelDraft(label = label, itemCodeList = itemCodeList, fragileItemCodes = fragileItemCodes).validate() }
+  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft); internal fun kotlinSchemaUnjudged(own: KSerializer<Parcel>): KSerializer<Parcel> = ParcelUnjudged; fun of(label: String, itemCodeList: List<String>, fragileItemCodes: List<String>): Parcel = ParcelDraft(label = label, itemCodeList = itemCodeList, fragileItemCodes = fragileItemCodes).validate() }
 }
 @OptIn(ExperimentalSerializationApi::class)
 private object ParcelUnjudged : KSerializer<Parcel> {
@@ -73,8 +73,15 @@ object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   }
 }
 
+private object KotlinHeld1 : KSerializer<Parcel> {
+  private fun <KotlinSchemaCompanion, KotlinSchemaHeld> KotlinSchemaCompanion.kotlinSchemaUnjudged(own: KSerializer<KotlinSchemaHeld>, vararg arguments: KSerializer<*>): KSerializer<KotlinSchemaHeld> = own;
+  private val held: KSerializer<Parcel> = Parcel.kotlinSchemaUnjudged(serializer<Parcel>());
+  override val descriptor: SerialDescriptor = held.descriptor;
+  override fun serialize(encoder: Encoder, value: Parcel) = held.serialize(encoder, value);
+  override fun deserialize(decoder: Decoder): Parcel = held.deserialize(decoder)
+}
 @OptIn(ExperimentalSerializationApi::class) @Serializable(with = ManifestDraftUnjudged::class) @KeepGeneratedSerializer
-data class ManifestDraft(@Serializable(with = ParcelUnjudged::class) val parcel: Parcel) {
+data class ManifestDraft(@Serializable(with = KotlinHeld1::class) val parcel: Parcel) {
   fun validationIssues(): List<String> {
     val violations = mutableListOf<String>();
     violations.addAll(parcel.validationIssues().map { kotlinSchemaUnder("parcel", it) });
@@ -97,7 +104,7 @@ data class Manifest private constructor(val draft: ManifestDraft) {
   val parcel: Parcel get() = draft.parcel;
   fun validationIssues(): List<String> = draft.validationIssues();
   fun kotlinSchemaChecked(): ManifestDraft = draft;
-  companion object { internal fun checked(draft: ManifestDraft): Manifest = Manifest(draft); fun of(parcel: Parcel): Manifest = ManifestDraft(parcel = parcel).validate() }
+  companion object { internal fun checked(draft: ManifestDraft): Manifest = Manifest(draft); internal fun kotlinSchemaUnjudged(own: KSerializer<Manifest>): KSerializer<Manifest> = ManifestUnjudged; fun of(parcel: Parcel): Manifest = ManifestDraft(parcel = parcel).validate() }
 }
 @OptIn(ExperimentalSerializationApi::class)
 private object ManifestUnjudged : KSerializer<Manifest> {
@@ -260,11 +267,11 @@ Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCo
 
 | | What it reads | Who names it |
 |---|---|---|
-| `{Type}Unjudged` | the payload, with no judgement, into the valid class | a holder, for each model it holds: `private` to the file the emitted types are joined into |
+| `{Type}Unjudged` | the payload, with no judgement, into the valid class | the type's own companion, `Parcel.kotlinSchemaUnjudged(...)`, which a holder asks: `private` to the file the emitted types are joined into |
 | `{Type}Serializer` | through the first, and then throws what the draft's `validationIssues()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
 | `{Type}DraftUnjudged` | the payload, with no judgement, into the draft | the draft: `@Serializable(with = ParcelDraftUnjudged::class)`, and you, to read a value that breaks a rule |
 
-All write the same payload, and writing judges nothing: a broken draft built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`. The type's own serializer is a function too: called, `ParcelSerializer()` answers `ParcelUnjudged`, which is how a read tixschema writes reaches the unjudged serializer of a type it holds but cannot name, one declared below it.
+All write the same payload, and writing judges nothing: a broken draft built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`. The type's own serializer is a function too: called, `ParcelSerializer()` answers `ParcelUnjudged`. A holder reaches the unjudged serializer of a type it holds through the companion of that type, `Parcel.kotlinSchemaUnjudged(serializer<Parcel>())`, which answers it whether the type is declared above or below the holder, or in another crate.
 
 - **A class, the `object` of a unit struct and the value class of a brand keep the serializer the plugin writes**, with `@KeepGeneratedSerializer`, and the unjudged one of a draft is that serializer under a name: `object ParcelDraftUnjudged : KSerializer<ParcelDraft> by ParcelDraft.generatedSerializer()`, left under the plugin's own serial name, `demo.ParcelDraft` under `package demo`. `ParcelUnjudged` reads it, wraps the draft with no check, and rewrites the serial name in a refusal that states it, so a missing key is stated as it was before a model type was a pair: `Field 'label' is required for type with serial name 'demo.Parcel', but it was missing at path: $`, whatever the package. A `MissingFieldException` stays one, and a `SerializationException` stays the one it is. A struct under its own `#[serde(tag = "...")]` holds the tag in a property the plugin reads and writes after the struct's members, so its `{Type}Unjudged` wraps the plugin's serializer, refuses a payload whose tag is not the struct's name (below), and writes the tag ahead of the members, as serde writes it: `#[serde(tag = "kind")] struct Flag { label: String }` is written `{"kind":"Flag","label":"n"}`, alone and flattened into a holder. The annotation is an experimental one of `kotlinx.serialization`, so each such type carries `@OptIn(ExperimentalSerializationApi::class)`. This repository compiles the emitted source with `kotlinx.serialization` 1.11.0, the version `just kotlin-libs` installs.
 - **A struct with a `#[serde(flatten)]` member, a struct with a member serde never writes, a tuple struct and an enum under every tagging** have a serializer tixschema writes, and it is the unjudged one. So does the class of a variant with a `#[serde(flatten)]` member or a member serde never writes, `{Enum}{Variant}Unjudged`, its one serializer: the enum's own serializer judges the variant.
@@ -301,14 +308,14 @@ import kotlinx.serialization.encoding.*
 import kotlinx.serialization.json.*
 ```
 
-**A holder reads what it holds unjudged, and the whole value is judged once**, by the type the read was asked for. It names the unjudged serializer of each model where the model is written, on the property and inside a list, a nullable and a map:
+**A holder reads what it holds unjudged, and the whole value is judged once**, by the type the read was asked for. It names a private serializer, `KotlinHeld1` below, that answers the unjudged serializer of each model through the model's own `Parcel.kotlinSchemaUnjudged(...)`, on the property and inside a list, a nullable and a map. The model need not be written above its holder, or in the same crate:
 
 ```kotlin
 data class Manifest(
-  @Serializable(with = ParcelUnjudged::class) val firstParcel: Parcel,
-  val parcelList: List<@Serializable(with = ParcelUnjudged::class) Parcel>,
-  val parcelsByDock: Map<String, @Serializable(with = ParcelUnjudged::class) Parcel>,
-  @Serializable(with = ParcelUnjudged::class) val spareParcel: Parcel? = null,
+  @Serializable(with = KotlinHeld1::class) val firstParcel: Parcel,
+  val parcelList: List<@Serializable(with = KotlinHeld1::class) Parcel>,
+  val parcelsByDock: Map<String, @Serializable(with = KotlinHeld1::class) Parcel>,
+  @Serializable(with = KotlinHeld1::class) val spareParcel: Parcel? = null,
 )
 ```
 
@@ -329,9 +336,10 @@ A model is read unjudged where the holder's `validate()` asks it for what it rep
 | behind one of the holder's own type parameters | by itself: `Crate<Parcel>` with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList` |
 | by a brand, and by a member that writes a length or a pattern of its own on a brand | by itself: `too short: minimum length is 2, got 1`, where Rust writes the member's key in front, `'code': too short: ...` |
 | by a brand over a text, a number, a date or a `bool` as a map's key | by itself, as the map reads the key, each message under the key's text at the path of the map: `'13': 13 is outside of the scale at path: $.pitches`, where Rust writes `'pitches.13': 13 is outside of the scale`, and over a text `'mute': mute is silent at path: $.tones`; a brand over a brand over a text writes the inner brand's messages the same way, `'mute': mute is silent at path: $.outer` |
-| where its type is declared below its holder, is an alias, or is a type of your own | by itself: the emitter has written no `{Type}Unjudged` under that name when it writes the holder |
+| where its type is an alias declared above its holder | by itself |
+| where its type is a type of your own, or an alias of a list or a map declared below its holder or in another crate | by itself: no `#[model_schema]` expanded it, so it has no `kotlinSchemaUnjudged` to ask, and the holder answers its own serializer |
 
-Rust reads a model declared below its holder unjudged, so the two differ there: a holder that breaks a bound of its own and holds such a model that breaks one answers both messages in Rust, and the model's alone in Kotlin. Declare the model above the type that holds it, and the two answer the same text.
+A holder reads a model declared below it, or in another crate, as it reads one declared above it: each type the emitter writes answers its unjudged serializer through its companion, whatever order the types are written in, and a holder that breaks a bound of its own and holds a model that breaks one answers both messages, as Rust does.
 
 **An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged serializer tries each variant in the order declared and takes the first whose payload decodes and whose bounds hold: each member's own, and the `minLength`, `maxLength` and `pattern` of each brand the variant holds. A [check](checks.md#checks-check) and what a held model reports choose no variant: the variant is chosen first, and the enum's own serializer then refuses the value. A variant with such a bound, and the value class of a brand with one, carry `fun kotlinSchemaBound(): List<String>` for that: what the bounds alone answer.
 
@@ -438,7 +446,7 @@ data class Parcel private constructor(val draft: ParcelDraft) {
   val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
   fun validationIssues(): List<String> = draft.validationIssues();
   fun kotlinSchemaChecked(): ParcelDraft = draft;
-  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft); fun of(label: String, itemCodeList: List<String>, fragileItemCodes: List<String>): Parcel = ParcelDraft(label = label, itemCodeList = itemCodeList, fragileItemCodes = fragileItemCodes).validate() }
+  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft); internal fun kotlinSchemaUnjudged(own: KSerializer<Parcel>): KSerializer<Parcel> = ParcelUnjudged; fun of(label: String, itemCodeList: List<String>, fragileItemCodes: List<String>): Parcel = ParcelDraft(label = label, itemCodeList = itemCodeList, fragileItemCodes = fragileItemCodes).validate() }
 }
 @OptIn(ExperimentalSerializationApi::class)
 private object ParcelUnjudged : KSerializer<Parcel> {

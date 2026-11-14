@@ -23,7 +23,7 @@ use super::read::{
     kept_draft, to_valid, to_valid_free, valid_class_over, valid_unjudged, valid_unjudged_over,
 };
 #[cfg(feature = "serde")]
-use super::read::{valid_class, valid_class_with, with_of};
+use super::read::{held, valid_class, valid_class_with, with_of};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -347,11 +347,12 @@ fn a_class_runs_each_members_rules_and_then_its_own_check() {
     assert_eq!(
         super::tests::renumbered(&manifest_kotlin::kotlin_definition()),
         format!(
-            "{} data class ManifestDraft(@Serializable(with = ParcelUnjudged::class) val parcel: \
+            "{} {} data class ManifestDraft(@Serializable(with = KotlinHeld1::class) val parcel: \
              Parcel) {{ fun validationIssues(): List<String> {{ val violations = \
              mutableListOf<String>(); \
              violations.addAll(parcel.validationIssues().map {{ kotlinSchemaUnder(\"parcel\", \
              it) }}); return violations }}; {UNDER} {} }} {}",
+            held("KotlinHeld1", "Parcel"),
             kept_draft("Manifest"),
             to_valid_free("Manifest", ""),
             drafted_serializers("Manifest", "val parcel: Parcel get() = draft.parcel; ")
@@ -364,10 +365,11 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
     assert_eq!(
         super::tests::renumbered(&shelf_kotlin::kotlin_definition()),
         format!(
-            "{} data class ShelfDraft(val later: Later) {{ fun validationIssues(): List<String> \
-             {{ val violations = mutableListOf<String>(); violations.addAll(later.validationIssues().map \
-             {{ kotlinSchemaUnder(\"later\", it) }}); return violations }}; {FALLBACK}; {UNDER} \
-             {} }} {}",
+            "{} {} data class ShelfDraft(@Serializable(with = KotlinHeld1::class) val later: \
+             Later) {{ fun validationIssues(): List<String> {{ val violations = \
+             mutableListOf<String>(); violations.addAll(later.validationIssues().map {{ \
+             kotlinSchemaUnder(\"later\", it) }}); return violations }}; {FALLBACK}; {UNDER} {} }} {}",
+            held("KotlinHeld1", "Later"),
             kept_draft("Shelf"),
             to_valid_free("Shelf", ""),
             drafted_serializers("Shelf", "val later: Later get() = draft.later; ")
@@ -424,10 +426,13 @@ fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
         super::tests::renumbered(&entry_kotlin::kotlin_definition()),
         format!(
-            "{} data class EntryDraft(val late: LateSlug, @Serializable(with = SlugUnjudged::class) \
-             val slug: Slug, val titled: TitleType) {{ fun validationIssues(): List<String> {{ val \
-             violations = mutableListOf<String>(); {}; {}; {}; {}; {}; {}; return violations }}; \
-             private fun Any?.validationIssues(): List<String> = emptyList(); {LENGTH}; {UNDER} {} }} {}",
+            "{} {} {} data class EntryDraft(@Serializable(with = KotlinHeld1::class) val late: \
+             LateSlug, @Serializable(with = KotlinHeld2::class) val slug: Slug, val titled: \
+             TitleType) {{ fun validationIssues(): List<String> {{ val violations = \
+             mutableListOf<String>(); {}; {}; {}; {}; {}; {}; return violations }}; private fun \
+             Any?.validationIssues(): List<String> = emptyList(); {LENGTH}; {UNDER} {} }} {}",
+            held("KotlinHeld1", "LateSlug"),
+            held("KotlinHeld2", "Slug"),
             kept_draft("Entry"),
             held_statement("late"),
             asked_statement("late", "'late': ", 3),
@@ -670,7 +675,7 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              JsonEncoder; \
              output.encodeJsonElement(buildJsonObject { put(\"id\", \
              output.json.encodeToJsonElement(serializer<String>(), value.id)); \
-             output.json.encodeToJsonElement(StampUnjudged, value.stamp).jsonObject.forEach { (k, \
+             output.json.encodeToJsonElement(KotlinHeld1, value.stamp).jsonObject.forEach { (k, \
              v) -> put(k, v) } }) }; override fun deserialize(decoder: Decoder): AuditDraft { val \
              input = decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
              kotlinSchemaAt(input) { val obj = element.let { it as? JsonObject ?: throw \
@@ -678,7 +683,7 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"id\"] ?: throw \
              SerializationException(\"missing field `id`\")), \"id\", \".id\"); val stampKeys = \
              setOf(\"created_at\", \"updated_at\"); val stamp = kotlinSchemaFlattened { \
-             input.json.decodeFromString(StampUnjudged, JsonObject(obj.filterKeys { it in \
+             input.json.decodeFromString(KotlinHeld1, JsonObject(obj.filterKeys { it in \
              setOf(\"created_at\", \"updated_at\") }).toString()) }; if \
              (!input.json.configuration.ignoreUnknownKeys) (obj - setOf(\"id\") - \
              setOf(\"created_at\", \"updated_at\")).keys.firstOrNull()?.let { throw \
@@ -722,6 +727,10 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
                         "GenericPair",
                         "<T>",
                         "val slot0: T get() = draft.slot0; val slot1: UInt get() = draft.slot1; "
+                    )
+                    .replace(
+                        "internal fun <T> kotlinSchemaUnjudged",
+                        "internal fun <T: Any> kotlinSchemaUnjudged"
                     ),
                     "fun <T> of(slot0: T, slot1: UInt): GenericPair<T> = \
                      GenericPairDraft<T>(slot0, slot1).validate()"
