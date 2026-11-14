@@ -359,7 +359,7 @@ fn every_declared_type_is_constructible() {
         ReferenceDraft::Numbered(1),
     ];
     assert_eq!(references.len(), 2);
-    assert_eq!([GradeDraft::Express, GradeDraft::Standard].len(), 2);
+    assert_eq!([Grade::Express, Grade::Standard].len(), 2);
     assert_eq!([RatingDraft::Express, RatingDraft::Unrated].len(), 2);
     let stamps = [
         StampDraft::Inked {
@@ -661,16 +661,9 @@ fn an_enum_with_no_data_answers_its_checks() {
     let grade = grade_dart::dart_definition();
     assert!(
         grade.contains(
-            "String toJson() => wireValue; List<String> validationIssues() => const []; Grade \
-             validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
-             FormatException(found.join('; ')); return Grade._(this); } Grade toValid() => \
-             Grade._(this); }"
-        ) && grade.ends_with(
-            "List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
-             ==(Object other) => other is Grade && other._draft == _draft; @override int get \
-             hashCode => _draft.hashCode; static Object $thrown(Object thrown) => thrown is \
-             GradeDraft ? thrown.validate() : thrown; }"
-        ),
+            "String toJson() => wireValue; List<String> validationIssues() => const []; static \
+             Object $thrown(Object thrown) => thrown; }"
+        ) && !grade.contains("GradeDraft"),
         "got: {grade}"
     );
     let rating = rating_dart::dart_definition();

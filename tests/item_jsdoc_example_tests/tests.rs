@@ -103,7 +103,7 @@ pub enum DocumentedUntagged {
 
 /// A documented plain enum.
 /// ```rust example
-/// let item = DocumentedSlotDraft::Primary;
+/// let item = DocumentedSlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -238,7 +238,7 @@ pub enum ExampleOnlyVariantHolder {
 pub type ExampleOnlyAlias = u32;
 
 /// ```rust example
-/// let item = ExampleOnlySlotDraft::Primary;
+/// let item = ExampleOnlySlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]

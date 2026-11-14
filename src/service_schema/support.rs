@@ -10,10 +10,34 @@ use super::parse::{
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
-use crate::utils::is_recorded_drafted_unit_struct_type;
+use crate::utils::{is_recorded_drafted_unit_struct_type, is_recorded_undrafted_enum_type};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Ident, Type, parse_quote};
+
+/// How a pattern over the variants and the members of the model type a declaration names is
+/// written: against the type's draft, which its valid type derefs to, or against the type itself
+/// where it has no draft.
+pub struct Matched {
+    path: TokenStream,
+    undrafted: bool,
+}
+
+impl Matched {
+    /// `value`, a place of the declared type, borrowed as what the patterns match.
+    pub fn borrowed(&self, value: &TokenStream) -> TokenStream {
+        if self.undrafted {
+            quote! { &#value }
+        } else {
+            quote! { &*#value }
+        }
+    }
+
+    /// The path the patterns of the type start with.
+    pub const fn path(&self) -> &TokenStream {
+        &self.path
+    }
+}
 
 /// The service's own module, holding everything either half of a service reads and nothing that
 /// belongs to one of them.
@@ -794,14 +818,16 @@ fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
         };
         let error = error_declared_type(binding.error_header_out.len(), raw_error);
         let summary = http_binding_summary(binding);
-        let drafted = draft_type_path(error);
+        let matched = matched_type(error);
+        let drafted = matched.path();
+        let scrutinee = matched.borrowed(&quote! { *reported });
         let arms = binding
             .error_status
             .iter()
             .map(|(variant, code)| quote! { #drafted::#variant { .. } => #code, });
         Some(quote! {
             #[doc = #summary]
-            const _: fn(&#error) -> u16 = |reported| match &**reported {
+            const _: fn(&#error) -> u16 = |reported| match #scrutinee {
                 #(#arms)*
             };
         })
@@ -1166,17 +1192,29 @@ pub fn message_validation_in_scope() -> TokenStream {
     }
 }
 
-/// The draft of the model type `ty` names, which a pattern over the variants and the members of
-/// the declared type is written against: the last segment of its path, with `Draft` after it.
-pub fn draft_type_path(ty: &Type) -> TokenStream {
+/// The type a pattern over the model type `ty` names is written against: the last segment of its
+/// path with `Draft` after it, unless the type is an enum already declared with no draft.
+pub fn matched_type(ty: &Type) -> Matched {
     let Type::Path(path) = ty else {
-        return quote! { #ty };
+        return Matched {
+            path: quote! { #ty },
+            undrafted: false,
+        };
     };
+    if is_recorded_undrafted_enum_type(ty) {
+        return Matched {
+            path: quote! { #path },
+            undrafted: true,
+        };
+    }
     let mut drafted = path.clone();
     if let Some(last) = drafted.path.segments.last_mut() {
         last.ident = format_ident!("{}Draft", last.ident, span = last.ident.span());
     }
-    quote! { #drafted }
+    Matched {
+        path: quote! { #drafted },
+        undrafted: false,
+    }
 }
 
 /// The value of the unit type `ty`: `()`, or a recorded unit struct.

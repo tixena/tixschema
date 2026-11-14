@@ -281,7 +281,7 @@ fn the_analyzer_passes_a_second_library_that_builds_through_the_draft() {
 
 #[test]
 fn a_second_library_cannot_build_a_valid_plain_enum() {
-    let user = "import 'tiers.dart';\n\nvoid main() {\n  CargoTier(CargoTierDraft.standard);\n  const CargoTier(CargoTierDraft.standard);\n  CargoTier._(CargoTierDraft.standard);\n  CargoTier.standard;\n  final CargoSpeed fast = CargoSpeedDraft.fast;\n}\n";
+    let user = "import 'tiers.dart';\n\nvoid main() {\n  CargoTier(CargoTierDraft.standard);\n  const CargoTier(CargoTierDraft.standard);\n  CargoTier._(CargoTierDraft.standard);\n  CargoTier.standard;\n}\n";
     let Some((clean, said)) = dart_files(
         "valid-tier",
         &["analyze"],
@@ -296,7 +296,6 @@ fn a_second_library_cannot_build_a_valid_plain_enum() {
         "The class 'CargoTier' doesn't have an unnamed constant constructor.",
         "The class 'CargoTier' doesn't have a constructor named '_'.",
         "The getter 'standard' isn't defined for the type 'CargoTier'.",
-        "A value of type 'CargoSpeedDraft' can't be assigned to a variable of type 'CargoSpeed'.",
     ] {
         assert!(said.contains(printed), "no `{printed}` in: {said}");
     }

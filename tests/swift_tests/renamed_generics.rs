@@ -322,5 +322,5 @@ fn an_item_that_declares_no_parameter_republishes_its_ident_as_it_did() {
         }),
         r#"{"kind":"Opening","line":"a"}"#
     );
-    assert_eq!(read_back(&GenreDraft::Poetry), r#""Poetry""#);
+    assert_eq!(read_back(&Genre::Poetry), r#""Poetry""#);
 }

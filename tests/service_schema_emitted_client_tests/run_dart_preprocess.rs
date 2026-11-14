@@ -28,7 +28,7 @@ use super::preprocess_models::{
 };
 use super::run_dart_validate::{dart, from_heading, from_until, module};
 use super::runtime::ran;
-use super::tests::{ShelfError, ShelfErrorDraft, shelf_error_dart};
+use super::tests::{ShelfError, shelf_error_dart};
 
 /// The functions of the counted tally, each counting its calls under the name of what it
 /// corrects, and what prints the counts of one read.

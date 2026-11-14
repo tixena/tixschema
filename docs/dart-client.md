@@ -270,7 +270,8 @@ consumer's view; this is what a change has to keep.
   bound alone. So a brand's bound chooses a variant whether the brand is declared above the
   enum, below it or in another file, and nothing a check or a model reports does. A variant
   with nothing to ask keeps `try { return ...; } catch (_) {}`.
-- **A plain enum** is `plain_enum_dart_source`: the enhanced enum `{Name}Draft`, whose static
+- **A plain enum with no `check`** is `undrafted_plain_enum_dart_source`: the enhanced enum `{Name}` alone, with its `fromJson`, `fromJsonUnjudged`, `toJson` and `validationIssues()`.
+- **A plain enum that names a `check`** is `plain_enum_dart_source`: the enhanced enum `{Name}Draft`, whose static
   `fromJson` is the unjudged read and which declares `validationIssues()` and `validate_method`, and
   the `valid_class` `{Name}` with `Pair::by_draft`, which adds `operator ==` and `hashCode` over the
   draft. `{Name}.fromJson` judges through `judged_body_returning`, and `{Name}.fromJsonUnjudged`, the

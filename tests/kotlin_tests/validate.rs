@@ -13,7 +13,7 @@ use super::kotlin_inner::INNER;
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
-use super::read::paired_plain_enum;
+use super::read::plain_enum;
 #[cfg(feature = "serde")]
 use super::read::{
     DECODED, brand_companion, brand_serializers, kept_inline, mapped, mapped_over_a_brand,
@@ -559,7 +559,7 @@ fn every_shape_carries_validate() {
 fn a_plain_enum_carries_validate() {
     assert_eq!(
         super::tests::renumbered(&status_kotlin::kotlin_definition()),
-        paired_plain_enum(
+        plain_enum(
             "Status",
             "@SerialName(\"active\") Active, @SerialName(\"inactive\") Inactive, \
              @SerialName(\"pending\") Pending",

@@ -25,7 +25,7 @@ use super::run_dart_validate::{
     texts, unlabelled,
 };
 use super::runtime::ran;
-use super::tests::{ShelfError, ShelfErrorDraft, shelf_error_dart};
+use super::tests::{ShelfError, shelf_error_dart};
 
 /// The class the emitter writes for a struct whose one field is named after the unjudged read,
 /// which `src/features/dart/tests.rs` holds the emitter to.
@@ -666,10 +666,10 @@ fn a_member_named_after_the_unjudged_read_builds_and_keeps_its_key() {
     let entry = "void main() {\n  final ledger = \
                  Ledger.fromJson(jsonDecode(r'{\"fromJsonUnjudged\":true}'));\n  \
                  print(ledger.fromJsonUnjudged);\n  print(jsonEncode(ledger.toJson()));\n  \
-                 print(Stage.fromJson('FromJsonUnjudged') == StageDraft.fromJsonUnjudged_.validate());\n  \
+                 print(Stage.fromJson('FromJsonUnjudged') == Stage.fromJsonUnjudged_);\n  \
                  print(jsonEncode(Stage.fromJsonUnjudged('FromJsonUnjudged').toJson()));\n}\n";
     assert_eq!(
-        serde_json::to_string(&[StageDraft::FromJsonUnjudged, StageDraft::Judged]).unwrap(),
+        serde_json::to_string(&[Stage::FromJsonUnjudged, Stage::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#,
         "the values serde writes"
     );

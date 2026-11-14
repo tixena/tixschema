@@ -107,7 +107,7 @@ fn an_all_unit_adjacently_tagged_enum_is_written_as_a_tagged_object() {
 #[test]
 fn an_all_unit_enum_naming_no_tag_is_written_as_the_bare_variant_name() {
     assert_eq!(
-        serde_json::to_string(&ExternalBalanceErrorDraft::DbError).unwrap(),
+        serde_json::to_string(&ExternalBalanceError::DbError).unwrap(),
         r#""db-error""#
     );
 }
@@ -169,12 +169,9 @@ fn the_typescript_union_carries_an_adjacent_tag_too() {
 fn an_all_unit_enum_naming_no_tag_still_publishes_the_string_union() {
     assert_eq!(
         ts_shape(&ExternalBalanceError::ts_definition()),
-        "export type ExternalBalanceErrorDraft =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
-         export type ExternalBalanceError = Readonly<ExternalBalanceErrorDraft> & $brand<\"ExternalBalanceError\">;\n\
-         export const ExternalBalanceError = {\n  DbError: \"db-error\" as ExternalBalanceError,\n  \
-         InsufficientBalance: \"insufficient-balance\" as ExternalBalanceError,\n} as const;\n\
-         export function ExternalBalanceErrorDraft$valid(draft: ExternalBalanceErrorDraft): ExternalBalanceError {\n  \
-         return draft as unknown as ExternalBalanceError;\n}\n\
+        "export type ExternalBalanceError =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
+         export const ExternalBalanceError = {\n  DbError: \"db-error\",\n  \
+         InsufficientBalance: \"insufficient-balance\",\n} as const satisfies Record<string, ExternalBalanceError>;\n\
          export function ExternalBalanceError$Variant(value: unknown): string {\n  \
          switch (value) {\n    \
          case \"db-error\": return \"DbError\";\n    \

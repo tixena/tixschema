@@ -2,7 +2,6 @@
 //! and `{Type}Serializer`, the type's own, which reads through the first and judges the value
 //! with `validate()`. The text is the same in a build with a schema surface and in one with none.
 
-use core::fmt::Write as _;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -671,34 +670,18 @@ fn seal(text: &str) -> Seal {
     SealDraft(text.to_owned()).into()
 }
 
-/// The plain enum `named`: its draft, declared with `members` and read by `{Type}DraftUnjudged`
-/// over `variants` and `correction`, then the valid class over it with its two serializers.
-pub fn paired_plain_enum(
+/// The plain enum `named` that names no check: declared as written with its members and
+/// read by `{Type}Unjudged` over `variants` and `correction`.
+pub fn plain_enum(
     named: &str,
     members: &str,
     variants: &[(&str, &str, &[&str])],
     correction: &str,
 ) -> String {
     format!(
-        "{} enum class {named}Draft {{ {members}; {NO_ISSUES} {} }} {} {} {} {}",
-        kept_draft(named),
-        to_valid_free(named, ""),
-        super::kotlin_plain_enum::plain_enum_unjudged(
-            &format!("{named}Draft"),
-            variants,
-            correction
-        ),
-        valid_class_with(
-            named,
-            "",
-            &variants
-                .iter()
-                .fold(String::new(), |mut acc, (variant, _, _)| {
-                    write!(acc, "; val {variant} = checked({named}Draft.{variant})").unwrap();
-                    acc
-                })
-        ),
-        valid_unjudged(named),
-        judged_valid(named)
+        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = {named}Unjudged::class) \
+         @KeepGeneratedSerializer enum class {named} {{ {members}; fun validate(): List<String> = \
+         emptyList(); fun validationIssues(): List<String> = validate() }} {}",
+        super::kotlin_plain_enum::plain_enum_unjudged(named, variants, correction),
     )
 }

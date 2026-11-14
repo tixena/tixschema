@@ -40,7 +40,7 @@ do {
   print(context.debugDescription)
 }
 print(try JSONDecoder().decode(Leg.self, from: Data(#"{"kind":"Voyage"}"#.utf8)).draft)
-print(try JSONDecoder().decode(Lane.self, from: Data(#""Air""#.utf8)).draft)
+print(try JSONDecoder().decode(Lane.self, from: Data(#""Air""#.utf8)))
 print(try JSONDecoder().decode(Tag.self, from: Data(#""x""#.utf8)).value)
 print(try JSONDecoder().decode(Crate<String>.self, from: Data(#"{"content":"x"}"#.utf8)).content)
 let holder = try JSONDecoder().decode(Holder.self, from: Data(#"{"draft":7}"#.utf8))
@@ -159,7 +159,7 @@ func build() throws -> Shipment {
 }
 func read(_ shipment: Shipment) -> UInt32 { shipment.parcelCount }
 func back(_ shipment: Shipment) -> ShipmentDraft { shipment.draft }
-func lane() throws -> Lane { try LaneDraft.air.validate() }
+func lane() -> Lane { Lane.air }
 func leg() throws -> Leg { try LegDraft.voyage.validate() }
 func tag() throws -> Tag { try TagDraft(value: \"x\").validate() }
 func crate() throws -> Crate<String> { try CrateDraft(content: \"x\").validate() }
@@ -249,7 +249,7 @@ fn validate_throws_the_messages_the_read_throws() {
     let crated = CrateDraft {
         content: "x".to_owned(),
     };
-    let lane = LaneDraft::Air;
+    let lane = Lane::Air;
     let leg = LegDraft::Voyage;
     assert_eq!(
         run.stdout.lines().collect::<Vec<_>>(),

@@ -1,23 +1,4 @@
 error: constant of non-structural type `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` in a pattern
-  --> tests/valid_constant_refusals/match_without_equality.rs:16:9
-   |
- 7 | #[model_schema()]
-   | -----------------
-   | |
-   | `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` must be annotated with `#[derive(PartialEq)]` to be usable in patterns
-   | constant defined here
-...
-16 |         SessionRole::DntiTechnician => 1,
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ constant of non-structural type
-   |
-   = note: see https://doc.rust-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
-help: add a condition to the match arm checking for equality
-   |
-16 -         SessionRole::DntiTechnician => 1,
-16 +         binding if binding == SessionRole::DntiTechnician => 1,
-   |
-
-error: constant of non-structural type `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` in a pattern
   --> tests/valid_constant_refusals/match_without_equality.rs:17:9
    |
  7 | #[model_schema()]
@@ -26,12 +7,31 @@ error: constant of non-structural type `__tixschema_valid_session_role_schema::S
    | `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` must be annotated with `#[derive(PartialEq)]` to be usable in patterns
    | constant defined here
 ...
-17 |         SessionRole::Auditor => 2,
+17 |         SessionRole::DntiTechnician => 1,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ constant of non-structural type
+   |
+   = note: see https://doc.rust-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
+help: add a condition to the match arm checking for equality
+   |
+17 -         SessionRole::DntiTechnician => 1,
+17 +         binding if binding == SessionRole::DntiTechnician => 1,
+   |
+
+error: constant of non-structural type `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` in a pattern
+  --> tests/valid_constant_refusals/match_without_equality.rs:18:9
+   |
+ 7 | #[model_schema()]
+   | -----------------
+   | |
+   | `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` must be annotated with `#[derive(PartialEq)]` to be usable in patterns
+   | constant defined here
+...
+18 |         SessionRole::Auditor => 2,
    |         ^^^^^^^^^^^^^^^^^^^^ constant of non-structural type
    |
    = note: see https://doc.rust-lang.org/stable/std/marker/trait.StructuralPartialEq.html for details
 help: add a condition to the match arm checking for equality
    |
-17 -         SessionRole::Auditor => 2,
-17 +         binding if binding == SessionRole::Auditor => 2,
+18 -         SessionRole::Auditor => 2,
+18 +         binding if binding == SessionRole::Auditor => 2,
    |

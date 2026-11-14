@@ -28,9 +28,8 @@ use super::swift_read_models::{
 };
 use super::swift_validate_models::{
     Base, BaseDraft, BerthDraft, CargoDraft, ClosedDockDraft, Code, ConsignmentDraft, CrateDraft,
-    Docket, FreightDraft, GradeDraft, HaulDraft, InspectionDraft, LaterCode, LedgerDraft,
-    LiftDraft, NameplateDraft, Parcel, SealedCode, Title, Waybill, WaybillDraft, YardDraft,
-    parcel_swift,
+    Docket, FreightDraft, Grade, HaulDraft, InspectionDraft, LaterCode, LedgerDraft, LiftDraft,
+    NameplateDraft, Parcel, SealedCode, Title, Waybill, WaybillDraft, YardDraft, parcel_swift,
 };
 use super::tests::poll_once;
 
@@ -534,10 +533,7 @@ fn struct_rows() -> Vec<Row> {
     let unlabelled = depot(&broken, "").into_draft();
     let kept = depot(&|| package("A", "ab"), "home").into_draft();
     let yard = YardDraft {
-        by_grade: BTreeMap::from([
-            (GradeDraft::Standard.validate().unwrap(), broken()),
-            (GradeDraft::Express.validate().unwrap(), broken()),
-        ]),
+        by_grade: BTreeMap::from([(Grade::Standard, broken()), (Grade::Express, broken())]),
         docks_in_order: vec![
             BTreeMap::new(),
             BTreeMap::from([("north".to_owned(), broken())]),
@@ -751,8 +747,8 @@ fn plain_enum_rows() -> Vec<Row> {
         row(
             "Grade",
             "Grade",
-            &GradeDraft::Express,
-            GradeDraft::Express.validate(),
+            &Grade::Express,
+            Ok::<Grade, Vec<String>>(Grade::Express),
             true,
         ),
         row(

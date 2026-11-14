@@ -1,0 +1,11 @@
+error[E0433]: cannot find type `InvoiceStatusDraft` in this scope
+  --> tests/valid_constant_refusals/plain_enum_has_no_draft.rs:14:19
+   |
+14 |     let _status = InvoiceStatusDraft::PastDue;
+   |                   ^^^^^^^^^^^^^^^^^^ use of undeclared type `InvoiceStatusDraft`
+   |
+help: an enum with a similar name exists
+   |
+14 -     let _status = InvoiceStatusDraft::PastDue;
+14 +     let _status = InvoiceStatus::PastDue;
+   |

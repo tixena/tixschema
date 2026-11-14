@@ -6,7 +6,7 @@ use super::parse::{
     OperationOutcome, PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements,
     wire_key, written,
 };
-use super::support::draft_type_path;
+use super::support::matched_type;
 use super::transport::http_rest::openapi::message_type;
 use super::transport::mcp::prompts::prompt_entries;
 use super::transport::mcp::resource_entries;
@@ -724,7 +724,8 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         operation.mcp_tool_name()
     );
     let tagged = arm_tag_methods(operation, error, &arm.to_string());
-    let drafted = draft_type_path(error);
+    let matched = matched_type(error);
+    let (drafted, scrutinee) = (matched.path(), matched.borrowed(&quote! { *error }));
     let Some(answers) = interview.answers.as_ref() else {
         let link_doc = format!(
             " The link and the message of the arm `{}` asks the user with, where the error is it.",
@@ -733,7 +734,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         return Some(quote! {
             #[doc = #link_doc]
             pub fn #asks(error: &#error) -> ::core::option::Option<(&str, &str)> {
-                if let #drafted::#arm { url, message, .. } = &**error {
+                if let #drafted::#arm { url, message, .. } = #scrutinee {
                     return ::core::option::Option::Some((url.as_str(), message.as_str()));
                 }
                 ::core::option::Option::None
@@ -757,7 +758,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
     Some(quote! {
         #[doc = #doc]
         pub fn #asks(error: &#error) -> bool {
-            ::core::matches!(&**error, #drafted::#arm { .. })
+            ::core::matches!(#scrutinee, #drafted::#arm { .. })
         }
 
         #tagged

@@ -18,7 +18,7 @@ pub struct UserProfile {
 
 #### A Draft and a Valid Type
 
-One declaration makes two types. The type you write is emitted as `{Name}Draft`, with the fields, derives and attributes you wrote: code builds it and changes it. `{Name}` is the valid type, which only the draft's `validate()` and a read of the type make, so a function that takes `&UserProfile` gets a value that passed every rule the type declares. Every `#[model_schema()]` struct and enum has the pair; a [brand](generics-and-brands.md#a-brand-is-sealed) has none.
+One declaration makes two types. The type you write is emitted as `{Name}Draft`, with the fields, derives and attributes you wrote: code builds it and changes it. `{Name}` is the valid type, which only the draft's `validate()` and a read of the type make, so a function that takes `&UserProfile` gets a value that passed every rule the type declares. Every `#[model_schema()]` struct and enum has the pair, but a [plain enum that names no `check`](#a-plain-enum-with-no-check-has-no-draft) and a [brand](generics-and-brands.md#a-brand-is-sealed), which have none.
 
 ```rust
 let draft = UserProfileDraft {
@@ -41,49 +41,78 @@ let mut again: UserProfileDraft = profile.into();
 again.age = 37;
 ```
 
-Work with the valid type as much as possible. A field, a parameter, a return type, a constant, a static and an impl name `UserProfile`; a draft appears only on the expression that builds or changes a value, and is validated there. A function that answers a value that cannot fail answers the valid type through a constant or `.into()`, which the next two sections show, and `.validate().unwrap()` is for a test alone. A [`rust example` block](examples.md#compiler-validated-examples) in the type's doc comment may build the valid type the same way (`SessionRole::Auditor`, `.into()`, `.validate()?`) and may use `?`, so it never unwraps.
+Work with the valid type as much as possible. A field, a parameter, a return type, a constant, a static and an impl name `UserProfile`; a draft appears only on the expression that builds or changes a value, and is validated there. A function that answers a value that cannot fail answers the valid type through a constant or `.into()`, which the next two sections show, and `.validate().unwrap()` is for a test alone. A [`rust example` block](examples.md#compiler-validated-examples) in the type's doc comment may build the valid type the same way (`Payment::Pending`, `.into()`, `.validate()?`) and may use `?`, so it never unwraps.
 
 The valid type reads like the draft: `profile.age` and `&*profile` (a `match &*payment { PaymentDraft::Card { .. } => .. }` over an enum) work through `Deref`. It has no `DerefMut`, so `profile.age = 1` and `&mut profile.age` do not compile, and its tuple constructor is closed, so `UserProfile(draft)` does not compile in the declaring module or outside it. `#[derive(Default)]` stays on the draft only, because a default would build a valid value no check saw.
 
-The valid type writes what its draft writes, and `serde_json::from_str::<UserProfile>(..)`, a MongoDB read and a dispatcher's read return a valid value and refuse a broken one with the messages `validate()` gives. The surfaces keep the declared name: TypeScript, Zod, JSON Schema, Dart, Swift, Kotlin, MCP and OpenAPI all publish `UserProfile`. A member that holds a model names the valid type (`pub profile: UserProfile`), so a draft is built from values that already passed. An enum no variant of which holds a value is paired too, with a rule or without, in Kotlin as in Rust: `StatusDraft.Active.validate()` is the valid `Status`. `Self` in a member names the valid type too. A serde message that names the type, such as `data did not match any variant of untagged enum` or `the enum variant X::Y cannot be serialized`, names `UserProfile` where the read or the write goes through the valid type, and `UserProfileDraft` where it goes through the draft itself.
+The valid type writes what its draft writes, and `serde_json::from_str::<UserProfile>(..)`, a MongoDB read and a dispatcher's read return a valid value and refuse a broken one with the messages `validate()` gives. The surfaces keep the declared name: TypeScript, Zod, JSON Schema, Dart, Swift, Kotlin, MCP and OpenAPI all publish `UserProfile`. A member that holds a model names the valid type (`pub profile: UserProfile`), so a draft is built from values that already passed. An enum no variant of which holds a value, and that names a `check`, is paired too, in Kotlin as in Rust: `StatusDraft.Active.validate()` is the valid `Status`. `Self` in a member names the valid type too. A serde message that names the type, such as `data did not match any variant of untagged enum` or `the enum variant X::Y cannot be serialized`, names `UserProfile` where the read or the write goes through the valid type, and `UserProfileDraft` where it goes through the draft itself.
 
 A declaration whose `{Name}Draft` is the name of another type in the module stops the build with the compiler's duplicate-name error (`E0428`). The type the valid wrapper is made of is generic and hidden: the compiler prints a valid value's type as `UserProfile<UserProfileDraft>`, and a type declared in a function body is wrapped as one declared beside it.
 
-A plain enum, whose variants hold no data, is the pair in Rust, TypeScript, Swift and Dart, with a rule or without. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
+A plain enum, whose variants hold no data, that names a `check` is the pair in Rust, TypeScript, Swift and Dart. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
 
-A plain enum's draft also has `wire_name()`, the text serde writes for the value; see [Plain Enums](enums.md#plain-enums).
+A plain enum also has `wire_name()`, the text serde writes for the value; see [Plain Enums](enums.md#plain-enums).
 
-#### A Constant for a Unit Variant, and `From` for a Draft With No Rule
+#### A Plain Enum With No Check Has No Draft
 
-Two valid values cannot fail, and the macro hands them over without a `Result`. A unit variant of an enum that names no `check` is a constant of the valid type, named like the variant:
+A plain enum that names no `check` guards nothing with a draft: every value of it is valid. It is declared as written on every surface, as a brand is, and its variants are its values:
 
 ```rust
 #[model_schema()]
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionRole {
-    Auditor,
-    DntiTechnician,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InvoiceStatus { Draft, PastDue, Paid }
 
-impl SessionRole {
-    pub fn can_sign(&self) -> bool {
-        matches!(*self, SessionRole::DntiTechnician)
-    }
-}
-
-fn default_role() -> SessionRole {
-    SessionRole::DntiTechnician
-}
-
-fn clearance(role: SessionRole) -> u8 {
-    match role {
-        SessionRole::Auditor => 1,
-        SessionRole::DntiTechnician => 2,
+fn label(status: InvoiceStatus) -> &'static str {
+    match status {
+        InvoiceStatus::Draft => "draft",
+        InvoiceStatus::PastDue => "past due",
+        InvoiceStatus::Paid => "paid",
     }
 }
 ```
 
-A constant is a value of the valid type in an expression and, where the enum derives `PartialEq` and `Eq`, in a pattern: rustc counts the constants toward exhaustiveness, so a `match` on every unit variant takes no `_` arm, and an arm `_` after them draws `warning: unreachable pattern`. Without `PartialEq` and `Eq` a `match` on a constant stops the build with `error: constant of non-structural type .. in a pattern`, and the constant still works in an expression. An enum with data-carrying variants has a constant for each unit variant alone. An enum that names a `check` has none, because a check could refuse a unit variant, and its unit variant is `SessionRoleDraft::DntiTechnician.validate()?`. A generic enum has none.
+There is no `InvoiceStatusDraft`, no `validate()` and no `.into()`; a struct that holds one names the enum (`pub status: InvoiceStatus`). TypeScript writes the bare string union, with the literals of its variants in a `const` object of the same name:
+
+```typescript
+export type InvoiceStatus = "draft" | "past-due" | "paid";
+
+export const InvoiceStatus = {
+  Draft: "draft",
+  PastDue: "past-due",
+  Paid: "paid",
+} as const satisfies Record<string, InvoiceStatus>;
+```
+
+It indexes a `Record<InvoiceStatus, number>` and narrows in a `switch` with no `default`. Dart, Swift and Kotlin write their native enum, with no draft and no valid class. A plain enum that names a `check`, and every other enum, keeps `{Name}Draft` and the valid type.
+
+#### A Constant for a Unit Variant, and `From` for a Draft With No Rule
+
+Two valid values cannot fail, and the macro hands them over without a `Result`. A unit variant of an enum that has a draft and names no `check` is a constant of the valid type, named like the variant:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum Payment {
+    Pending,
+    Cancelled,
+    Card(String),
+}
+
+fn default_payment() -> Payment {
+    Payment::Pending
+}
+
+fn clearance(payment: &Payment) -> u8 {
+    match payment {
+        Payment::Pending => 1,
+        Payment::Cancelled => 2,
+        Payment::Card(_) => 3,
+    }
+}
+```
+
+A constant is a value of the valid type in an expression and, where the enum derives `PartialEq` and `Eq`, in a pattern: rustc counts the constants toward exhaustiveness, so a `match` that names every unit variant beside the others takes no `_` arm, and an arm `_` after them draws `warning: unreachable pattern`. Without `PartialEq` and `Eq` a `match` on a constant stops the build with `error: constant of non-structural type .. in a pattern`, and the constant still works in an expression. An enum with data-carrying variants has a constant for each unit variant alone. An enum that names a `check` has none, because a check could refuse a unit variant, and its unit variant is `PaymentDraft::Pending.validate()?`. A generic enum has none. An enum of unit variants alone and no check has no draft, so no constants: its variants are its values.
 
 Each constant is named like its variant, which is no upper case name, so the macro writes one `#[expect(non_upper_case_globals, reason = "..")]` on the `impl` that holds them, and none where every unit variant is upper case. A unit struct is a constant too, in the module that declares it: `Ok(SealAck)` and `serde_json::to_string(&SealAck)` take the valid value of `#[model_schema()] pub struct SealAck;`.
 
@@ -93,7 +122,7 @@ A draft that declares no rule becomes its valid type with `From`, which cannot f
 let rule: RuleResult = RuleResultDraft { passed: true, label: "sealed".to_owned() }.into();
 ```
 
-A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that names no `check` and takes no parameter: `SessionRole.DntiTechnician` (TypeScript), `SessionRole.dntiTechnician` (Dart and Swift) and `SessionRole.DntiTechnician` (Kotlin), for each unit variant whatever the other variants hold. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `ShipmentDraft$valid(draft)`, `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule.
+A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that has a draft, names no `check` and takes no parameter: `Payment.Pending` (TypeScript), `Payment.pending` (Dart and Swift) and `Payment.Pending` (Kotlin), for each unit variant whatever the other variants hold; a plain enum has no draft, so these are its own variants. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `ShipmentDraft$valid(draft)`, `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule.
 
 #### The Draft and the Valid Type in TypeScript and Zod
 
@@ -128,14 +157,14 @@ A value written by hand is not a `Shipment`, and a member of one cannot be assig
 
 TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out of anything, and no schema has seen it. That is the one way round the check, and it is a way a reader of the code can see. The same goes for a `Shipment` written in a `declare const`.
 
-An enum that names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Status.Active`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), a unit struct that declares no rule has a `const` of its own name, and a type that declares no rule has `ShipmentDraft$valid(draft)`, which answers its valid type with no parse (the value is the draft itself, neither copied nor frozen):
+A plain enum that names no `check` is the bare string union with a `const` object of its literals (`Status.Active` is `"active"`), and has no draft, no `StatusDraft$valid` and no brand. An enum that has a draft and names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Payment.Pending`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), a unit struct that declares no rule has a `const` of its own name, and a type that declares no rule has `ShipmentDraft$valid(draft)`, which answers its valid type with no parse (the value is the draft itself, neither copied nor frozen):
 
 ```typescript
-import { Status, StatusDraft$valid, type StatusDraft } from "./models";
+import { Payment, PaymentDraft$valid, type PaymentDraft } from "./models";
 
-const open: Status = Status.Active;
-const draft: StatusDraft = "inactive";
-const closed: Status = StatusDraft$valid(draft);
+const open: Payment = Payment.Pending;
+const draft: PaymentDraft = { Card: "visa" };
+const closed: Payment = PaymentDraft$valid(draft);
 ```
 
 A type that declares a rule has neither, and a draft becomes its valid type through `Shipment$Schema.parse(draft)`.

@@ -75,25 +75,21 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_variant_is_a_constant_of_the_valid_type() {
+    fn a_variant_of_a_plain_enum_is_its_value() {
         let role: SessionRole = SessionRole::DntiTechnician;
         assert_eq!(role, default_role());
         assert!(role.can_sign());
         assert!(!SessionRole::Auditor.can_sign());
-        assert_eq!(
-            SessionRole::DntiTechnician,
-            SessionRoleDraft::DntiTechnician.validate().unwrap()
-        );
     }
 
     #[test]
-    fn a_match_on_every_constant_needs_no_wildcard_arm() {
+    fn a_match_on_every_variant_needs_no_wildcard_arm() {
         assert_eq!(code(SessionRole::DntiTechnician), 1);
         assert_eq!(code(SessionRole::Auditor), 2);
     }
 
     #[test]
-    fn a_constant_writes_the_payload_of_its_variant() {
+    fn a_variant_writes_its_name() {
         assert_eq!(
             serde_json::to_string(&SessionRole::Auditor).unwrap(),
             "\"Auditor\""

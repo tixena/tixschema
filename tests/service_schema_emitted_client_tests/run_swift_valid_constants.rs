@@ -23,7 +23,6 @@ let note: LaneNote = LaneNoteDraft(text: "a").valid
 print(String(decoding: try encoder.encode(note), as: UTF8.self))
 let parked: LaneStop = LaneStopDraft.parked.valid
 print(String(decoding: try encoder.encode(parked), as: UTF8.self))
-print(LaneKindDraft.bulk.valid == LaneKind.bulk)
 let stamp: LaneStamp = .instance
 print(String(decoding: try encoder.encode(stamp), as: UTF8.self))
 let record: LaneRecord = LaneRecordDraft(kind: .express, passed: true).valid
@@ -123,7 +122,6 @@ fn a_unit_case_is_a_constant_and_a_rule_less_draft_is_valid() {
             .unwrap()
             .as_str(),
             serde_json::to_string(&LaneStop::Parked).unwrap().as_str(),
-            "true",
             serde_json::to_string(&LaneStamp).unwrap().as_str(),
             serde_json::to_string(&LaneRecordDraft {
                 kind: LaneKind::Express,

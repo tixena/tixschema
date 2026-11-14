@@ -33,7 +33,7 @@ Future<Map<String, dynamic>> serveAll(List<String> frames) async {
     null,
     SpoolServiceHandlers<void>(
       spool: (ctx, label) async {
-        throw SpoolFaultDraft.jammed;
+        throw SpoolFault.jammed;
       },
       bare: (ctx, label) async {
         if (label == 'built') throw BareFaultDraft(code: 'x');
@@ -213,8 +213,6 @@ fn the_rust_twin_answers_the_valid_error() {
     let mut waking = Context::from_waker(Waker::noop());
     let spool = spooled.as_mut().poll(&mut waking);
     let bare = barred.as_mut().poll(&mut waking);
-    assert!(
-        matches!(&spool, Poll::Ready(Err(fault)) if matches!(&**fault, SpoolFaultDraft::Jammed))
-    );
+    assert!(matches!(&spool, Poll::Ready(Err(fault)) if matches!(fault, SpoolFault::Jammed)));
     assert!(matches!(&bare, Poll::Ready(Err(fault)) if fault.code == "y"));
 }

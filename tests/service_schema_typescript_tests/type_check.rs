@@ -1917,7 +1917,7 @@ fn valid_constants_bundle() -> String {
 #[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
 fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
     let head = "import { Parcel$Schema, ParcelDraft$Schema, ParcelLane, \
-                ParcelLane$Schema, ParcelLaneDraft$valid, ParcelNoteDraft$valid, type Parcel, \
+                ParcelLane$Schema, ParcelNoteDraft$valid, type Parcel, \
                 type ParcelDraft, type ParcelLane as Lane, type ParcelNote, \
                 type ParcelNoteDraft, ParcelMove, ParcelAdjacent, ParcelExternal, ParcelStamp, ParcelRecordDraft$valid, type ParcelRecord } from \"./bundle.js\";\n";
     let files = [
@@ -1935,7 +1935,7 @@ fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
     let caller = "export const lane: Lane = ParcelLane.Express;\n\
                   export const other: Lane = ParcelLane.Bulk;\n\
                   export const parsed: Lane = ParcelLane$Schema.parse(\"Express\");\n\
-                  export const valid: Lane = ParcelLaneDraft$valid(\"Bulk\");\n\
+                  export const valid: Lane = ParcelLane.Bulk;\n\
                   export const note: ParcelNote = ParcelNoteDraft$valid({ text: \"a\" });\n\
                   export const moved: ParcelMove = ParcelMove.Idle;\n\
                   export const adjacent: ParcelAdjacent = ParcelAdjacent.Idle;\n\
@@ -1946,6 +1946,26 @@ fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
         return;
     };
     assert!(accepted, "the constants do not compile as used:\n{said}");
+}
+
+/// A plain enum with no check is the bare string union: it indexes a record and narrows in a
+/// `switch` with no `default`.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[test]
+fn a_plain_enum_with_no_check_keys_a_record_and_narrows_a_switch() {
+    let caller = "declare const reads: Record<Lane, number>;\n\
+                  declare const lane: Lane;\n\
+                  export const count: number = reads[lane];\n\
+                  export function label(value: Lane): string {\n\
+                    switch (value) {\n\
+                      case \"Bulk\": return \"bulk\";\n\
+                      case \"Express\": return \"express\";\n\
+                    }\n\
+                  }\n";
+    let Some((accepted, said)) = valid_constants_caller("valid-constants-union", caller) else {
+        return;
+    };
+    assert!(accepted, "the union does not index and narrow:\n{said}");
 }
 
 /// A draft under a rule has no conversion that skips `validate()`.

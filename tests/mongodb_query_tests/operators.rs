@@ -4,8 +4,8 @@ use bson::doc;
 use bson::oid::ObjectId;
 
 use super::{
-    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatusDraft, LineItem,
-    LineItemDraft, Point, PointDraft, invoice_schema, shown,
+    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatus, LineItem, LineItemDraft,
+    Point, PointDraft, invoice_schema, shown,
 };
 
 fn line_item() -> LineItem {
@@ -26,12 +26,7 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         r#"{ "_id": { "$eq": ObjectId(507f1f77bcf86cd799439011) } }"#
     );
     assert_eq!(
-        shown(
-            invoice
-                .status()
-                .ne(InvoiceStatusDraft::Draft.validate().unwrap())
-                .unwrap()
-        ),
+        shown(invoice.status().ne(InvoiceStatus::Draft).unwrap()),
         r#"{ "status": { "$ne": "draft" } }"#
     );
     assert_eq!(
@@ -59,10 +54,7 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         shown(
             invoice
                 .status()
-                .not_in([
-                    InvoiceStatusDraft::Draft.validate().unwrap(),
-                    InvoiceStatusDraft::Paid.validate().unwrap()
-                ])
+                .not_in([InvoiceStatus::Draft, InvoiceStatus::Paid])
                 .unwrap()
         ),
         r#"{ "status": { "$nin": ["draft", "paid"] } }"#
@@ -260,7 +252,7 @@ fn an_update_writes_its_operator_and_several_merge_into_one() {
         shown(
             invoice
                 .status()
-                .set(InvoiceStatusDraft::Paid.validate().unwrap())
+                .set(InvoiceStatus::Paid)
                 .unwrap()
                 .and(invoice.total().set(0.0_f64).unwrap())
                 .and(

@@ -13,7 +13,7 @@ use super::shapes::{
 };
 use super::{
     Address, AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceId,
-    InvoiceStatusDraft, LineItem, LineItemDraft, Point, PointDraft, shown, shown_value,
+    InvoiceStatus, LineItem, LineItemDraft, Point, PointDraft, shown, shown_value,
 };
 
 /// What `key` leads to in `value`: a key of a document, a position in an array, or the key in
@@ -131,7 +131,7 @@ fn invoice() -> Invoice {
         }
         .validate()
         .unwrap(),
-        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
+        status: InvoiceStatus::PastDue,
         tags: vec!["export".to_owned(), "priority".to_owned()],
         total: 1250.5_f64,
     }

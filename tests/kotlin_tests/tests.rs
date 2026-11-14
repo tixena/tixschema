@@ -43,7 +43,7 @@ use super::flattened_models::{
 };
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
-use super::read::paired_plain_enum;
+use super::read::plain_enum;
 use super::read::{NO_ISSUES, drafted_serializers, kept_draft, to_valid_free};
 use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
@@ -325,11 +325,7 @@ fn test_every_declared_type_is_constructible() {
     };
     assert_eq!(widths.text, "");
 
-    let statuses = [
-        StatusDraft::Active,
-        StatusDraft::Inactive,
-        StatusDraft::Pending,
-    ];
+    let statuses = [Status::Active, Status::Inactive, Status::Pending];
     assert_eq!(statuses.len(), 3);
 
     let errors = [
@@ -361,7 +357,7 @@ fn test_every_declared_type_is_constructible() {
     };
     assert_eq!(holds_tuple.coords.1, 7);
 
-    let slots = [SlotDraft::North, SlotDraft::South];
+    let slots = [Slot::North, Slot::South];
     assert_eq!(slots.len(), 2);
 }
 
@@ -605,7 +601,7 @@ fn test_plain_enum() {
     let kotlin = renumbered(&status_kotlin::kotlin_definition());
     assert!(
         kotlin.contains(
-            "@Serializable(with = StatusDraftUnjudged::class) @KeepGeneratedSerializer enum class StatusDraft"
+            "@Serializable(with = StatusUnjudged::class) @KeepGeneratedSerializer enum class Status"
         ),
         "got: {kotlin}"
     );
@@ -2363,7 +2359,7 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     );
     assert_eq!(
         renumbered(&reserved_member_kotlin::kotlin_definition()),
-        paired_plain_enum(
+        plain_enum(
             "ReservedMember",
             "Default, In, Other",
             &[
@@ -2386,9 +2382,9 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMemberDraft::Default,
-            ReservedMemberDraft::In,
-            ReservedMemberDraft::Other
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])

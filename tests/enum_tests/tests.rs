@@ -150,19 +150,19 @@ fn test_ts_zod_serde_enums_constructible() {
     ];
     assert_eq!(actions.len(), 2);
     let operators = [
-        CalculatedExpressionOperatorDraft::Add,
-        CalculatedExpressionOperatorDraft::Divide,
-        CalculatedExpressionOperatorDraft::Modulus,
-        CalculatedExpressionOperatorDraft::Multiply,
-        CalculatedExpressionOperatorDraft::None,
-        CalculatedExpressionOperatorDraft::Subtract,
+        CalculatedExpressionOperator::Add,
+        CalculatedExpressionOperator::Divide,
+        CalculatedExpressionOperator::Modulus,
+        CalculatedExpressionOperator::Multiply,
+        CalculatedExpressionOperator::None,
+        CalculatedExpressionOperator::Subtract,
     ];
     assert_eq!(operators.len(), 6);
     let statuses = [
-        UserStatusDraft::Active,
-        UserStatusDraft::Inactive,
-        UserStatusDraft::Pending,
-        UserStatusDraft::Suspended,
+        UserStatus::Active,
+        UserStatus::Inactive,
+        UserStatus::Pending,
+        UserStatus::Suspended,
     ];
     assert_eq!(statuses.len(), 4);
 }
@@ -171,14 +171,11 @@ fn test_ts_zod_serde_enums_constructible() {
 #[test]
 fn test_serde_mime_enums_constructible() {
     let distributions = [
-        DistributionValidMimeTypeDraft::ApplicationDocx,
-        DistributionValidMimeTypeDraft::ApplicationPdf,
+        DistributionValidMimeType::ApplicationDocx,
+        DistributionValidMimeType::ApplicationPdf,
     ];
     assert_eq!(distributions.len(), 2);
-    let mimes = [
-        MimeTypeDraft::ApplicationDocx,
-        MimeTypeDraft::ApplicationPdf,
-    ];
+    let mimes = [MimeType::ApplicationDocx, MimeType::ApplicationPdf];
     assert_eq!(mimes.len(), 2);
 }
 
@@ -448,13 +445,11 @@ fn test_single_value_enum_in_tagged_union_zod() {
 fn test_plain_enum_special_chars_zod_has_raw_and_schema() {
     let zod = MimeType::zod_schema();
     assert!(
-        zod.contains("MimeTypeDraft$RawSchema"),
+        zod.contains("MimeType$RawSchema"),
         "Should contain $RawSchema. Got:\n{zod}"
     );
     assert!(
-        zod.contains(
-            "export const MimeTypeDraft$Schema: ZodType<MimeTypeDraft> = MimeTypeDraft$RawSchema;"
-        ),
+        zod.contains("export const MimeType$Schema: ZodType<MimeType> = MimeType$RawSchema;"),
         "Should contain exported $Schema referencing $RawSchema. Got:\n{zod}"
     );
     assert!(
@@ -486,11 +481,11 @@ fn test_plain_enum_special_chars_ts_definition() {
 fn test_distribution_mime_type_zod_schema() {
     let zod = DistributionValidMimeType::zod_schema();
     assert!(
-        zod.contains("DistributionValidMimeTypeDraft$RawSchema"),
+        zod.contains("DistributionValidMimeType$RawSchema"),
         "Should contain $RawSchema. Got:\n{zod}"
     );
     assert!(
-        zod.contains("export const DistributionValidMimeTypeDraft$Schema: ZodType<DistributionValidMimeTypeDraft> = DistributionValidMimeTypeDraft$RawSchema;"),
+        zod.contains("export const DistributionValidMimeType$Schema: ZodType<DistributionValidMimeType> = DistributionValidMimeType$RawSchema;"),
         "Should contain exported $Schema referencing $RawSchema. Got:\n{zod}"
     );
     assert!(

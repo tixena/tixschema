@@ -30,7 +30,7 @@ pub struct Counted {
 /// SessionRole::Auditor
 /// ```
 /// ```rust example
-/// SessionRoleDraft::Technician
+/// SessionRole::Technician
 /// ```
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

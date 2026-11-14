@@ -52,16 +52,16 @@ mod without_one {
         assert_eq!(TaggedDraft::Custom.wire_name(), None);
         assert_eq!(AdjacentDraft::Custom.wire_name(), None);
         assert_eq!(CarryingDraft::Custom.wire_name(), None);
-        assert_eq!(SkippedDraft::Custom.wire_name(), None);
-        assert_eq!(SkippedDraft::Hidden.wire_name(), None);
-        assert_eq!(SkippedWhenWrittenDraft::Custom.wire_name(), None);
+        assert_eq!(Skipped::Custom.wire_name(), None);
+        assert_eq!(Skipped::Hidden.wire_name(), None);
+        assert_eq!(SkippedWhenWritten::Custom.wire_name(), None);
     }
 }
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-const MAX: &str = DatedDraft::MaxIsCurrentDate.wire_name();
+const MAX: &str = Dated::MaxIsCurrentDate.wire_name();
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
@@ -129,57 +129,57 @@ where
 
 #[test]
 fn a_variant_with_no_rename_is_written_as_its_ident() {
-    for draft in [PlainDraft::Custom, PlainDraft::MaxIsCurrentDate] {
+    for draft in [Plain::Custom, Plain::MaxIsCurrentDate] {
         assert_eq!(draft.wire_name(), written(&draft));
     }
-    assert_eq!(PlainDraft::MaxIsCurrentDate.wire_name(), "MaxIsCurrentDate");
+    assert_eq!(Plain::MaxIsCurrentDate.wire_name(), "MaxIsCurrentDate");
 }
 
 #[test]
 fn a_rename_all_rule_is_applied() {
-    for draft in [KebabDraft::DocumentGroupNotFound, KebabDraft::Other] {
+    for draft in [Kebab::DocumentGroupNotFound, Kebab::Other] {
         assert_eq!(draft.wire_name(), written(&draft));
     }
     assert_eq!(
-        KebabDraft::DocumentGroupNotFound.wire_name(),
+        Kebab::DocumentGroupNotFound.wire_name(),
         "document-group-not-found"
     );
-    for draft in [CamelDraft::DocumentGroupNotFound, CamelDraft::Other] {
+    for draft in [Camel::DocumentGroupNotFound, Camel::Other] {
         assert_eq!(draft.wire_name(), written(&draft));
     }
     assert_eq!(
-        CamelDraft::DocumentGroupNotFound.wire_name(),
+        Camel::DocumentGroupNotFound.wire_name(),
         "documentGroupNotFound"
     );
 }
 
 #[test]
 fn a_variant_rename_wins_over_rename_all() {
-    for draft in [RenamedDraft::DocumentGroupNotFound, RenamedDraft::BpmTasks] {
+    for draft in [Renamed::DocumentGroupNotFound, Renamed::BpmTasks] {
         assert_eq!(draft.wire_name(), written(&draft));
     }
-    assert_eq!(RenamedDraft::BpmTasks.wire_name(), "bpm-tasks-widget");
+    assert_eq!(Renamed::BpmTasks.wire_name(), "bpm-tasks-widget");
 }
 
 #[test]
 fn a_list_form_rename_is_written_by_its_serialize_side_and_an_alias_is_ignored() {
-    for draft in [SplitDraft::Sided, SplitDraft::Aliased] {
+    for draft in [Split::Sided, Split::Aliased] {
         assert_eq!(draft.wire_name(), written(&draft));
     }
-    assert_eq!(SplitDraft::Sided.wire_name(), "written");
-    assert_eq!(SplitDraft::Aliased.wire_name(), "Aliased");
+    assert_eq!(Split::Sided.wire_name(), "written");
+    assert_eq!(Split::Aliased.wire_name(), "Aliased");
 }
 
 #[test]
 fn an_other_variant_is_written_as_its_own_name() {
-    for draft in [FallbackDraft::Known, FallbackDraft::Unknown] {
+    for draft in [Fallback::Known, Fallback::Unknown] {
         assert_eq!(draft.wire_name(), written(&draft));
     }
 }
 
 #[test]
 fn an_enum_that_is_not_copy_is_read_by_reference() {
-    let draft = PlainDraft::Custom;
+    let draft = Plain::Custom;
     let held = &draft;
     assert_eq!(held.wire_name(), "Custom");
     assert_eq!(draft.wire_name(), written(&draft));

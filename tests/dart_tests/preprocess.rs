@@ -357,7 +357,7 @@ fn every_declared_type_is_constructible() {
     };
     assert_eq!((filled.codes.len(), filled.label.as_str()), (1, "A"));
     assert_eq!(
-        serde_json::to_string(&[GradeDraft::Express, GradeDraft::Standard]).unwrap(),
+        serde_json::to_string(&[Grade::Express, Grade::Standard]).unwrap(),
         r#"["Express","Standard"]"#
     );
     assert_eq!(
@@ -624,12 +624,13 @@ fn a_plain_enum_calls_its_function_on_the_text_it_takes() {
     assert_written(
         &grade_dart::dart_definition(),
         &format!(
-            "static GradeDraft fromJson(dynamic payload) {{ final json = trimmed(payload); {} }} \
-             String toJson() => wireValue;",
+            "static Grade fromJson(dynamic json) => fromJsonUnjudged(json); static Grade \
+             fromJsonUnjudged(dynamic payload) {{ final json = trimmed(payload); {} }} String \
+             toJson() => wireValue;",
             plain_enum_read(
                 "Grade",
                 "json",
-                "'Express' => GradeDraft.express,'Standard' => GradeDraft.standard,"
+                "'Express' => Grade.express,'Standard' => Grade.standard,"
             )
         ),
     );

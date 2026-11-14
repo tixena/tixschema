@@ -24,7 +24,7 @@ section is the consumer's view; this is what a change to the emitter has to keep
   draft has it), `encode(to:)` writing the draft, and `fileprivate` `validate()` and
   `swiftSchemaValidateBound()` that answer what the draft's `validationIssues()` and
   `swiftSchemaValidateBound()` answer, so a holder in the generated file runs a held model as it ran
-  it. A plain enum is `Hashable` and has a `fileprivate init?(rawValue:)`, and a tuple struct of one
+  it. The valid struct of a plain enum that names a `check` is `Hashable` and has a `fileprivate init?(rawValue:)`, and a tuple struct of one
   slot a `fileprivate init(value:)`, for the map keyed by either (`ValidForm`).
 - **A name is the draft's wherever a static or a private member of the type is named.** Everything
   that is named at the type it is declared in is written under the draft's name: the owner of
@@ -110,8 +110,8 @@ to keep.
   `JUDGED_DRAFT`: it calls `validationIssues()`, and its own read is `fileprivate` as a brand's is
   (`Written::draft`), the valid type forwarding it. A struct, the struct written for a
   variant's members and for a tuple, a brand's wrapper, a tuple struct and an enum under every
-  tagging call it. A plain enum that names no check keeps the `init(from:)` Swift synthesizes, and
-  its unjudged initializer is that read.
+  tagging call it. A plain enum that names no check has no draft: it is the `String`-backed `enum` alone, with its
+  `init(swiftSchemaUnjudged:)`, a public `init(from:)` and `validate() -> [String]` answering an empty list.
 - **A member is read unjudged exactly where `validate()` walks it.** `validate::walks` is the one
   question: `held_walk` ends on a value whose `validate()` it runs (`reaches`). `read::unjudged` then takes the member apart as `held_walk` does: an `Option`,
   each level of a list, a map's values, the struct written for a tuple, a named type. A step added

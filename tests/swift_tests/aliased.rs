@@ -59,15 +59,14 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
 #[test]
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
-        swift_valid::draft_of(&swell_swift::swift_definition()),
+        swell_swift::swift_definition(),
         format!(
-            "public enum SwellDraft: String, Codable, Sendable {{ case ebb = \"Ebb\"; case flood = \
+            "public enum Swell: String, Codable, Sendable {{ case ebb = \"Ebb\"; case flood = \
              \"Flood\"; public init?(rawValue: String) {{ switch rawValue {{ case \"Ebb\", \"Low\", \
              \"Neap\": self = .ebb; case \"Flood\": self = .flood; default: return nil }} }}; {} \
-             public func validationIssues() -> [String] {{ [] }}; public func \
-             swiftSchemaValidateBound() -> [String] {{ [] }}; {} }}",
-            plain_enum_reads("SwellDraft"),
-            swift_valid::validating_free("Swell")
+             public func validate() -> [String] {{ [] }}; public func \
+             swiftSchemaValidateBound() -> [String] {{ [] }} }}",
+            plain_enum_reads("Swell"),
         ),
         "the text of a plain enum with a variant under two aliases"
     );
@@ -75,7 +74,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
     for held in [
         "public init?(rawValue: String) { switch rawValue { case \"Ebb\", \"Low\": self = .ebb; \
          case \"Flood\": self = .flood; default: return nil } };",
-        "guard let read = LullingDraft(rawValue: raw) else {",
+        "guard let read = Lulling(rawValue: raw) else {",
     ] {
         assert!(lulling.contains(held), "no `{held}` in: {lulling}");
     }

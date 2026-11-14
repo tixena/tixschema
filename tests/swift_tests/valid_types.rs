@@ -83,18 +83,17 @@ fn a_generic_type_and_an_enum_are_wrapped_at_their_parameters() {
     );
 }
 
-/// A plain enum is built from its raw value only where the generated file reads it, and is
-/// `Hashable`, which a map keyed by it asks.
+/// A plain enum that names no check is the `String`-backed enum alone, which Swift makes
+/// `Hashable` and builds from its raw value, with no draft and no valid struct.
 #[test]
 fn a_plain_enum_is_hashable_and_built_from_its_raw_value_in_the_generated_file_alone() {
     let swift = status_swift::swift_definition();
     assert!(
-        valid_of(&swift).starts_with(
-            "@dynamicMemberLookup public struct Status: Codable, Sendable, Hashable { \
-             public let draft: StatusDraft; fileprivate init(draft: StatusDraft) { \
-             self.draft = draft }; fileprivate init?(rawValue: String) { guard let draft = \
-             StatusDraft(rawValue: rawValue) else { return nil }; self.draft = draft }; "
-        ),
+        swift.starts_with("public enum Status: String, Codable, Sendable { "),
+        "got: {swift}"
+    );
+    assert!(
+        !swift.contains("StatusDraft") && !swift.contains("struct Status"),
         "got: {swift}"
     );
 }

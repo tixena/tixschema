@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
-use super::unknown_keys::{plain_enum_read, plain_enum_valid, plain_enum_validate};
+use super::unknown_keys::{plain_enum_read, plain_enum_reads, plain_enum_text};
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -223,9 +223,9 @@ fn test_every_declared_type_is_constructible() {
     assert_eq!(warehouse.address.city, "Springfield");
 
     let statuses = [
-        StockStatusDraft::InStock,
-        StockStatusDraft::Backordered,
-        StockStatusDraft::Discontinued,
+        StockStatus::InStock,
+        StockStatus::Backordered,
+        StockStatus::Discontinued,
     ];
     assert_eq!(statuses.len(), 3);
 
@@ -455,18 +455,18 @@ fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
 #[cfg(feature = "serde")]
 fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
     let dart = stock_status_dart::dart_definition();
-    assert!(dart.contains("enum StockStatusDraft {"));
+    assert!(dart.contains("enum StockStatus {"));
     assert!(dart.contains("inStock('instock')"));
     assert!(dart.contains("backordered('backordered')"));
     assert!(dart.contains("discontinued('discontinued')"));
-    assert!(dart.contains("static StockStatusDraft fromJson(dynamic json)"));
+    assert!(dart.contains("static StockStatus fromJson(dynamic json)"));
     assert!(dart.contains("String toJson() => wireValue;"));
 }
 
 #[test]
 #[cfg(feature = "serde")]
 fn test_plain_enum_wire_values_match_what_serde_writes() {
-    let value = serde_json::to_value(StockStatusDraft::Backordered).unwrap();
+    let value = serde_json::to_value(StockStatus::Backordered).unwrap();
     assert_eq!(value, serde_json::json!("backordered"));
     let dart = stock_status_dart::dart_definition();
     assert!(dart.contains("'backordered'"));
@@ -935,18 +935,17 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),
-        format!(
-            "enum ReservedMemberDraft {{ default_('Default'), in_('In'), other('Other'); const \
-             ReservedMemberDraft(this.wireValue); final String wireValue; static \
-             ReservedMemberDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue; \
-             List<String> validationIssues() => const []; {} {}",
-            plain_enum_read(
+        plain_enum_text(
+            "ReservedMember",
+            "default_('Default'), in_('In'), other('Other')",
+            &plain_enum_reads(
                 "ReservedMember",
-                "json",
-                "'Default' => ReservedMemberDraft.default_,'In' => ReservedMemberDraft.in_,'Other' => ReservedMemberDraft.other,"
+                &plain_enum_read(
+                    "ReservedMember",
+                    "json",
+                    "'Default' => ReservedMember.default_,'In' => ReservedMember.in_,'Other' => ReservedMember.other,"
+                ),
             ),
-            plain_enum_validate("ReservedMember"),
-            plain_enum_valid("ReservedMember", &["default_", "in_", "other"]),
         )
     );
     assert_eq!(
@@ -961,9 +960,9 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMemberDraft::Default,
-            ReservedMemberDraft::In,
-            ReservedMemberDraft::Other
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])

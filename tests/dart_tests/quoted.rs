@@ -4,7 +4,7 @@
 
 use super::held_numbers::u8_held;
 use super::quoted_models::{
-    DutiedDraft, ExcisedDraft, LeveedDraft, LeviedDraft, MulctedDraft, TariffedDraft, TithedDraft,
+    DutiedDraft, Excised, LeveedDraft, LeviedDraft, MulctedDraft, TariffedDraft, TithedDraft,
     TolledDraft, UNDER_AN_ALIAS, WRITTEN, dutied_dart, excised_dart, levied_dart, mulcted_dart,
     serde_written, tariffed_dart, tithed_dart, tolled_dart,
 };
@@ -46,8 +46,8 @@ fn serde_writes_each_name_the_rows_state() {
             note: "n".to_owned(),
             tolled: TolledDraft::Held("p".to_owned()).into(),
         }),
-        serde_json::to_string(&ExcisedDraft::High),
-        serde_json::to_string(&ExcisedDraft::Low),
+        serde_json::to_string(&Excised::High),
+        serde_json::to_string(&Excised::Low),
     ]
     .map(Result::unwrap);
     let rows = WRITTEN.map(|(_, json)| json);
@@ -141,8 +141,8 @@ fn an_enums_names_are_escaped_in_its_dart_text() {
     holds_each(
         &excised_dart::dart_definition(),
         &[
-            r"enum ExcisedDraft { high('hi\'gh'), low('lo\$w');",
-            r#"'hi\'gh' || 'to"p' => ExcisedDraft.high,'lo\$w' => ExcisedDraft.low,"#,
+            r"enum Excised { high('hi\'gh'), low('lo\$w');",
+            r#"'hi\'gh' || 'to"p' => Excised.high,'lo\$w' => Excised.low,"#,
         ],
     );
 }

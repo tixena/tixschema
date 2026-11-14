@@ -108,7 +108,7 @@ fn a_unit_variant_is_a_constant_of_the_valid_dart_type() {
 
 #[test]
 fn a_draft_with_no_rule_converts_with_to_valid() {
-    let user = "import 'dart:convert';\nimport 'models.dart';\n\nvoid main() {\n  final LaneNote note = LaneNoteDraft(text: 'a').toValid();\n  print(jsonEncode(note.toJson()));\n  final LaneKind kind = LaneKindDraft.bulk.toValid();\n  print(kind == LaneKind.bulk);\n  final LaneStop parked = LaneStopParked().toValid();\n  print(jsonEncode(parked.toJson()));\n}\n";
+    let user = "import 'dart:convert';\nimport 'models.dart';\n\nvoid main() {\n  final LaneNote note = LaneNoteDraft(text: 'a').toValid();\n  print(jsonEncode(note.toJson()));\n  final LaneStop parked = LaneStopParked().toValid();\n  print(jsonEncode(parked.toJson()));\n}\n";
     let Some((ran, printed)) = dart_files(
         "valid-to-valid",
         &[],
@@ -121,7 +121,7 @@ fn a_draft_with_no_rule_converts_with_to_valid() {
     assert_eq!(
         printed,
         format!(
-            "{}\ntrue\n{}\n",
+            "{}\n{}\n",
             serde_json::to_string(&LaneNoteDraft {
                 text: "a".to_owned()
             })

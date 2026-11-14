@@ -272,13 +272,11 @@ fn test_plain_enum_with_typescript_has_type_annotation() {
     let zod = Status::zod_schema();
 
     assert!(
-        zod.contains("const StatusDraft$RawSchema = z.enum(["),
+        zod.contains("const Status$RawSchema = z.enum(["),
         "Plain enum with typescript should have $RawSchema. Got: {zod}"
     );
     assert!(
-        zod.contains(
-            "export const StatusDraft$Schema: ZodType<StatusDraft> = StatusDraft$RawSchema;"
-        ),
+        zod.contains("export const Status$Schema: ZodType<Status> = Status$RawSchema;"),
         "Plain enum with typescript should have typed $Schema. Got: {zod}"
     );
 }

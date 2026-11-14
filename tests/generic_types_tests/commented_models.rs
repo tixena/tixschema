@@ -90,8 +90,8 @@ pub fn written() -> Vec<(&'static str, String)> {
                 note: "n".to_owned(),
             }),
         ),
-        ("Footnoted", json(&FootnotedDraft::Bare)),
-        ("Footnoted", json(&FootnotedDraft::Closing)),
+        ("Footnoted", json(&Footnoted::Bare)),
+        ("Footnoted", json(&Footnoted::Closing)),
         (
             "Marginal",
             json(&MarginalDraft::Noted {

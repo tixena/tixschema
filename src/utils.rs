@@ -694,6 +694,9 @@ thread_local! {
     /// What each recorded wire scalar is read from the text of: a path, a query, a header or a
     /// text part hands it as text, and a number is parsed before serde reads it.
     static WIRE_SCALAR_KINDS: RefCell<HashMap<String, WireScalarKind>> = RefCell::new(HashMap::new());
+    /// The names of the enums declared so far that are their own valid type: written as a variant
+    /// name, with no check, and so with no draft.
+    static UNDRAFTED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The names of enums declared `#[serde(untagged)]`.
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// The names of items whose draft admits `null`, so that their valid type keeps it.
@@ -1958,6 +1961,29 @@ pub fn record_null_admitting(rust_ident: &str) {
 #[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn admits_null_recorded(rust_ident: &str) -> bool {
     NULL_ADMITTING.with(|names| names.borrow().contains(rust_ident))
+}
+
+/// Records whether `rust_ident` names an enum that is its own valid type, with no draft.
+pub fn record_undrafted_enum(rust_ident: &str, plain: bool) {
+    UNDRAFTED_ENUMS.with(|names| {
+        if plain {
+            names.borrow_mut().insert(rust_ident.to_owned());
+        } else {
+            names.borrow_mut().remove(rust_ident);
+        }
+    });
+}
+
+/// Whether `ty`'s own name is one [`record_undrafted_enum`] saw as an enum with no draft. `false` for
+/// a type declared below the item asking.
+pub fn is_recorded_undrafted_enum_type(ty: &Type) -> bool {
+    let Type::Path(named) = ty else {
+        return false;
+    };
+    let Some(leaf) = named.path.segments.last() else {
+        return false;
+    };
+    UNDRAFTED_ENUMS.with(|names| names.borrow().contains(&leaf.ident.to_string()))
 }
 
 /// Records that `rust_ident` names an enum declared `#[serde(untagged)]`.

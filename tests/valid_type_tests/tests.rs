@@ -2,9 +2,8 @@
 //! draft's `validate()` makes.
 
 use super::shapes::{
-    AdjacentDraft, Audit, Colour, ColourDraft, Crate, CrateDraft, ExternalDraft, Internal,
-    InternalDraft, LooseDraft, Marker, MarkerDraft, Note, NoteDraft, Pair, PairDraft, Tree,
-    TreeDraft,
+    AdjacentDraft, Audit, Colour, Crate, CrateDraft, ExternalDraft, Internal, InternalDraft,
+    LooseDraft, Marker, MarkerDraft, Note, NoteDraft, Pair, PairDraft, Tree, TreeDraft,
 };
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -139,10 +138,10 @@ fn a_unit_struct_has_the_shape() {
 #[test]
 fn a_plain_enum_has_the_shape() {
     let green = Colour::Green;
-    assert!(matches!(&*green, ColourDraft::Green));
+    assert!(matches!(&green, Colour::Green));
     assert_eq!(serde_json::to_string(&green).unwrap(), r#""Green""#);
     let read: Colour = serde_json::from_str(r#""Red""#).unwrap();
-    assert!(matches!(&*read, ColourDraft::Red));
+    assert!(matches!(&read, Colour::Red));
 }
 
 #[test]

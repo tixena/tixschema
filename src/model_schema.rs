@@ -2664,7 +2664,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
-            undrafted: args.undrafted,
+            undrafted: args.undrafted || valid_type::is_undrafted(),
         },
     )
 }
@@ -2693,7 +2693,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
-            undrafted: args.undrafted,
+            undrafted: args.undrafted || valid_type::is_undrafted(),
         },
     )
 }
@@ -2722,7 +2722,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
-            undrafted: args.undrafted,
+            undrafted: args.undrafted || valid_type::is_undrafted(),
         },
     )
 }
@@ -8836,6 +8836,27 @@ fn brand_member(position: usize, field: &Field) -> syn::Member {
     )
 }
 
+/// Whether serde writes `item_enum` as the bare name of a variant: no tag, no content, not
+/// untagged. Only such a declaration, with every variant a unit variant, is a string union.
+pub fn writes_a_string_union(item_enum: &syn::ItemEnum) -> bool {
+    is_plain_enum(item_enum) && writes_bare_variant_names(item_enum)
+}
+
+/// A tag names a key serde writes whether or not a variant carries a field, so only a declaration
+/// serde writes as the bare variant name is the string union the plain-enum path publishes.
+#[cfg(feature = "serde")]
+fn writes_bare_variant_names(item_enum: &syn::ItemEnum) -> bool {
+    let meta = parse_serde_type_attributes(&item_enum.attrs);
+    meta.tag.is_none() && meta.content.is_none() && !meta.untagged
+}
+
+/// No attribute is read without the `serde` feature, so no declaration can be told from the
+/// untagged default and the bare-name form stands.
+#[cfg(not(feature = "serde"))]
+const fn writes_bare_variant_names(_item_enum: &syn::ItemEnum) -> bool {
+    true
+}
+
 /// Whether a struct is a branded newtype: one serde writes as the value of a single field.
 fn is_branded_newtype(item_struct: &syn::ItemStruct) -> bool {
     brand_field(item_struct).is_some()
@@ -12449,19 +12470,7 @@ fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
     // the override reaches the shape's own surfaces and every reference to it alike.
     let item_name = compute_item_export_name(&name.to_string(), args.name_override.as_deref());
 
-    // A tag names a key serde writes whether or not a variant carries a field. Only a declaration
-    // serde writes as the bare variant name is the string union the plain-enum path publishes.
-    #[cfg(feature = "serde")]
-    let writes_bare_variant_names = serde_type_meta.tag.is_none()
-        && serde_type_meta.content.is_none()
-        && !serde_type_meta.untagged;
-
-    // No attribute is read without the `serde` feature, so no declaration can be told from the
-    // untagged default and the bare-name form stands.
-    #[cfg(not(feature = "serde"))]
-    let writes_bare_variant_names = true;
-
-    if is_plain_enum(&item_enum) && writes_bare_variant_names {
+    if writes_a_string_union(&item_enum) {
         #[cfg(feature = "serde")]
         let rename_all = serde_type_meta.rename_all.as_deref();
 
@@ -22945,6 +22954,23 @@ fn ts_valid_type(
     )
 }
 
+/// The constant of each variant of a plain enum with no draft, as the plain literal the union
+/// holds. Nothing where the enum has a draft, whose constants the valid type holds.
+#[cfg(feature = "typescript")]
+fn ts_plain_enum_members(item_name: &str, constants: &[(String, String)]) -> String {
+    if valid_type::has_draft() || constants.is_empty() {
+        return String::new();
+    }
+    let members = constants
+        .iter()
+        .map(|(key, value)| format!("  {}: {value},", key.trim_start_matches("r#")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "\n\nexport const {item_name} = {{\n{members}\n}} as const satisfies Record<string, {item_name}>;"
+    )
+}
+
 /// What only a type that declares no rule has beside its valid type: the constant of each unit
 /// variant of a plain enum, and `{Name}Draft$valid`, which makes the valid value of a draft no rule
 /// judges. The text is written between the marks `valid_type::settle` reads, which keeps it where
@@ -24147,8 +24173,10 @@ fn generate_plain_enum_ts_definition_method(
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
         let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 
+        let members = ts_plain_enum_members(item_name, constants);
+
         let typescript_type_gen = quote::quote! {
-            format!("{}export type {}{} =\n{};{}{}\n\n{}", docs, #draft_name, #ts_generics, #type_code, #reexport, #valid, #variant_reader)
+            format!("{}export type {}{} =\n{};{}{}{}\n\n{}", docs, #draft_name, #ts_generics, #type_code, #reexport, #valid, #members, #variant_reader)
         };
 
         quote::quote! {

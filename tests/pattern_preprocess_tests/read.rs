@@ -13,7 +13,7 @@ use tixschema::model_schema;
 use super::models::LabelDraft;
 use super::models::{
     CarrierDraft, ClosedDockDraft, Consigned, ConsignedDraft, CrateDraft, Crated, CratedDraft,
-    Delivery, DeliveryDraft, Either, EitherDraft, GradeDraft, HandoverDraft, Label, Manifest,
+    Delivery, DeliveryDraft, Either, EitherDraft, Grade, HandoverDraft, Label, Manifest,
     ManifestDraft, Node, NodeDraft, Parcel, ParcelDraft, Pinned, PinnedDraft, ReferenceDraft,
     Routed, RoutedDraft, SAMPLE_ROWS, Shelf, ShipmentDraft, Slot, SlotDraft, StackDraft,
     TaggedDraft, TransferDraft, Unnamed, UnnamedDraft, Weighed, WeighedDraft, Wrapped,
@@ -219,7 +219,7 @@ fn every_shape_takes_the_key_on_the_type() {
     read_out_of_its_envelope(&StackDraft(texts(&["a", "b"]), 2));
     read_out_of_its_envelope(&ClosedDockDraft);
     read_out_of_its_envelope(&label("A"));
-    for grade in [GradeDraft::Express, GradeDraft::Standard] {
+    for grade in [Grade::Express, Grade::Standard] {
         read_out_of_its_envelope(&grade);
     }
     for transfer in [

@@ -1,4 +1,5 @@
-//! The valid type: the declared name of every model type but a brand. The declared item is
+//! The valid type: the declared name of every model type but a brand and an enum with no check
+//! that serde writes as a variant name. The declared item is
 //! emitted as `{Name}Draft`, which code builds and changes, and `{Name}` wraps a draft that passed
 //! `validate()` in a private field.
 //!
@@ -28,7 +29,7 @@ use crate::features::serde::{consume_unread_value, derives_deserialize, derives_
 use crate::field_type::get_field_def;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
-use crate::utils::written_names;
+use crate::utils::{record_undrafted_enum, written_names};
 
 /// Opens, and closes, the text of a surface that a type with no rule alone has.
 pub const SETTLE_OPEN: char = '\u{e000}';
@@ -92,6 +93,9 @@ pub enum Origin {
     /// Any other struct or enum an author declares.
     #[default]
     Declared,
+    /// An enum serde writes as one of its variant names, with no check of its own: every value of
+    /// its draft would be valid, so it is declared as written.
+    Plain,
     /// A type a service writes for itself, declared as written.
     Service,
 }
@@ -588,10 +592,10 @@ pub fn has_draft() -> bool {
     DECLARED.with(|held| held.borrow().origin == Origin::Declared)
 }
 
-/// Whether the declaration being expanded is a type a service writes for itself, which has no
-/// draft: it is declared as written, with the `validate()` it publishes.
+/// Whether the declaration being expanded is declared as written, with no draft: a type a service
+/// writes for itself, or an enum with no check that serde writes as a variant name.
 pub fn is_undrafted() -> bool {
-    DECLARED.with(|held| held.borrow().origin == Origin::Service)
+    DECLARED.with(|held| matches!(held.borrow().origin, Origin::Service | Origin::Plain))
 }
 
 /// The derives of `attrs` the wrapper repeats: every one but those that write or read a value
@@ -724,6 +728,10 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool) {
     } else if matches!(item, syn::Item::Struct(item_struct) if super::is_branded_newtype(item_struct))
     {
         Origin::Brand
+    } else if matches!(item, syn::Item::Enum(item_enum) if super::writes_a_string_union(item_enum))
+        && !checked
+    {
+        Origin::Plain
     } else {
         Origin::Declared
     };
@@ -749,6 +757,9 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool) {
         #[cfg(feature = "typescript")]
         unit: matches!(item, syn::Item::Struct(item_struct) if item_struct.generics.params.is_empty() && matches!(item_struct.fields, syn::Fields::Unit)),
     };
+    if let Some(declared_name) = &declared.name {
+        record_undrafted_enum(&declared_name.to_string(), declared.origin == Origin::Plain);
+    }
     #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
     if let Some(declared_name) = &declared.name {
         record_drafted_type(

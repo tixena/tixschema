@@ -669,7 +669,7 @@ the consumer's view; this is what a change has to keep.
   writes for a class the plugin reads, the `KSerializer` `read::transforming` writes over the plugin's, after the
   type's own functions and ahead of `preprocess::keyed`; in the object `flatten_merging_serializer`
   reads every member from; and in the object a tagged or an untagged enum hands a variant's class
-  (`members_renamed`). The draft of a plain enum is read by
+  (`members_renamed`). The draft of a plain enum that names a `check` is read by
   `aliases::plain_enum_serializer`, a `{Type}DraftUnjudged` written by hand that reads each variant under
   its name and each alias, and takes `{Type}Draft.generatedSerializer().descriptor` as its descriptor,
   so the draft carries `read::kept_plain` and the kind stays `ENUM`; no emitted Kotlin names
@@ -732,7 +732,7 @@ say so.
   value class with a parameter unboxed to the `serialize` a `JsonTransformingSerializer` inherits,
   and the type's own serializer then throws `ClassCastException` on a write. So that one keeps
   the delegation and overrides `deserialize`.
-- **A plain enum is a pair, with a rule or without** (`plain_enum_kotlin_source`). The draft is the
+- **A plain enum that names no `check` is the `enum class {Type}` alone**, written as a type a service writes for itself is; **one that names a `check` is a pair** (`plain_enum_kotlin_source`). The draft is the
   `enum class {Type}Draft`, annotated by `read::kept_plain`, with `validationIssues()` and
   `validate()` from `valid::body`; `{Type}DraftUnjudged` is `aliases::plain_enum_serializer`;
   `valid::pair` writes the valid class and its private `{Type}Unjudged`, and `read::judged_valid` the

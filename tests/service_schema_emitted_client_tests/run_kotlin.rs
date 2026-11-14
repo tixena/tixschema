@@ -27,7 +27,7 @@ use super::tests::stamp_client_service_schema::{
 };
 use super::tests::swift_codec_fixture::{
     CodecAdjacentTaggedDraft, CodecEnvelopeDraft, CodecExternalTaggedDraft,
-    CodecInternalTaggedDraft, CodecMapKeysDraft, CodecOptionsRowDraft, CodecPrimaryDraft,
+    CodecInternalTaggedDraft, CodecMapKeysDraft, CodecOptionsRowDraft, CodecPrimary,
     CodecReservedMapDraft, CodecTuplePointDraft, CodecUnitFieldDraft, CodecUnitPayloadDraft,
     CodecUntaggedDraft, codec_adjacent_tagged_kotlin, codec_envelope_kotlin,
     codec_external_tagged_kotlin, codec_internal_tagged_kotlin, codec_map_keys_kotlin,
@@ -739,10 +739,7 @@ fn codec_rows() -> Vec<(&'static str, &'static str, serde_json::Value)> {
             "CodecMapKeys",
             serde_json::to_value(CodecMapKeysDraft {
                 counters: HashMap::from([(7, "seven".to_owned())]),
-                tiers: HashMap::from([(
-                    CodecPrimaryDraft::Primary.validate().unwrap(),
-                    "p".to_owned(),
-                )]),
+                tiers: HashMap::from([(CodecPrimary::Primary, "p".to_owned())]),
             })
             .unwrap(),
         ),

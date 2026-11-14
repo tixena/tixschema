@@ -12954,9 +12954,15 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
                 "for {source} and `{under_mongodb}`, got: {expanded}"
             );
         }
+        let declared = syn::parse_str::<syn::ItemEnum>(source).unwrap();
+        let modules = if super::writes_a_string_union(&declared) {
+            1
+        } else {
+            2
+        };
         assert_eq!(
             expanded.matches("_schema {").count(),
-            2,
+            modules,
             "for {source}, got: {expanded}"
         );
     }

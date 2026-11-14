@@ -31,6 +31,12 @@ mod swift_fitted;
 #[path = "support/swift_valid.rs"]
 mod swift_valid;
 
+/// The `validate()` of the draft of a type that declares no rule.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_valid_free.rs"]
+mod swift_valid_free;
+
 #[cfg(test)]
 #[path = "serde_default_tests/variants.rs"]
 mod variants;

@@ -353,8 +353,8 @@ fn corrected_reads(named: &str, called: &str, closing: &str, corrected: &str) ->
 
 /// [`corrected_reads`] of a type whose own reads are declared under `reach`.
 fn reads_reached(named: &str, called: &str, closing: &str, corrected: &str, reach: &str) -> String {
-    let alone = ALONE.replacen("public", reach, 1);
-    let beside = BESIDE.replacen("public", reach, 1);
+    let alone = ALONE.replacen("fileprivate", reach, 1);
+    let beside = BESIDE.replacen("fileprivate", reach, 1);
     format!(
         "private struct SwiftSchemaRead: Decodable {{ let value: {named}; \
          init(from decoder: Decoder) throws {{ value = try {named}(swiftSchemaCorrected: decoder) }} }}; \
@@ -879,7 +879,13 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
 #[test]
 fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
     let tier = tier_swift::swift_definition();
-    let read = corrected_reads("Tier", "unwrapped(", ")", &plain_enum_read("TierDraft"));
+    let read = reads_reached(
+        "Tier",
+        "unwrapped(",
+        ")",
+        &plain_enum_read("Tier"),
+        "public",
+    );
     assert!(tier.contains(&read), "{read} is not in: {tier}");
 
     for (named, swift, opening) in [

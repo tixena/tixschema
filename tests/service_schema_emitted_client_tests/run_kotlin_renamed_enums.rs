@@ -200,7 +200,14 @@ fn leaf(text: &str) -> String {
 fn rows() -> Vec<Row> {
     let line = || "a".to_owned();
     let mut rows: Vec<Row> = [
-        both!("a plain enum", "Genre", "Category", &GenreDraft::Poetry),
+        ["Genre", "Category"].map(|read_as| {
+            read_row_of(
+                &format!("a plain enum, read as {read_as}"),
+                read_as,
+                &Genre::Poetry,
+                &Ok::<Genre, Vec<String>>(Genre::Poetry),
+            )
+        }),
         both!(
             "a plain enum with a check",
             "Mood",

@@ -19,8 +19,8 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::wrapped_keys_models::{
-    AdjacentConvoyDraft, AdjacentSquadronDraft, ArmadaDraft, BerthingDraft, Burgee, Callsign,
-    Cleat, CleatDraft, ConvoyDraft, DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal,
+    AdjacentConvoyDraft, AdjacentSquadronDraft, ArmadaDraft, Berthing, Burgee, Callsign, Cleat,
+    CleatDraft, ConvoyDraft, DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal,
     SquadronDraft, StowedTaskforceDraft, TaggedConvoyDraft, TaggedSquadronDraft, Taskforce,
     TaskforceDraft, Unhashed, UntaggedConvoyDraft, UntaggedSquadronDraft, adjacent_convoy_swift,
     adjacent_squadron_swift, armada_swift, berthing_swift, burgee_swift, callsign_swift,
@@ -143,11 +143,7 @@ where
 /// [`Taskforce`] with every map holding entries.
 fn taskforce() -> Taskforce {
     TaskforceDraft {
-        berthing: under(
-            BerthingDraft::Port.validate().unwrap(),
-            BerthingDraft::Starboard.validate().unwrap(),
-            &1,
-        ),
+        berthing: under(Berthing::Port, Berthing::Starboard, &1),
         callsign: callsigns(&1),
         hailer: under(
             Callsign::new("charlie".to_owned()).unwrap(),

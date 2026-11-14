@@ -385,7 +385,7 @@ fn ts_definition_writes_the_description_and_no_json_schema() {
         ),
         (
             InvoiceStatus::ts_definition(),
-            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatusDraft =",
+            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatus =",
         ),
         (
             InvoiceEvent::ts_definition(),
@@ -436,7 +436,7 @@ fn ts_definition_is_one_text_with_jsonschema_on_and_off() {
         ),
         (
             InvoiceStatus::ts_definition(),
-            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatusDraft =\n  | \"draft\"\n  | \"paid\";\n\nexport type InvoiceStatus = Readonly<InvoiceStatusDraft> & $brand<\"InvoiceStatus\">;\n\nexport const InvoiceStatus = {\n  Draft: \"draft\" as InvoiceStatus,\n  Paid: \"paid\" as InvoiceStatus,\n} as const;\n\nexport function InvoiceStatusDraft$valid(draft: InvoiceStatusDraft): InvoiceStatus {\n  return draft as unknown as InvoiceStatus;\n}\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceStatus$Variant(value: unknown): string {\n  switch (value) {\n    case \"draft\": return \"Draft\";\n    case \"paid\": return \"Paid\";\n    default: return \"\";\n  }\n}",
+            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatus =\n  | \"draft\"\n  | \"paid\";\n\nexport const InvoiceStatus = {\n  Draft: \"draft\",\n  Paid: \"paid\",\n} as const satisfies Record<string, InvoiceStatus>;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceStatus$Variant(value: unknown): string {\n  switch (value) {\n    case \"draft\": return \"Draft\";\n    case \"paid\": return \"Paid\";\n    default: return \"\";\n  }\n}",
         ),
         (
             InvoiceEvent::ts_definition(),

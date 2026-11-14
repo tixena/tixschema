@@ -26,13 +26,13 @@ pub fn plain_enum_read(named: &str) -> String {
     )
 }
 
-/// The reads of the plain enum `named` that names no check and no function: the key type, the
-/// read of its own, and the one that judges.
+/// The reads of a plain enum `named` that names no check, declared as written: the key type, the
+/// read of its own, and the one that judges what a type with no rule cannot refuse.
 pub fn plain_enum_reads(named: &str) -> String {
     format!(
-        "{ANY_KEY}; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {} }}; public \
+        "{ANY_KEY}; public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {} }}; public \
          init(from decoder: Decoder) throws {{ try self.init(swiftSchemaUnjudged: decoder); let \
-         violations = validationIssues(); if !violations.isEmpty {{ throw \
+         violations = validate(); if !violations.isEmpty {{ throw \
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
          debugDescription: violations.joined(separator: \"; \"))) }} }};",
         plain_enum_read(named)

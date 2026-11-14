@@ -184,8 +184,8 @@ fn a_tuple_struct_is_its_one_slot_or_an_array() {
 fn a_plain_enum_is_a_string() {
     assert!(Plain::needs_wrapper());
     assert!(plain_schema::Schema::needs_wrapper());
-    assert!(!writes_an_object(&PlainDraft::First));
-    assert!(!writes_an_object(&PlainDraft::Second));
+    assert!(!writes_an_object(&Plain::First));
+    assert!(!writes_an_object(&Plain::Second));
 }
 
 #[test]

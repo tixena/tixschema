@@ -274,7 +274,7 @@ fn a_tuple_variant_carries_no_member_to_case() {
 #[test]
 fn a_plain_variant_carries_no_member_to_case() {
     assert_eq!(
-        serde_json::to_value(PlainVariantCasingDraft::AlphaOne).unwrap(),
+        serde_json::to_value(PlainVariantCasing::AlphaOne).unwrap(),
         serde_json::json!("AlphaOne")
     );
     assert_eq!(

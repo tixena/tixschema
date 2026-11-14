@@ -1384,7 +1384,7 @@ Poster, too many items: refused
     );
     cases.push(pinned(
         "Dock, which names no check",
-        &DockDraft::North,
+        &Dock::North,
         &[],
         "Dock.fromJsonUnjudged(@)",
     ));

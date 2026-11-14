@@ -19,7 +19,7 @@ use crate::service_schema::parse::{
     written,
 };
 use crate::service_schema::support::{
-    draft_type_path, exhaustiveness, message_alias_ident, message_reader_ident,
+    exhaustiveness, matched_type, message_alias_ident, message_reader_ident,
     message_validator_ident, message_wire_form_ident, message_wire_key_ident, module_ident,
     unit_value,
 };
@@ -1213,12 +1213,13 @@ fn error_status_expr(shape: &HttpShape, error_head: &Type) -> TokenStream {
         let fallback = DEFAULT_BINDING_ERROR_STATUS;
         quote! { #fallback }
     } else {
-        let drafted = draft_type_path(error_head);
+        let matched = matched_type(error_head);
+        let (drafted, scrutinee) = (matched.path(), matched.borrowed(&quote! { declared_error }));
         let arms = shape
             .error_status
             .iter()
             .map(|(variant, code)| quote! { #drafted::#variant { .. } => #code, });
-        quote! { match &*declared_error { #(#arms)* } }
+        quote! { match #scrutinee { #(#arms)* } }
     }
 }
 

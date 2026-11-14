@@ -52,7 +52,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         South,
     }
 
-    impl fmt::Display for DockDraft {
+    impl fmt::Display for Dock {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.write_str(match *self {
                 Self::North => "the north dock",
@@ -420,7 +420,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 unlabelled_at("byNumber.7.itemLabel"),
             ]
         );
-        assert_eq!(DockDraft::North.to_string(), "the north dock");
+        assert_eq!(Dock::North.to_string(), "the north dock");
         let written = serde_json::to_value(&yard).unwrap();
         for (field, key) in [
             ("byBrand", "b2"),

@@ -9,7 +9,7 @@ use tixschema::model_schema;
 use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
 use super::read::DECODED;
-use super::read::paired_plain_enum;
+use super::read::plain_enum;
 use super::read::{
     NO_ISSUES, judged_valid_over, kept_draft, to_valid, to_valid_free, valid_class_over,
     valid_unjudged_over,
@@ -110,7 +110,7 @@ fn every_fixture_is_read_through_its_functions_and_written_as_serde_writes_it() 
         json!({ "codes": [7_u32] })
     );
     assert_eq!(
-        serde_json::to_value(TierDraft::Standard).unwrap(),
+        serde_json::to_value(Tier::Standard).unwrap(),
         json!("Standard")
     );
 }
@@ -178,7 +178,7 @@ fn a_holder_reads_the_type_through_the_serializer_that_corrects_it() {
 fn a_plain_enum_that_names_a_function_has_one_serializer_that_calls_it() {
     assert_eq!(
         tier_kotlin::kotlin_definition(),
-        paired_plain_enum(
+        plain_enum(
             "Tier",
             "Express, Standard",
             &[("Express", "Express", &[]), ("Standard", "Standard", &[])],

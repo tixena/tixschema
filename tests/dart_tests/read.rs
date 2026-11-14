@@ -161,7 +161,7 @@ fn every_declared_type_is_constructible() {
     ];
     assert_eq!(shelfmarks.len(), 3);
     assert_eq!(
-        serde_json::to_string(&[ReadingDraft::FromJsonUnjudged, ReadingDraft::Judged]).unwrap(),
+        serde_json::to_string(&[Reading::FromJsonUnjudged, Reading::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#
     );
     let vise = ViseDraft {
@@ -483,18 +483,20 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
     );
 }
 
-/// The draft of a plain enum reads with no check, and the valid type judges what its draft reads
-/// and carries the unjudged read a holder calls.
+/// A plain enum that names no check is its own read; one that names a check has a draft that reads
+/// with no check, and a valid type that judges what its draft reads and carries the unjudged read
+/// a holder calls.
 #[test]
 fn a_plain_enum_judges_where_it_names_a_check() {
     assert_written(
         &grade_dart::dart_definition(),
         &format!(
-            "static GradeDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue;",
+            "static Grade fromJson(dynamic json) {{ {} }} static Grade fromJsonUnjudged(dynamic \
+             json) => fromJson(json); String toJson() => wireValue;",
             plain_enum_read(
                 "Grade",
                 "json",
-                "'Express' => GradeDraft.express,'Standard' => GradeDraft.standard,"
+                "'Express' => Grade.express,'Standard' => Grade.standard,"
             )
         ),
     );
@@ -527,11 +529,11 @@ fn an_enum_member_named_after_the_unjudged_read_moves() {
     let reading = reading_dart::dart_definition();
     assert_written(
         &reading,
-        "enum ReadingDraft { fromJsonUnjudged_('FromJsonUnjudged'), judged('Judged');",
+        "enum Reading { fromJsonUnjudged_('FromJsonUnjudged'), judged('Judged');",
     );
     assert_written(
         &reading,
-        "'FromJsonUnjudged' => ReadingDraft.fromJsonUnjudged_,'Judged' => ReadingDraft.judged,",
+        "'FromJsonUnjudged' => Reading.fromJsonUnjudged_,'Judged' => Reading.judged,",
     );
 }
 

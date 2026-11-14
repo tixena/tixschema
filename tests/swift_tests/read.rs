@@ -875,7 +875,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
 #[test]
 fn a_plain_enum_reads_a_string_or_an_object_of_one_key_and_one_with_a_check_judges() {
     let plain = status_swift::swift_definition();
-    holds(&plain, &[&plain_enum_reads("StatusDraft")]);
+    holds(&plain, &[&plain_enum_reads("Status")]);
     let checked = rating_swift::swift_definition();
     let written = format!(
         "{UNJUDGED} {{ {} }}; {JUDGED}; ",

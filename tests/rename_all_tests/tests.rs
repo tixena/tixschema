@@ -113,7 +113,7 @@ fn lowercase_variants_match_serde_wire() {
     assert_eq!(AuthorKind::enum_members(), ["agent", "human"]);
     assert_eq!(
         AuthorKind::enum_members(),
-        serde_wire_names(&[AuthorKindDraft::Agent, AuthorKindDraft::Human])
+        serde_wire_names(&[AuthorKind::Agent, AuthorKind::Human])
     );
 }
 
@@ -122,11 +122,7 @@ fn snake_case_variants_match_serde_wire() {
     assert_eq!(CopyKind::enum_members(), ["body_only", "noop", "verbatim"]);
     assert_eq!(
         CopyKind::enum_members(),
-        serde_wire_names(&[
-            CopyKindDraft::BodyOnly,
-            CopyKindDraft::Noop,
-            CopyKindDraft::Verbatim
-        ])
+        serde_wire_names(&[CopyKind::BodyOnly, CopyKind::Noop, CopyKind::Verbatim])
     );
 }
 
@@ -143,9 +139,9 @@ fn snake_case_acronyms_and_digits_match_serde_wire() {
     assert_eq!(
         FindingKind::enum_members(),
         serde_wire_names(&[
-            FindingKindDraft::AgentKeyUnderUserSsh,
-            FindingKindDraft::Base64Payload,
-            FindingKindDraft::HttpSSHProxy,
+            FindingKind::AgentKeyUnderUserSsh,
+            FindingKind::Base64Payload,
+            FindingKind::HttpSSHProxy,
         ])
     );
 }
@@ -159,8 +155,8 @@ fn per_variant_rename_matches_serde_wire() {
     assert_eq!(
         VerifyErrorKind::enum_members(),
         serde_wire_names(&[
-            VerifyErrorKindDraft::ContentMismatch,
-            VerifyErrorKindDraft::VerifyFailed,
+            VerifyErrorKind::ContentMismatch,
+            VerifyErrorKind::VerifyFailed,
         ])
     );
 }
@@ -170,7 +166,7 @@ fn per_variant_rename_overrides_rename_all() {
     assert_eq!(SandboxKind::enum_members(), ["AS-IS", "plain_add"]);
     assert_eq!(
         SandboxKind::enum_members(),
-        serde_wire_names(&[SandboxKindDraft::AsIs, SandboxKindDraft::PlainAdd])
+        serde_wire_names(&[SandboxKind::AsIs, SandboxKind::PlainAdd])
     );
 }
 

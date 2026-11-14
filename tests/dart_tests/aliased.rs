@@ -8,7 +8,9 @@ use super::aliased_models::{
     scending_dart, surging_dart, swell_dart, veering_dart,
 };
 use super::flattened_aliased_models::riding_dart;
-use super::unknown_keys::{READ_AT, plain_enum_read, plain_enum_valid, plain_enum_validate};
+use super::unknown_keys::{
+    READ_AT, plain_enum_corrected_reads, plain_enum_read, plain_enum_reads, plain_enum_text,
+};
 
 /// What copies a payload's entries into `named` with the key `name` read as `label`, and refuses
 /// the two together.
@@ -132,33 +134,33 @@ fn a_flattened_enum_takes_the_entry_of_a_variant_under_an_alias() {
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_dart::dart_definition(),
-        format!(
-            "enum SwellDraft {{ ebb('Ebb'), flood('Flood'); const SwellDraft(this.wireValue); \
-             final String wireValue; static SwellDraft fromJson(dynamic json) {{ {} }} String \
-             toJson() => wireValue; List<String> validationIssues() => const []; {} {}",
-            plain_enum_read(
+        plain_enum_text(
+            "Swell",
+            "ebb('Ebb'), flood('Flood')",
+            &plain_enum_reads(
                 "Swell",
-                "json",
-                "'Ebb' || 'Low' || 'Neap' => SwellDraft.ebb,'Flood' => SwellDraft.flood,"
+                &plain_enum_read(
+                    "Swell",
+                    "json",
+                    "'Ebb' || 'Low' || 'Neap' => Swell.ebb,'Flood' => Swell.flood,"
+                ),
             ),
-            plain_enum_validate("Swell"),
-            plain_enum_valid("Swell", &["ebb", "flood"]),
         )
     );
     assert_eq!(
         lulling_dart::dart_definition(),
-        format!(
-            "enum LullingDraft {{ ebb('Ebb'), flood('Flood'); const LullingDraft(this.wireValue); \
-             final String wireValue; static LullingDraft fromJson(dynamic payload) {{ final json \
-             = unpadded(payload); {} }} String toJson() => wireValue; List<String> \
-             validationIssues() => const []; {} {}",
-            plain_enum_read(
+        plain_enum_text(
+            "Lulling",
+            "ebb('Ebb'), flood('Flood')",
+            &plain_enum_corrected_reads(
                 "Lulling",
-                "json",
-                "'Ebb' || 'Low' => LullingDraft.ebb,'Flood' => LullingDraft.flood,"
+                "final json = unpadded(payload);",
+                &plain_enum_read(
+                    "Lulling",
+                    "json",
+                    "'Ebb' || 'Low' => Lulling.ebb,'Flood' => Lulling.flood,"
+                ),
             ),
-            plain_enum_validate("Lulling"),
-            plain_enum_valid("Lulling", &["ebb", "flood"]),
         )
     );
 }

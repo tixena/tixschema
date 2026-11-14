@@ -193,8 +193,8 @@ fn member_rendering(surface: &str, key: &str) -> String {
 
 #[test]
 fn test_serde_types_constructible() {
-    let color = ColorDraft::Red;
-    assert!(matches!(color, ColorDraft::Red));
+    let color = Color::Red;
+    assert!(matches!(color, Color::Red));
     let event = EventDraft::Deleted {
         user_id: String::new(),
     };
@@ -210,8 +210,8 @@ fn test_serde_types_constructible() {
         required_field: String::new(),
     };
     assert_eq!(optional.required_field, String::new());
-    let status = StatusDraft::Active;
-    assert!(matches!(status, StatusDraft::Active));
+    let status = Status::Active;
+    assert!(matches!(status, Status::Active));
     let user = UserWithSerdeDraft {
         created_at: String::new(),
         email: String::new(),

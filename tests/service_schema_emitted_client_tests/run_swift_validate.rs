@@ -14,17 +14,17 @@ use super::runtime::judged;
 use super::swift_validate_models::{
     ArchiveDraft, Base, BaseDraft, BerthDraft, Candle, CargoDraft, Carried, CasketDraft,
     ClosedDockDraft, Code, ConsignmentDraft, Crate, CrateDraft, Depot, DepotDraft, Docket,
-    DockingDraft, FreightDraft, Gauge, GaugeDraft, GradeDraft, HaulDraft, InspectionDraft,
-    LaterCode, LaterTitle, LedgerDraft, LiftDraft, ManifestDraft, NameplateDraft, Package,
-    PackageDraft, Parcel, ParcelDraft, PosterDraft, QuayDraft, SconceDraft, Sealed, SealedCode,
-    SealedDraft, Slogans, SomeSlogans, StrongboxDraft, Tally, TallyDraft, Title, WaybillDraft,
-    Wick, YardDraft, archive_swift, base_swift, berth_swift, candle_swift, cargo_swift,
-    carried_swift, casket_swift, closed_dock_swift, code_swift, consignment_swift, crate_swift,
-    depot_swift, docket_swift, docking_swift, freight_swift, gauge_swift, grade_swift, haul_swift,
-    inspection_swift, later_code_swift, later_title_swift, ledger_swift, lift_swift,
-    manifest_swift, mottos_swift, nameplate_swift, package_swift, parcel_swift, poster_swift,
-    quay_swift, sconce_swift, sealed_code_swift, sealed_swift, slogans_swift, some_slogans_swift,
-    strongbox_swift, tally_swift, title_swift, waybill_swift, wick_swift, yard_swift,
+    DockingDraft, FreightDraft, Gauge, GaugeDraft, Grade, HaulDraft, InspectionDraft, LaterCode,
+    LaterTitle, LedgerDraft, LiftDraft, ManifestDraft, NameplateDraft, Package, PackageDraft,
+    Parcel, ParcelDraft, PosterDraft, QuayDraft, SconceDraft, Sealed, SealedCode, SealedDraft,
+    Slogans, SomeSlogans, StrongboxDraft, Tally, TallyDraft, Title, WaybillDraft, Wick, YardDraft,
+    archive_swift, base_swift, berth_swift, candle_swift, cargo_swift, carried_swift, casket_swift,
+    closed_dock_swift, code_swift, consignment_swift, crate_swift, depot_swift, docket_swift,
+    docking_swift, freight_swift, gauge_swift, grade_swift, haul_swift, inspection_swift,
+    later_code_swift, later_title_swift, ledger_swift, lift_swift, manifest_swift, mottos_swift,
+    nameplate_swift, package_swift, parcel_swift, poster_swift, quay_swift, sconce_swift,
+    sealed_code_swift, sealed_swift, slogans_swift, some_slogans_swift, strongbox_swift,
+    tally_swift, title_swift, waybill_swift, wick_swift, yard_swift,
 };
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -594,10 +594,7 @@ Depot, held: passes
 #[test]
 fn a_holder_walks_lists_maps_and_optionals_in_any_nesting() {
     let yard = YardDraft {
-        by_grade: BTreeMap::from([
-            (GradeDraft::Standard.validate().unwrap(), broken()),
-            (GradeDraft::Express.validate().unwrap(), broken()),
-        ]),
+        by_grade: BTreeMap::from([(Grade::Standard, broken()), (Grade::Express, broken())]),
         docks_in_order: vec![
             BTreeMap::new(),
             BTreeMap::from([("north".to_owned(), broken())]),
@@ -1212,7 +1209,7 @@ fn a_member_of_a_variant_under_a_tag_is_named_by_the_steps_serde_writes() {
             "untagged, a named member",
             "Tally(draft: TallyDraft.counted(TallyCountedPayload(tallyCount: 0)))".to_owned(),
         ),
-        ("a plain enum", read_as("Grade", &GradeDraft::Express)),
+        ("a plain enum", read_as("Grade", &Grade::Express)),
     ];
     let Some(swift) = printed(&driver(&read)) else {
         return;

@@ -1,4 +1,4 @@
-//! A check a member names takes the draft of a member typed with a model, whether the member's
+//! A check a member names takes the draft of a member typed with a model that has one, whether the member's
 //! type is declared below the holder, above it or in another crate: the emitted Kotlin is
 //! compiled with `-Werror` and run.
 
@@ -282,7 +282,7 @@ fn compiled_and_run(definitions: &[String], suffix: &str) {
 fn checks(suffix: &str) -> String {
     format!(
         r#"
-fun ok(value: Zed{suffix}Draft): List<String> = listOf("rating is ${{value.name}}")
+fun ok(value: Zed{suffix}): List<String> = listOf("rating is ${{value.name}}")
 fun ok(value: ZedBag{suffix}Draft): List<String> = listOf("other is ${{value.count}}")
 fun ok(value: Tag{suffix}): List<String> = listOf("tag is ${{value.value}}")
 fun ok(value: Served{suffix}): List<String> = listOf("served is ${{value.note}}")

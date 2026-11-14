@@ -15,9 +15,8 @@ use tixschema::model_schema;
 
 use super::invoice_schema::{DecodeWith as _, Field, Filter, MongoPath, OperationError, Resolver};
 use super::{
-    Customer, Invoice, InvoiceStatusDraft, SEEDED_ID, customer_schema, invoice,
-    invoice_status_schema, names_the_unreadable_row, readable, seeded_id, unreadable,
-    whole_number_as_text,
+    Customer, Invoice, InvoiceStatus, SEEDED_ID, customer_schema, invoice, invoice_status_schema,
+    names_the_unreadable_row, readable, seeded_id, unreadable, whole_number_as_text,
 };
 
 /// The rows a courier carries, as the arm of the enum's own paths asks for them.
@@ -162,7 +161,7 @@ fn every_operation_is_sendable(held: &Collection<Document>) {
     let paid = || {
         Invoice::MONGO_FIELDS
             .status()
-            .set(InvoiceStatusDraft::Paid.validate().unwrap())
+            .set(InvoiceStatus::Paid)
             .unwrap()
     };
     sendable(&Invoice::find_one(held, numbered()));
@@ -484,12 +483,7 @@ async fn an_operation_takes_an_arm_update_over_the_types_rows() {
 #[tokio::test]
 async fn a_value_not_written_as_a_document_is_refused_before_any_connection() {
     let never = never_connected().await;
-    let refused = InvoiceStatusDraft::Paid
-        .validate()
-        .unwrap()
-        .insert_one(&never)
-        .await
-        .unwrap_err();
+    let refused = InvoiceStatus::Paid.insert_one(&never).await.unwrap_err();
     assert!(
         matches!(
             refused,

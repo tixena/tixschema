@@ -1,5 +1,5 @@
-//! A constant pattern needs structural equality: an enum that derives no `PartialEq` and `Eq`
-//! has constants for expressions only.
+//! A constant pattern needs structural equality: an enum with a data variant that derives no
+//! `PartialEq` and `Eq` has constants for expressions only.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -9,12 +9,14 @@ use tixschema::model_schema;
 pub enum SessionRole {
     Auditor,
     DntiTechnician,
+    Guest(String),
 }
 
 fn code(role: &SessionRole) -> u8 {
     match *role {
         SessionRole::DntiTechnician => 1,
         SessionRole::Auditor => 2,
+        _ => 3,
     }
 }
 

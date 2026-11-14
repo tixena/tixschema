@@ -95,7 +95,6 @@ fun main() {
     println(Json.encodeToString(note))
     val parked: LaneStop = LaneStopParked.toValid()
     println(Json.encodeToString(parked))
-    println(LaneKindDraft.Bulk.toValid() == LaneKind.Bulk)
     val stamp: LaneStamp = LaneStamp.instance
     println(Json.encodeToString(stamp))
     val record: LaneRecord = LaneRecordDraft(LaneKind.Express, true).toValid()
@@ -108,7 +107,7 @@ fun main() {
     assert_eq!(
         printed,
         format!(
-            "{}\ntrue\nfalse\n{}\n{}\n{}\ntrue\n{}\n{}\n",
+            "{}\ntrue\nfalse\n{}\n{}\n{}\n{}\n{}\n",
             serde_json::to_string(&LaneKind::Express).unwrap(),
             serde_json::to_string(&LaneMove::Idle).unwrap(),
             serde_json::to_string(&LaneNoteDraft {

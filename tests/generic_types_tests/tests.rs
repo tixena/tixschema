@@ -187,7 +187,7 @@ mod typescript {
     #[test]
     fn a_const_parameter_reaches_no_declaration() {
         let ts = PlainConst::<4>::ts_definition();
-        assert!(ts.contains("export type PlainConstDraft =\n"), "Got: {ts}");
+        assert!(ts.contains("export type PlainConst =\n"), "Got: {ts}");
         assert!(!ts.contains("PlainConst<"), "Got: {ts}");
     }
 
@@ -1966,7 +1966,7 @@ fn a_generic_enum_expands_to_rust_that_compiles() {
         UntaggedDraft::<String>::Numbered { count: 1 },
         UntaggedDraft::Numbered { count: _count }
     ));
-    assert!(matches!(PlainConstDraft::<4>::Wide, PlainConstDraft::Wide));
+    assert!(matches!(PlainConst::<4>::Wide, PlainConst::Wide));
 }
 
 #[cfg(feature = "serde")]
