@@ -4,7 +4,7 @@
 //! `kotlinx.serialization` idioms rather than Dart's `Future`/`Stream` pair.
 
 use super::kotlin_http_client::{
-    held_copies, kotlin_held, read_serializer, unjudged_read_serializer,
+    fault_said, held_copies, kotlin_held, read_serializer, unjudged_read_serializer,
 };
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
@@ -18,7 +18,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
     option_inner, tuple_elements, written,
 };
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -151,7 +151,8 @@ fn refusal_class(named: &str) -> String {
     format!(
         "/// What a one-way `{named}` `ws_rpc` method throws when it cannot deliver its `notify`\n\
          /// frame. A one-way operation declares no error, so there is nothing else to throw.\n\
-         class {named}WsRefusal(val fault: {fields}) : Exception(fault.detail)"
+         class {named}WsRefusal(val fault: {fields}) : Exception({said})",
+        said = fault_said("fault"),
     )
 }
 
@@ -1217,9 +1218,12 @@ fn frame_read_fn(fn_prefix: &str) -> String {
 
 /// The function that answers the fault a read's refusal is: `undeserializable-payload` naming no
 /// field for one in serde's words for text that is not the document, as the Rust dispatcher answers
-/// it, and `failed-validation` naming the field for any other.
+/// it, and `failed-validation` listing each problem for any other: the one at the path the
+/// refusal states, or each line of a `validate()` message cut at its field, as the Rust dispatcher
+/// lists them.
 fn refused_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     let listed = NOT_A_DOCUMENT.map(kotlin_quoted).join(", ");
     format!(
         "/// The fault a read's refusal answers: one in serde's words for text that is not the document names no field.\n\
@@ -1228,7 +1232,23 @@ fn refused_fn(named: &str, fn_prefix: &str) -> String {
          return if (said != null && said in setOf({listed})) {{\n    \
          {fields}(detail = said, kind = {named}FaultKind.UndeserializablePayload, operation = operation)\n  \
          }} else {{\n    \
-         {fn_prefix}WsFailedValidation(operation, rejected.toString(), field = {fn_prefix}WsRefusedAt(rejected))\n  \
+         {fields}(issues = {fn_prefix}WsRefusedIssues(rejected), kind = {named}FaultKind.FailedValidation, operation = operation)\n  \
+         }}\n\
+         }}\n\n\
+         /// The problems a read's refusal lists: the one at the path it states, or each line of a `validate()` message.\n\
+         private fun {fn_prefix}WsRefusedIssues(rejected: Throwable): List<{issue}> {{\n  \
+         val said = rejected.message\n  \
+         if (said == null || !said.startsWith(\"'\") || \" at path: \" in said) {{\n    \
+         return listOf({issue}(detail = rejected.toString(), field = {fn_prefix}WsRefusedAt(rejected)))\n  \
+         }}\n  \
+         return said.split(\"; '\").mapIndexed {{ at, piece ->\n    \
+         val line = if (at == 0) piece else \"'$piece\"\n    \
+         val closing = if (line.startsWith(\"'\")) line.indexOf('\\'', 1) else -1\n    \
+         if (closing < 0) {{\n      \
+         {issue}(detail = line)\n    \
+         }} else {{\n      \
+         {issue}(detail = line.substring(closing + 1).removePrefix(\": \"), field = line.substring(1, closing))\n    \
+         }}\n  \
          }}\n\
          }}"
     )
@@ -1269,32 +1289,27 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
-/// `field` names the header a header-shaped failure is about, or the path of the value a message's
-/// read refuses, and is only worth declaring where the service has an operation.
+/// The fault of one problem a read found: `field` names the header a header-shaped failure is
+/// about, and is only worth declaring where the service has an operation.
 fn fault_helper_validation(named: &str, fn_prefix: &str, needs_field: bool) -> String {
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     let doc = format!(
         "The fault a `{named}` `ws_rpc` reply answers with when it will not become the \
          operation's own declared type through the generated codec."
     );
-    if !needs_field {
-        return fault_helper(
-            named,
-            fn_prefix,
-            "WsFailedValidation",
-            "FailedValidation",
-            &doc,
-        );
-    }
+    let (parameter, argument) = if needs_field {
+        (",\n  field: String? = null", ", field = field")
+    } else {
+        ("", "")
+    };
     format!(
         "/// {doc}\n\
          private fun {fn_prefix}WsFailedValidation(\n  \
          operation: String,\n  \
-         detail: String,\n  \
-         field: String? = null,\n\
+         detail: String{parameter},\n\
          ): {fields} = {fields}(\n  \
-         detail = detail,\n  \
-         field = field,\n  \
+         issues = listOf({issue}(detail = detail{argument})),\n  \
          kind = {named}FaultKind.FailedValidation,\n  \
          operation = operation,\n\
          )"

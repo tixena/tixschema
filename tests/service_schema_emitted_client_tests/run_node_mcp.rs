@@ -385,8 +385,6 @@ const answerOf = (result) => JSON.stringify({ jsonrpc: "2.0", id: 1, result: { r
 const text = (value) => ({ type: "text", text: JSON.stringify(value) });
 const fault = { detail: "the handler came apart", kind: "handler-panic", operation: "get-version" };
 const listing = {
-  detail: "'document_id': too short; 'reader': unknown",
-  field: "document_id",
   issues: [{ detail: "too short", field: "document_id" }, { detail: "unknown", field: "reader" }],
   kind: "failed-validation",
   operation: "get-version",
@@ -1516,8 +1514,6 @@ fn the_client_reads_each_outcome_and_sends_what_the_server_reads() {
     assert_eq!(
         outcomes["faultListing"],
         json!({ "ok": false, "error": { "isServiceFault": true, "fault": {
-            "detail": "'document_id': too short; 'reader': unknown",
-            "field": "document_id",
             "issues": [
                 { "detail": "too short", "field": "document_id" },
                 { "detail": "unknown", "field": "reader" },

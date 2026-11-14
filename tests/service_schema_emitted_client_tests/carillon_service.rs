@@ -912,7 +912,7 @@ pub fn rust_answers() -> Vec<Value> {
             Some(reply) if reply["ok"] == true => json!("read"),
             Some(reply) => json!({
                 "kind": reply["error"]["fault"]["kind"],
-                "field": reply["error"]["fault"]["field"],
+                "field": reply["error"]["fault"]["issues"][0]["field"],
             }),
         })
         .collect()

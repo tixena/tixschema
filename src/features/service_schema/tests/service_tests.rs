@@ -209,8 +209,10 @@ fn a_payload_that_parsed_and_then_failed_is_answered_as_the_rust_dispatcher_answ
          answers for it, and every other refusal is `failed-validation`. Got: {written}"
     );
     assert!(
-        written
-            .contains("field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"),
+        written.contains(
+            "return { detail: issue.message, field: steps.length === 0 ? undefined : \
+             steps.join(\".\") };"
+        ),
         "a failure at no key names none: a value that is not an object is not this message, and \
          there is no key to send a caller to. Got: {written}"
     );

@@ -393,8 +393,10 @@ fn a_payload_that_is_not_the_message_becomes_a_failed_validation_fault() {
         &serde_json::json!({
             "error": {
                 "fault": {
-                    "detail": "'document_id': invalid type: integer `7`, expected a string",
-                    "field": "document_id",
+                    "issues": [{
+                        "detail": "invalid type: integer `7`, expected a string",
+                        "field": "document_id",
+                    }],
                     "kind": "failed-validation",
                     "operation": "watch",
                 },
@@ -650,7 +652,10 @@ fn close_fails_a_waiting_request_with_a_transport_failure_fault() {
     }
     .unwrap();
     assert_eq!(fault.kind(), ServiceFaultKind::TransportFailure);
-    assert_eq!(fault.detail(), "the socket closed before the reply arrived");
+    assert_eq!(
+        fault.detail(),
+        Some("the socket closed before the reply arrived")
+    );
 }
 
 /// `deliver` answers a ping with a pong through the very send function a request would have used.

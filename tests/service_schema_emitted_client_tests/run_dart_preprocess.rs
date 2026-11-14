@@ -71,6 +71,7 @@ Map<String, dynamic> described(IntakeClientServiceWeighResult result) {
         'kind': 'fault',
         'faultKind': fault.kind.name,
         'detail': fault.detail,
+        'issues': fault.issues?.map((issue) => {'detail': issue.detail, 'field': issue.field}).toList(),
       },
   };
 }
@@ -1407,6 +1408,17 @@ fn client_module(imports: &[&str], client: String, entry: &str) -> String {
 /// `fragileItemCodes`, and for one whose label is spaces alone, where it answers the latter with
 /// a fault of `kind`.
 fn answers(kind: &str) -> Value {
+    let (detail, issues) = if kind == "failedValidation" {
+        (
+            Value::Null,
+            serde_json::json!([{ "detail": "too short: minimum length is 1, got 0", "field": "label" }]),
+        )
+    } else {
+        (
+            serde_json::json!("FormatException: 'label': too short: minimum length is 1, got 0"),
+            Value::Null,
+        )
+    };
     serde_json::json!({
         "spaced": {
             "kind": "ok",
@@ -1415,7 +1427,8 @@ fn answers(kind: &str) -> Value {
         "blank": {
             "kind": "fault",
             "faultKind": kind,
-            "detail": "FormatException: 'label': too short: minimum length is 1, got 0",
+            "detail": detail,
+            "issues": issues,
         },
     })
 }

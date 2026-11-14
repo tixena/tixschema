@@ -70,7 +70,13 @@ impl FaultHandler for RecordingFaultHandler {
         OutgoingResponse::new(
             499,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }
@@ -162,7 +168,8 @@ fn a_payload_the_functions_leave_unreadable_is_a_fault() {
     );
     assert_eq!(
         String::from_utf8_lossy(response.body()),
-        "handled: invalid type: integer `5`, expected a string"
+        "handled: failed validation in operation `store-parcel`: [\"invalid type: integer `5`, \
+         expected a string\"]"
     );
 }
 

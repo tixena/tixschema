@@ -411,7 +411,7 @@ fn an_answer_that_does_not_read_answers_the_validation_fault() {
     let fault = error_text(&answered);
     assert_eq!(fault["isServiceFault"], true);
     assert_eq!(fault["fault"]["kind"], "failed-validation");
-    assert_eq!(fault["fault"]["field"], "confirmation");
+    assert_eq!(fault["fault"]["issues"][0]["field"], "confirmation");
 }
 
 #[test]

@@ -203,31 +203,21 @@ fn listed(module: &Ident) -> TokenStream {
             }
             let mut found = ::std::vec::Vec::new();
             mismatches(input, source, &input["$defs"], passed, &[], &mut found);
-            let named = first.field().unwrap_or_default();
+            let named = first
+                .issues()
+                .first()
+                .and_then($crate::#module::ServiceFaultIssue::field)
+                .unwrap_or_default();
             found.retain(|(path, _said)| path != named);
             if found.is_empty() {
                 return first;
             }
-            let own = first
-                .field()
-                .and_then(|field| first.detail().strip_prefix(&format!("'{field}': ")))
-                .unwrap_or_else(|| first.detail());
-            let mut detail = first.detail().to_owned();
-            let mut issues =
-                ::std::vec![$crate::#module::ServiceFaultIssue::new(first.field(), own)];
+            let mut issues = first.issues().to_vec();
             for (path, said) in &found {
                 let field = (!path.is_empty()).then_some(path.as_str());
-                detail.push_str("; ");
-                if let ::core::option::Option::Some(named_at) = field {
-                    detail.push('\'');
-                    detail.push_str(named_at);
-                    detail.push_str("': ");
-                }
-                detail.push_str(said);
                 issues.push($crate::#module::ServiceFaultIssue::new(field, said));
             }
-            $crate::#module::ServiceFault::failed_validation(operation, first.field(), &detail)
-                .with_issues(issues)
+            $crate::#module::ServiceFault::failed_validation(operation, issues)
         }
     }
 }

@@ -72,7 +72,8 @@ val Handlers = Writing("2024-01-05", "a")
 
 fun faulted(fault: DatingClientServiceFaultFields): String =
     "fault " + Json.encodeToJsonElement(serializer<DatingClientServiceFaultKind>(), fault.kind).jsonPrimitive.content +
-        (fault.field?.let { " at $it" } ?: "") + ": " + fault.detail
+        (fault.issues?.joinToString("") { issue -> (issue.field?.let { " at $it" } ?: "") + ": " + issue.detail }
+            ?: ((fault.field?.let { " at $it" } ?: "") + ": " + fault.detail))
 
 fun made(answered: DatingClientServiceStampResult): String = when (answered) {
     is DatingClientServiceStampResult.Ok -> "read " + answered.value

@@ -20,7 +20,7 @@ use crate::service_schema::parse::{
     service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
     written,
 };
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use crate::utils::{WireScalarKind, wire_scalar_kind};
 use core::fmt::Write as _;
 use syn::{Ident, Type};
@@ -382,13 +382,24 @@ fn result_interface(named: &str, operation: &OperationDef) -> Option<String> {
     ))
 }
 
+/// The Kotlin expression of what `fault` says, for the message of the exception it is thrown on:
+/// its detail, or the list of every problem a failed validation found, each as the validator
+/// words it.
+pub(super) fn fault_said(fault: &str) -> String {
+    format!(
+        "{fault}.detail ?: {fault}.issues?.map {{ if (it.field == null) it.detail else \
+         \"'${{it.field}}': ${{it.detail}}\" }}.toString()"
+    )
+}
+
 fn refusal_class(named: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
         "/// What a one-way `{named}` `http_rest` method throws when it cannot answer its\n\
          /// declared status. A one-way operation declares no error, so there is nothing else to\n\
          /// throw.\n\
-         class {named}Refusal(val fault: {fields}) : Exception(fault.detail)"
+         class {named}Refusal(val fault: {fields}) : Exception({said})",
+        said = fault_said("fault"),
     )
 }
 
@@ -1194,14 +1205,14 @@ fn legal_header_value_fn(fn_prefix: &str) -> String {
 /// before the transport is ever reached.
 fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     format!(
         "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
          /// own safety check or a path list holds a comma, before the transport is ever reached.\n\
          private fun {fn_prefix}HttpOutboundFault(operation: String, field: String, detail: \
          String): {fields} =\n  \
          {fields}(\n    \
-         detail = detail,\n    \
-         field = field,\n    \
+         issues = listOf({issue}(detail = detail, field = field)),\n    \
          kind = {named}FaultKind.FailedValidation,\n    \
          operation = operation,\n  \
          )"

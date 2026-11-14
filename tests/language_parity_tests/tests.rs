@@ -625,28 +625,43 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
     assert_eq!(held_under, "customerId");
 
     assert!(
-        constructor.contains(": first.path;") && constructor.contains("steps.join(\".\");"),
-        "the field is the path of the first issue. Got: {constructor}"
+        constructor.contains(": issue.path;")
+            && constructor.contains(
+                "return { detail: issue.message, field: steps.length === 0 ? undefined : \
+                 steps.join(\".\") };"
+            ),
+        "the field of each issue is its path. Got: {constructor}"
     );
-    assert!(
-        constructor
-            .contains("field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"),
-        "got: {constructor}"
-    );
-    assert!(constructor.contains(".join(\"; \"),"), "got: {constructor}");
+    assert!(!constructor.contains(".join(\"; \")"), "got: {constructor}");
 
     // What TypeScript answers, read off what it published: one line per issue, under the key the
-    // Zod object wrote, joined the way the constructor joins them.
+    // Zod object wrote, each listed at that key.
     let reported = typescript_report(&declarations::CustomerId::zod_schema(), &held_under, "A!");
     assert_eq!(answered["kind"], refusals::ts_kind(&constructor));
-    assert_eq!(answered["field"], held_under);
-    assert_eq!(answered["detail"], reported.join("; "));
+    assert_eq!(answered["issues"][0]["field"], held_under);
+    assert_eq!(lines(&answered), reported);
     assert_eq!(answered["operation"], "admit");
     assert!(
-        !answered["detail"].as_str().unwrap().contains("at line"),
+        !answered.to_string().contains("at line"),
         "the byte offset serde appends locates the failure inside an encoding the caller never \
          saw. Got: {answered}"
     );
+}
+
+/// Each problem a fault lists, written as the validator words it: `'field': detail`.
+#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+fn lines(fault: &serde_json::Value) -> Vec<String> {
+    fault["issues"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|issue| {
+            let detail = issue["detail"].as_str().unwrap();
+            issue["field"]
+                .as_str()
+                .map_or_else(|| detail.to_owned(), |field| format!("'{field}': {detail}"))
+        })
+        .collect()
 }
 
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
@@ -657,8 +672,8 @@ fn a_bound_below_a_flattened_hop_answers_the_same_fault_in_both_languages() {
     let reported = typescript_report(&declarations::Claims::zod_schema(), "account.jti", "");
 
     assert_eq!(answered["kind"], refusals::ts_kind(&constructor));
-    assert_eq!(answered["field"], "account.jti");
-    assert_eq!(answered["detail"], reported.join("; "));
+    assert_eq!(answered["issues"][0]["field"], "account.jti");
+    assert_eq!(lines(&answered), reported);
 }
 
 #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
@@ -675,7 +690,7 @@ fn a_payload_that_parsed_and_is_not_the_message_answers_the_same_kind_in_both_la
         );
         let at_a_position = payload == "[1,2,3]";
         assert_eq!(
-            answered["field"],
+            answered["issues"][0]["field"],
             if at_a_position {
                 serde_json::Value::from("0")
             } else {
@@ -685,7 +700,10 @@ fn a_payload_that_parsed_and_is_not_the_message_answers_the_same_kind_in_both_la
              that is no array has no path. Got: {answered}"
         );
         assert!(
-            !answered["detail"].as_str().unwrap().contains("at line"),
+            !answered["issues"][0]["detail"]
+                .as_str()
+                .unwrap()
+                .contains("at line"),
             "got: {answered}"
         );
     }

@@ -223,15 +223,13 @@ pub mod a_bound_the_fields_own_type_declares {
             "the operation never ran, so this is not one of its declared errors"
         );
         assert_eq!(
-            reported.field(),
-            Some("slug"),
+            reported.issues(),
+            [enrol_service_schema::ServiceFaultIssue::new(
+                Some("slug"),
+                "too short: minimum length is 3, got 2"
+            )],
             "the brand's own report names nothing, so the message is what supplies the field. \
-             Got: {}",
-            reported.detail()
-        );
-        assert_eq!(
-            reported.detail(),
-            "'slug': too short: minimum length is 3, got 2"
+             Got: {reported}"
         );
         assert_eq!(reported.operation(), "enrol");
         assert!(
@@ -287,7 +285,7 @@ pub mod a_bound_the_fields_own_type_declares {
         )
         .unwrap()
         .unwrap_err();
-        assert_eq!(reported.field(), Some("slug"));
+        assert_eq!(reported.issues()[0].field(), Some("slug"));
         assert_eq!(reported.operation(), "withdraw");
     }
 }
@@ -815,9 +813,10 @@ fn an_envelope_that_contradicts_itself_is_a_defect_rather_than_an_answer() {
         probe_service_schema::ServiceFaultKind::UndeserializablePayload
     );
     assert!(
-        reported.detail().contains("carried no value"),
-        "got: {}",
-        reported.detail()
+        reported
+            .detail()
+            .is_some_and(|said| said.contains("carried no value")),
+        "got: {reported}"
     );
 }
 
@@ -911,7 +910,7 @@ fn a_message_failing_its_own_validation_is_a_fault_and_the_transport_is_never_re
         "the operation never ran, so this is not one of its declared errors"
     );
     assert_eq!(
-        reported.field(),
+        reported.issues()[0].field(),
         Some("customer_id"),
         "a malformed request fails at the caller with the field named, rather than a round trip \
          later"
@@ -937,7 +936,7 @@ fn a_one_way_message_failing_its_own_validation_is_a_fault_and_sends_nothing() {
         reported.kind(),
         probe_service_schema::ServiceFaultKind::FailedValidation
     );
-    assert_eq!(reported.field(), Some("customer_id"));
+    assert_eq!(reported.issues()[0].field(), Some("customer_id"));
     assert!(
         client.transport().calls().is_empty(),
         "a defect it can see for itself is not something to publish"
@@ -970,7 +969,7 @@ fn a_call_the_transport_could_not_carry_comes_back_as_a_fault_rather_than_never_
     );
     assert_eq!(
         reported.detail(),
-        "no reply within 30s",
+        Some("no reply within 30s"),
         "what the transport said is what the log line carries: the client knows nothing about \
          why a call did not travel"
     );
@@ -1002,7 +1001,7 @@ fn a_one_way_send_the_transport_could_not_put_out_comes_back_as_a_fault() {
          something the caller is owed"
     );
     assert_eq!(reported.operation(), "apply-bundle");
-    assert_eq!(reported.detail(), "no confirmation within 30s");
+    assert_eq!(reported.detail(), Some("no confirmation within 30s"));
     assert_eq!(
         client.transport().calls(),
         vec!["apply-bundle".to_owned()],

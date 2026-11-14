@@ -501,11 +501,11 @@ fn definition_of(name: &str) -> Option<&'static str> {
     }
 }
 
-fn without_detail(answer: &Value) -> Value {
-    let mut stripped = answer.clone();
-    let fault = stripped["error"]["data"]["fault"].as_object_mut().unwrap();
-    fault.remove("detail");
-    for issue in fault
+/// Takes the detail out of `fault` and out of each issue it lists.
+fn strip_details(fault: &mut Value) {
+    let held = fault.as_object_mut().unwrap();
+    held.remove("detail");
+    for issue in held
         .get_mut("issues")
         .and_then(Value::as_array_mut)
         .into_iter()
@@ -513,6 +513,11 @@ fn without_detail(answer: &Value) -> Value {
     {
         issue.as_object_mut().unwrap().remove("detail");
     }
+}
+
+fn without_detail(answer: &Value) -> Value {
+    let mut stripped = answer.clone();
+    strip_details(&mut stripped["error"]["data"]["fault"]);
     stripped["error"]["message"] = Value::Null;
     stripped
 }
@@ -522,10 +527,10 @@ fn without_tool_detail(answer: &Value) -> Value {
     let mut stripped = answer.clone();
     let text = stripped["result"]["content"][0]["text"].as_str().unwrap();
     let mut carried: Value = serde_json::from_str(text).unwrap();
-    carried["fault"].as_object_mut().unwrap().remove("detail");
+    strip_details(&mut carried["fault"]);
     stripped["result"]["content"][0]["text"] = carried;
-    if let Some(structured) = stripped["result"]["structuredContent"]["fault"].as_object_mut() {
-        structured.remove("detail");
+    if stripped["result"]["structuredContent"]["fault"].is_object() {
+        strip_details(&mut stripped["result"]["structuredContent"]["fault"]);
     }
     stripped
 }
@@ -821,8 +826,6 @@ fn a_prompt_whose_arguments_hold_two_problems_names_both_in_one_fault() {
     assert_eq!(
         answer["error"]["data"]["fault"],
         json!({
-            "detail": "'documentType': invalid type: integer `5`, expected a string; 'focus': invalid type, expected a string",
-            "field": "documentType",
             "issues": [
                 { "detail": "invalid type: integer `5`, expected a string", "field": "documentType" },
                 { "detail": "invalid type, expected a string", "field": "focus" },

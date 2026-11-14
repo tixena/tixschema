@@ -312,9 +312,10 @@ fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal
     assert!(
         refused.contains("kind: LedgerFaultKind.undeserializablePayload")
             && refused.contains("'expected value'")
-            && refused.contains("_ledgerWsFailedValidation(operation, '$rejected', field: _ledgerWsRefusedAt(rejected))"),
+            && refused
+                .contains("_ledgerWsFailedValidation(operation, _ledgerWsRefusedIssues(rejected))"),
         "a refusal in serde's words for text that is not the document is `undeserializablePayload`, \
-         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
+         as the Rust dispatcher answers it, and every other lists each problem. Got: {refused}"
     );
 }
 
@@ -632,9 +633,8 @@ fn a_client_method_splits_a_header_tuple_reply_and_names_the_header_on_a_bad_dec
          `headers`, in declaration order. Got: {method}"
     );
     assert!(
-        method.contains("_versionServiceWsFailedValidation('get', '$rejected', field: 'etag')")
-            && method
-                .contains("_versionServiceWsFailedValidation('get', '$rejected', field: 'x-age')"),
+        method.contains("_versionServiceWsFailedAt('get', 'etag', rejected)")
+            && method.contains("_versionServiceWsFailedAt('get', 'x-age', rejected)"),
         "a header element that will not decode faults naming that header. Got: {method}"
     );
     assert!(
@@ -646,9 +646,7 @@ fn a_client_method_splits_a_header_tuple_reply_and_names_the_header_on_a_bad_dec
             && method.contains(
                 "return VersionServiceGetResultOperation((declaredHead, errorHeaderOut0));"
             )
-            && method.contains(
-                "_versionServiceWsFailedValidation('get', '$rejected', field: 'x-reason')"
-            ),
+            && method.contains("_versionServiceWsFailedAt('get', 'x-reason', rejected)"),
         "the declared error's own head decodes off `error` alone, and its `error_header_out` \
          element decodes off the reply's own `headers`, faulting under its own name. Got: {method}"
     );
@@ -680,7 +678,8 @@ fn a_handler_takes_a_header_in_value_per_binding_read_off_the_request_frame() {
          straight through to the handler. Got: {arm}"
     );
     assert!(
-        arm.contains("field: 'x-tenant'") && arm.contains("field: 'x-trace'"),
+        arm.contains("WsFailedAt('get', 'x-tenant', rejected)")
+            && arm.contains("WsFailedAt('get', 'x-trace', rejected)"),
         "a header_in value that will not decode faults naming that header. Got: {arm}"
     );
 }

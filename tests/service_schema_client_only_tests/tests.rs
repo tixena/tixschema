@@ -460,7 +460,7 @@ fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure(
         call_service_schema::ServiceFaultKind::TransportFailure
     );
     assert_eq!(reported.operation(), "read-balance");
-    assert_eq!(reported.detail(), "the deadline passed with no reply");
+    assert_eq!(reported.detail(), Some("the deadline passed with no reply"));
 }
 
 #[test]
@@ -641,7 +641,7 @@ fn a_fixed_fault_status_decodes_through_the_private_mirror() {
         reported.kind(),
         document_client_service_schema::ServiceFaultKind::HandlerPanic
     );
-    assert_eq!(reported.detail(), "the handler came apart");
+    assert_eq!(reported.detail(), Some("the handler came apart"));
 }
 
 #[test]
@@ -660,9 +660,8 @@ fn a_status_naming_neither_a_declared_error_nor_a_fixed_fault_is_an_undeserializ
         document_client_service_schema::ServiceFaultKind::UndeserializablePayload
     );
     assert!(
-        reported.detail().contains("599"),
-        "got: {}",
-        reported.detail()
+        reported.detail().is_some_and(|said| said.contains("599")),
+        "got: {reported}"
     );
 }
 

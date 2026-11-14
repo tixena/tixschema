@@ -2,7 +2,7 @@
 //! exposes, a per-operation client that calls out, and a dispatcher attachment for a service the
 //! app implements — one service, one `emit()`, emitting both halves together.
 
-use super::dart_http_client::{dart_call, dart_parameter, message_type};
+use super::dart_http_client::{dart_call, dart_parameter, fault_said, message_type};
 use super::result::result_name;
 use super::{left_to_http_rest, on_one_line};
 use crate::features::dart::{
@@ -15,7 +15,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
     option_inner, tuple_elements,
 };
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -67,9 +67,15 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     });
     published.extend(sides);
     let answers = !service.operations.is_empty();
-    published.extend(fault_helpers(&named, &fn_prefix, answers));
+    let reads_a_header = service.operations.iter().any(|operation| {
+        let shape = HttpShape::of(operation);
+        !shape.header_in.is_empty()
+            || !shape.header_out.is_empty()
+            || !shape.error_header_out.is_empty()
+    });
+    published.extend(fault_helpers(&named, &fn_prefix, answers, reads_a_header));
     if answers {
-        published.push(refused_at_fn(&fn_prefix));
+        published.push(refused_at_fn(&named, &fn_prefix));
         published.push(refused_fn(&named, &fn_prefix));
     }
     if service
@@ -117,10 +123,12 @@ fn held_fn(fn_prefix: &str) -> String {
     )
 }
 
-/// The function that answers the field a fault names for a value a read refused, as the Rust
+/// The functions that answer the field a fault names for a value a read refused, as the Rust
 /// dispatcher names it: the path a generated read's `FormatException` carries as its `source`, or
-/// the place a `validate()` message opens with.
-fn refused_at_fn(fn_prefix: &str) -> String {
+/// the place a `validate()` message opens with; and the problems the refusal lists, each line of
+/// a `validate()` message cut at its field, as the Rust dispatcher lists them.
+fn refused_at_fn(named: &str, fn_prefix: &str) -> String {
+    let issue = fault_issue_name(named);
     format!(
         "/// The field a read's refusal names: the path it carries, or the place its first message opens with.\n\
          String? _{fn_prefix}WsRefusedAt(Object rejected) => switch (rejected) {{\n  \
@@ -128,6 +136,24 @@ fn refused_at_fn(fn_prefix: &str) -> String {
          FormatException(:final String message) when message.startsWith(\"'\") && message.indexOf(\"'\", 1) > 0 =>\n    \
          message.substring(1, message.indexOf(\"'\", 1)),\n  \
          _ => null,\n\
+         }};\n\n\
+         /// One line of a refusal as a fault lists it: the field the line names, cut off its front, and what it says there.\n\
+         {issue} _{fn_prefix}WsIssue(String line) {{\n  \
+         final end = line.startsWith(\"'\") ? line.indexOf(\"'\", 1) : -1;\n  \
+         if (end < 0) return {issue}(detail: line);\n  \
+         final rest = line.substring(end + 1);\n  \
+         return {issue}(detail: rest.startsWith(': ') ? rest.substring(2) : rest, field: line.substring(1, end));\n\
+         }}\n\n\
+         /// Every line of `said`, the one sentence a read refused with, as a fault lists it.\n\
+         List<{issue}> _{fn_prefix}WsIssues(String said) => [\n  \
+         for (final (at, piece) in said.split(\"; '\").indexed) _{fn_prefix}WsIssue(at == 0 ? piece : \"'$piece\"),\n\
+         ];\n\n\
+         /// The problems a read's refusal lists: the one at the path it carries, or each line of a `validate()` message.\n\
+         List<{issue}> _{fn_prefix}WsRefusedIssues(Object rejected) => switch (rejected) {{\n  \
+         FormatException(:final Object? source, :final String message)\n      \
+         when (source is! List || source.isEmpty) && message.startsWith(\"'\") =>\n    \
+         _{fn_prefix}WsIssues(message),\n  \
+         _ => [{issue}(detail: '$rejected', field: _{fn_prefix}WsRefusedAt(rejected))],\n\
          }};"
     )
 }
@@ -149,7 +175,7 @@ fn written_fn(fn_prefix: &str) -> String {
 
 /// The function that answers the fault a read's refusal is: `undeserializable-payload` naming no
 /// field for one in serde's words for text that is not the document, as the Rust dispatcher answers
-/// it, and `failed-validation` naming the field for any other.
+/// it, and `failed-validation` listing each problem for any other.
 fn refused_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     let listed = NOT_A_DOCUMENT.map(|said| format!("'{said}'")).join(", ");
@@ -158,7 +184,7 @@ fn refused_fn(named: &str, fn_prefix: &str) -> String {
          {fields} _{fn_prefix}WsRefused(String operation, Object rejected) => switch (rejected) {{\n  \
          FormatException(:final String message) when const <String>{{{listed}}}.contains(message) =>\n    \
          {fields}(detail: message, kind: {named}FaultKind.undeserializablePayload, operation: operation),\n  \
-         _ => _{fn_prefix}WsFailedValidation(operation, '$rejected', field: _{fn_prefix}WsRefusedAt(rejected)),\n\
+         _ => _{fn_prefix}WsFailedValidation(operation, _{fn_prefix}WsRefusedIssues(rejected)),\n\
          }};"
     )
 }
@@ -402,8 +428,9 @@ fn refusal_class(named: &str) -> String {
          final {fields} fault;\n  \
          @override\n  \
          String toString() =>\n      \
-         '{named}WsRefusal: ${{fault.kind}} in `${{fault.operation}}`: ${{fault.detail}}';\n\
-         }}"
+         '{named}WsRefusal: ${{fault.kind}} in `${{fault.operation}}`: {said}';\n\
+         }}",
+        said = fault_said("fault"),
     )
 }
 
@@ -582,6 +609,7 @@ fn reply_decode_stmt(
         return String::new();
     };
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     let success_block = success_decode_block(result, fn_prefix, wire, success, &shape.header_out);
     let error_block =
         declared_error_decode_stmts(result, fn_prefix, wire, error, &shape.error_header_out);
@@ -593,7 +621,7 @@ fn reply_decode_stmt(
          try {{\n        \
          fault = {fields}.fromJson(error['fault'] as Map<String, dynamic>);\n      \
          }} catch (rejected) {{\n        \
-         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, '$rejected'));\n      \
+         return {result}Fault(_{fn_prefix}WsFailedValidation({wire}, [{issue}(detail: '$rejected')]));\n      \
          }}\n      \
          return {result}Fault(fault);\n    \
          }}\n\
@@ -609,7 +637,7 @@ fn refused_fault(fn_prefix: &str, wire: &str) -> String {
 /// The fault a client answers for the value of `header` its read refused, naming the header.
 pub(super) fn header_refused_fault(fn_prefix: &str, wire: &str, header: &str) -> String {
     format!(
-        "_{fn_prefix}WsFailedValidation({wire}, '$rejected', field: {})",
+        "_{fn_prefix}WsFailedAt({wire}, {}, rejected)",
         quoted(header)
     )
 }
@@ -1028,11 +1056,7 @@ fn header_in_read_stmts(
              try {{\n            \
              {parameter} = {decode};\n          \
              }} catch (rejected) {{\n            \
-             final fault = _{fn_prefix}WsFailedValidation(\n              \
-             {wire},\n              \
-             '$rejected',\n              \
-             field: {name},\n            \
-             );\n            \
+             final fault = _{fn_prefix}WsFailedAt({wire}, {name}, rejected);\n            \
              onFault(fault);\n"
         );
         stmt.push_str(&reply_write_stmt(
@@ -1266,7 +1290,7 @@ fn reply_dispatch_arm(
 
 /// The faults the client and the attachment build. Of a service `ws_rpc` carries no operation of,
 /// the attachment answers every frame as an unknown operation, and nothing builds the others.
-fn fault_helpers(named: &str, fn_prefix: &str, answers: bool) -> Vec<String> {
+fn fault_helpers(named: &str, fn_prefix: &str, answers: bool, headered: bool) -> Vec<String> {
     let unknown_operation = fault_helper(
         named,
         fn_prefix,
@@ -1291,7 +1315,7 @@ fn fault_helpers(named: &str, fn_prefix: &str, answers: bool) -> Vec<String> {
                  carry a call: the frame never went out, or the reply never came back."
             ),
         ),
-        failed_validation_fault_helper(named, fn_prefix),
+        failed_validation_fault_helper(named, fn_prefix, headered),
         unknown_operation,
         fault_helper(
             named,
@@ -1318,23 +1342,28 @@ fn fault_helper(named: &str, fn_prefix: &str, suffix: &str, kind: &str, doc: &st
     )
 }
 
-/// [`fault_helper`]'s own twin: `field` names a failed header element's own decode, or the path of
-/// the value a message's read refused, `null` everywhere else.
-fn failed_validation_fault_helper(named: &str, fn_prefix: &str) -> String {
+/// [`fault_helper`]'s own twin, listing every problem a read found, and, where `headered`, the
+/// fault of one problem at `field`: a failed header element's own decode.
+fn failed_validation_fault_helper(named: &str, fn_prefix: &str, headered: bool) -> String {
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
+    let at = if headered {
+        format!(
+            "\n\n/// The fault of a value at `field` a read refused with `rejected`.\n\
+             {fields} _{fn_prefix}WsFailedAt(String operation, String field, Object rejected) =>\n    \
+             _{fn_prefix}WsFailedValidation(operation, [{issue}(detail: '$rejected', field: field)]);"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "/// The fault a `{named}` `ws_rpc` reply answers with when it will not become the\n\
          /// operation's own declared type through that type's own codec.\n\
-         {fields} _{fn_prefix}WsFailedValidation(\n  \
-         String operation,\n  \
-         String detail, {{\n  \
-         String? field,\n\
-         }}) => {fields}(\n  \
-         detail: detail,\n  \
-         field: field,\n  \
+         {fields} _{fn_prefix}WsFailedValidation(String operation, List<{issue}> issues) => {fields}(\n  \
+         issues: issues,\n  \
          kind: {named}FaultKind.failedValidation,\n  \
          operation: operation,\n\
-         );"
+         );{at}"
     )
 }
 

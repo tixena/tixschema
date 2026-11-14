@@ -172,6 +172,9 @@ fun made(answered: LoadingClientServiceLoadResult): JsonElement = when (answered
     is LoadingClientServiceLoadResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<LoadingClientServiceFaultKind>(), answered.fault.kind))
         put("detail", answered.fault.detail)
+        answered.fault.issues?.let { listed ->
+            put("issues", JsonArray(listed.map { buildJsonObject { put("detail", it.detail); put("field", it.field) } }))
+        }
     }
 }
 
@@ -1137,7 +1140,14 @@ fn each_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
             "httpKept": { "label": "A" },
             "httpBroken": { "kind": "undeserializable-payload", "detail": thrown },
             "socketKept": { "label": "A" },
-            "socketBroken": { "kind": "failed-validation", "detail": thrown }
+            "socketBroken": {
+                "kind": "failed-validation",
+                "detail": null,
+                "issues": [
+                    { "detail": "too short: minimum length is 1, got 0", "field": "label" },
+                    { "detail": "y is outside of itemCodeList", "field": "fragileItemCodes.1" },
+                ],
+            }
         })
     );
 }

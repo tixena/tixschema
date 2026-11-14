@@ -230,7 +230,7 @@ void main() async {
       },
       titles: (ctx, req) async => <String>[req.prefix],
     ),
-    onFault: (fault) => faults.add(fault.detail),
+    onFault: (fault) => faults.add(fault.detail ?? fault.kind.name),
   );
   Map<String, dynamic> request(String id, String operation, Object payload) => <String, dynamic>{
         'kind': 'request',

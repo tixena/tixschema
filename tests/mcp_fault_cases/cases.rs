@@ -173,8 +173,9 @@ pub const FAULT_CASES: [FaultCase; 20] = [
     },
 ];
 
-/// One `tools/call` and the fault it must answer. `issues` is the field of each problem the fault
-/// lists, in order, and empty where it names one problem and lists none.
+/// One `tools/call` and the fault it must answer. `field` is the field of the first problem a
+/// failed validation lists, and `issues` the field of each problem it lists, in order, empty
+/// where it lists that one problem alone.
 pub struct FaultCase {
     pub arguments: &'static str,
     pub field: Option<&'static str>,
@@ -190,38 +191,40 @@ impl FaultCase {
         serde_json::from_str(self.arguments).unwrap()
     }
 
-    /// Holds the fault in `reply` to this case's kind, field and operation.
+    /// Holds the fault in `reply` to this case's kind, operation and problems: a failed
+    /// validation lists each problem and writes no field and no detail of its own, and every
+    /// other kind writes its detail and lists none.
     pub fn holds(&self, reply: &Value) {
         let fault = fault_in(reply);
         assert_eq!(fault["kind"], self.kind, "{}: {reply:#}", self.arguments);
         assert_eq!(fault["operation"], self.operation, "{reply:#}");
-        assert_eq!(
-            fault.get("field").and_then(Value::as_str),
-            self.field,
-            "{reply:#}"
-        );
-        if let (Some(field), "check-drafts") = (self.field, self.tool) {
-            let detail = fault["detail"].as_str().unwrap();
-            assert!(detail.starts_with(&format!("'{field}': ")), "{reply:#}");
-        }
+        assert!(fault.get("field").is_none(), "{reply:#}");
         let Some(issues) = fault.get("issues").and_then(Value::as_array) else {
-            assert!(fault.get("issues").is_none(), "{reply:#}");
+            assert_ne!(self.kind, "failed-validation", "{reply:#}");
+            assert!(fault["detail"].as_str().is_some(), "{reply:#}");
+            assert_eq!(self.field, None, "{reply:#}");
             assert_eq!(self.issues, &[] as &[&str], "{reply:#}");
             return;
         };
+        assert_eq!(self.kind, "failed-validation", "{reply:#}");
+        assert!(fault.get("detail").is_none(), "{reply:#}");
+        assert_eq!(
+            issues.first().and_then(|issue| issue["field"].as_str()),
+            self.field,
+            "{reply:#}"
+        );
         let fields: Vec<&str> = issues
             .iter()
-            .map(|issue| issue["field"].as_str().unwrap())
+            .filter_map(|issue| issue["field"].as_str())
             .collect();
-        assert_eq!(fields, self.issues, "{reply:#}");
-        let detail = fault["detail"].as_str().unwrap();
+        if self.issues.is_empty() {
+            assert_eq!(issues.len(), 1, "{reply:#}");
+        } else {
+            assert_eq!(fields, self.issues, "{reply:#}");
+        }
         for issue in issues {
             let said = issue["detail"].as_str().unwrap();
-            let at = issue["field"].as_str().unwrap();
-            assert!(
-                !said.is_empty() && detail.contains(&format!("'{at}': {said}")),
-                "{reply:#}"
-            );
+            assert!(!said.is_empty(), "{reply:#}");
         }
     }
 }

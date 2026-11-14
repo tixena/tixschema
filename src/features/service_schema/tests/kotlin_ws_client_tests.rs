@@ -405,9 +405,9 @@ fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal
     assert!(
         refused.contains("kind = ConversationClientServiceFaultKind.UndeserializablePayload")
             && refused.contains("\"expected value\"")
-            && refused.contains("conversationClientServiceWsFailedValidation(operation, rejected.toString(), field = conversationClientServiceWsRefusedAt(rejected))"),
+            && refused.contains("ConversationClientServiceFaultFields(issues = conversationClientServiceWsRefusedIssues(rejected), kind = ConversationClientServiceFaultKind.FailedValidation, operation = operation)"),
         "a refusal in serde's words for text that is not the document is `UndeserializablePayload`, \
-         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
+         as the Rust dispatcher answers it, and every other lists each problem. Got: {refused}"
     );
 }
 
@@ -429,7 +429,7 @@ fn a_one_way_operation_answers_plainly_and_throws_a_ws_refusal_named_apart_from_
          `kotlin_http_client()`'s own bare refusal so both coexist in one file. Got: {method}"
     );
     assert!(
-        written.contains("class ConversationClientServiceWsRefusal(val fault: ConversationClientServiceFaultFields) : Exception(fault.detail)"),
+        written.contains("class ConversationClientServiceWsRefusal(val fault: ConversationClientServiceFaultFields) : Exception(fault.detail ?: fault.issues?.map { if (it.field == null) it.detail else \"'${it.field}': ${it.detail}\" }.toString())"),
         "got: {written}"
     );
 }
@@ -660,10 +660,12 @@ fn the_fault_helpers_reuse_the_generated_fault_fields_and_kind() {
         written.contains(
             "private fun conversationClientServiceWsFailedValidation(\n  operation: String,\n  \
              detail: String,\n  field: String? = null,\n): ConversationClientServiceFaultFields = \
-             ConversationClientServiceFaultFields(\n  detail = detail,\n  field = field,\n  \
+             ConversationClientServiceFaultFields(\n  issues = listOf(ConversationClientServiceFaultIssue(\
+             detail = detail, field = field)),\n  \
              kind = ConversationClientServiceFaultKind.FailedValidation,"
         ),
-        "the failed-validation helper names the field of a message its read refuses. Got: {written}"
+        "the failed-validation helper lists the one problem at the header it names. Got: \
+         {written}"
     );
 }
 

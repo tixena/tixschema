@@ -389,7 +389,7 @@ impl FaultHandler for Noted {
         OutgoingResponse::new(
             499,
             vec![("x-fault".to_owned(), format!("{}", fault.kind()))],
-            fault.detail().as_bytes().to_vec(),
+            fault.to_string().into_bytes(),
         )
     }
 }
@@ -516,10 +516,13 @@ fn a_path_text_its_form_does_not_read_is_refused_on_the_member() {
     let (status, body) = put("/typed/many/true/1/12", r#"{"label":"l","pages":[]}"#);
     assert_eq!(status, 400, "{body}");
     let refused: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(refused["field"], "pageSize", "{body}");
     assert_eq!(
-        refused["detail"],
-        r#"'pageSize': invalid type: string "many", expected u32"#
+        refused["issues"],
+        serde_json::json!([{
+            "detail": r#"invalid type: string "many", expected u32"#,
+            "field": "pageSize",
+        }]),
+        "{body}"
     );
 }
 
@@ -816,17 +819,21 @@ fn the_rust_client_refuses_a_list_item_holding_a_comma_before_sending() {
             .unwrap();
     for answer in [declared, generated] {
         let refusal = match answer {
-            Err(CallError::Fault(fault)) => {
-                Some((fault.field().map(str::to_owned), fault.detail().to_owned()))
-            }
+            Err(CallError::Fault(fault)) => Some(
+                fault
+                    .issues()
+                    .iter()
+                    .map(|issue| (issue.field().map(str::to_owned), issue.detail().to_owned()))
+                    .collect::<Vec<_>>(),
+            ),
             Ok(_) | Err(CallError::Operation(_)) => None,
         };
         assert_eq!(
             refusal,
-            Some((
+            Some(vec![(
                 Some("labels".to_owned()),
                 "a list item holds a comma, which a path would read as two items".to_owned()
-            ))
+            )])
         );
     }
     assert!(client.transport().carried.lock().unwrap().is_empty());

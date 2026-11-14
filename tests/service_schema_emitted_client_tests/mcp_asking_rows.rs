@@ -872,7 +872,16 @@ fn without_detail(answer: &Value) -> Value {
     let text = stripped["result"]["content"][0]["text"].as_str().unwrap();
     let mut body: Value = serde_json::from_str(text).unwrap();
     assert_eq!(body["isServiceFault"], true, "{answer:#}");
-    body["fault"].as_object_mut().unwrap().remove("detail");
+    let fault = body["fault"].as_object_mut().unwrap();
+    fault.remove("detail");
+    for issue in fault
+        .get_mut("issues")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        issue.as_object_mut().unwrap().remove("detail");
+    }
     stripped["result"]["content"][0]["text"] = json!(body.to_string());
     stripped
 }

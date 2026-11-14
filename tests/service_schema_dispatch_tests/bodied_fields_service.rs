@@ -141,7 +141,13 @@ impl FaultHandler for RecordingFaultHandler {
         OutgoingResponse::new(
             499,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }

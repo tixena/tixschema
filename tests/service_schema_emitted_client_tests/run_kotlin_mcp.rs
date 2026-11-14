@@ -902,11 +902,10 @@ fn the_kotlin_server_answers_every_fault_of_the_shared_table() {
                 let carried: Value =
                     serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap())
                         .unwrap();
+                let opening = &carried["fault"]["issues"][0];
+                assert_eq!(opening["field"], field, "{reply}");
                 assert!(
-                    carried["fault"]["detail"]
-                        .as_str()
-                        .unwrap()
-                        .starts_with(&format!("'{field}': ")),
+                    !opening["detail"].as_str().unwrap().starts_with('\''),
                     "{reply}"
                 );
             }

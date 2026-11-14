@@ -71,7 +71,7 @@ fun described(result: StampClientServiceStampResult): JsonObject = when (result)
     is StampClientServiceStampResult.Fault -> buildJsonObject {
         put("ok", false)
         put("faultKind", result.fault.kind.name)
-        put("faultField", result.fault.field)
+        put("faultField", result.fault.issues?.firstOrNull()?.field)
     }
 }
 

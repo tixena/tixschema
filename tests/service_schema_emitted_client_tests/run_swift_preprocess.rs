@@ -206,7 +206,7 @@ func described(_ name: String, _ answer: Result<Parcel, ShippingClientServiceShi
     print("\(name): the declared error")
   case .failure(.fault(let fault)):
     print("\(name): the fault \(fault.kind.rawValue)")
-    print("    \(fault.detail)")
+    print("    \(fault.detail ?? "")")
   }
 }
 
@@ -250,7 +250,9 @@ func described(_ name: String, _ answer: Result<Parcel, ShippingClientServiceShi
     print("\(name): the declared error")
   case .failure(.fault(let fault)):
     print("\(name): the fault \(fault.kind.rawValue)")
-    print("    \(fault.detail)")
+    for issue in fault.issues ?? [] {
+      print("    '\(issue.field ?? "")': \(issue.detail)")
+    }
   }
 }
 

@@ -242,14 +242,22 @@ fn parsed(text: &str) -> Value {
     serde_json::from_str(text).unwrap()
 }
 
-/// A reply frame with its fault's `detail` taken out: the words are each side's own decoder's,
-/// and everything else about the fault is the contract.
+/// A reply frame with the `detail` of its fault and of each issue taken out: the words are each
+/// side's own decoder's, and everything else about the fault is the contract.
 fn without_fault_detail(mut reply: Value) -> Value {
     if let Some(fault) = reply
         .pointer_mut("/error/fault")
         .and_then(Value::as_object_mut)
     {
         fault.remove("detail");
+        for issue in fault
+            .get_mut("issues")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            issue.as_object_mut().unwrap().remove("detail");
+        }
     }
     reply
 }

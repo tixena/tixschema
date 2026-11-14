@@ -250,7 +250,8 @@ const ACTOR_HEAD: &str = r#"public actor @N@McpClient {
       let data = try @P@McpDatedEncoder().encode(@N@McpRequest(id: nextId, method: method, params: .init(arguments: arguments, name: tool)))
       text = String(decoding: data, as: UTF8.self)
     } catch {
-      return .failed(@P@McpFault(.failedValidation, tool, "\(error)"))
+      return .failed(
+        @N@Fault(detail: nil, field: nil, issues: [@N@FaultIssue(detail: "\(error)", field: nil)], kind: .failedValidation, operation: tool))
     }
     do {
       let answered = try await transport.send(

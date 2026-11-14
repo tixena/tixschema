@@ -1671,40 +1671,47 @@ fn violation_readers() -> TokenStream {
             ::core::option::Option::Some(field)
         }
 
-        /// Everything that failed, in one line, for the fault's detail.
-        pub fn violation_detail(reported: &[::std::string::String]) -> ::std::string::String {
-            reported.join("; ")
+        /// One line of a violation report as a fault lists it: the field the line names, cut off
+        /// its front, and what it says there. A line that names no field, as a constrained
+        /// newtype's does, is the problem's detail whole.
+        pub fn violation_issue(reported: &str) -> ServiceFaultIssue {
+            let ::core::option::Option::Some(field) = named_field(reported) else {
+                return ServiceFaultIssue::new(::core::option::Option::None, reported);
+            };
+            let rest = reported
+                .strip_prefix('\'')
+                .and_then(|rest| rest.strip_prefix(field))
+                .and_then(|rest| rest.strip_prefix('\''))
+                .unwrap_or_default();
+            ServiceFaultIssue::new(
+                ::core::option::Option::Some(field),
+                rest.strip_prefix(": ").unwrap_or(rest),
+            )
         }
 
-        /// The field a violation report names, which is its first line's. A violation naming no
-        /// field, as a constrained newtype's does, leaves the fault's field empty.
-        pub fn violated_field(reported: &[::std::string::String]) -> ::core::option::Option<&str> {
-            named_field(reported.first()?)
+        /// Every line of a violation report as a fault lists it, one problem each, in order.
+        pub fn violation_issues(reported: &[::std::string::String]) -> ::std::vec::Vec<ServiceFaultIssue> {
+            reported.iter().map(|line| violation_issue(line)).collect()
         }
 
-        /// The field and the detail of a refusal serde raised at `path`, the place it tracked,
-        /// where `said` names each violation by the holders' fields alone, with no list index and
-        /// no map key: each name is placed at `path`, so `'shipment.tags'` raised at
-        /// `shipment.tags.1` names `shipment.tags.1`, and `'shipment.parcelCount'` raised at
-        /// `shipment` names `shipment.parcelCount`.
-        pub fn refused_at(path: &str, said: &str) -> (::std::string::String, ::std::string::String) {
-            let mut field = ::core::option::Option::None;
-            let lines: ::std::vec::Vec<::std::string::String> = said
-                .split("; '")
+        /// The problems of a refusal serde raised at `path`, the place it tracked, where `said`
+        /// names each violation by the holders' fields alone, with no list index and no map key:
+        /// each name is placed at `path`, so `'shipment.tags'` raised at `shipment.tags.1` names
+        /// `shipment.tags.1`, and `'shipment.parcelCount'` raised at `shipment` names
+        /// `shipment.parcelCount`. serde carries one sentence, which is cut back into its lines.
+        pub fn refused_at(path: &str, said: &str) -> ::std::vec::Vec<ServiceFaultIssue> {
+            said.split("; '")
                 .enumerate()
                 .map(|(at, piece)| {
                     let line = if at == 0 { piece.to_owned() } else { ::std::format!("'{piece}") };
                     let ::core::option::Option::Some(named) = named_field(&line) else {
-                        return line;
+                        return violation_issue(&line);
                     };
                     let placed = placed_at(path, named);
                     let rest = line.strip_prefix(&::std::format!("'{named}'")).unwrap_or_default();
-                    let rewritten = ::std::format!("'{placed}'{rest}");
-                    field.get_or_insert(placed);
-                    rewritten
+                    violation_issue(&::std::format!("'{placed}'{rest}"))
                 })
-                .collect();
-            (field.unwrap_or_else(|| path.to_owned()), lines.join("; "))
+                .collect()
         }
 
         /// `named` placed at `path`: each of its steps is found in `path`, in order, and the
@@ -1857,11 +1864,12 @@ fn call_error_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream
 ///
 /// fn log_line(fault: &sweep_service_schema::ServiceFault) -> String {
 ///     format!(
-///         "{} in `{}` at {:?}: {}",
+///         "{} in `{}` at {:?}: {:?} {:?}",
 ///         fault.kind(),
 ///         fault.operation(),
 ///         fault.field(),
 ///         fault.detail(),
+///         fault.issues(),
 ///     )
 /// }
 ///
@@ -1870,26 +1878,23 @@ fn call_error_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream
 fn fault_accessors() -> TokenStream {
     quote! {
         impl ServiceFault {
-            /// What went wrong, in words, for the log line a receiver writes.
+            /// What went wrong, in words, for the log line a receiver writes. `None` for a failed
+            /// validation, whose words are those of each of its [`issues`](Self::issues).
             #[must_use]
-            pub fn detail(&self) -> &str {
-                &self.detail
+            pub fn detail(&self) -> ::core::option::Option<&str> {
+                self.detail.as_deref()
             }
 
-            /// The field the failure named, where it named one.
-            ///
-            /// A message that failed validation names the field that failed, and so does a
-            /// payload refused by the serde hook a constrained field carries — that hook runs
-            /// the same check and reports it in the same words. Everything else leaves it empty:
-            /// a payload refused for its shape rather than its values, an operation name nothing
-            /// answers to, a handler that panicked.
+            /// The field the failure names, where it names one. A failed validation names the
+            /// field of each problem in [`issues`](Self::issues) instead.
             #[must_use]
             pub fn field(&self) -> ::core::option::Option<&str> {
                 self.field.as_deref()
             }
 
-            /// Each problem the failure found, at its field, where it found more than one; the
-            /// first is the one [`field`](Self::field) names. Empty for a failure of one problem.
+            /// Each problem a failed validation found, one entry each, at its field where it is
+            /// at one: every bound and check the message broke, and a payload serde refused for
+            /// a value it does not admit. Empty for every other kind.
             #[must_use]
             pub fn issues(&self) -> &[ServiceFaultIssue] {
                 self.issues.as_deref().unwrap_or_default()
@@ -1964,13 +1969,14 @@ fn fault_accessors() -> TokenStream {
 fn fault_constructors() -> TokenStream {
     quote! {
         impl ServiceFault {
-            /// A message that failed its own schema, naming the field when the violation named one.
+            /// A message that failed its own schema, listing every problem it found, one entry
+            /// each, at its field where it is at one.
             #[must_use]
-            pub fn failed_validation(operation: &str, field: ::core::option::Option<&str>, detail: &str) -> Self {
+            pub fn failed_validation(operation: &str, issues: ::std::vec::Vec<ServiceFaultIssue>) -> Self {
                 Self {
-                    detail: detail.to_owned(),
-                    field: field.map(str::to_owned),
-                    issues: ::core::option::Option::None,
+                    detail: ::core::option::Option::None,
+                    field: ::core::option::Option::None,
+                    issues: ::core::option::Option::Some(issues),
                     kind: ServiceFaultKind::FailedValidation,
                     operation: operation.to_owned(),
                 }
@@ -1980,7 +1986,7 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn handler_panic(operation: &str, detail: &str) -> Self {
                 Self {
-                    detail: detail.to_owned(),
+                    detail: ::core::option::Option::Some(detail.to_owned()),
                     field: ::core::option::Option::None,
                     issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::HandlerPanic,
@@ -1992,7 +1998,7 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn transport_failure(operation: &str, detail: &str) -> Self {
                 Self {
-                    detail: detail.to_owned(),
+                    detail: ::core::option::Option::Some(detail.to_owned()),
                     // The transport reports that the call did not travel, not that a value inside
                     // it was wrong, so there is no field to name.
                     field: ::core::option::Option::None,
@@ -2006,7 +2012,7 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn undeserializable_payload(operation: &str, detail: &str) -> Self {
                 Self {
-                    detail: detail.to_owned(),
+                    detail: ::core::option::Option::Some(detail.to_owned()),
                     // `refused_payload` sends here only the refusals serde_json classified as bytes
                     // that are not a document, so there is no field to name.
                     field: ::core::option::Option::None,
@@ -2020,21 +2026,13 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn unknown_operation(operation: &str) -> Self {
                 Self {
-                    detail: "the service answers to no operation by that name".to_owned(),
+                    detail: ::core::option::Option::Some(
+                        "the service answers to no operation by that name".to_owned(),
+                    ),
                     field: ::core::option::Option::None,
                     issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::UnknownOperation,
                     operation: operation.to_owned(),
-                }
-            }
-
-            /// This fault, listing `issues` beside its own field and detail: each problem it
-            /// found, the first being the one its field names. An empty list leaves it unchanged.
-            #[must_use]
-            pub fn with_issues(self, issues: ::std::vec::Vec<ServiceFaultIssue>) -> Self {
-                Self {
-                    issues: (!issues.is_empty()).then_some(issues),
-                    ..self
                 }
             }
         }
@@ -2080,9 +2078,7 @@ fn fault_declaration(
         fault_issue_name(&declared.to_string()),
         span = declared.span()
     );
-    let issue_doc = format!(
-        "One problem a `{declared}` fault found, at its field, where the fault lists more than one."
-    );
+    let issue_doc = format!("One problem a failed validation of `{declared}` found, at its field.");
     let issue_alias_doc =
         format!("One problem a [`ServiceFault`] lists. The same type as [`{issue}`].");
     let definitions = fields_with_issue(&fields, &issue);
@@ -2096,7 +2092,7 @@ fn fault_declaration(
         #sealed
         pub enum #kind {
             /// A message reached its operation and did not satisfy the operation's schema. The
-            /// fault names the field that failed.
+            /// fault lists every problem it found.
             FailedValidation,
             /// The operation's handler panicked.
             HandlerPanic,
@@ -2130,12 +2126,14 @@ fn fault_declaration(
             #[derive(Clone, Debug, Eq, PartialEq, ::serde::Serialize)]
             #[serde(rename_all = "camelCase")]
             pub struct #fields {
-                detail: ::std::string::String,
-                // Omitted, never written as `null`, when there is no field to name: the reply
-                // envelope's convention, and what lets the TypeScript spell it `string | undefined`.
+                // Omitted, never written as `null`, for a failed validation, which lists its
+                // words in `issues`: the reply envelope's convention, and what lets the TypeScript
+                // spell it `string | undefined`.
+                #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+                detail: ::core::option::Option<::std::string::String>,
                 #[serde(skip_serializing_if = "::core::option::Option::is_none")]
                 field: ::core::option::Option<::std::string::String>,
-                // Omitted for a failure of one problem, so optional in TypeScript.
+                // Written for a failed validation alone, so optional in TypeScript.
                 #[model_schema_prop(ts_optional)]
                 #[serde(skip_serializing_if = "::core::option::Option::is_none")]
                 issues: ::core::option::Option<::std::vec::Vec<#issue>>,
@@ -2242,32 +2240,42 @@ fn kotlin_fields_with_issue(_fields: &Ident, _issue: &Ident) -> TokenStream {
 }
 
 /// How a fault and a call error read in a log line. A fault is meant to page a human, so the one
-/// line it renders to names the kind, the operation and the field before the detail.
+/// line it renders to names the kind, the operation and the field before the detail, or before
+/// the list of problems a failed validation found, each as the validator words it.
 fn renderings() -> TokenStream {
     quote! {
         impl ::core::fmt::Display for ServiceFault {
             fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                match self.field.as_deref() {
-                    ::core::option::Option::Some(named) => ::core::write!(
-                        formatter,
-                        "{} in operation `{}`, field `{}`: {}",
-                        self.kind,
-                        self.operation,
-                        named,
-                        self.detail
-                    ),
-                    ::core::option::Option::None => ::core::write!(
-                        formatter,
-                        "{} in operation `{}`: {}",
-                        self.kind,
-                        self.operation,
-                        self.detail
-                    ),
+                ::core::write!(formatter, "{} in operation `{}`", self.kind, self.operation)?;
+                if let ::core::option::Option::Some(named) = self.field.as_deref() {
+                    ::core::write!(formatter, ", field `{named}`")?;
+                }
+                match (self.detail.as_deref(), self.issues.as_deref()) {
+                    (::core::option::Option::Some(said), _) => ::core::write!(formatter, ": {said}"),
+                    (::core::option::Option::None, ::core::option::Option::Some(listed)) => {
+                        let lines: ::std::vec::Vec<::std::string::String> =
+                            listed.iter().map(::std::string::ToString::to_string).collect();
+                        ::core::write!(formatter, ": {lines:?}")
+                    }
+                    (::core::option::Option::None, ::core::option::Option::None) => {
+                        ::core::result::Result::Ok(())
+                    }
                 }
             }
         }
 
         impl ::core::error::Error for ServiceFault {}
+
+        impl ::core::fmt::Display for ServiceFaultIssue {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                match self.field.as_deref() {
+                    ::core::option::Option::Some(named) => {
+                        ::core::write!(formatter, "'{named}': {}", self.detail)
+                    }
+                    ::core::option::Option::None => formatter.write_str(&self.detail),
+                }
+            }
+        }
 
         impl ::core::fmt::Display for ServiceFaultKind {
             fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {

@@ -1046,7 +1046,7 @@ fn a_generated_message_is_read_off_the_query_and_the_body() {
         "got: {results:#?}"
     );
     assert_eq!(
-        results["bad"]["body"]["field"], "limit",
+        results["bad"]["body"]["issues"][0]["field"], "limit",
         "got: {results:#?}"
     );
 }
@@ -1611,8 +1611,8 @@ fn multipart_body_kind_agrees_with_rust() {
     );
     assert_eq!(rust_too_large.status, 413, "got: {rust_too_large:#?}");
 
-    // The missing-part fault's `detail` text is no longer byte-equal with Rust's, so `status`,
-    // `kind` and `field` are compared here instead of the raw body.
+    // The missing-part issue's `detail` text is no longer byte-equal with Rust's, so `status`,
+    // `kind` and the issue's `field` are compared here instead of the raw body.
     let node_missing_file = node_answered(&results["missingFile"]);
     let rust_missing_file = upload_document_rust_answered(vec![(
         "title".to_owned(),
@@ -1628,7 +1628,7 @@ fn multipart_body_kind_agrees_with_rust() {
     let rust_missing_file_body: serde_json::Value =
         serde_json::from_slice(&rust_missing_file.body).unwrap();
     assert_eq!(
-        node_missing_file_body["field"], rust_missing_file_body["field"],
+        node_missing_file_body["issues"][0]["field"], rust_missing_file_body["issues"][0]["field"],
         "got: {node_missing_file_body:#?}"
     );
     assert_eq!(
@@ -1636,7 +1636,7 @@ fn multipart_body_kind_agrees_with_rust() {
         "got: {node_missing_file_body:#?}"
     );
     assert_eq!(
-        node_missing_file_body["field"], "file",
+        node_missing_file_body["issues"][0]["field"], "file",
         "got: {node_missing_file_body:#?}"
     );
 }
@@ -1697,8 +1697,8 @@ fn a_bound_header_reaches_the_implementation_and_agrees_with_the_rust_dispatcher
         "got: {rust_present:#?}"
     );
 
-    // `detail` is not compared byte-for-byte: it differs from the Rust dispatcher's own text, so
-    // `status`, `kind` and `field` are compared here instead of the raw body.
+    // The issue's `detail` is not compared byte-for-byte: it differs from the Rust dispatcher's own
+    // text, so `status`, `kind` and the issue's `field` are compared here instead of the raw body.
     let node_absent = node_answered(&results["absent"]);
     let rust_absent = echo_rust_answered(Vec::new());
     assert_eq!(
@@ -1709,7 +1709,7 @@ fn a_bound_header_reaches_the_implementation_and_agrees_with_the_rust_dispatcher
     let node_absent_body: serde_json::Value = serde_json::from_slice(&node_absent.body).unwrap();
     let rust_absent_body: serde_json::Value = serde_json::from_slice(&rust_absent.body).unwrap();
     assert_eq!(
-        node_absent_body["field"], rust_absent_body["field"],
+        node_absent_body["issues"][0]["field"], rust_absent_body["issues"][0]["field"],
         "got: {node_absent_body:#?}"
     );
     assert_eq!(
@@ -1717,7 +1717,7 @@ fn a_bound_header_reaches_the_implementation_and_agrees_with_the_rust_dispatcher
         "got: {node_absent_body:#?}"
     );
     assert_eq!(
-        node_absent_body["field"], "range",
+        node_absent_body["issues"][0]["field"], "range",
         "got: {node_absent_body:#?}"
     );
 }

@@ -304,7 +304,7 @@ pub fn over_mcp(text: &str) -> (Option<String>, u32) {
 }
 
 /// What a server's answer to a `tools/call` tells: `"read"` for a success, the fault's kind and
-/// field for a tool error, and the code of a JSON-RPC error.
+/// the field of the first problem it lists for a tool error, and the code of a JSON-RPC error.
 pub fn told(answer: &Value) -> Value {
     if let Some(code) = answer["error"]["code"].as_i64() {
         return json!({ "code": code });
@@ -314,7 +314,7 @@ pub fn told(answer: &Value) -> Value {
     }
     let carried: Value =
         serde_json::from_str(answer["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-    json!({ "kind": carried["fault"]["kind"], "field": carried["fault"]["field"] })
+    json!({ "kind": carried["fault"]["kind"], "field": carried["fault"]["issues"][0]["field"] })
 }
 
 /// What the Rust dispatcher answers each case of [`MCP_CASES`].
@@ -367,10 +367,10 @@ pub fn rust_client_answers() -> Vec<Value> {
         .collect()
 }
 
-/// The kind and the field of a fault the Rust client answered.
+/// The kind of a fault the Rust client answered, and the field of the first problem it lists.
 fn fault_told(fault: &carillon_mcp_service_schema::ServiceFault) -> Value {
     let written = serde_json::to_value(fault).unwrap();
-    json!({ "kind": written["kind"], "field": fault.field() })
+    json!({ "kind": written["kind"], "field": written["issues"][0]["field"] })
 }
 
 /// The answer each case of [`TOLL_CASES`] hands a client: the Rust dispatcher's answer to a toll
@@ -507,16 +507,20 @@ fn the_rust_dispatcher_answers_what_is_no_document_as_serde_reads_it_from_a_valu
             "{name}"
         );
     }
-    let detail = |name: &str| {
+    let fault = |name: &str| {
         let answer: Value =
             serde_json::from_str(&over_mcp(&call(1, &mcp_payload(name))).0.unwrap()).unwrap();
         let carried: Value =
             serde_json::from_str(answer["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
-        carried["fault"]["detail"].clone()
+        carried["fault"].clone()
     };
+    let detail = |name: &str| fault(name)["detail"].clone();
     assert_eq!(
-        detail("a Result of two arms"),
-        "'tally': invalid value: map, expected map with a single key"
+        fault("a Result of two arms")["issues"],
+        json!([{
+            "detail": "invalid value: map, expected map with a single key",
+            "field": "tally",
+        }])
     );
     assert_eq!(
         detail("a key that is no number"),

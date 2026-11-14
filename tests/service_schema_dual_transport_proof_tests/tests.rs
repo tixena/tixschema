@@ -469,7 +469,7 @@ impl http_rest_transport::FaultHandler for RecordingFaultHandler {
         http_rest_transport::OutgoingResponse::new(
             status,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("recorded: {}", fault.detail()).into_bytes(),
+            format!("recorded: {fault}").into_bytes(),
         )
     }
 }
@@ -1156,7 +1156,7 @@ fn a_non_unit_success_with_a_genuinely_absent_value_still_faults() {
     );
     assert_eq!(
         reported.detail(),
-        "the answer said `ok` and carried no value",
+        Some("the answer said `ok` and carried no value"),
         "a non-unit success still demands a carried value; only the unit type reads an absent one \
          as Ok(())"
     );

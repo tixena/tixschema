@@ -46,7 +46,7 @@ Object? told(CarillonHttpServiceStrikeResult answered) => switch (answered) {
   CarillonHttpServiceStrikeResultOk() => 'read',
   CarillonHttpServiceStrikeResultFault(:final fault) => <String, dynamic>{
     'kind': fault.kind.toJson(),
-    'field': fault.field,
+    'field': fault.issues?.firstOrNull?.field,
   },
   _ => 'declared',
 };
@@ -86,7 +86,7 @@ fun told(answered: CarillonHttpServiceStrikeResult): JsonElement = when (answere
     is CarillonHttpServiceStrikeResult.Ok -> JsonPrimitive("read")
     is CarillonHttpServiceStrikeResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<CarillonHttpServiceFaultKind>(), answered.fault.kind))
-        put("field", answered.fault.field?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("field", answered.fault.issues?.firstOrNull()?.field?.let { JsonPrimitive(it) } ?: JsonNull)
     }
     else -> JsonPrimitive("declared")
 }
@@ -124,7 +124,7 @@ func told(_ answered: Result<CarillonChime, CarillonHttpServiceStrikeFailure>) -
   case .success:
     return "\"read\""
   case .failure(.fault(let fault)):
-    let field = fault.field.map { "\"\($0)\"" } ?? "null"
+    let field = fault.issues?.first?.field.map { "\"\($0)\"" } ?? "null"
     return "{\"kind\":\"\(fault.kind.rawValue)\",\"field\":\(field)}"
   case .failure:
     return "\"declared\""

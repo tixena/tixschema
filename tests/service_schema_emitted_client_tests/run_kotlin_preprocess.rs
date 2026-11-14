@@ -238,6 +238,9 @@ fun made(answered: PacketClientServiceSentResult): JsonElement = when (answered)
     is PacketClientServiceSentResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<PacketClientServiceFaultKind>(), answered.fault.kind))
         put("detail", answered.fault.detail)
+        answered.fault.issues?.let { listed ->
+            put("issues", JsonArray(listed.map { buildJsonObject { put("detail", it.detail); put("field", it.field) } }))
+        }
     }
 }
 
@@ -1440,22 +1443,23 @@ fn each_client_reads_a_reply_through_the_functions_of_its_type() {
             "httpCorrected": { "label": "A", "fragile": 0_u32 },
             "httpRefused": { "kind": "undeserializable-payload", "detail": thrown },
             "socketCorrected": { "label": "A", "fragile": 0_u32 },
-            "socketRefused": { "kind": "failed-validation", "detail": thrown }
+            "socketRefused": {
+                "kind": "failed-validation",
+                "detail": null,
+                "issues": [{ "detail": "too short: minimum length is 1, got 0", "field": "label" }]
+            }
         })
     );
     let of_a_list: Value = serde_json::from_str(listed).unwrap();
-    for (client, kind) in [
-        ("http", "undeserializable-payload"),
-        ("socket", "failed-validation"),
-    ] {
-        assert_eq!(of_a_list[client]["kind"], kind);
-        let detail = of_a_list[client]["detail"].as_str().unwrap();
-        assert_eq!(
-            detail,
-            "kotlinx.serialization.SerializationException: 'label': STRING cannot be read from \
-             an array at path: $.label"
-        );
-    }
+    let unread = "kotlinx.serialization.SerializationException: 'label': STRING cannot be read \
+                  from an array at path: $.label";
+    assert_eq!(of_a_list["http"]["kind"], "undeserializable-payload");
+    assert_eq!(of_a_list["http"]["detail"], unread);
+    assert_eq!(of_a_list["socket"]["kind"], "failed-validation");
+    assert_eq!(
+        of_a_list["socket"]["issues"],
+        json!([{ "detail": unread, "field": "label" }])
+    );
 }
 
 /// A name with no Kotlin function is the compiler's to refuse, at the call.

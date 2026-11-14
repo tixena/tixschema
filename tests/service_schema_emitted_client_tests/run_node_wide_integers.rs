@@ -558,9 +558,10 @@ fn carried() -> Value {
                     "error": {
                         "isServiceFault": true,
                         "fault": {
-                            "detail": "'tally': Too big: expected bigint to be \
-                                       <=9223372036854775807",
-                            "field": "tally",
+                            "issues": [{
+                                "detail": "Too big: expected bigint to be <=9223372036854775807",
+                                "field": "tally",
+                            }],
                             "kind": "failed-validation",
                             "operation": "count",
                         },
@@ -688,7 +689,7 @@ fn without_raw_json_a_bigint_beyond_a_number_is_refused_and_any_other_is_sent_as
                         "error": {
                             "isServiceFault": true,
                             "fault": {
-                                "detail": format!("9007199254740993 {unwritten}"),
+                                "issues": [{ "detail": format!("9007199254740993 {unwritten}") }],
                                 "kind": "failed-validation",
                                 "operation": "count",
                             },

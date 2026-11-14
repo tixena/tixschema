@@ -50,7 +50,7 @@ Object? told(CarillonServiceStrikeResult answered) => switch (answered) {
   CarillonServiceStrikeResultOk() => 'read',
   CarillonServiceStrikeResultFault(:final fault) => <String, dynamic>{
     'kind': fault.kind.toJson(),
-    'field': fault.field,
+    'field': fault.issues?.firstOrNull?.field,
   },
   _ => 'dropped',
 };
@@ -216,7 +216,7 @@ fun told(answered: CarillonServiceStrikeResult): JsonElement = when (answered) {
     is CarillonServiceStrikeResult.Ok -> JsonPrimitive("read")
     is CarillonServiceStrikeResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<CarillonServiceFaultKind>(), answered.fault.kind))
-        put("field", answered.fault.field?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("field", answered.fault.issues?.firstOrNull()?.field?.let { JsonPrimitive(it) } ?: JsonNull)
     }
     else -> JsonPrimitive("dropped")
 }
@@ -363,7 +363,7 @@ func told(_ answered: Result<CarillonChime, CarillonServiceStrikeFailure>) -> St
   case .success:
     return "\"read\""
   case .failure(.fault(let fault)):
-    let field = fault.field.map { "\"\($0)\"" } ?? "null"
+    let field = fault.issues?.first?.field.map { "\"\($0)\"" } ?? "null"
     return "{\"kind\":\"\(fault.kind.rawValue)\",\"field\":\(field)}"
   case .failure:
     return "\"dropped\""
@@ -372,7 +372,7 @@ func told(_ answered: Result<CarillonChime, CarillonServiceStrikeFailure>) -> St
 
 func toldWithDetail(_ answered: Result<CarillonChime, CarillonServiceStrikeFailure>) -> String {
   guard case .failure(.fault(let fault)) = answered else { return told(answered) }
-  return "{\"kind\":\"\(fault.kind.rawValue)\",\"detail\":\"\(fault.detail)\"}"
+  return "{\"kind\":\"\(fault.kind.rawValue)\",\"detail\":\"\(fault.detail ?? "")\"}"
 }
 
 let whole = try! JSONDecoder().decode(CarillonChime.self, from: Data(wholeText.utf8))
@@ -465,7 +465,7 @@ async function main() {
       answered.ok
         ? "read"
         : answered.error.isServiceFault
-          ? { kind: answered.error.fault.kind, field: answered.error.fault.field ?? null }
+          ? { kind: answered.error.fault.kind, field: answered.error.fault.issues?.[0]?.field ?? null }
           : "dropped",
     );
   }
@@ -475,7 +475,7 @@ async function main() {
   const unsent = await refusing.strike({ ...JSON.parse(WHOLE), depth: -9223372036854775808n, ring: 1e39 });
   const refused = unsent.ok
     ? "read"
-    : { kind: unsent.error.fault.kind, field: unsent.error.fault.field, detail: unsent.error.fault.detail, sent };
+    : { kind: unsent.error.fault.kind, issues: unsent.error.fault.issues, sent };
   process.stdout.write(JSON.stringify({ attached, read, refused }) + "\n", () => process.exit(0));
 }
 main().catch((error) => { console.error(error); process.exit(1); });
@@ -563,7 +563,7 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
             } else {
                 json!({
                     "kind": reply["error"]["fault"]["kind"],
-                    "field": reply["error"]["fault"]["field"],
+                    "field": reply["error"]["fault"]["issues"][0]["field"],
                 })
             };
             let value = if is_apart(case.0) {
@@ -995,8 +995,7 @@ fn the_typescript_attachment_and_client_name_the_field_the_rust_dispatcher_names
         told["refused"],
         json!({
             "kind": "failed-validation",
-            "field": "ring",
-            "detail": "'ring': expected a 32-bit float, found Infinity",
+            "issues": [{ "detail": "expected a 32-bit float, found Infinity", "field": "ring" }],
             "sent": 0_i32,
         })
     );

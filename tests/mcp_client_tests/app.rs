@@ -87,7 +87,7 @@ fn result(content: &str, is_error: bool, structured: Option<&str>) -> String {
 }
 
 fn main() {
-    let fault = "{\"fault\":{\"detail\":\"'document_id': too short\",\"field\":\"document_id\",\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}";
+    let fault = "{\"fault\":{\"issues\":[{\"detail\":\"too short\",\"field\":\"document_id\"}],\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}";
     let panicked = "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32603,\"message\":\"get-version: the handler came apart\",\"data\":{\"isServiceFault\":true,\"fault\":{\"detail\":\"the handler came apart\",\"kind\":\"handler-panic\",\"operation\":\"get-version\"}}}}";
     let unsupported = "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\"],\"requested\":\"2025-11-25\"}}}";
     let answers = [

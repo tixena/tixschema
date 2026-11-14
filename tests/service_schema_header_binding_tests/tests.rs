@@ -343,7 +343,7 @@ fn a_header_in_value_that_will_not_decode_fails_before_the_implementation_is_cal
         document_service_schema::ServiceFaultKind::FailedValidation
     );
     assert_eq!(
-        fault.field(),
+        fault.issues()[0].field(),
         Some("range"),
         "the caller has to be told which header it got wrong"
     );

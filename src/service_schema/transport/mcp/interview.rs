@@ -81,8 +81,10 @@ pub(super) fn preparation(
                     return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
                         $crate::#module::ServiceFault::failed_validation(
                             #tool,
-                            ::core::option::Option::Some(#key),
-                            &detail,
+                            ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                                ::core::option::Option::Some(#key),
+                                &detail,
+                            )],
                         ),
                     )));
                 }

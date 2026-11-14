@@ -950,10 +950,15 @@ fn refusal(
     let Generated {
         call_error,
         fault,
-        module: _module,
+        module,
     } = generated;
     let tool = operation.mcp_tool_name();
-    let built = quote! { #fault::failed_validation(#tool, #field, #detail) };
+    let built = quote! {
+        #fault::failed_validation(
+            #tool,
+            ::std::vec![$crate::#module::ServiceFaultIssue::new(#field, #detail)],
+        )
+    };
     match &operation.outcome {
         OperationOutcome::OneWay => quote! { return ::core::result::Result::Err(#built); },
         OperationOutcome::Reply {

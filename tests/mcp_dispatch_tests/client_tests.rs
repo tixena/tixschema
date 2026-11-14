@@ -3,7 +3,9 @@
 
 use crate::document_client::{DocumentServiceClient, McpMessage, Transport};
 use crate::document_mcp;
-use crate::document_service_schema::{CallError, ServiceFault, ServiceFaultKind};
+use crate::document_service_schema::{
+    CallError, ServiceFault, ServiceFaultIssue, ServiceFaultKind,
+};
 use crate::support::{Lines, assert_valid, block_on};
 use crate::tests::{
     Archive, DocumentId, DraftBatchDraft, DraftDraft, GetVersionRequest, GetVersionRequestDraft,
@@ -169,7 +171,7 @@ fn a_message_the_validator_refuses_is_refused_before_the_seam_is_reached() {
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
     let fault = fault_of(ask(&client, ""));
     assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
-    assert_eq!(fault.field(), Some("document_id"));
+    assert_eq!(fault.issues()[0].field(), Some("document_id"));
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
 }
 
@@ -191,7 +193,7 @@ fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_b
     ];
     for fault in refusals {
         assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
-        assert_eq!(fault.field(), Some("document_id"));
+        assert_eq!(fault.issues()[0].field(), Some("document_id"));
     }
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
     let read = block_on(client.check_many(vec![GetVersionRequestDraft {
@@ -218,7 +220,7 @@ fn a_pair_is_refused_for_the_member_whose_request_breaks_a_bound() {
     };
     let fault = fault_of(block_on(client.check_pair(whole(), broken())));
     assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
-    assert_eq!(fault.field(), Some("second.document_id"));
+    assert_eq!(fault.issues()[0].field(), Some("second.document_id"));
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
     assert_eq!(
         block_on(client.check_pair(whole(), whole())),
@@ -254,7 +256,7 @@ fn an_answer_the_read_refuses_names_the_path_of_the_value() {
     let client = DocumentServiceClient::new(Canned::answering(&result_text(&result)));
     assert_eq!(
         fault_of(ask(&client, "doc-1")).detail(),
-        "'version': invalid type: string \"seven\", expected u32"
+        Some("'version': invalid type: string \"seven\", expected u32")
     );
 }
 
@@ -264,7 +266,7 @@ fn a_fault_of_the_server_reaches_the_caller_as_that_fault() {
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
     let panicked = fault_of(ask(&client, "panic"));
     assert_eq!(panicked.kind(), ServiceFaultKind::HandlerPanic);
-    assert_eq!(panicked.detail(), "the handler came apart");
+    assert_eq!(panicked.detail(), Some("the handler came apart"));
     assert_eq!(panicked.operation(), "get-version");
 }
 
@@ -384,7 +386,7 @@ fn a_seam_that_fails_is_a_transport_failure() {
     let client = DocumentServiceClient::new(Canned::failing("connection refused"));
     let fault = fault_of(ask(&client, "doc-1"));
     assert_eq!(fault.kind(), ServiceFaultKind::TransportFailure);
-    assert_eq!(fault.detail(), "connection refused");
+    assert_eq!(fault.detail(), Some("connection refused"));
     let one_way = block_on(client.touch_document("doc-1".to_owned(), "reviewer-7".to_owned()));
     assert_eq!(
         one_way.unwrap_err().kind(),
@@ -425,23 +427,26 @@ fn a_value_the_read_refuses_is_an_undeserializable_payload() {
 
 #[test]
 fn a_fault_in_a_result_is_that_fault() {
-    let text = "{\"fault\":{\"detail\":\"'document_id': too short\",\"field\":\"document_id\",\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}";
+    let text = "{\"fault\":{\"issues\":[{\"detail\":\"too short\",\"field\":\"document_id\"}],\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}";
     let result = json!({ "resultType": "complete", "content": [{ "type": "text", "text": text }], "isError": true });
     let client = DocumentServiceClient::new(Canned::answering(&result_text(&result)));
     let fault = fault_of(ask(&client, "doc-1"));
     assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
-    assert_eq!(fault.field(), Some("document_id"));
-    assert_eq!(fault.detail(), "'document_id': too short");
-    assert_eq!(fault.issues(), []);
+    assert_eq!(fault.field(), None);
+    assert_eq!(fault.detail(), None);
+    assert_eq!(
+        fault.issues(),
+        [ServiceFaultIssue::new(Some("document_id"), "too short")]
+    );
 }
 
 #[test]
 fn a_fault_that_lists_its_problems_keeps_each_one_at_its_field() {
-    let text = "{\"fault\":{\"detail\":\"'drafts.0.title': missing field `title`; 'drafts.1.title': missing field `title`\",\"field\":\"drafts.0.title\",\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}";
+    let text = "{\"fault\":{\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}";
     let result = json!({ "resultType": "complete", "content": [{ "type": "text", "text": text }], "isError": true });
     let client = DocumentServiceClient::new(Canned::answering(&result_text(&result)));
     let fault = fault_of(ask(&client, "doc-1"));
-    assert_eq!(fault.field(), Some("drafts.0.title"));
+    assert_eq!(fault.field(), None);
     let issues: Vec<(Option<&str>, &str)> = fault
         .issues()
         .iter()
@@ -484,5 +489,5 @@ fn any_other_json_rpc_error_is_a_transport_failure_naming_it() {
     let client = DocumentServiceClient::new(Canned::answering(&answer.to_string()));
     let fault = fault_of(ask(&client, "doc-1"));
     assert_eq!(fault.kind(), ServiceFaultKind::TransportFailure);
-    assert_eq!(fault.detail(), "-32022: Unsupported protocol version");
+    assert_eq!(fault.detail(), Some("-32022: Unsupported protocol version"));
 }

@@ -174,7 +174,7 @@ func described(_ name: String, _ answer: Result<Parcel, TrackingClientServiceTra
     print("\(name): the declared error")
   case .failure(.fault(let fault)):
     print("\(name): the fault \(fault.kind.rawValue)")
-    print("    \(fault.detail)")
+    print("    \(fault.detail ?? "")")
   }
 }
 
@@ -218,7 +218,9 @@ func described(_ name: String, _ answer: Result<Parcel, TrackingClientServiceTra
     print("\(name): the declared error")
   case .failure(.fault(let fault)):
     print("\(name): the fault \(fault.kind.rawValue)")
-    print("    \(fault.detail)")
+    for issue in fault.issues ?? [] {
+      print("    '\(issue.field ?? "")': \(issue.detail)")
+    }
   }
 }
 
@@ -1134,17 +1136,19 @@ fn answered_by(client: String, driver: &str) -> Option<String> {
     Some(run.stdout)
 }
 
-/// Holds what a client printed to one success and one fault of `kind` whose detail quotes
-/// [`TWO_MESSAGES`], whatever Swift writes around them.
-fn assert_one_fault(swift: &str, kind: &str) {
+/// Holds what a client printed to one success and one fault of `kind`, a line under it quoting
+/// each of `said`, whatever Swift writes around them.
+fn assert_one_fault(swift: &str, kind: &str, said: &[&str]) {
     let lines: Vec<&str> = swift.lines().collect();
-    assert_eq!(lines.len(), 3, "got: {swift}");
+    assert_eq!(lines.len(), 2 + said.len(), "got: {swift}");
     assert_eq!(lines[0], "a parcel that keeps every rule: the parcel A");
     assert_eq!(
         lines[1],
         format!("a parcel that breaks two: the fault {kind}")
     );
-    assert!(lines[2].contains(TWO_MESSAGES), "got: {swift}");
+    for (line, quoted) in lines[2..].iter().zip(said) {
+        assert!(line.contains(quoted), "got: {swift}");
+    }
 }
 
 /// The `http_rest` client answers the fault it answers for any body that does not read as the
@@ -1160,11 +1164,11 @@ fn the_http_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
     let Some(swift) = answered_by(String::new(), HTTP_DRIVER) else {
         return;
     };
-    assert_one_fault(&swift, "undeserializable-payload");
+    assert_one_fault(&swift, "undeserializable-payload", &[TWO_MESSAGES]);
 }
 
 /// The `ws_rpc` client answers the fault it answers for any reply that will not become the
-/// declared success: `failed-validation`, with the read's messages in its detail.
+/// declared success: `failed-validation`, with each of the read's messages as an issue.
 #[cfg(slow_tests)]
 #[test]
 fn the_ws_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
@@ -1177,7 +1181,14 @@ fn the_ws_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
     let Some(swift) = answered_by(TrackingClientServiceSchema::swift_ws_client(), WS_DRIVER) else {
         return;
     };
-    assert_one_fault(&swift, "failed-validation");
+    assert_one_fault(
+        &swift,
+        "failed-validation",
+        &[
+            "'label': too short: minimum length is 1, got 0",
+            "'fragileItemCodes.0': y is outside of itemCodeList",
+        ],
+    );
 }
 
 /// The README shows the read these runs make, what it prints and what a client answers.

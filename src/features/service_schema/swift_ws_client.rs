@@ -11,6 +11,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
     option_inner, tuple_elements, vec_inner, written,
 };
+use crate::service_schema::support::fault_issue_name;
 use core::fmt::Write as _;
 use syn::Type;
 
@@ -336,15 +337,32 @@ fn transport_failure_helper(named: &str, prefix: &str) -> String {
 
 fn failed_validation_helper(named: &str, prefix: &str) -> String {
     let fault = fault_name(named);
+    let issue = fault_issue_name(named);
     format!(
         "/// The fault a `{named}` `ws_rpc` call answers with when a reply will not become the \
          operation's\n\
          /// own declared success or error, or when a payload will not become the wire shape \
          going out.\n\
-         func {prefix}WsFailedValidation(_ operation: String, _ detail: String, field: String? = nil) \
-         -> {fault} {{\n  \
-         {fault}(detail: detail, field: field, issues: nil, kind: .failedValidation, operation: \
+         func {prefix}WsFailedValidation(_ operation: String, _ issues: [{issue}]) -> {fault} {{\n  \
+         {fault}(detail: nil, field: nil, issues: issues, kind: .failedValidation, operation: \
          operation)\n\
+         }}\n\
+         \n\
+         /// The problems a read's refusal lists: each line of a `validate()` message the value it \
+         was asked for refused, cut at its field,\n\
+         /// as the Rust dispatcher lists them, or the one refusal at the field it names.\n\
+         func {prefix}WsRefusedIssues(_ refusal: Error) -> [{issue}] {{\n  \
+         if case DecodingError.dataCorrupted(let context) = refusal, context.codingPath.count <= 1, \
+         context.debugDescription.hasPrefix(\"'\") {{\n    \
+         return context.debugDescription.components(separatedBy: \"; '\").enumerated().map {{ pair -> {issue} in\n      \
+         let line = pair.offset == 0 ? pair.element : \"'\" + pair.element\n      \
+         guard line.hasPrefix(\"'\"), let end = line.dropFirst().firstIndex(of: \"'\") else {{ return {issue}(detail: line, field: nil) }}\n      \
+         let rest = line[line.index(after: end)...]\n      \
+         return {issue}(detail: String(rest.hasPrefix(\": \") ? rest.dropFirst(2) : rest), field: \
+         String(line[line.index(after: line.startIndex)..<end]))\n    \
+         }}\n  \
+         }}\n  \
+         return [{issue}(detail: \"\\(refusal)\", field: {prefix}WsRefusedAt(refusal))]\n\
          }}\n\
          \n\
          /// The field a read's refusal names, as the Rust dispatcher names it: the path below the \
@@ -373,13 +391,13 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          \n\
          /// The fault a read's refusal answers: one in serde's words for text that is not the \
          document names no field,\n\
-         /// as the Rust dispatcher answers it, and any other names the field.\n\
+         /// as the Rust dispatcher answers it, and any other lists each problem.\n\
          func {prefix}WsRefused(_ operation: String, _ refusal: Error) -> {fault} {{\n  \
          if case DecodingError.dataCorrupted(let context) = refusal, [{listed}].contains(context.debugDescription) {{\n    \
          return {fault}(detail: context.debugDescription, field: nil, issues: nil, kind: \
          .undeserializablePayload, operation: operation)\n  \
          }}\n  \
-         return {prefix}WsFailedValidation(operation, \"\\(refusal)\", field: {prefix}WsRefusedAt(refusal))\n\
+         return {prefix}WsFailedValidation(operation, {prefix}WsRefusedIssues(refusal))\n\
          }}",
         listed = NOT_A_DOCUMENT.map(swift_quoted).join(", ")
     )
@@ -699,6 +717,7 @@ fn one_way_method(
         (String::new(), "")
     };
     let payload = sent_payload(operation);
+    let issue = fault_issue_name(named);
     format!(
         "  /// Calls `{commented}` over `ws_rpc`.\n  \
          public func {call}({params}) async throws {{\n    \
@@ -706,7 +725,7 @@ fn one_way_method(
 {headers_build}      \
          try sendNotify(operation: {wire}, payload: {payload}{headers_arg})\n    \
          }} catch {{\n      \
-         throw {refusal}(fault: {prefix}WsFailedValidation({wire}, \"\\(error)\"))\n    \
+         throw {refusal}(fault: {prefix}WsFailedValidation({wire}, [{issue}(detail: \"\\(error)\", field: nil)]))\n    \
          }}\n  \
          }}"
     )

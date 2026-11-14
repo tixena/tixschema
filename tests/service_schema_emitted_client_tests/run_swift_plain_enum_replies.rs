@@ -37,7 +37,7 @@ func described(_ name: String, _ answer: Result<Verdict, AppraisalClientServiceA
     print("\(name): the declared error")
   case .failure(.fault(let fault)):
     print("\(name): the fault \(fault.kind.rawValue)")
-    print("    \(fault.detail)")
+    print("    \(fault.detail ?? "")")
   }
 }
 

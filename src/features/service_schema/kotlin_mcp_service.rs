@@ -132,14 +132,12 @@ private fun @P@McpServeQuote(text: String, into: StringBuilder) {
 private fun @P@McpFaultObject(
   kind: String,
   operation: String,
-  detail: String,
-  field: String? = null,
-  issues: List<Pair<String?, String>> = emptyList(),
+  detail: String?,
+  issues: List<Pair<String?, String>>? = null,
 ): JsonObject =
   buildJsonObject {
-    put("detail", detail)
-    if (field != null) put("field", field)
-    if (issues.isNotEmpty()) {
+    if (detail != null) put("detail", detail)
+    if (issues != null) {
       putJsonArray("issues") {
         for ((at, said) in issues) add(buildJsonObject { put("detail", said); if (at != null) put("field", at) })
       }
@@ -785,11 +783,10 @@ const RECEIVING: &str = "private class @P@McpRefused(val answer: JsonObject) : E
 private fun @P@McpRefuse(
   kind: String,
   tool: String,
-  detail: String,
-  field: String? = null,
-  issues: List<Pair<String?, String>> = emptyList(),
+  detail: String?,
+  issues: List<Pair<String?, String>>? = null,
 ): Nothing =
-  throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, field, issues)))";
+  throw @P@McpRefused(@P@McpFaulted(@P@McpFaultObject(kind, tool, detail, issues)))";
 
 const ARGUMENTS: &str = r#"private fun @P@McpArguments(tool: String, params: JsonObject): MutableMap<String, JsonElement> {
   val given = params["arguments"]
@@ -802,16 +799,17 @@ const ARGUMENTS: &str = r#"private fun @P@McpArguments(tool: String, params: Jso
 
 private fun @P@McpSource(tool: String, arguments: MutableMap<String, JsonElement>, wrapped: Boolean): JsonElement =
   if (wrapped) {
-    arguments.remove("value") ?: @P@McpRefuse("failed-validation", tool, "'value': missing field `value`", "value")
+    arguments.remove("value") ?: @P@McpRefuse("failed-validation", tool, null, listOf("value" to "missing field `value`"))
   } else {
     JsonObject(arguments)
   }"#;
 
-const RECEIVE: &str = r#"private fun @P@McpNamedField(detail: String): String? {
-  if (!detail.startsWith("'")) return null
-  val closing = detail.indexOf('\'', 1)
-  return if (closing < 0) null else detail.substring(1, closing)
-}
+const RECEIVE: &str = r#"private fun @P@McpIssues(said: String): List<Pair<String?, String>> =
+  said.split("; '").mapIndexed { at, piece ->
+    val line = if (at == 0) piece else "'$piece"
+    val closing = if (line.startsWith("'")) line.indexOf('\'', 1) else -1
+    if (closing < 0) null to line else line.substring(1, closing) to line.substring(closing + 1).removePrefix(": ")
+  }
 
 private fun <T> @P@McpReceive(
   tool: String,
@@ -821,8 +819,8 @@ private fun <T> @P@McpReceive(
   schema: JsonElement? = null,
   passed: Set<String> = emptySet(),
   every: Boolean = false,
-  refuse: (kind: String, detail: String, field: String?, issues: List<Pair<String?, String>>) -> Nothing =
-    { kind, detail, field, issues -> @P@McpRefuse(kind, tool, detail, field, issues) },
+  refuse: (kind: String, detail: String?, issues: List<Pair<String?, String>>?) -> Nothing =
+    { kind, detail, issues -> @P@McpRefuse(kind, tool, detail, issues) },
 ): T {
   try {
     return Json.decodeFromJsonElement(serializer, source)
@@ -833,11 +831,11 @@ private fun <T> @P@McpReceive(
     if (detail.startsWith("invalid type: floating point")) {
       // Read from its text, the refusal states the path of the number, which the element states none of.
       val at = runCatching { Json.decodeFromString(serializer, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
-      if (at != null) refuse("failed-validation", detail, at, emptyList())
+      if (at != null) refuse("failed-validation", null, listOf(at to detail))
     }
-    if (readable) refuse("failed-validation", detail, @P@McpNamedField(detail), emptyList())
+    if (readable) refuse("failed-validation", null, @P@McpIssues(detail))
     val said = detail.substringBefore(" at path: ")
-    if (said in setOf(@NOT_A_DOCUMENT_KEY@)) refuse("undeserializable-payload", said, null, emptyList())
+    if (said in setOf(@NOT_A_DOCUMENT_KEY@)) refuse("undeserializable-payload", said, null)
     val found = mutableListOf<Pair<String, String>>()
     @P@McpMismatches(schema, source, null, passed, emptyList(), found)
     // Read from its text, the refusal states the path of a `Result`, of a number the schema admits and serde refuses (`1.0` or `-0` for an integer), which no schema walk finds, and of the holder of a flattened member, which the schema names by the member's own path.
@@ -849,12 +847,9 @@ private fun <T> @P@McpReceive(
       found.add(0, read to said)
     }
     val path = found.firstOrNull()?.first.orEmpty()
-    if (path.isEmpty()) refuse("failed-validation", detail, null, emptyList())
-    if (!every || found.size < 2) refuse("failed-validation", "'$path': $detail", path, emptyList())
-    val further = found.drop(1)
-    val lines = listOf("'$path': $detail") + further.map { (at, said) -> if (at.isEmpty()) said else "'$at': $said" }
-    val issues = listOf<Pair<String?, String>>(path to detail) + further.map { (at, said) -> at.ifEmpty { null } to said }
-    refuse("failed-validation", lines.joinToString("; "), path, issues)
+    if (path.isEmpty()) refuse("failed-validation", null, listOf(null to detail))
+    val further = if (every) found.drop(1) else emptyList()
+    refuse("failed-validation", null, listOf<Pair<String?, String>>(path to detail) + further.map { (at, said) -> at.ifEmpty { null } to said })
   }
 }
 
@@ -985,7 +980,7 @@ const HEADER: &str = r#"private fun <T> @P@McpHeader(tool: String, name: String,
   try {
     Json.decodeFromJsonElement(serializer, raw ?: JsonNull)
   } catch (rejected: IllegalArgumentException) {
-    @P@McpRefuse("failed-validation", tool, rejected.message ?: rejected.toString(), name)
+    @P@McpRefuse("failed-validation", tool, null, listOf(name to (rejected.message ?: rejected.toString())))
   }"#;
 
 const OPTIONAL_HEADER: &str = "private fun <T : Any> @P@McpOptionalHeader(
@@ -1128,9 +1123,8 @@ const RESOURCE_SUPPORT: &str = r#"
 private fun @P@McpUnread(
   operation: String,
   kind: String,
-  detail: String,
-  field: String?,
-  issues: List<Pair<String?, String>> = emptyList(),
+  detail: String?,
+  issues: List<Pair<String?, String>>?,
 ): Nothing =
   throw @P@McpRefused(
     @P@McpErrorOf(
@@ -1138,7 +1132,7 @@ private fun @P@McpUnread(
         -32602,
         "Invalid params",
         buildJsonObject {
-          put("fault", @P@McpFaultObject(kind, operation, detail, field, issues))
+          put("fault", @P@McpFaultObject(kind, operation, detail, issues))
           put("isServiceFault", true)
         },
       ),
@@ -1943,7 +1937,7 @@ fn answers_stmt(prefix: &str, operation: &OperationDef) -> String {
             "          try {{\n            \
              Json.decodeFromJsonElement({}, mcpAnswered)\n          \
              }} catch (rejected: IllegalArgumentException) {{\n            \
-             {prefix}McpRefuse(\"failed-validation\", {tool}, rejected.message ?: rejected.toString(), {key})\n          \
+             {prefix}McpRefuse(\"failed-validation\", {tool}, null, listOf({key} to (rejected.message ?: rejected.toString())))\n          \
              }}\n",
             read_serializer(form)
         )
@@ -2922,8 +2916,8 @@ fn resource_body(
     };
     format!(
         "  val mcpSource: JsonElement = {source}\n  \
-         val decoded = {prefix}McpReceive({wire}, {read_by}, {unjudged_by}, mcpSource, {schema}{every}) {{ kind, detail, field, issues ->\n    \
-         {prefix}McpUnread({wire}, kind, detail, field, issues)\n  }}\n  \
+         val decoded = {prefix}McpReceive({wire}, {read_by}, {unjudged_by}, mcpSource, {schema}{every}) {{ kind, detail, issues ->\n    \
+         {prefix}McpUnread({wire}, kind, detail, issues)\n  }}\n  \
          val answered = try {{\n    {call}\n  }} catch (unexpected: Throwable) {{\n    \
          if (unexpected is CancellationException) throw unexpected\n    \
          throw {prefix}McpRefused({prefix}McpInternal({wire}, unexpected.message ?: unexpected.toString()))\n  }}\n  \

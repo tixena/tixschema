@@ -925,8 +925,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
         if let ::core::result::Result::Err(violations) = $crate::#module::#validator(&received) {
             return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                 #wire,
-                $crate::#module::violated_field(&violations),
-                &$crate::#module::violation_detail(&violations),
+                $crate::#module::violation_issues(&violations),
             ));
         }
     };
@@ -983,15 +982,19 @@ fn multipart_part_let(module: &Ident, wire: &str, part: &MultipartPart) -> Token
             ::core::option::Option::Some(IncomingPart::Text(_)) => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    ::core::option::Option::Some(#name),
-                    "expected a file part, found a text part",
+                    ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                        ::core::option::Option::Some(#name),
+                        "expected a file part, found a text part",
+                    )],
                 ));
             }
             ::core::option::Option::None => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    ::core::option::Option::Some(#name),
-                    "a required multipart part was not carried",
+                    ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                        ::core::option::Option::Some(#name),
+                        "a required multipart part was not carried",
+                    )],
                 ));
             }
         };
@@ -1009,8 +1012,10 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
         quote! {
             return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                 #wire,
-                ::core::option::Option::Some(#name),
-                "a required header was not carried",
+                ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                    ::core::option::Option::Some(#name),
+                    "a required header was not carried",
+                )],
             ))
         }
     };
@@ -1936,14 +1941,27 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
     } = generated;
     quote! {
         #[derive(::serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct FaultOnTheWire {
-            detail: ::std::string::String,
-            field: ::core::option::Option<::std::string::String>,
-            #[serde(default)]
-            issues: ::std::vec::Vec<IssueOnTheWire>,
-            kind: FaultKindOnTheWire,
-            operation: ::std::string::String,
+        #[serde(tag = "kind", rename_all = "kebab-case")]
+        enum FaultOnTheWire {
+            FailedValidation {
+                issues: ::std::vec::Vec<IssueOnTheWire>,
+                operation: ::std::string::String,
+            },
+            HandlerPanic {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            TransportFailure {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            UndeserializablePayload {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            UnknownOperation {
+                operation: ::std::string::String,
+            },
         }
 
         #[derive(::serde::Deserialize)]
@@ -1952,44 +1970,28 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
             field: ::core::option::Option<::std::string::String>,
         }
 
-        #[derive(::serde::Deserialize)]
-        #[serde(rename_all = "kebab-case")]
-        enum FaultKindOnTheWire {
-            FailedValidation,
-            HandlerPanic,
-            TransportFailure,
-            UndeserializablePayload,
-            UnknownOperation,
-        }
-
         impl FaultOnTheWire {
             fn into_fault(self) -> #fault {
-                match self.kind {
-                    FaultKindOnTheWire::FailedValidation => #fault::failed_validation(
-                        &self.operation,
-                        self.field.as_deref(),
-                        &self.detail,
-                    )
-                    .with_issues(
-                        self.issues
+                match self {
+                    Self::FailedValidation { issues, operation } => #fault::failed_validation(
+                        &operation,
+                        issues
                             .iter()
                             .map(|issue| {
                                 $crate::#module::ServiceFaultIssue::new(issue.field.as_deref(), &issue.detail)
                             })
                             .collect(),
                     ),
-                    FaultKindOnTheWire::HandlerPanic => {
-                        #fault::handler_panic(&self.operation, &self.detail)
+                    Self::HandlerPanic { detail, operation } => {
+                        #fault::handler_panic(&operation, &detail)
                     }
-                    FaultKindOnTheWire::TransportFailure => {
-                        #fault::transport_failure(&self.operation, &self.detail)
+                    Self::TransportFailure { detail, operation } => {
+                        #fault::transport_failure(&operation, &detail)
                     }
-                    FaultKindOnTheWire::UndeserializablePayload => {
-                        #fault::undeserializable_payload(&self.operation, &self.detail)
+                    Self::UndeserializablePayload { detail, operation } => {
+                        #fault::undeserializable_payload(&operation, &detail)
                     }
-                    FaultKindOnTheWire::UnknownOperation => {
-                        #fault::unknown_operation(&self.operation)
-                    }
+                    Self::UnknownOperation { operation } => #fault::unknown_operation(&operation),
                 }
             }
         }
@@ -2350,14 +2352,16 @@ fn value_refusal(
     let Generated {
         call_error,
         fault,
-        module: _module,
+        module,
     } = generated;
     let wire = &operation.wire_name;
     let built = quote! {
         #fault::failed_validation(
             #wire,
-            ::core::option::Option::Some(#name),
-            #detail,
+            ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                ::core::option::Option::Some(#name),
+                #detail,
+            )],
         )
     };
     match &operation.outcome {

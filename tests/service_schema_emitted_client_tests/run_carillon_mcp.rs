@@ -75,7 +75,7 @@ async function main() {
       answered.ok
         ? "read"
         : "isServiceFault" in answered.error
-          ? { kind: answered.error.fault.kind, field: answered.error.fault.field ?? null }
+          ? { kind: answered.error.fault.kind, field: answered.error.fault.issues?.[0]?.field ?? null }
           : "declared",
     );
   }
@@ -87,7 +87,7 @@ async function main() {
       answered.ok
         ? { rung: answered.value[1] }
         : "isServiceFault" in answered.error
-          ? { kind: answered.error.fault.kind, field: answered.error.fault.field ?? null }
+          ? { kind: answered.error.fault.kind, field: answered.error.fault.issues?.[0]?.field ?? null }
           : { crackedAt: answered.error[1] },
     );
   }
@@ -158,7 +158,7 @@ Object? told(CarillonMcpServiceStrikeResult answered) => switch (answered) {
   CarillonMcpServiceStrikeResultOk() => 'read',
   CarillonMcpServiceStrikeResultFault(:final fault) => <String, dynamic>{
     'kind': fault.kind.toJson(),
-    'field': fault.field,
+    'field': fault.issues?.firstOrNull?.field,
   },
   _ => 'declared',
 };
@@ -168,7 +168,7 @@ Object? tolled(CarillonMcpServiceTollResult answered) => switch (answered) {
   CarillonMcpServiceTollResultOperation(:final error) => <String, dynamic>{'crackedAt': error.$2},
   CarillonMcpServiceTollResultFault(:final fault) => <String, dynamic>{
     'kind': fault.kind.toJson(),
-    'field': fault.field,
+    'field': fault.issues?.firstOrNull?.field,
   },
 };
 
@@ -240,7 +240,7 @@ fun told(answered: CarillonMcpServiceStrikeResult): JsonElement = when (answered
     is CarillonMcpServiceStrikeResult.Ok -> JsonPrimitive("read")
     is CarillonMcpServiceStrikeResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<CarillonMcpServiceFaultKind>(), answered.fault.kind))
-        put("field", answered.fault.field?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("field", answered.fault.issues?.firstOrNull()?.field?.let { JsonPrimitive(it) } ?: JsonNull)
     }
     else -> JsonPrimitive("declared")
 }
@@ -250,7 +250,7 @@ fun tolled(answered: CarillonMcpServiceTollResult): JsonElement = when (answered
     is CarillonMcpServiceTollResult.Declared -> buildJsonObject { put("crackedAt", answered.error.errorHeaderOut0.toLong()) }
     is CarillonMcpServiceTollResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<CarillonMcpServiceFaultKind>(), answered.fault.kind))
-        put("field", answered.fault.field?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("field", answered.fault.issues?.firstOrNull()?.field?.let { JsonPrimitive(it) } ?: JsonNull)
     }
 }
 
@@ -302,7 +302,7 @@ func told(_ answered: Result<CarillonChime, CarillonMcpServiceStrikeFailure>) ->
   case .success:
     return "\"read\""
   case .failure(.fault(let fault)):
-    let field = fault.field.map { "\"\($0)\"" } ?? "null"
+    let field = fault.issues?.first?.field.map { "\"\($0)\"" } ?? "null"
     return "{\"kind\":\"\(fault.kind.rawValue)\",\"field\":\(field)}"
   case .failure:
     return "\"declared\""
@@ -316,7 +316,7 @@ func tolled(_ answered: Result<(CarillonBell, UInt32), CarillonMcpServiceTollFai
   case .failure(.declared(let declared)):
     return "{\"crackedAt\":\(declared.1)}"
   case .failure(.fault(let fault)):
-    let field = fault.field.map { "\"\($0)\"" } ?? "null"
+    let field = fault.issues?.first?.field.map { "\"\($0)\"" } ?? "null"
     return "{\"kind\":\"\(fault.kind.rawValue)\",\"field\":\(field)}"
   }
 }

@@ -258,8 +258,8 @@ fn fault_fn(named: &str, prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
         "function {prefix}HttpFault(kind: {fields}[\"kind\"], operation: string, detail: \
-         string, field?: string): {named}Fault {{\n  \
-         const built: {fields} = {{ detail, field, kind, operation }};\n  \
+         string): {named}Fault {{\n  \
+         const built: {fields} = {{ detail, field: undefined, kind, operation }};\n  \
          return built as {named}Fault;\n\
          }}"
     )

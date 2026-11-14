@@ -25,6 +25,7 @@ Map<String, dynamic> described(AppraisalClientServiceAppraiseResult result) {
         'kind': 'fault',
         'faultKind': fault.kind.name,
         'detail': fault.detail,
+        'issues': fault.issues?.map((issue) => {'detail': issue.detail, 'field': issue.field}).toList(),
       },
   };
 }
@@ -109,12 +110,22 @@ fn library(imports: &[String], client: String, entry: &str) -> String {
 }
 
 fn answers(kind: &str) -> serde_json::Value {
+    let refused = serde_json::json!("FormatException: a verdict is upheld");
+    let (detail, issues) = if kind == "failedValidation" {
+        (
+            serde_json::Value::Null,
+            serde_json::json!([{ "detail": refused, "field": null }]),
+        )
+    } else {
+        (refused, serde_json::Value::Null)
+    };
     serde_json::json!({
         "kept": {"kind": "ok", "value": "Upheld"},
         "broken": {
             "kind": "fault",
             "faultKind": kind,
-            "detail": "FormatException: a verdict is upheld",
+            "detail": detail,
+            "issues": issues,
         },
     })
 }

@@ -625,8 +625,10 @@ fn a_failed_validation_becomes_a_fault_through_the_wire() {
         serde_json::json!({
             "error": {
                 "fault": {
-                    "detail": "'document_id': invalid type: integer `7`, expected a string",
-                    "field": "document_id",
+                    "issues": [{
+                        "detail": "invalid type: integer `7`, expected a string",
+                        "field": "document_id",
+                    }],
                     "kind": "failed-validation",
                     "operation": "watch",
                 },
@@ -796,7 +798,10 @@ fn close_settles_a_waiting_call_with_a_transport_failure_fault() {
     }
     .unwrap();
     assert_eq!(fault.kind(), ServiceFaultKind::TransportFailure);
-    assert_eq!(fault.detail(), "the socket closed before the reply arrived");
+    assert_eq!(
+        fault.detail(),
+        Some("the socket closed before the reply arrived")
+    );
 }
 
 // What follows exercises what the scenarios above never reach of the generated client machinery.

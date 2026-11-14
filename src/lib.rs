@@ -582,7 +582,7 @@ fn main() {
         r#"{"kind":"request","id":"3","service":"Orders","operation":"get-order","payload":{"orderId":""}}"#,
     );
     assert_eq!(refused["error"]["fault"]["kind"], "failed-validation");
-    assert_eq!(refused["error"]["fault"]["field"], "orderId");
+    assert_eq!(refused["error"]["fault"]["issues"][0]["field"], "orderId");
 }
 ```
 "##
@@ -2093,8 +2093,8 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///   fault for a defect no operation declared, with `kind()`, `operation()`, `field()`,
 ///   `issues()` and `detail()` and one public constructor per kind; `ServiceFaultKind`, written on
 ///   the wire as `failed-validation`, `handler-panic`, `transport-failure`,
-///   `undeserializable-payload` or `unknown-operation`; `ServiceFaultIssue`, one problem of a fault
-///   that lists several; and `CallError<E>`, the failure of a Rust client call, which is
+///   `undeserializable-payload` or `unknown-operation`; `ServiceFaultIssue`, one problem a failed
+///   validation lists; and `CallError<E>`, the failure of a Rust client call, which is
 ///   `Fault(ServiceFault)` or `Operation(E)`. For a dispatcher written by hand it also holds, per
 ///   operation, `{Operation}Message`, `unjudged_{operation}` (the message's read alone) and
 ///   `validated_{operation}` (the message's `validate()`, or `Ok(())` where it has none).

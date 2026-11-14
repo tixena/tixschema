@@ -5,7 +5,7 @@
 //! Neither text names a tool list or whether a message sits under `value`: the accessors in
 //! [`seam`] write those over the markers below when they run in the consuming program.
 
-use super::dart_http_client::{dart_call, dart_parameter, message_type};
+use super::dart_http_client::{dart_call, dart_parameter, fault_said, message_type};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, guarded_call, has_one_way, header_call_args,
     header_out_push_stmt, header_refused_fault, message_dart_typename, message_decode,
@@ -1931,20 +1931,15 @@ fn unread_helpers(named: &str, prefix: &str) -> String {
          final at = detail == '{EXPECTED_VALUE}' || found.isEmpty || holder ? read : null;\n  \
          if (at != null) found..removeWhere((entry) => entry.$1 == at)..insert(0, (at, detail));\n  \
          if (found.isEmpty || found.first.$1.isEmpty) {{\n    \
-         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, detail);\n  \
+         return _{prefix}McpFailedValidation(operation, [{issue}(detail: detail)]);\n  \
          }}\n  \
-         final path = found.first.$1;\n  \
-         final first = \"'$path': $detail\";\n  \
-         if (!every || found.length < 2) {{\n    \
-         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, first, field: path);\n  \
+         final issues = <{issue}>[{issue}(detail: detail, field: found.first.$1)];\n  \
+         if (every) {{\n    \
+         for (final (at, said) in found.skip(1)) {{\n      \
+         issues.add({issue}(detail: said, field: at.isEmpty ? null : at));\n    \
          }}\n  \
-         final lines = <String>[first];\n  \
-         final issues = <{issue}>[{issue}(detail: detail, field: path)];\n  \
-         for (final (at, said) in found.skip(1)) {{\n    \
-         lines.add(at.isEmpty ? said : \"'$at': $said\");\n    \
-         issues.add({issue}(detail: said, field: at.isEmpty ? null : at));\n  \
          }}\n  \
-         return _{prefix}McpFault({named}FaultKind.failedValidation, operation, lines.join('; '), field: path, issues: issues);\n\
+         return _{prefix}McpFailedValidation(operation, issues);\n\
          }}\n\n\
          {walk}",
         keys = not_a_document_keys(),
@@ -2122,13 +2117,10 @@ fn answer_helpers(
     let fields = fault_fields_typescript_name(named);
     let issue = fault_issue_name(named);
     let mut text = format!(
-        "{fields} _{prefix}McpFault({named}FaultKind kind, String operation, String detail, {{String? field, List<{issue}>? issues}}) =>\n    \
-         {fields}(detail: detail, field: field, issues: issues, kind: kind, operation: operation);\n\n\
-         String? _{prefix}McpField(String message) {{\n  \
-         if (!message.startsWith(\"'\")) return null;\n  \
-         final end = message.indexOf(\"'\", 1);\n  \
-         return end < 0 ? null : message.substring(1, end);\n\
-         }}"
+        "{fields} _{prefix}McpFault({named}FaultKind kind, String operation, String detail) =>\n    \
+         {fields}(detail: detail, kind: kind, operation: operation);\n\n\
+         {fields} _{prefix}McpFailedValidation(String operation, List<{issue}> issues) =>\n    \
+         {fields}(issues: issues, kind: {named}FaultKind.failedValidation, operation: operation);"
     );
     text.push_str("\n\n");
     text.push_str(&unread_helpers(named, prefix));
@@ -2258,9 +2250,10 @@ fn wrapped_check(
     let refusal = format!(
         "if ({absent}) {{\n    \
          return _{prefix}McpFaultResult(\n      \
-         _{prefix}McpFault({named}FaultKind.failedValidation, {tool}, \"'value': missing field `value`\", field: 'value'),\n    \
+         _{prefix}McpFailedValidation({tool}, [{issue}(detail: 'missing field `value`', field: 'value')]),\n    \
          );\n  \
-         }}\n  "
+         }}\n  ",
+        issue = fault_issue_name(named),
     );
     (wrapped, refusal)
 }
@@ -2315,7 +2308,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
          }}\n    \
          return _{prefix}McpFaultResult(\n      \
-         _{prefix}McpFault({kind}.failedValidation, {tool}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
+         _{prefix}McpFailedValidation({tool}, _{prefix}WsIssues(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
          return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, rejected, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n  \
@@ -2342,9 +2335,10 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
              {parameter} = {decoded};\n  \
              }} catch (rejected) {{\n    \
              return _{prefix}McpFaultResult(\n      \
-             _{prefix}McpFault({kind}.failedValidation, {tool}, '$rejected', field: {name}),\n    \
+             _{prefix}McpFailedValidation({tool}, [{issue}(detail: '$rejected', field: {name})]),\n    \
              );\n  \
-             }}\n"
+             }}\n",
+            issue = fault_issue_name(named),
         );
         locals.push(parameter);
     }
@@ -2512,10 +2506,11 @@ fn answers_stmt(named: &str, prefix: &str, operation: &OperationDef) -> String {
              {};\n      \
              }} catch (rejected) {{\n        \
              return _{prefix}McpFaultResult(\n          \
-             _{prefix}McpFault({named}FaultKind.failedValidation, {}, '$rejected', field: {key}),\n        );\n      \
+             _{prefix}McpFailedValidation({}, [{issue}(detail: '$rejected', field: {key})]),\n        );\n      \
              }}\n",
             dart_json_decode(form, "content"),
             quoted(&operation.wire_name),
+            issue = fault_issue_name(named),
         )
     });
     format!(
@@ -2999,7 +2994,6 @@ fn resource_functions(
 /// a fault where it does not read, and the call of its handler, ending in `success`, the declared
 /// error `refusal` or a panic.
 fn resource_body(
-    named: &str,
     prefix: &str,
     operation: &OperationDef,
     source: &str,
@@ -3020,7 +3014,6 @@ fn resource_body(
     let req_ty = message_dart_typename(operation);
     let decode = message_decode(operation, "source");
     let unjudged = unjudged_decode(operation, "source");
-    let kind = format!("{named}FaultKind");
     let error_ty = dart_type_of(error);
     let awaited = guarded_call(&call, error, &[], "ctx, decoded");
     let declared = dart_json_encode(error, "declared", true);
@@ -3038,7 +3031,7 @@ fn resource_body(
          return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread, {schema}));\n    \
          }}\n    \
          return _{prefix}McpUnread(\n      \
-         _{prefix}McpFault({kind}.failedValidation, {wire}, rejected.message, field: _{prefix}McpField(rejected.message)),\n    \
+         _{prefix}McpFailedValidation({wire}, _{prefix}WsIssues(rejected.message)),\n    \
          );\n  \
          }} catch (rejected) {{\n    \
          return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, rejected, {schema}));\n  \
@@ -3125,7 +3118,6 @@ fn resource_read(named: &str, prefix: &str, operation: &OperationDef) -> String 
     format!(
         "{head}{}",
         resource_body(
-            named,
             prefix,
             operation,
             &source,
@@ -3180,7 +3172,6 @@ fn skill_read(named: &str, prefix: &str, operation: &OperationDef) -> String {
     format!(
         "{head}{}",
         resource_body(
-            named,
             prefix,
             operation,
             "path",
@@ -3308,7 +3299,6 @@ fn resource_listing(named: &str, prefix: &str, operation: &OperationDef) -> Stri
     format!(
         "{head}{}",
         resource_body(
-            named,
             prefix,
             operation,
             source,
@@ -3352,7 +3342,6 @@ fn resource_completion(named: &str, prefix: &str, operation: &OperationDef) -> O
     Some(format!(
         "{head}{}",
         resource_body(
-            named,
             prefix,
             operation,
             &source,
@@ -3476,7 +3465,6 @@ fn prompt_function(named: &str, prefix: &str, operation: &OperationDef) -> Strin
     format!(
         "{head}{}",
         resource_body(
-            named,
             prefix,
             operation,
             &source,
@@ -3547,8 +3535,9 @@ pub fn client_text(declared: &ServiceDef) -> String {
              final {fields} fault;\n  \
              @override\n  \
              String toString() =>\n      \
-             '{named}McpRefusal: ${{fault.kind}} in `${{fault.operation}}`: ${{fault.detail}}';\n\
-             }}"
+             '{named}McpRefusal: ${{fault.kind}} in `${{fault.operation}}`: {said}';\n\
+             }}",
+            said = fault_said("fault"),
         ));
     }
     if served_by_client(service).next().is_none() {

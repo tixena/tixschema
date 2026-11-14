@@ -39,33 +39,33 @@ pub const NUMBER_CASES: [(&str, &str, Option<&str>); 14] = [
     ("an f32 beyond its range below zero", "ring", Some("-1e39")),
 ];
 
-/// The cases serde refuses, the field each names and the words a server refuses it with: an
+/// The cases serde refuses, the field each names and the words a server refuses it with there: an
 /// integer written as a float, `-0` among them, which it reads as the float `-0.0`.
 const REFUSED: [(&str, &str, &str); 5] = [
     (
         "a zero below zero for a u32",
         "strokes",
-        "'strokes': invalid type: floating point `-0.0`, expected u32",
+        "invalid type: floating point `-0.0`, expected u32",
     ),
     (
         "a zero below zero for an i64",
         "depth",
-        "'depth': invalid type: floating point `-0.0`, expected i64",
+        "invalid type: floating point `-0.0`, expected i64",
     ),
     (
         "a zero below zero in a list",
         "rounds.1",
-        "'rounds.1': invalid type: floating point `-0.0`, expected u32",
+        "invalid type: floating point `-0.0`, expected u32",
     ),
     (
         "an integral fraction for a u32",
         "strokes",
-        "'strokes': invalid type: floating point `1.0`, expected u32",
+        "invalid type: floating point `1.0`, expected u32",
     ),
     (
         "an exponent for an i64",
         "depth",
-        "'depth': invalid type: floating point `100.0`, expected i64",
+        "invalid type: floating point `100.0`, expected i64",
     ),
 ];
 
@@ -139,7 +139,7 @@ pub fn rust_http_answers() -> Vec<Value> {
                 Ok(_) => json!("read"),
                 Err(carillon_http_service_schema::CallError::Fault(fault)) => {
                     let written = serde_json::to_value(&fault).unwrap();
-                    json!({ "kind": written["kind"], "field": fault.field() })
+                    json!({ "kind": written["kind"], "field": written["issues"][0]["field"] })
                 }
                 Err(declared) => json!({ "declared": format!("{declared:?}") }),
             };
@@ -174,7 +174,7 @@ pub fn summed(answer: &Value) -> Value {
                 json!({
                     "kind": said["kind"],
                     "field": said["field"],
-                    "detail": carried["fault"]["detail"],
+                    "issues": carried["fault"]["issues"],
                 })
             }
             _ => said,
@@ -225,7 +225,11 @@ fn the_rust_client_and_dispatcher_refuse_a_zero_below_zero_for_an_integer_alone(
         match refused(name) {
             Some((_, field, detail)) => assert_eq!(
                 *answer,
-                json!({ "kind": "failed-validation", "field": field, "detail": detail }),
+                json!({
+                    "kind": "failed-validation",
+                    "field": field,
+                    "issues": [{ "detail": detail, "field": field }],
+                }),
                 "{name}"
             ),
             None => assert!(answer["structured"].is_string(), "{name}: {answer}"),

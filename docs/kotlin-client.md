@@ -556,8 +556,10 @@ the consumer's view; this is what a change has to keep.
   flattened member is read
   through `kotlinSchemaFlattened` (`read::FLATTENED`), which states the root as the refusal's path
   and drops the place it states, keeping the key it names as unknown or missing, so the holder's
-  `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the fault's field
-  off the path (`kotlin_ws_client::refused_at_fn`); `run_carillon.rs` holds each shape to the field
+  `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the field of the
+  problem the fault lists off the path (`kotlin_ws_client::refused_at_fn`), and list each line
+  of a `validate()` message apart (`WsRefusedIssues`, which `kotlin_ws_client::refused_fn`
+  writes); `run_carillon.rs` holds each shape to the field
   the Rust dispatcher names.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside

@@ -48,6 +48,9 @@ fun made(answered: AppraisalClientServiceAppraiseResult): JsonElement = when (an
     is AppraisalClientServiceAppraiseResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<AppraisalClientServiceFaultKind>(), answered.fault.kind))
         put("detail", answered.fault.detail)
+        answered.fault.issues?.let { listed ->
+            put("issues", JsonArray(listed.map { buildJsonObject { put("detail", it.detail); put("field", it.field) } }))
+        }
     }
 }
 
@@ -103,7 +106,11 @@ fn each_kotlin_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_check
             "httpKept": "read Upheld",
             "httpBroken": { "kind": "undeserializable-payload", "detail": thrown },
             "socketKept": "read Upheld",
-            "socketBroken": { "kind": "failed-validation", "detail": thrown }
+            "socketBroken": {
+                "kind": "failed-validation",
+                "detail": null,
+                "issues": [{ "detail": thrown, "field": null }],
+            }
         })
     );
 }

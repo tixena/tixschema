@@ -347,8 +347,7 @@ fn a_missing_key_inside_a_list_answers_failed_validation_with_its_full_path_on_e
     let payload =
         json!({ "drafts": [{ "references": [], "title": "Plan" }, { "references": [] }] });
     let expected = json!({
-        "detail": "'drafts.1.title': missing field `title`",
-        "field": "drafts.1.title",
+        "issues": [{ "detail": "missing field `title`", "field": "drafts.1.title" }],
         "kind": "failed-validation",
         "operation": "check-drafts",
     });
@@ -361,8 +360,10 @@ fn a_missing_key_inside_a_list_answers_failed_validation_with_its_full_path_on_e
 fn a_value_of_the_wrong_type_two_lists_deep_names_its_full_path_on_every_transport() {
     let payload = json!({ "drafts": [{ "references": [{ "name": 5_u8 }], "title": "Plan" }] });
     let expected = json!({
-        "detail": "'drafts.0.references.0.name': invalid type: integer `5`, expected a string",
-        "field": "drafts.0.references.0.name",
+        "issues": [{
+            "detail": "invalid type: integer `5`, expected a string",
+            "field": "drafts.0.references.0.name",
+        }],
         "kind": "failed-validation",
         "operation": "check-drafts",
     });
@@ -378,8 +379,10 @@ fn an_unknown_key_inside_a_list_names_the_key_once_on_every_transport() {
         { "references": [], "subtitle": "Draft", "title": "Plan" },
     ] });
     let expected = json!({
-        "detail": "'drafts.1.subtitle': unknown field `subtitle`, expected `references` or `title`",
-        "field": "drafts.1.subtitle",
+        "issues": [{
+            "detail": "unknown field `subtitle`, expected `references` or `title`",
+            "field": "drafts.1.subtitle",
+        }],
         "kind": "failed-validation",
         "operation": "check-drafts",
     });
@@ -413,8 +416,10 @@ fn an_unknown_key_in_a_generated_message_is_refused_and_the_handler_is_not_calle
     .unwrap();
     assert!(back.reached.lock().unwrap().is_empty());
     let expected = json!({
-        "detail": "'stray': unknown field `stray`, expected `title` or `count`",
-        "field": "stray",
+        "issues": [{
+            "detail": "unknown field `stray`, expected `title` or `count`",
+            "field": "stray",
+        }],
         "kind": "failed-validation",
         "operation": "tag-draft",
     });
@@ -440,8 +445,7 @@ fn an_unknown_key_in_the_message_of_an_operation_of_no_argument_is_refused_on_ev
     .unwrap();
     assert!(back.reached.lock().unwrap().is_empty());
     let expected = json!({
-        "detail": "'stray': unknown field `stray`, there are no fields",
-        "field": "stray",
+        "issues": [{ "detail": "unknown field `stray`, there are no fields", "field": "stray" }],
         "kind": "failed-validation",
         "operation": "stamp-drafts",
     });
@@ -507,8 +511,10 @@ fn an_unknown_key_in_a_model_nobody_marked_is_refused_inside_a_list() {
         { "references": [{ "name": "a", "stray": 1_u8 }], "title": "Plan" },
     ] });
     let expected = json!({
-        "detail": "'drafts.0.references.0.stray': unknown field `stray`, expected `name`",
-        "field": "drafts.0.references.0.stray",
+        "issues": [{
+            "detail": "unknown field `stray`, expected `name`",
+            "field": "drafts.0.references.0.stray",
+        }],
         "kind": "failed-validation",
         "operation": "check-drafts",
     });
@@ -526,12 +532,12 @@ fn an_unknown_key_under_a_flattened_struct_or_a_tag_alone_is_refused_at_the_key(
     ] {
         let fault = faults_everywhere(operation, &payload);
         assert_eq!(fault["kind"], "failed-validation", "{operation}");
-        assert_eq!(fault["field"], "stray", "{operation}");
+        assert_eq!(fault["issues"][0]["field"], "stray", "{operation}");
         assert!(
-            fault["detail"]
+            fault["issues"][0]["detail"]
                 .as_str()
                 .unwrap()
-                .starts_with("'stray': unknown field `stray`"),
+                .starts_with("unknown field `stray`"),
             "{operation}: {fault}"
         );
     }
@@ -575,10 +581,11 @@ fn text_that_is_no_json_still_answers_undeserializable_payload() {
 }
 
 /// What a row of the table names for a member serde refused and for a bound it broke, as the
-/// `field` of the fault each answers.
+/// `field` of the one problem the fault each answers lists.
 fn named(operation: &str, refused: &Value, broken: &Value) -> (Option<String>, Option<String>) {
     let field = |fault: Value| {
-        fault
+        assert_eq!(fault["issues"].as_array().map(Vec::len), Some(1), "{fault}");
+        fault["issues"][0]
             .get("field")
             .and_then(Value::as_str)
             .map(str::to_owned)
@@ -652,7 +659,9 @@ fn the_path_of_a_refusal_is_the_path_validate_names_for_the_same_member() {
 #[test]
 fn a_member_serde_reads_from_a_buffer_names_what_serde_path_to_error_reaches() {
     let internally = |refused: Value| {
-        faults("read-internally-tagged", &refused)
+        let fault = faults("read-internally-tagged", &refused);
+        assert_eq!(fault["kind"], "failed-validation", "{fault}");
+        fault["issues"][0]
             .get("field")
             .and_then(Value::as_str)
             .map(str::to_owned)
@@ -660,16 +669,14 @@ fn a_member_serde_reads_from_a_buffer_names_what_serde_path_to_error_reaches() {
     assert_eq!(internally(json!({ "kind": "Loose", "label": 5_u8 })), None);
     assert_eq!(internally(json!({ "kind": "Boxed", "label": 5_u8 })), None);
     let flattened = faults("read-flattened", &json!({ "label": 5_u8 }));
-    assert_eq!(flattened.get("field"), None);
     assert_eq!(
-        flattened["detail"],
-        "invalid type: integer `5`, expected a string"
+        flattened["issues"],
+        json!([{ "detail": "invalid type: integer `5`, expected a string" }])
     );
     let untagged = faults("read-untagged", &json!({ "label": 5_u8 }));
-    assert_eq!(untagged.get("field"), None);
     assert_eq!(
-        untagged["detail"],
-        "data did not match any variant of untagged enum Untagged"
+        untagged["issues"],
+        json!([{ "detail": "data did not match any variant of untagged enum Untagged" }])
     );
 }
 

@@ -349,9 +349,9 @@ fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal
     assert!(
         refused.contains("kind: .undeserializablePayload")
             && refused.contains("\"expected value\"")
-            && refused.contains("conversationClientServiceWsFailedValidation(operation, \"\\(refusal)\", field: conversationClientServiceWsRefusedAt(refusal))"),
+            && refused.contains("conversationClientServiceWsFailedValidation(operation, conversationClientServiceWsRefusedIssues(refusal))"),
         "a refusal in serde's words for text that is not the document is `undeserializablePayload`, \
-         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
+         as the Rust dispatcher answers it, and every other lists each problem. Got: {refused}"
     );
 }
 
@@ -370,7 +370,8 @@ fn a_one_way_operation_is_async_throws_and_throws_only_the_shared_refusal() {
         method.contains("try sendNotify(operation: \"purge-conversation\", payload: req)")
             && method.contains(
                 "throw ConversationClientServiceRefusal(fault: \
-                 conversationClientServiceWsFailedValidation(\"purge-conversation\", \"\\(error)\"))"
+                 conversationClientServiceWsFailedValidation(\"purge-conversation\", \
+                 [ConversationClientServiceFaultIssue(detail: \"\\(error)\", field: nil)]))"
             ),
         "a one-way method throws the shared refusal, naming no error type of its own. \
          Got: {method}"
@@ -405,8 +406,8 @@ fn the_fault_helpers_carry_a_ws_infix_so_a_bundle_with_both_clients_declares_eac
     );
     assert!(
         written.contains(
-            "func conversationClientServiceWsFailedValidation(_ operation: String, _ detail: \
-             String, field: String? = nil) -> ConversationClientServiceFault {"
+            "func conversationClientServiceWsFailedValidation(_ operation: String, _ issues: \
+             [ConversationClientServiceFaultIssue]) -> ConversationClientServiceFault {"
         ) && written
             .contains("func conversationClientServiceWsRefusedAt(_ refusal: Error) -> String? {"),
         "got: {written}"

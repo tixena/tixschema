@@ -439,8 +439,7 @@ pub(super) fn reading(
             return ::core::option::Option::Some(::core::result::Result::Err(faulted(
                 $crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    $crate::#module::violated_field(&violations),
-                    &$crate::#module::violation_detail(&violations),
+                    $crate::#module::violation_issues(&violations),
                 ),
             )));
         }

@@ -153,12 +153,14 @@ fn fault_fn(service: &ServiceDef) -> String {
          function {prefix}Fault(\n  \
          kind: {kind_ty},\n  \
          operation: string,\n  \
-         detail: string,\n  \
-         field?: string,\n\
+         detail: string,\n\
          ): {named}Fault {{\n\
          {minted}\n\
          }}",
-        minted = fault::minted(&named, "    detail,\n    field,\n    kind,\n    operation,")
+        minted = fault::minted(
+            &named,
+            "    detail,\n    field: undefined,\n    kind,\n    operation,"
+        )
     )
 }
 

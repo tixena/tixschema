@@ -130,10 +130,9 @@ fn a_whole_payload_is_read_and_echoed() {
 fn an_item_of_a_list_below_the_bound_is_named_at_its_index() {
     let fault = fault_of("labels", json!(["a", ""]));
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "labels.1");
     assert_eq!(
-        fault["detail"],
-        "'labels.1': too short: minimum length is 1, got 0"
+        fault["issues"],
+        json!([{ "detail": "too short: minimum length is 1, got 0", "field": "labels.1" }])
     );
 }
 
@@ -141,14 +140,18 @@ fn an_item_of_a_list_below_the_bound_is_named_at_its_index() {
 fn a_tagged_variants_brand_is_named_at_its_member() {
     let fault = fault_of("tag", json!({ "kind": "One", "tone": "mute" }));
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "tag.tone");
-    assert_eq!(fault["detail"], "'tag.tone': mute is silent");
+    assert_eq!(
+        fault["issues"],
+        json!([{ "detail": "mute is silent", "field": "tag.tone" }])
+    );
 }
 
 #[test]
 fn an_untagged_variants_brand_refuses_by_its_check() {
     let fault = fault_of("either", json!("mute"));
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "either");
-    assert_eq!(fault["detail"], "'either': mute is silent");
+    assert_eq!(
+        fault["issues"],
+        json!([{ "detail": "mute is silent", "field": "either" }])
+    );
 }

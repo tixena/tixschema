@@ -191,8 +191,10 @@ consumer's view; this is what a change has to keep.
   member is read through `_readFlattened` (`READ_FLATTENED`, which a class with one declares),
   which drops the path of its refusal but for the key a `missing field` or an unknown key names,
   so the holder's step is the place, as serde names the holder. The `ws_rpc` attachment and
-  client name the joined path as the fault's `field`, or the place a `validate()` message opens
-  with (`refused_at_fn` in `dart_ws_client.rs`).
+  client list the refusal at the joined path, or each line of a `validate()` message at the
+  place it opens with (`refused_at_fn` in `dart_ws_client.rs`, which writes `_WsRefusedAt`,
+  `_WsIssues` and `_WsRefusedIssues`; the `mcp` server cuts a `validate()` message through
+  `_WsIssues` as well).
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever

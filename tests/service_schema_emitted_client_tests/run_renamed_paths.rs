@@ -789,10 +789,15 @@ fn the_rust_dispatcher_reads_each_member_in_the_form_it_publishes() {
         );
     }
     let (status, refused) = rust_answered("PUT", UNREAD.0, "", UNREAD.1);
-    assert_eq!((status, &refused["field"]), (400, &json!("page_size")));
     assert_eq!(
-        refused["detail"],
-        r#"'page_size': invalid type: string "abc", expected u32"#
+        (status, &refused["issues"]),
+        (
+            400,
+            &json!([{
+                "detail": r#"invalid type: string "abc", expected u32"#,
+                "field": "page_size",
+            }])
+        )
     );
 }
 
@@ -894,15 +899,13 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
         ran["refusedSent"], 0_u8,
         "a refused list was sent: {printed}"
     );
+    let comma = json!([{
+        "detail": "a list item holds a comma, which a path would read as two items",
+        "field": "labels",
+    }]);
     for refusal in ran["commaRefusals"].as_array().unwrap() {
         assert_eq!(refusal["ok"], false, "{printed}");
-        let fault = &refusal["error"]["fault"];
-        assert_eq!(fault["field"], "labels", "{printed}");
-        assert_eq!(
-            fault["detail"],
-            "'labels': a list item holds a comma, which a path would read as two items",
-            "{printed}"
-        );
+        assert_eq!(refusal["error"]["fault"]["issues"], comma, "{printed}");
     }
     let answered: Vec<Value> = CARRIED
         .iter()
@@ -926,7 +929,7 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
     assert_eq!(ran["typed"], Value::Array(typed), "{printed}");
     assert_eq!(ran["unread"]["status"], 400_u16, "{printed}");
     let refused: Value = serde_json::from_str(ran["unread"]["body"].as_str().unwrap()).unwrap();
-    assert_eq!(refused["field"], "page_size", "{printed}");
+    assert_eq!(refused["issues"][0]["field"], "page_size", "{printed}");
 }
 
 #[cfg(feature = "dart")]

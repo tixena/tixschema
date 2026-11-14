@@ -422,8 +422,6 @@ String fault(String kind) => jsonEncode({
 String listing() => jsonEncode({
       'isServiceFault': true,
       'fault': {
-        'detail': "'document_id': too short; 'reader': unknown",
-        'field': 'document_id',
         'issues': [
           {'detail': 'too short', 'field': 'document_id'},
           {'detail': 'unknown', 'field': 'reader'},
@@ -944,12 +942,18 @@ fn text_of(value: &Value) -> String {
     canonical(value)
 }
 
-fn fault_envelope(kind: &str, operation: &str, detail: &str, field: Option<&str>) -> Value {
-    let mut fault = json!({ "detail": detail, "kind": kind, "operation": operation });
-    if let Some(named) = field {
-        fault["field"] = json!(named);
-    }
-    json!({ "fault": fault, "isServiceFault": true })
+fn fault_envelope(kind: &str, operation: &str, detail: &str) -> Value {
+    json!({
+        "fault": { "detail": detail, "kind": kind, "operation": operation },
+        "isServiceFault": true,
+    })
+}
+
+fn failed_validation_envelope(operation: &str, issues: &Value) -> Value {
+    json!({
+        "fault": { "issues": issues, "kind": "failed-validation", "operation": operation },
+        "isServiceFault": true,
+    })
 }
 
 fn failed(id: &Value, carried: &Value) -> Value {
@@ -1011,11 +1015,12 @@ fn the_server_answers_the_messages_of_the_design_on_the_bytes_rust_writes() {
         "CallToolResultResponse",
         &failed(
             &json!(6_i32),
-            &fault_envelope(
-                "failed-validation",
+            &failed_validation_envelope(
                 "get-version",
-                "'document_id': too short: minimum length is 1, got 0",
-                Some("document_id"),
+                &json!([{
+                    "detail": "too short: minimum length is 1, got 0",
+                    "field": "document_id",
+                }]),
             ),
         ),
     );
@@ -1049,7 +1054,6 @@ fn what_the_server_cannot_serve_answers_the_error_the_design_names() {
                 "unknown-operation",
                 "delete-everything",
                 "the service answers to no operation by that name",
-                None,
             ),
             "message": "Unknown tool: delete-everything",
         }, "id": 8_i32, "jsonrpc": "2.0" }),
@@ -1124,12 +1128,7 @@ fn the_server_answers_what_a_handler_does_and_what_a_message_holds() {
         "InternalError",
         &json!({ "error": {
             "code": -32603_i32,
-            "data": fault_envelope(
-                "handler-panic",
-                "get-version",
-                "the handler came apart",
-                None,
-            ),
+            "data": fault_envelope("handler-panic", "get-version", "the handler came apart"),
             "message": "get-version: the handler came apart",
         }, "id": 13_i32, "jsonrpc": "2.0" }),
     );
@@ -1197,10 +1196,10 @@ fn a_message_that_does_not_read_answers_the_fault_of_what_went_wrong() {
     assert_eq!(unread["operation"], "get-version");
     let missing = fault_of(&driven, "no_arguments");
     assert_eq!(missing["kind"], "failed-validation");
-    assert_eq!(missing["field"], "document_id");
+    assert_eq!(missing["issues"][0]["field"], "document_id");
     let bad_header = fault_of(&driven, "bad_header");
     assert_eq!(bad_header["kind"], "failed-validation");
-    assert_eq!(bad_header["field"], "if-none-match");
+    assert_eq!(bad_header["issues"][0]["field"], "if-none-match");
     assert_eq!(bad_header["operation"], "get-tagged");
     let absent: Value =
         serde_json::from_str(driven["answers"]["no_header"].as_str().unwrap()).unwrap();
@@ -1228,7 +1227,7 @@ fn the_faults_of_the_server_carry_the_kind_field_and_tool_the_rust_dispatcher_wr
     }
     let unknown_variant = fault_of(&driven, "unknown_variant");
     assert_eq!(unknown_variant["kind"], "failed-validation");
-    assert_eq!(unknown_variant["field"], "format");
+    assert_eq!(unknown_variant["issues"][0]["field"], "format");
     assert_eq!(unknown_variant["operation"], "get-version");
 }
 

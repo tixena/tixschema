@@ -396,6 +396,19 @@ pub mod a_message_annotated_with_a_constraint {
         }
     }
 
+    /// Each problem a fault lists, as the validator words it.
+    fn listed(fault: &gate_service_schema::ServiceFault) -> Vec<String> {
+        fault.issues().iter().map(ToString::to_string).collect()
+    }
+
+    /// The field of the first problem a fault lists, where it lists one at a field.
+    fn first_field(fault: &gate_service_schema::ServiceFault) -> Option<&str> {
+        fault
+            .issues()
+            .first()
+            .and_then(gate_service_schema::ServiceFaultIssue::field)
+    }
+
     fn bay_in_upper_case(value: &Bay) -> Result<(), Vec<String>> {
         if value.as_inner().chars().any(char::is_lowercase) {
             return Err(vec!["a bay is upper case".to_owned()]);
@@ -449,19 +462,19 @@ pub mod a_message_annotated_with_a_constraint {
              the field declared. What it is not is a message satisfying the constraint, and \
              telling the sender its serialization was broken would send it looking in the wrong \
              place entirely. Got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(reported[0].operation(), "admit");
         assert!(
-            reported[0].detail().contains("too short"),
+            listed(&reported[0])[0].contains("too short"),
             "got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("customer_id"),
             "the caller has to be told which field it got wrong. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
     }
 
@@ -511,20 +524,20 @@ pub mod a_message_annotated_with_a_constraint {
                 kind,
                 "`{sent}` was answered under the wrong class of failure, and the class is what a \
                  caller branches on. Got detail: {}",
-                reported[0].detail()
+                reported[0]
             );
             assert_eq!(
-                reported[0].field(),
+                first_field(&reported[0]),
                 field,
                 "`{sent}` must name the field its refusal named and no other: a name invented for \
                  a refusal that carried none would be read out of a message nobody read. Got: {}",
-                reported[0].detail()
+                reported[0]
             );
             assert!(
-                !reported[0].detail().contains("at line"),
+                !reported[0].to_string().contains("at line"),
                 "the byte offset serde appends locates the failure inside an encoding the caller \
                  never saw. Got: {}",
-                reported[0].detail()
+                reported[0]
             );
         }
     }
@@ -557,20 +570,20 @@ pub mod a_message_annotated_with_a_constraint {
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "every key is present and every value is of the type its field declared, so this is a \
              message — one whose value broke a rule. Got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("holds.name"),
             "the path to the member that was actually wrong, and not the hop above it: a caller \
              looks the name up in the payload it sent, where `holds` is an object rather than the \
              thing out of range. It is also the string the TypeScript schema published from this \
              same declaration reports. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'holds.name': too short: minimum length is 3, got 1"
+            listed(&reported[0]),
+            ["'holds.name': too short: minimum length is 3, got 1"]
         );
     }
 
@@ -614,29 +627,29 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert!(
-            reported[0].detail().contains("too short"),
+            listed(&reported[0])[0].contains("too short"),
             "the hook hands serde the brand's own message verbatim. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("slug"),
             "the caller has to be told which key it got wrong, and a brand names none of its own —              the field holding it supplies the name. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'slug': too short: minimum length is 3, got 2",
+            listed(&reported[0]),
+            ["'slug': too short: minimum length is 3, got 2"],
             "one quoted run holding the whole name, which is what a reader takes a name out of"
         );
         assert!(
-            !reported[0].detail().contains("at line"),
+            !reported[0].to_string().contains("at line"),
             "the byte offset locates the failure inside an encoding the caller never saw. \
              Got: {}",
-            reported[0].detail()
+            reported[0]
         );
     }
 
@@ -672,13 +685,16 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'bay': a bay is upper case; 'slug': too short: minimum length is 3, got 2"
+            listed(&reported[0]),
+            [
+                "'bay': a bay is upper case",
+                "'slug': too short: minimum length is 3, got 2"
+            ]
         );
-        assert_eq!(reported[0].field(), Some("bay"));
+        assert_eq!(first_field(&reported[0]), Some("bay"));
         assert_eq!(
             dispatched("dock", br#"{"bay":"NORTH","slug":"abc"}"#).0,
             vec!["NORTH:abc".to_owned()]
@@ -699,17 +715,17 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("account.jti"),
             "an untagged newtype member writes no key of its own — what it puts on the wire is the              inner value — so the union contributes no segment and the path is the one the payload              actually spells. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'account.jti': too short: minimum length is 1, got 0"
+            listed(&reported[0]),
+            ["'account.jti': too short: minimum length is 1, got 0"]
         );
     }
 
@@ -725,14 +741,14 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
-        assert_eq!(reported[0].field(), Some("account.jti"));
+        assert_eq!(first_field(&reported[0]), Some("account.jti"));
 
         let (_, direct) = dispatched("read-scoped-balance", payload);
         assert_eq!(
-            reported[0].detail(),
-            direct[0].detail(),
+            listed(&reported[0]),
+            listed(&direct[0]),
             "the union has no report of its own to write: what it answers is the variant's,              unchanged"
         );
     }
@@ -744,10 +760,10 @@ pub mod a_message_annotated_with_a_constraint {
             br#"{"account":{"sysAdminUsername":"ops","jti":""},"customerId":"gate-org"}"#,
         );
         assert!(reached.is_empty(), "got: {reached:?}");
-        assert_eq!(reported[0].field(), Some("account.jti"));
+        assert_eq!(first_field(&reported[0]), Some("account.jti"));
         assert_eq!(
-            reported[0].detail(),
-            "'account.jti': too short: minimum length is 1, got 0"
+            listed(&reported[0]),
+            ["'account.jti': too short: minimum length is 1, got 0"]
         );
     }
 
@@ -781,8 +797,8 @@ pub mod a_message_annotated_with_a_constraint {
             let (reached, reported) = dispatched("place-call", payload.as_bytes());
             assert!(reached.is_empty(), "{chosen} executed. Got: {reached:?}");
             assert_eq!(
-                reported[0].detail(),
-                "'caller.jti': too short: minimum length is 1, got 0",
+                listed(&reported[0]),
+                ["'caller.jti': too short: minimum length is 1, got 0"],
                 "{chosen} was chosen and its own members went unwalked"
             );
         }
@@ -850,14 +866,14 @@ pub mod a_message_annotated_with_a_constraint {
             "the author put this check on the read, but what it refused is a value out of range \
              inside a document that read perfectly well — the class serde_json reports it under, \
              and the one a caller acts on. Got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("ledger_id"),
             "a refusal written in the shape a validator reports in names its field, and the \
              fault reads the name back off it wherever the refusal came from. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
     }
 }
@@ -1629,7 +1645,13 @@ impl http_rest_transport::FaultHandler for RecordingFaultHandler {
         http_rest_transport::OutgoingResponse::new(
             status,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }
@@ -1781,24 +1803,21 @@ fn a_payload_carrying_the_wrong_type_of_value_becomes_a_fault_and_reaches_no_imp
         probe_service_schema::ServiceFaultKind::FailedValidation,
         "the bytes read as a document and did not match the message, which is a value someone \
          supplied rather than a sender whose serialization is broken — and is the kind the \
-         TypeScript service serving the same operation answers it under. Got detail: {}",
-        reported.detail()
+         TypeScript service serving the same operation answers it under. Got: {reported}"
     );
     assert_eq!(reported.operation(), "get-balance");
     assert_eq!(
-        reported.field(),
-        Some("customer_id"),
-        "a type mismatch names the path serde was at when it came. Got: {}",
-        reported.detail()
-    );
-    assert_eq!(
-        reported.detail(),
-        "'customer_id': invalid type: integer `42`, expected a string"
+        reported.issues(),
+        [probe_service_schema::ServiceFaultIssue::new(
+            Some("customer_id"),
+            "invalid type: integer `42`, expected a string"
+        )],
+        "a type mismatch names the path serde was at when it came. Got: {reported}"
     );
     assert!(
-        !reported.detail().contains("at line"),
-        "the byte offset locates the failure inside an encoding the caller never saw. Got: {}",
-        reported.detail()
+        !reported.to_string().contains("at line"),
+        "the byte offset locates the failure inside an encoding the caller never saw. Got: \
+         {reported}"
     );
 }
 
@@ -1836,7 +1855,7 @@ fn the_operation_is_read_from_the_name_it_was_given_and_never_out_of_the_payload
         probe_service_schema::ServiceFaultKind::FailedValidation
     );
     assert_eq!(reported.operation(), "sweep");
-    assert_eq!(reported.field(), Some("operation"));
+    assert_eq!(reported.issues()[0].field(), Some("operation"));
     let (swept, _) = dispatched("sweep", "{}");
     assert_eq!(swept, vec!["sweep".to_owned()]);
 }
@@ -1872,15 +1891,14 @@ fn a_message_that_fails_its_own_validator_never_reaches_it_and_the_fault_names_t
         probe_service_schema::ServiceFaultKind::FailedValidation
     );
     assert_eq!(
-        reported.field(),
+        reported.issues()[0].field(),
         Some("customer_id"),
         "the caller has to be told which field it got wrong"
     );
     assert_eq!(reported.operation(), "admit");
     assert!(
-        reported.detail().contains("too short"),
-        "got: {}",
-        reported.detail()
+        reported.issues()[0].detail().contains("too short"),
+        "got: {reported}"
     );
 }
 
@@ -1904,7 +1922,7 @@ fn a_handler_that_panics_becomes_a_fault_rather_than_unwinding_out_of_dispatch()
     assert_eq!(reported.field(), None, "a panic names no field");
     assert_eq!(
         reported.detail(),
-        "the ledger is not a ledger",
+        Some("the ledger is not a ledger"),
         "a literal panic message arrives as a `&str`, and the detail is what a receiver has to \
          page a human with"
     );
@@ -1945,7 +1963,7 @@ fn a_formatted_panic_message_reaches_the_fault_as_the_message_rather_than_as_its
     );
     assert_eq!(
         reported.detail(),
-        "the ledger for formatted is not a ledger",
+        Some("the ledger for formatted is not a ledger"),
         "a formatted panic message arrives as a `String`, and a fault that could only read a \
          `&str` would report nothing for the half of panics that carry one"
     );
@@ -2011,7 +2029,7 @@ fn a_request_and_reply_panic_is_written_down_as_well_as_answered() {
          operation was declared, so both outcomes write the same event."
     );
     assert_eq!(
-        written[0].detail,
+        Some(written[0].detail.as_str()),
         reported.detail(),
         "one panic, one account of what it said, so a record and a fault cannot disagree about it"
     );
@@ -2231,8 +2249,10 @@ fn an_absent_required_header_in_is_refused_by_name_rather_than_reaching_the_impl
     assert_eq!(response.status(), 400);
     let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "range");
-    assert_eq!(fault["detail"], "a required header was not carried");
+    assert_eq!(
+        fault["issues"],
+        serde_json::json!([{ "detail": "a required header was not carried", "field": "range" }])
+    );
 }
 
 #[test]

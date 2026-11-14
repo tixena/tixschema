@@ -81,26 +81,23 @@ fn each_typescript_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_c
         return;
     };
     let ran: Value = serde_json::from_str(wrote.trim()).unwrap();
-    let refused = |kind: &str| {
-        json!({
-            "ok": false,
-            "error": {
-                "isServiceFault": true,
-                "fault": {
-                    "detail": "a verdict is upheld",
-                    "kind": kind,
-                    "operation": "appraise"
-                }
-            }
-        })
-    };
+    let refused =
+        |fault: Value| json!({ "ok": false, "error": { "isServiceFault": true, "fault": fault } });
     assert_eq!(
         ran,
         json!({
             "busKept": { "ok": true, "value": "Upheld" },
-            "busBroken": refused("failed-validation"),
+            "busBroken": refused(json!({
+                "issues": [{ "detail": "a verdict is upheld" }],
+                "kind": "failed-validation",
+                "operation": "appraise"
+            })),
             "httpKept": { "ok": true, "value": "Upheld" },
-            "httpBroken": refused("undeserializable-payload"),
+            "httpBroken": refused(json!({
+                "detail": "a verdict is upheld",
+                "kind": "undeserializable-payload",
+                "operation": "appraise"
+            })),
         })
     );
 }

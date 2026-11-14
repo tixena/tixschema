@@ -144,7 +144,8 @@ void main() async {
 }
 ";
 
-/// What says which member of the result a call answered, and the fault's kind and detail.
+/// What says which member of the result a call answered, and the fault's kind, detail and
+/// problems.
 const DESCRIBED: &str = "
 Map<String, dynamic> described(ParcelClientServiceWeighResult result) {
   return switch (result) {
@@ -154,6 +155,7 @@ Map<String, dynamic> described(ParcelClientServiceWeighResult result) {
         'kind': 'fault',
         'faultKind': fault.kind.name,
         'detail': fault.detail,
+        'issues': fault.issues?.map((issue) => {'detail': issue.detail, 'field': issue.field}).toList(),
       },
   };
 }
@@ -732,14 +734,27 @@ fn client_module(imports: &[&str], client: String, entry: &str) -> String {
 }
 
 /// What a client answers for a reply that keeps every rule, and for one that breaks a bound,
-/// where it answers the latter with a fault of `kind`.
+/// where it answers the latter with a fault of `kind`: the read's refusal as the detail of an
+/// `undeserializablePayload`, and each of its messages at its field for a `failedValidation`.
 fn answers(kind: &str) -> serde_json::Value {
+    let (detail, issues) = if kind == "failedValidation" {
+        (
+            serde_json::Value::Null,
+            serde_json::json!([{ "detail": "too short: minimum length is 1, got 0", "field": "label" }]),
+        )
+    } else {
+        (
+            serde_json::json!("FormatException: 'label': too short: minimum length is 1, got 0"),
+            serde_json::Value::Null,
+        )
+    };
     serde_json::json!({
         "sound": {"kind": "ok", "label": "A"},
         "unlabelled": {
             "kind": "fault",
             "faultKind": kind,
-            "detail": "FormatException: 'label': too short: minimum length is 1, got 0",
+            "detail": detail,
+            "issues": issues,
         },
     })
 }

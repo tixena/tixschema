@@ -358,9 +358,11 @@ fn the_fault_a_client_builds_names_the_key_that_failed() {
         "the operation never ran, so this is not one of the errors it declared. Got: {written}"
     );
     assert!(
-        written
-            .contains("field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"),
-        "got: {written}"
+        written.contains(
+            "return { detail: issue.message, field: steps.length === 0 ? undefined : \
+             steps.join(\".\") };"
+        ) && written.contains("...(unread === undefined ? { issues: listed } : {}),"),
+        "each issue is listed at the key it failed at. Got: {written}"
     );
 }
 
@@ -508,7 +510,7 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
         written.contains(
             "const parsed = schema.safeParse(carried === undefined ? null : \
              versionServiceRead(carried));"
-        ) && written.contains("? \"a declared reply header was missing\""),
+        ) && written.contains("? [\"a declared reply header was missing\"]"),
         "an absent header reads as the `null` an optional slot holds, and faults a required one. \
          Got: {written}"
     );

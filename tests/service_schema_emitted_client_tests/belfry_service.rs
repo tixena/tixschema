@@ -203,7 +203,7 @@ fn the_rust_dispatchers_read_an_empty_message_and_refuse_a_key_beside_it() {
     let (refused, rung_refusing) = over_ws("ring-bell", PAYLOADS[1]);
     assert_eq!(refused["ok"], false, "{refused}");
     assert_eq!(refused["error"]["fault"]["kind"], "failed-validation");
-    assert_eq!(refused["error"]["fault"]["field"], "stray");
+    assert_eq!(refused["error"]["fault"]["issues"][0]["field"], "stray");
     assert_eq!(rung_refusing, 0);
 
     let routes = belfry_http_rest_transport::ROUTES;
@@ -225,7 +225,7 @@ fn the_rust_dispatchers_read_an_empty_message_and_refuse_a_key_beside_it() {
     let (status, fault, rung) = over_http("ring-bell", PAYLOADS[1]);
     assert_eq!(status, 400, "{fault}");
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "stray");
+    assert_eq!(fault["issues"][0]["field"], "stray");
     assert_eq!(rung, 0);
 }
 
@@ -242,7 +242,7 @@ fn the_rust_dispatchers_name_a_key_no_member_of_a_message_declares_and_a_member_
     ] {
         let (status, fault, rung) = over_http("toll-bell", payload);
         assert_eq!((status, rung), (400, 0), "{fault}");
-        assert_eq!(fault["field"], field, "{fault}");
+        assert_eq!(fault["issues"][0]["field"], field, "{fault}");
         let (refused, rung_refusing) = over_ws("toll-bell", payload);
         assert_eq!(refused["error"]["fault"], fault, "{refused}");
         assert_eq!(rung_refusing, 0);

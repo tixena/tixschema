@@ -539,3 +539,23 @@ fn the_service_the_readme_declares_is_implementable_at_the_context_it_shows() {
         "a one-way operation answers with nothing at all"
     );
 }
+
+#[test]
+fn the_faults_the_readme_shows_are_written_as_a_fault_writes_them() {
+    use billing_service_schema::{ServiceFault, ServiceFaultIssue};
+    let refused = ServiceFault::failed_validation(
+        "get-open-balance",
+        vec![ServiceFaultIssue::new(
+            Some("customer_id"),
+            "invalid type: integer `5`, expected a string",
+        )],
+    );
+    assert_shown(
+        &serde_json::to_string(&refused).unwrap(),
+        r#"{"issues":[{"detail":"invalid type: integer `5`, expected a string","field":"customer_id"}],"kind":"failed-validation","operation":"get-open-balance"}"#,
+    );
+    assert_shown(
+        &serde_json::to_string(&ServiceFault::unknown_operation("rebook")).unwrap(),
+        r#"{"detail":"the service answers to no operation by that name","kind":"unknown-operation","operation":"rebook"}"#,
+    );
+}
