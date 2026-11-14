@@ -3,6 +3,8 @@
 //! runs of each client are in the emitted-client groups, and the run of the Zod schemas under node
 //! in `generic_types_tests`.
 
+#[cfg(all(feature = "dart", feature = "serde"))]
+use crate::dart_integer_read::integer_read;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 use crate::kotlin_numbers::without_number_readers;
 use serde::de::DeserializeOwned;
@@ -325,11 +327,14 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
 fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_dart::dart_definition();
     for read in [
-        "BerthingDocked(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] \
-         as String) : (jsonDecode('\"\"') as String),pier: _readAt(json, 'pier', () => (switch \
-         (json['pier'] as int) { final number when number >= 0 && number <= 4294967295 => number, \
-         final number => throw FormatException('expected an integer from 0 to 4294967295, found \
-         $number') })),)",
+        &format!(
+            "BerthingDocked(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => \
+             json['dock'] as String) : (jsonDecode('\"\"') as String),pier: _readAt(json, 'pier', \
+             () => (switch ({}) {{ final number when number >= 0 && number <= 4294967295 => \
+             number, final number => throw FormatException('expected an integer from 0 to \
+             4294967295, found $number') }})),)",
+            integer_read("json['pier']", "u32")
+        ),
         "BerthingMoored(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] \
          as String) : (jsonDecode('\"north\"') as String),line: json.containsKey('line') ? \
          _readAt(json, 'line', () => json['line'] as String) : (jsonDecode('\"\"') as String),)",
@@ -618,9 +623,7 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          TideEbbing.fromJson(Map<String, dynamic> json) { for (final key in json.keys) { if \
          (!const <String>{'kind', 'height'}.contains(key)) throw FormatException('Unknown key \
          of a TideEbbing: $key', <Object>[key]); } return TideEbbing(height: _readAt(json, \
-         'height', () => (switch (json['height'] as int) { final number when number >= 0 && \
-         number <= 4294967295 => number, final number => throw FormatException('expected an \
-         integer from 0 to 4294967295, found $number') })),); } static Read \
+         'height', () => @HEIGHT@),); } static Read \
          _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) { try { \
          return read(); } catch (refused) { if (object != null && !object.containsKey(key)) \
          throw FormatException('missing field `$key`', <Object>[key]); if (refused is \
@@ -633,6 +636,15 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          @override List<String> validationIssues() => const []; } class TideSlack extends \
          TideDraft { const TideSlack(); @override dynamic toJson() => { 'kind': 'Slack' }; \
          @override List<String> validationIssues() => const []; }"
+            .replace(
+                "@HEIGHT@",
+                &format!(
+                    "(switch ({}) {{ final number when number >= 0 && number <= 4294967295 => \
+                     number, final number => throw FormatException('expected an integer from 0 \
+                     to 4294967295, found $number') }})",
+                    integer_read("json['height']", "u32")
+                )
+            )
     );
 }
 

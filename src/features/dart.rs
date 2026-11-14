@@ -122,6 +122,9 @@ const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { t
      (held as dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const \
      []; } }";
 
+/// The text [`integer_read`] fills in, which the tests of the emitted text fill in the same way.
+const INTEGER_READ: &str = include_str!("dart/integer_read.txt");
+
 /// The helper a class reads a flattened member with, and an enum reads a braced variant under an
 /// internal tag with. serde reads such a value from the keys its holder buffers and places a
 /// refusal inside it at the holder, so the path the refusal carries is
@@ -2104,6 +2107,29 @@ fn number_key_text(number: &FieldDefType, expr: &str, narrowed: bool) -> String 
     )
 }
 
+/// The `int` `expr` is cast to, where a `double` is refused as serde refuses a float for an
+/// integer, naming it as `serde_json` spells it: its shortest digits laid out plainly from
+/// `0.00001` to below `1e16`, with `.0` where they hold no fraction, and as `1e+16` beyond.
+pub fn integer_read(integer: &FieldDefType, expr: &str) -> String {
+    let (int, double) = (dart_core("int"), dart_core("double"));
+    let expected = integer.number_name().unwrap_or("an integer");
+    let (held, number, spelled) = (declared("held"), declared("number"), declared("spelled"));
+    [
+        ("@EXPR@", expr),
+        ("@DOUBLE@", &double),
+        ("@INT@", &int),
+        ("@NUMBER@", &number),
+        ("@SPELLED@", &spelled),
+        ("@HELD@", &held),
+        ("@EXPECTED@", expected),
+        ("@OUT@", NUMBER_OUT_OF_RANGE),
+    ]
+    .into_iter()
+    .fold(INTEGER_READ.to_owned(), |text, (from, to)| {
+        text.replace(from, to)
+    })
+}
+
 /// The float `taken` reads as, as serde reads an `f32` or an `f64`: an `f32` beyond its range as an
 /// infinity of its sign, and an infinity, which `jsonDecode` reads a number beyond an `f64` as, in
 /// serde's words for text that is not the document.
@@ -2560,7 +2586,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         | FieldDefType::I64
         | FieldDefType::Usize
         | FieldDefType::Isize => {
-            let taken = format!("{expr} as {}", dart_core("int"));
+            let taken = integer_read(&field.field_type, expr);
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
         }
         FieldDefType::F32 | FieldDefType::F64 => float_read(

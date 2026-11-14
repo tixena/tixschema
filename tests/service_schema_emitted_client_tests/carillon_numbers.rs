@@ -39,14 +39,34 @@ pub const NUMBER_CASES: [(&str, &str, Option<&str>); 14] = [
     ("an f32 beyond its range below zero", "ring", Some("-1e39")),
 ];
 
-/// The cases serde refuses, and the field each names: an integer written as a float, `-0` among
-/// them, which it reads as the float `-0.0`.
-const REFUSED: [(&str, &str); 5] = [
-    ("a zero below zero for a u32", "strokes"),
-    ("a zero below zero for an i64", "depth"),
-    ("a zero below zero in a list", "rounds.1"),
-    ("an integral fraction for a u32", "strokes"),
-    ("an exponent for an i64", "depth"),
+/// The cases serde refuses, the field each names and the words a server refuses it with: an
+/// integer written as a float, `-0` among them, which it reads as the float `-0.0`.
+const REFUSED: [(&str, &str, &str); 5] = [
+    (
+        "a zero below zero for a u32",
+        "strokes",
+        "'strokes': invalid type: floating point `-0.0`, expected u32",
+    ),
+    (
+        "a zero below zero for an i64",
+        "depth",
+        "'depth': invalid type: floating point `-0.0`, expected i64",
+    ),
+    (
+        "a zero below zero in a list",
+        "rounds.1",
+        "'rounds.1': invalid type: floating point `-0.0`, expected u32",
+    ),
+    (
+        "an integral fraction for a u32",
+        "strokes",
+        "'strokes': invalid type: floating point `1.0`, expected u32",
+    ),
+    (
+        "an exponent for an i64",
+        "depth",
+        "'depth': invalid type: floating point `100.0`, expected i64",
+    ),
 ];
 
 /// Strikes the bells of a carillon over `http_rest`.
@@ -148,7 +168,17 @@ pub fn number_replies() -> Vec<String> {
 pub fn summed(answer: &Value) -> Value {
     let said = told(answer);
     if said != "read" {
-        return said;
+        return match answer["result"]["content"][0]["text"].as_str() {
+            Some(text) if said["kind"] == "failed-validation" => {
+                let carried: Value = serde_json::from_str(text).unwrap();
+                json!({
+                    "kind": said["kind"],
+                    "field": said["field"],
+                    "detail": carried["fault"]["detail"],
+                })
+            }
+            _ => said,
+        };
     }
     let text: Value =
         serde_json::from_str(answer["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -180,7 +210,7 @@ pub fn rust_number_client_answers() -> Vec<Value> {
 
 #[test]
 fn the_rust_client_and_dispatcher_refuse_a_zero_below_zero_for_an_integer_alone() {
-    let refused = |name: &str| REFUSED.iter().find(|(case, _)| *case == name);
+    let refused = |name: &str| REFUSED.iter().find(|(case, _, _)| *case == name);
     let http: Vec<Value> = NUMBER_CASES
         .into_iter()
         .map(|(name, _, _)| match refused(name) {
@@ -193,9 +223,9 @@ fn the_rust_client_and_dispatcher_refuse_a_zero_below_zero_for_an_integer_alone(
     let served = rust_number_server_answers();
     for ((name, _, _), answer) in NUMBER_CASES.into_iter().zip(&served) {
         match refused(name) {
-            Some((_, field)) => assert_eq!(
+            Some((_, field, detail)) => assert_eq!(
                 *answer,
-                json!({ "kind": "failed-validation", "field": field }),
+                json!({ "kind": "failed-validation", "field": field, "detail": detail }),
                 "{name}"
             ),
             None => assert!(answer["structured"].is_string(), "{name}: {answer}"),

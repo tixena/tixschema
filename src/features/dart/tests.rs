@@ -128,7 +128,10 @@ fn a_u64_and_an_i64_are_ints_read_and_written_as_numbers() {
     for expected in [
         "final int big;",
         "final int signed;",
-        "signed: _readAt(json, 'signed', () => json['signed'] as int),",
+        &format!(
+            "signed: _readAt(json, 'signed', () => {}),",
+            integer_read(&FieldDefType::I64, "json['signed']")
+        ),
         "'signed': signed,",
     ] {
         assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
@@ -220,10 +223,16 @@ fn a_brand_key_and_a_result_arm_are_judged_under_their_own_step() {
         "throw FormatException('invalid value: integer `$numeral`, expected u32', \
          <Object>[numeral]); if (at < text.length) throw const FormatException('expected `\"`'); \
          return whole.toInt(); })(e.key)) {",
-        "{ final held => _readAt(null, e.key, () => Pitch.fromJson(held)) }), _readAt(null, \
-         e.key, () => (switch (e.value as int) {",
+        &format!(
+            "{{ final held => _readAt(null, e.key, () => Pitch.fromJson(held)) }}), _readAt(null, \
+             e.key, () => (switch ({}) {{",
+            integer_read(&FieldDefType::U32, "e.value")
+        ),
         "MapEntry(_readAt(null, e.key, () => Tone.fromJson(e.key)), ",
-        "Ok<int, String>(_readAt(null, 'Ok', () => (switch (result['Ok'] as int) {",
+        &format!(
+            "Ok<int, String>(_readAt(null, 'Ok', () => (switch ({}) {{",
+            integer_read(&FieldDefType::U32, "result['Ok']")
+        ),
         "Err<int, String>(_readAt(null, 'Err', () => result['Err'] as String))",
     ] {
         assert!(dart.contains(expected), "missing `{expected}` in: {dart}");

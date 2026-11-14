@@ -4,7 +4,8 @@
 //! tests read structure, the same way `tests/dart_tests/tests.rs` reads the plain `dart` backend's
 //! own output: a substring that must appear, and a name that must not.
 
-use crate::features::dart::record_dart_fields;
+use crate::features::dart::{integer_read, record_dart_fields};
+use crate::field_type::FieldDefType;
 
 use super::{
     DART_BYTES_HEADER_OUT_SERVICE, DART_HTTP_SERVICE, DART_MULTIPART_HTTP_SERVICE,
@@ -714,9 +715,13 @@ fn a_primitive_message_and_success_cross_as_their_own_json_values() {
         "got: {method}"
     );
     assert!(
-        method.contains(
-            "value = jsonDecode(_shelvesHttpSignedZeros(utf8.decode(response.body))) as int;"
-        ),
+        method.contains(&format!(
+            "value = {};",
+            integer_read(
+                &FieldDefType::I64,
+                "jsonDecode(_shelvesHttpSignedZeros(utf8.decode(response.body)))"
+            )
+        )),
         "got: {method}"
     );
     assert!(!method.contains("toJson"), "got: {method}");

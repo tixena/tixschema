@@ -20,6 +20,12 @@ mod text_forms;
 #[path = "dart_tests/tests.rs"]
 mod tests;
 
+/// The text the emitter reads an integer with.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "serde"))]
+#[path = "support/dart_integer_read.rs"]
+mod dart_integer_read;
+
 /// The text that holds a narrow integer to its type's range.
 #[cfg(test)]
 #[cfg(feature = "dart")]

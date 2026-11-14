@@ -16,15 +16,10 @@ use super::omitted::OMITTED_WRITTEN;
 use super::omitted::{
     Muster, MusterDraft, OMITTED, OMITTED_REPORT, Roster, RosterDraft, Squad, SquadDraft,
 };
+#[cfg(feature = "dart")]
+use crate::dart_integer_read::integer_read;
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
-
-/// The read of `Gangway`'s `u32`, held to its range.
-#[cfg(feature = "dart")]
-const WIDTH_READ: &str = "(switch (json['width'] as int) { final number when number >= 0 && \
-                          number <= 4294967295 => number, final number => throw \
-                          FormatException('expected an integer from 0 to 4294967295, found \
-                          $number') })";
 
 /// The write of `Gangway`'s `u32`, held to its range.
 #[cfg(feature = "dart")]
@@ -32,6 +27,17 @@ const WIDTH_WRITTEN: &str = "(switch (width) { final number when number >= 0 && 
                              4294967295 => number, final number => throw \
                              FormatException('expected an integer from 0 to 4294967295, found \
                              $number') })";
+
+/// The read of `Gangway`'s `u32`, held to its range.
+#[cfg(feature = "dart")]
+fn width_read() -> String {
+    format!(
+        "(switch ({}) {{ final number when number >= 0 && number <= 4294967295 => number, final \
+         number => throw FormatException('expected an integer from 0 to 4294967295, found \
+         $number') }})",
+        integer_read("json['width']", "u32")
+    )
+}
 
 /// The table prints one row for each payload, a refusal followed by its messages.
 #[test]
@@ -507,6 +513,7 @@ fn a_type_with_no_default_writes_the_json_schema_it_wrote() {
 #[cfg(feature = "dart")]
 #[test]
 fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
+    let width_read = width_read();
     assert_eq!(
         super::models::gangway_dart::dart_definition(),
         format!(
@@ -515,7 +522,7 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
              dynamic> json) {{ for (final key in json.keys) {{ if (!const <String>{{'label', \
              'width'}}.contains(key)) throw FormatException('Unknown key of a Gangway: $key', \
              <Object>[key]); }} return GangwayDraft(label: _readAt(json, 'label', () => \
-             json['label'] as String),width: _readAt(json, 'width', () => {WIDTH_READ}),); }} \
+             json['label'] as String),width: _readAt(json, 'width', () => {width_read}),); }} \
              static Read _readAt<Read>(Map<String, dynamic>? object, Object key, Read \
              Function() read) {{ try {{ return read(); }} catch (refused) {{ if (object != null \
              && !object.containsKey(key)) throw FormatException('missing field `$key`', \

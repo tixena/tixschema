@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::dart_integer_read::integer_read;
 use super::unknown_keys::READ_AT;
 
 /// The text of each type below but `Audit`, with each `validationIssues()` cut out where `; }`
@@ -774,7 +775,17 @@ fn a_types_own_check_is_called_on_the_whole_value() {
 fn the_codec_of_each_type_is_the_text_it_was() {
     let written = definitions();
     let mut rest = written.as_str();
-    for piece in CODEC.trim_end().split("; }") {
+    let codec = [
+        ("@ITEM_COUNT@", "json['itemCount']"),
+        ("@TUPLE_ONE@", "tuple[1]"),
+        ("@WHOLE@", "json"),
+        ("@PAGES@", "json['pages']"),
+    ]
+    .into_iter()
+    .fold(CODEC.trim_end().to_owned(), |text, (token, expr)| {
+        text.replace(token, &integer_read(expr, "u32"))
+    });
+    for piece in codec.split("; }") {
         let found = rest.find(piece);
         assert!(
             found.is_some(),

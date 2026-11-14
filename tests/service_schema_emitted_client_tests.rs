@@ -472,9 +472,21 @@ mod run_swift_fitted_parameters;
 mod run_swift_float_reads;
 
 /// The models a number written with a fraction or an exponent is read on for an integer.
-#[cfg(all(test, feature = "swift"))]
+#[cfg(all(test, any(feature = "dart", feature = "swift")))]
 #[path = "service_schema_emitted_client_tests/integral_float_models.rs"]
 mod integral_float_models;
+
+/// The text the Dart emitter reads an integer with.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "support/dart_integer_read.rs"]
+mod dart_integer_read;
+
+/// A number written with a fraction or an exponent, refused for an integer by the emitted Dart
+/// types where serde refuses it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_integral_floats.rs"]
+mod run_dart_integral_floats;
 
 /// A number written with a fraction or an exponent, refused for an integer by the emitted Swift
 /// types where serde refuses it.

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
+use super::dart_integer_read::{integer_read, integer_read_named};
 use super::run_dart_validate::{dart, module};
 
 #[model_schema()]
@@ -173,7 +174,10 @@ fn a_core_type_a_member_takes_the_name_of_is_named_through_a_typedef() {
     );
     assert!(tally.contains("final _Tally$int count;"), "{tally}");
     assert!(tally.contains("final String int;"), "{tally}");
-    assert!(tally.contains("json['count'] as _Tally$int"), "{tally}");
+    assert!(
+        tally.contains(&integer_read_named("json['count']", "i32", "_Tally$int")),
+        "{tally}"
+    );
     let measured = measured_dart::dart_definition();
     assert!(
         measured.contains("typedef _Measured$num = num;"),
@@ -199,5 +203,8 @@ fn a_class_with_no_member_named_after_a_core_type_declares_no_typedef() {
     let plain = plain_dart::dart_definition();
     assert!(!plain.contains("typedef _"), "{plain}");
     assert!(plain.contains("final int count;"), "{plain}");
-    assert!(plain.contains("json['count'] as int"), "{plain}");
+    assert!(
+        plain.contains(&integer_read("json['count']", "i32")),
+        "{plain}"
+    );
 }

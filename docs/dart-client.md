@@ -232,8 +232,10 @@ consumer's view; this is what a change has to keep.
   holds a number beyond an `f64` is dropped, as the Rust transports drop it. It reads the frame
   after `_{service}WsSignedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
   `SIGNED_ZERO`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
-  cast of an integer's read refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
-  reads as a `double`. Every Dart read of a JSON text passes it through such a function first, one
+  read of an integer refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
+  reads as a `double`, with ``invalid type: floating point `-0.0`, expected u32``, serde's words
+  (`integer_read`: the float spelled as `serde_json` spells it, plainly from `0.00001` to below
+  `1e16`, `1e+16` beyond, and `number out of range` for an infinity). Every Dart read of a JSON text passes it through such a function first, one
   declared in each text that reads JSON (`signed_zeros_call`): the `http_rest` client reads a
   response's body and a fault's through `_{service}HttpSignedZeros` (`response_json`), the `mcp`
   server each message through `_{service}WsSignedZeros`, and the `mcp` client each answer and the
