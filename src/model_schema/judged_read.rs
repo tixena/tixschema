@@ -29,7 +29,9 @@ use super::{
     joined_violations_fn, list_hook_header, map_value_argument, needs_injected_default,
     nested_under_fn, reads_through, reports_a_bound_fn,
 };
-use super::{prefixed_guard_message, refusal_from_violations, sole_type_argument};
+use super::{
+    prefixed_guard_message, refusal_from_violations, sole_type_argument, wrapped_argument,
+};
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::features::serde::NAMED_READ_HOOK_PREFIX;
@@ -1131,7 +1133,8 @@ fn wrapped_by<'ty>(
         "Vec" => ConstraintWrap::Sequence,
         _ => return None,
     };
-    Some((wrap, 0, sole_type_argument(arguments)?))
+    let held = wrapped_argument(wrap, arguments)?;
+    Some((wrap, 0, held))
 }
 
 /// [`wrapped_by`], and the wrappers the walk of `validate()` reads that the recovering decode does
@@ -1152,7 +1155,8 @@ fn walked_wrapper<'ty>(
     } else {
         return None;
     };
-    Some((wrap, 0, sole_type_argument(arguments)?))
+    let held = wrapped_argument(wrap, arguments)?;
+    Some((wrap, 0, held))
 }
 
 /// The value of `named`, the wrapper `wrap` over its argument at `position`, read as `below`
