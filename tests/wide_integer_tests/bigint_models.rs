@@ -90,7 +90,7 @@ pub struct Narrow {
 /// A date under `as_number`, which publishes a `number`.
 ///
 /// ```rust example
-/// StampedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap() }
+/// StampedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).ok_or("a date")? }
 /// ```
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -103,7 +103,7 @@ pub struct Stamped {
 /// A date written by a function of its author's, as the milliseconds of its epoch.
 ///
 /// ```rust example
-/// HookedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap(), text: "123".to_owned() }
+/// HookedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).ok_or("a date")?, text: "123".to_owned() }
 /// ```
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -216,7 +216,7 @@ pub enum EitherOne {
 /// A transparent struct beyond what a JavaScript `number` holds exactly.
 ///
 /// ```rust example
-/// FarPlain::new(far()).unwrap()
+/// FarPlain::new(far())?
 /// ```
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

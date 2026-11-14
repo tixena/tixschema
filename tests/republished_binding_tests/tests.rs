@@ -121,7 +121,7 @@ struct BoundBrandSlot(GenericBrand<String>);
 /// A republished binding carrying an example: the `.meta({ examples })` lands on the raw `const`'s
 /// value, which `.meta()` returns unchanged.
 /// ```rust example
-/// ExampledSlotDraft(CorrelationId::new("corr-1").unwrap())
+/// ExampledSlotDraft(CorrelationId::new("corr-1")?)
 /// ```
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

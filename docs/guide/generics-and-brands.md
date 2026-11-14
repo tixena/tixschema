@@ -710,7 +710,7 @@ Branded newtypes support doc comments (for Zod `.meta({ description })`) and com
 /// - `DocumentId<ObjectId>` for `MongoDB` layer
 ///
 /// ```rust example
-/// DocumentId("64de3d95ff45b119e5b53a7e".to_string())
+/// DocumentId::new("64de3d95ff45b119e5b53a7e".to_string())?
 /// ```
 #[model_schema(default_types(IdType = String))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

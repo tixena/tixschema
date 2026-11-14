@@ -338,7 +338,7 @@ fn test_objectid_example() {
 
     /// Document with `ObjectId`
     /// ```rust example
-    /// let oid = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
+    /// let oid = ObjectId::parse_str("507f1f77bcf86cd799439011")?;
     /// let doc = DocumentDraft {
     ///     id: oid,
     ///     name: "test".to_string(),
@@ -1250,13 +1250,13 @@ fn a_tuple_struct_carries_its_examples() {
 }
 
 #[test]
-fn the_guide_states_that_an_example_is_evaluated_as_the_draft() {
+fn the_guide_states_that_an_example_builds_the_draft_or_the_valid_type() {
     let guide = include_str!("../../docs/guide/examples.md");
     assert!(
         guide.contains(
-            "An example expression is evaluated as the type's [draft](models.md#a-draft-and-a-valid-type)"
+            "An example expression builds the type's [draft](models.md#a-draft-and-a-valid-type) or its valid type"
         ),
-        "examples.md no longer says what an example expression is evaluated as"
+        "examples.md no longer says what an example expression builds"
     );
     let written: Vec<&str> = guide
         .lines()

@@ -994,7 +994,9 @@ use service_schema::exec_service_schema;
 ///   rule, with the messages joined by `; `. `T::model_schema_read_unjudged` is the read alone.
 /// - `T::schema_examples()` (`zod`, or `enable = ["jsonschema"]`) and `T::schema_example()`
 ///   (`zod`), on a type whose doc comment holds code blocks fenced as `rust example`: each block is
-///   compiled as a value of `T`, and the values are also written into Zod's `.meta({ examples })`.
+///   compiled as a value of `T` (its draft, or the valid type through a constant, `.into()` or
+///   `.validate()?`), with `?` allowed in the block, and the values are also written into Zod's
+///   `.meta({ examples })`.
 /// - `T::enum_members() -> Vec<String>`, on an enum whose variants carry no data, in every build:
 ///   the names serde writes.
 /// - `T::wire_name(&self) -> &'static str`, a `const fn` on the draft of an enum whose variants are

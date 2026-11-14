@@ -1873,6 +1873,8 @@ impl ExampleTest {
             return bridge;
         };
         let name_text = name.to_string();
+        let failure_type = example_failure_type();
+        let accepts = example_accepts(*drafted, value_ty);
         let broken = if *drafted {
             quote! {
                 let broken = value.validation_issues();
@@ -1883,11 +1885,10 @@ impl ExampleTest {
         };
         let checks = blocks.iter().enumerate().map(|(index, code_tokens)| {
             let number = index + 1;
+            let value = example_value(code_tokens, value_ty, &accepts, number, &name_text);
             quote! {
                 {
-                    let value: #value_ty = {
-                        #code_tokens
-                    };
+                    let value: #value_ty = #value;
                     #broken
                     if let ::core::result::Result::Err(broken) = broken {
                         ::core::panic!(
@@ -1909,6 +1910,7 @@ impl ExampleTest {
 
                 #[test]
                 fn every_example_meets_its_rules() {
+                    #failure_type
                     #(#checks)*
                 }
             }
@@ -2991,6 +2993,7 @@ fn alias_schema_items(
         &extract_examples_tokens(&alias.attrs),
         &alias.ident,
         &alias.generics,
+        false,
         args,
     ));
     items
@@ -3057,18 +3060,26 @@ fn item_schema_example_method(
     example_tokens: &[proc_macro2::TokenStream],
     name: &syn::Ident,
     generics: &syn::Generics,
+    drafted: bool,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
     if !zod_or_json_schema(args.enable) {
         return None;
     }
+    let value_name = if drafted {
+        valid_type::draft_ident(name)
+    } else {
+        name.clone()
+    };
     schema_examples_methods(
         example_tokens,
         &schema_example_value_type(
-            name,
+            &value_name,
             &type_parameters_in_scope(generics),
             &args.default_types,
         ),
+        drafted,
+        name,
     )
 }
 
@@ -3079,12 +3090,55 @@ fn drafted_schema_example_method(
     generics: &syn::Generics,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
-    item_schema_example_method(
-        example_tokens,
-        &valid_type::draft_ident(name),
-        generics,
-        args,
-    )
+    item_schema_example_method(example_tokens, name, generics, true, args)
+}
+
+/// The failure a `?` in an example block answers, declared in each function that builds examples.
+/// It implements no `Debug`: with one, its blanket `From` would overlap `From<T> for T`.
+fn example_failure_type() -> TokenStream {
+    quote! {
+        struct __TixschemaExampleFailure(::std::string::String);
+
+        impl<E: ::core::fmt::Debug> ::core::convert::From<E> for __TixschemaExampleFailure {
+            fn from(error: E) -> Self {
+                Self(::std::format!("{error:?}"))
+            }
+        }
+    }
+}
+
+/// What converts a drafted type's block to the draft, so the block may build either; nothing for a
+/// type with no draft.
+fn example_accepts(drafted: bool, value_ty: &TokenStream) -> TokenStream {
+    if drafted {
+        quote! { ::core::convert::Into::<#value_ty>::into }
+    } else {
+        TokenStream::new()
+    }
+}
+
+/// The value one example block builds, with `?` allowed in the block. A failed `?` panics with the
+/// type's name and the example's number.
+fn example_value(
+    code_tokens: &TokenStream,
+    value_ty: &TokenStream,
+    accepts: &TokenStream,
+    number: usize,
+    name_text: &str,
+) -> TokenStream {
+    quote! {
+        match (|| -> ::core::result::Result<#value_ty, __TixschemaExampleFailure> {
+            ::core::result::Result::Ok(#accepts({ #code_tokens }))
+        })() {
+            ::core::result::Result::Ok(value) => value,
+            ::core::result::Result::Err(__TixschemaExampleFailure(error)) => ::core::panic!(
+                "example {} of `{}` failed: {}",
+                #number,
+                #name_text,
+                error
+            ),
+        }
+    }
 }
 
 /// `schema_examples()` and `schema_example()` over the blocks a type writes, each block's value
@@ -3112,15 +3166,15 @@ fn drafted_schema_example_method(
 /// fn main() {}
 /// ```
 ///
-/// A block is evaluated as the draft, so one that writes the valid name does not build:
+/// A block may build the valid type as well as the draft, and may use `?`:
 ///
-/// ```rust,compile_fail,E0308
+/// ```rust
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
 /// /// A sample
 /// /// ```rust example
-/// /// Sample { value: 1 }
+/// /// SampleDraft { value: 1 }.validate()?
 /// /// ```
 /// #[model_schema(enable = ["jsonschema"])]
 /// #[derive(Deserialize, Serialize)]
@@ -3128,7 +3182,9 @@ fn drafted_schema_example_method(
 ///     pub value: u32,
 /// }
 ///
-/// fn main() {}
+/// fn main() {
+///     assert_eq!(Sample::schema_examples().len(), 1);
+/// }
 /// ```
 ///
 /// Compiled standalone as an ordinary test file, this is the only error it earned:
@@ -3146,41 +3202,52 @@ fn drafted_schema_example_method(
 fn schema_examples_methods(
     example_tokens: &[proc_macro2::TokenStream],
     value_ty: &proc_macro2::TokenStream,
+    drafted: bool,
+    name: &syn::Ident,
 ) -> Option<proc_macro2::TokenStream> {
     if example_tokens.is_empty() {
         return None;
     }
-    let blocks = example_tokens.iter().map(|code_tokens| {
-        quote! {
-            {
-                let value: #value_ty = {
-                    #code_tokens
-                };
-                serde_json::to_value(&value).unwrap()
+    let name_text = name.to_string();
+    let failure_type = example_failure_type();
+    let accepts = example_accepts(drafted, value_ty);
+    let blocks = example_tokens
+        .iter()
+        .enumerate()
+        .map(|(index, code_tokens)| {
+            let value = example_value(code_tokens, value_ty, &accepts, index + 1, &name_text);
+            quote! {
+                {
+                    let value: #value_ty = #value;
+                    serde_json::to_value(&value).unwrap()
+                }
             }
-        }
-    });
+        });
     let values = quote! {
         pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
+            #failure_type
             ::std::vec![#(#blocks),*]
         }
     };
     #[cfg(feature = "zod")]
     let zod_members = {
-        let texts = example_tokens.iter().map(|code_tokens| {
-            let text = js_literal::text(&quote! { &value });
-            quote! {
-                {
-                    let value: #value_ty = {
-                        #code_tokens
-                    };
-                    #text
+        let texts = example_tokens
+            .iter()
+            .enumerate()
+            .map(|(index, code_tokens)| {
+                let text = js_literal::text(&quote! { &value });
+                let value = example_value(code_tokens, value_ty, &accepts, index + 1, &name_text);
+                quote! {
+                    {
+                        let value: #value_ty = #value;
+                        #text
+                    }
                 }
-            }
-        });
+            });
         let writer = js_literal::writer();
         quote! {
             fn schema_examples_zod_text() -> ::std::string::String {
+                #failure_type
                 #writer
                 let texts: ::std::vec::Vec<::std::string::String> = ::std::vec![#(#texts),*];
                 ::std::format!("[{}]", texts.join(","))
@@ -11659,6 +11726,8 @@ fn build_branded_schema_example(
     schema_examples_methods(
         example_tokens,
         &schema_example_value_type(name, generic_params, &args.default_types),
+        false,
+        name,
     )
     .unwrap_or_default()
 }

@@ -1,6 +1,19 @@
 ## Compiler-Validated Examples
 
-You can provide compiler-validated example values for your types. Every generated Zod schema holds them in its `.meta()` under `examples`: a list with one item per example block, in the order written, and an empty list where the type writes none. Examples are written in doc comment code blocks and fully type-checked at compile time. An example expression is evaluated as the type's [draft](models.md#a-draft-and-a-valid-type): a struct or an enum writes `UserDraft { .. }` and `ShapeDraft::Circle { .. }`, and a block that writes `User { .. }` or `Shape::Circle { .. }`, the valid type, is a compile error. A brand has no draft, so its example builds the brand itself.
+You can provide compiler-validated example values for your types. Every generated Zod schema holds them in its `.meta()` under `examples`: a list with one item per example block, in the order written, and an empty list where the type writes none. Examples are written in doc comment code blocks and fully type-checked at compile time. An example expression builds the type's [draft](models.md#a-draft-and-a-valid-type) or its valid type: a struct or an enum writes `UserDraft { .. }` or `ShapeDraft::Circle { .. }`, a constant such as `SessionRole::Auditor`, `.into()` on a draft that declares no rule, into a binding that names the valid type (`let label: Label = LabelDraft { .. }.into(); label`; a bare `.into()` or `Default::default()` has no type to build and is `E0283`, so name it), or a draft followed by `.validate()?`. A brand has no draft, so its example builds the brand itself.
+
+A block may use `?` on any `Result` whose error implements `Debug` (the `Vec<String>` of `new` and `validate()`, a `ParseIntError`, a `bson::oid::Error`). A `?` that fails makes the type's `schema_examples()` panic with `example N of `Name` failed:` and the error's `Debug` text, and makes the type's example test fail where the type has a `validate()`. A block that holds an `Option` turns it into an error with `.ok_or("..")?`:
+
+```rust
+/// A correlation id
+/// ```rust example
+/// CorrelationId::new("20e690df-a407-4468-adda-76d0b84913f5")?
+/// ```
+#[model_schema(minLength = 1)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CorrelationId(String);
+```
 
 ```rust
 /// User profile

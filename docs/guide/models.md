@@ -41,7 +41,7 @@ let mut again: UserProfileDraft = profile.into();
 again.age = 37;
 ```
 
-Work with the valid type as much as possible. A field, a parameter, a return type, a constant, a static and an impl name `UserProfile`; a draft appears only on the expression that builds or changes a value, and is validated there. A function that answers a value that cannot fail answers the valid type through a constant or `.into()`, which the next two sections show, and `.validate().unwrap()` is for a test alone.
+Work with the valid type as much as possible. A field, a parameter, a return type, a constant, a static and an impl name `UserProfile`; a draft appears only on the expression that builds or changes a value, and is validated there. A function that answers a value that cannot fail answers the valid type through a constant or `.into()`, which the next two sections show, and `.validate().unwrap()` is for a test alone. A [`rust example` block](examples.md#compiler-validated-examples) in the type's doc comment may build the valid type the same way (`SessionRole::Auditor`, `.into()`, `.validate()?`) and may use `?`, so it never unwraps.
 
 The valid type reads like the draft: `profile.age` and `&*profile` (a `match &*payment { PaymentDraft::Card { .. } => .. }` over an enum) work through `Deref`. It has no `DerefMut`, so `profile.age = 1` and `&mut profile.age` do not compile, and its tuple constructor is closed, so `UserProfile(draft)` does not compile in the declaring module or outside it. `#[derive(Default)]` stays on the draft only, because a default would build a valid value no check saw.
 

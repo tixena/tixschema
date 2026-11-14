@@ -9845,6 +9845,7 @@ fn struct_schema_example_carries_no_cfg_attribute() {
         from_ref(&example),
         &name,
         &generics,
+        false,
         &super::ModelSchemaArgs::default(),
     )
     .unwrap();
@@ -9872,6 +9873,7 @@ fn struct_schema_example_instantiates_every_type_parameter() {
             from_ref(&example),
             &name,
             &generics,
+            false,
             &super::ModelSchemaArgs::default(),
         )
         .unwrap()
@@ -9907,7 +9909,7 @@ fn struct_schema_example_instantiates_each_parameter_at_its_declared_filling() {
             ..Default::default()
         };
         let rendered =
-            super::item_schema_example_method(from_ref(&example), &name, &generics, &args)
+            super::item_schema_example_method(from_ref(&example), &name, &generics, false, &args)
                 .unwrap()
                 .to_string();
         assert!(rendered.contains(expected), "Got: {rendered}");
@@ -9926,7 +9928,7 @@ fn an_unfilled_parameter_falls_back_to_the_standard_string_by_its_full_path() {
         ..Default::default()
     };
     let render = |args: &super::ModelSchemaArgs| {
-        super::item_schema_example_method(from_ref(&example), &name, &generics, args)
+        super::item_schema_example_method(from_ref(&example), &name, &generics, false, args)
             .unwrap()
             .to_string()
     };
@@ -9956,34 +9958,54 @@ fn every_block_is_built_in_a_scope_of_its_own_and_the_first_is_the_example() {
         &blocks,
         &name,
         &syn::Generics::default(),
+        false,
         &super::ModelSchemaArgs::default(),
     )
     .unwrap()
     .to_string();
     let writer = js_literal::writer();
+    let failure_type = super::example_failure_type();
+    let value_ty: proc_macro2::TokenStream = "Report".parse().unwrap();
+    let nothing = proc_macro2::TokenStream::new();
+    let first = super::example_value(
+        &"Report { id: 1 }".parse().unwrap(),
+        &value_ty,
+        &nothing,
+        1,
+        "Report",
+    );
+    let second = super::example_value(
+        &"Report { id: 2 }".parse().unwrap(),
+        &value_ty,
+        &nothing,
+        2,
+        "Report",
+    );
     let written = quote::quote! {
         pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
+            #failure_type
             ::std::vec![
                 {
-                    let value: Report = { Report { id: 1 } };
+                    let value: Report = #first;
                     serde_json::to_value(&value).unwrap()
                 },
                 {
-                    let value: Report = { Report { id: 2 } };
+                    let value: Report = #second;
                     serde_json::to_value(&value).unwrap()
                 }
             ]
         }
 
         fn schema_examples_zod_text() -> ::std::string::String {
+            #failure_type
             #writer
             let texts: ::std::vec::Vec<::std::string::String> = ::std::vec![
                 {
-                    let value: Report = { Report { id: 1 } };
+                    let value: Report = #first;
                     tixschema_bigint_writer::text(&value)
                 },
                 {
-                    let value: Report = { Report { id: 2 } };
+                    let value: Report = #second;
                     tixschema_bigint_writer::text(&value)
                 }
             ];
@@ -10007,6 +10029,7 @@ fn a_type_that_writes_no_block_gets_no_example_method() {
             &[],
             &name,
             &syn::Generics::default(),
+            false,
             &super::ModelSchemaArgs::default(),
         )
         .is_none()
