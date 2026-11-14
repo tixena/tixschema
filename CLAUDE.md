@@ -177,6 +177,14 @@ passed or returned: fields, parameters, return types, constants, statics and imp
 only on the expression that builds or changes a value, and is validated there. A value that cannot
 fail is the generated constant or `From`, never `.validate().unwrap()` outside a test.
 
+### 11. serde Is the Deserializer
+
+tixschema follows serde's rules for reading and never adds a reading strategy of its own. What a
+payload reads as is what serde's derive reads it as: no second reader that chooses a variant, no
+fallback to another variant when a value breaks a rule, no retry. tixschema judges the value serde
+read; it never changes which value serde reads. This is settled by the owner ("We are not here to
+create another deserializer"): do not ask it again, in a task, a spec or a question.
+
 ## Common Pitfalls
 
 1. **Type name ambiguity** → Ensure Rust type names and TypeScript output names don't collide with built-in types
