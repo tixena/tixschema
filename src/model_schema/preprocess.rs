@@ -14,13 +14,13 @@ use syn::ext::IdentExt as _;
 use syn::{Attribute, Field, Item, ItemType};
 
 use super::checks::located;
-#[cfg(feature = "serde")]
-use super::judged_read::unclaimed_parameter;
 use super::{ModelSchemaArgs, guard_failure_output, prefixed_guard_message, written_spelling};
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
 use crate::features::serde::read_bounds::borrows;
 use crate::features::serde::{derived_key_omission, derives_deserialize, read_hook};
 use crate::utils::to_snake_case;
+#[cfg(feature = "serde")]
+use crate::utils::unclaimed_parameter;
 
 /// What the item being expanded names: on the type, and on each member serde reads.
 #[derive(Clone)]

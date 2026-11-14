@@ -2075,6 +2075,19 @@ pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {
     ALIAS_INFO.with(|map| map.borrow().get(rust_ident).cloned())
 }
 
+/// A name for a type parameter of a function written for an item: `base`, numbered where one of
+/// `written`, the names the item writes, is that name. The parameter would hide a type of its
+/// name wherever the function writes one, and be refused beside a parameter of the type's own.
+pub fn unclaimed_parameter(base: &str, written: &[String]) -> proc_macro2::Ident {
+    let mut named = base.to_owned();
+    let mut tried: usize = 1;
+    while written.contains(&named) {
+        tried = tried.saturating_add(1);
+        named = format!("{base}{tried}");
+    }
+    proc_macro2::Ident::new(&named, proc_macro2::Span::call_site())
+}
+
 /// Every name `tokens` write: each identifier, and each word of a string, which is where a serde
 /// attribute writes the path of a hook.
 pub fn written_names(tokens: proc_macro2::TokenStream) -> Vec<String> {

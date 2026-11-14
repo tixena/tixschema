@@ -26,7 +26,6 @@ use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
 use syn::{Field, Fields, Generics, Item, ItemEnum, ItemStruct, Type, Variant};
 
-use super::judged_read::unclaimed_parameter;
 use super::ranges::def_writes_a_map;
 use super::{
     ModelSchemaArgs, prefixed_guard_message, strict, written_as_its_slot, written_spelling,
@@ -41,7 +40,7 @@ use crate::features::serde::{
 use crate::field_type::is_sequence_wrapper;
 use crate::field_type::{FieldDef, FieldDefType, get_field_def};
 use crate::rename_rule::resolve_rename_rule;
-use crate::utils::{Declared, declared, written_names};
+use crate::utils::{Declared, declared, unclaimed_parameter, written_names};
 
 /// The bit of a type's hidden constant saying serde leaves its keys in the object it is flattened
 /// from.

@@ -29,7 +29,9 @@ use super::{
     joined_violations_fn, list_hook_header, map_value_argument, needs_injected_default,
     nested_under_fn, reads_through, reports_a_bound_fn,
 };
-use super::{prefixed_guard_message, refusal_from_violations, sole_type_argument};
+use super::{
+    prefixed_guard_message, refusal_from_violations, sole_type_argument, wrapped_argument,
+};
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::features::serde::NAMED_READ_HOOK_PREFIX;
@@ -49,7 +51,7 @@ use crate::field_type::{
     RESULT_ARMS, RangeKind, get_field_def, is_map_wrapper, is_refused_sequence_wrapper,
     is_sequence_wrapper, written_std_range, written_std_result,
 };
-use crate::utils::{to_snake_case, written_names, written_type};
+use crate::utils::{to_snake_case, unclaimed_parameter, written_names, written_type};
 
 /// The read the recovering decode of a type lists from, which every type under the flag has.
 #[cfg(feature = "serde")]
@@ -1131,7 +1133,8 @@ fn wrapped_by<'ty>(
         "Vec" => ConstraintWrap::Sequence,
         _ => return None,
     };
-    Some((wrap, 0, sole_type_argument(arguments)?))
+    let held = wrapped_argument(wrap, arguments)?;
+    Some((wrap, 0, held))
 }
 
 /// [`wrapped_by`], and the wrappers the walk of `validate()` reads that the recovering decode does
@@ -1152,7 +1155,8 @@ fn walked_wrapper<'ty>(
     } else {
         return None;
     };
-    Some((wrap, 0, sole_type_argument(arguments)?))
+    let held = wrapped_argument(wrap, arguments)?;
+    Some((wrap, 0, held))
 }
 
 /// The value of `named`, the wrapper `wrap` over its argument at `position`, read as `below`
@@ -1572,19 +1576,6 @@ fn chosen_by_shape(named: &Ident) -> TokenStream {
         }
         impl<T: ?::core::marker::Sized> #named for &T {}
     }
-}
-
-/// A name for a type parameter of a function written for an item: `base`, numbered where one of
-/// `written`, the names the item writes, is that name. The parameter would hide a type of its
-/// name wherever the function writes one, and be refused beside a parameter of the type's own.
-pub(super) fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
-    let mut named = base.to_owned();
-    let mut tried: usize = 1;
-    while written.contains(&named) {
-        tried = tried.saturating_add(1);
-        named = format!("{base}{tried}");
-    }
-    Ident::new(&named, Span::call_site())
 }
 
 /// The name of the deserializer's type in every function written for `input`.
