@@ -288,8 +288,14 @@ fn every_emitted_type_has_validate() {
             declared,
             "got: {swift}"
         );
+        // A type with a parameter hands the walk of it checks that report nothing.
+        let behind_a_parameter = swift
+            .matches("public func validationIssues() -> [String] { validationIssuesWith(")
+            .count();
         assert_eq!(
-            swift.matches(NO_RULE_BY_VALIDATE).count() + swift.matches(NO_RULE).count(),
+            swift.matches(NO_RULE_BY_VALIDATE).count()
+                + swift.matches(NO_RULE).count()
+                + behind_a_parameter,
             declared - valid,
             "a type with no rule, which holds none that has one, answers an empty list: {swift}"
         );

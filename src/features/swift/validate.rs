@@ -5,7 +5,7 @@
 use crate::utils::is_rule_less;
 use core::cell::RefCell;
 use core::ops::Range;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use regex_syntax::ast::parse::Parser as PatternParser;
 use regex_syntax::ast::{
@@ -196,6 +196,64 @@ impl Number {
 thread_local! {
     /// What each Rust ident the emitter has written stands for, for a type declared after it.
     static NOTED: RefCell<HashMap<String, Noted>> = RefCell::new(HashMap::new());
+    /// The type parameters of the type being written whose values its walk hands to a check and
+    /// its read reads with a reader, each handed in by a holder that writes what fills it.
+    static WALKING: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// The generic types the emitter has written with `validateWith` and the reads that take a
+    /// reader per type parameter.
+    static WITH: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// Runs `write` with the walk and the read of the type being written handing each value behind
+/// one of `parameters` to the check and the reader of it.
+pub(super) fn walking<T>(parameters: &[String], write: impl FnOnce() -> T) -> T {
+    let before = WALKING.with(|walking| walking.replace(parameters.to_vec()));
+    let written = write();
+    WALKING.with(|walking| *walking.borrow_mut() = before);
+    written
+}
+
+/// The type parameters the type being written hands to a check and a reader each.
+pub(super) fn walked_parameters() -> Vec<String> {
+    WALKING.with(|walking| walking.borrow().clone())
+}
+
+/// Whether the type being written hands each value behind `parameter` to its check and reader.
+pub(super) fn walks_parameter(parameter: &str) -> bool {
+    WALKING.with(|walking| walking.borrow().iter().any(|named| named == parameter))
+}
+
+/// Records that the generic type `rust_ident` has `validateWith` and the reads with readers.
+pub(super) fn note_with(rust_ident: &str) {
+    WITH.with(|with| with.borrow_mut().insert(rust_ident.to_owned()));
+}
+
+/// Whether the generic type `rust_ident` has `validateWith` and the reads with readers.
+pub(super) fn walked_with(rust_ident: &str) -> bool {
+    WITH.with(|with| with.borrow().contains(rust_ident))
+}
+
+/// The check `validateWith` takes for the values behind `parameter`.
+pub(super) fn check_of(parameter: &str) -> String {
+    format!("swiftSchemaIssuesOf{parameter}")
+}
+
+/// The parameters of `validateWith` on a type that declares `parameters`.
+pub(super) fn checks_declared(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| format!("_ {}: ({parameter}) -> [String]", check_of(parameter)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The checks a type that declares `parameters` hands on, each by its name.
+pub(super) fn checks_named(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| check_of(parameter))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Records what `rust_ident` stands for: `text` says how the string a bound measures is read off a
@@ -212,6 +270,16 @@ pub(super) fn note(rust_ident: &str, text: Option<Text>, validates: bool) {
                 validates,
             },
         );
+    });
+}
+
+/// Records whether the `validate()` of `rust_ident` runs a rule of its own, beside the checks of
+/// its parameters a holder hands it.
+pub(super) fn note_validates(rust_ident: &str, validates: bool) {
+    NOTED.with(|names| {
+        if let Some(seen) = names.borrow_mut().get_mut(rust_ident) {
+            seen.validates = validates;
+        }
     });
 }
 
@@ -301,14 +369,28 @@ pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
     )
 }
 
-/// The method `name` that lists the `rules` a value breaks, with the helpers they call.
+/// The method `name` that lists the `rules` a value breaks, with the helpers they call. Where the
+/// type being written walks its type parameters, the rules are `{name}With`, which takes a check of
+/// each, and `name` hands it checks that report nothing.
 fn listing(name: &str, rules: &[String]) -> String {
-    if rules.is_empty() {
-        return format!("public func {name}() -> [String] {{ [] }}");
-    }
+    let parameters = WALKING.with(|walking| walking.borrow().clone());
     let body = rules.join("; ");
+    let listed = if rules.is_empty() {
+        "[]".to_owned()
+    } else {
+        format!("var errors: [String] = []; {body}; return errors")
+    };
+    if parameters.is_empty() {
+        return format!(
+            "public func {name}() -> [String] {{ {listed} }}{}",
+            helpers(&body, "")
+        );
+    }
+    let nothing = vec!["{ _ in [] }"; parameters.len()].join(", ");
     format!(
-        "public func {name}() -> [String] {{ var errors: [String] = []; {body}; return errors }}{}",
+        "public func {name}() -> [String] {{ {name}With({nothing}) }}; public func \
+         {name}With({}) -> [String] {{ {listed} }}{}",
+        checks_declared(&parameters),
         helpers(&body, "")
     )
 }
@@ -391,11 +473,21 @@ pub(super) fn held_case(variants: &[(String, Vec<String>)]) -> Option<String> {
 
 /// What a case adds to its enum's `validate()` for a payload that has a `validate()` of its own:
 /// what the payload reports, under `step`. Nothing where the payload runs no rule.
-pub(super) fn payload_rules(owner: &str, step: Option<&str>, ruled: bool) -> Vec<String> {
+pub(super) fn payload_rules(
+    owner: &str,
+    step: Option<&str>,
+    ruled: bool,
+    walked: &[String],
+) -> Vec<String> {
     if !ruled {
         return Vec::new();
     }
-    vec![reporting(owner, &written_step(step), "payload.validate()")]
+    let asked = if walked.is_empty() {
+        "payload.validate()".to_owned()
+    } else {
+        format!("payload.validateWith({})", checks_named(walked))
+    };
+    vec![reporting(owner, &written_step(step), &asked)]
 }
 
 /// What the slots of a tuple add to its `validate()`, each under its position.
@@ -1114,12 +1206,14 @@ fn held_walk(
         return map_walk(walk, owner, (key, entry), value, place, bindings);
     }
     if let FieldDefType::Tuple(slots) = &def.field_type {
-        return (!matches!(walk, Walk::Bound) && !slot_rules(owner, slots).is_empty())
-            .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        // A type written for the tuple walks no parameter of the type that holds it.
+        return (!matches!(walk, Walk::Bound)
+            && !walking(&[], || slot_rules(owner, slots)).is_empty())
+        .then(|| reporting(owner, place, &format!("{value}.validate()")));
     }
     if let FieldDefType::Range(kind, bound) = &def.field_type {
         if !matches!(walk, Walk::Bound) {
-            return (!range_rules(owner, *kind, bound).is_empty())
+            return (!walking(&[], || range_rules(owner, *kind, bound)).is_empty())
                 .then(|| reporting(owner, place, &format!("{value}.validate()")));
         }
         // What chooses a variant is asked of each bound in place, as Rust's read asks it.
@@ -1143,7 +1237,7 @@ fn held_walk(
     }
     if let FieldDefType::Result(ok, err) = &def.field_type {
         if !matches!(walk, Walk::Bound) {
-            return (!result_rules(owner, ok, err).is_empty())
+            return (!walking(&[], || result_rules(owner, ok, err)).is_empty())
                 .then(|| reporting(owner, place, &format!("{value}.validate()")));
         }
         // What chooses a variant is asked of the arm the value holds, in place.
@@ -1164,6 +1258,10 @@ fn held_walk(
             .collect();
         return (!arms.is_empty()).then(|| arms.join("; "));
     }
+    if let FieldDefType::TypeParam(parameter) = &def.field_type {
+        return (!matches!(walk, Walk::Bound) && walks_parameter(parameter))
+            .then(|| reporting(owner, place, &format!("{}({value})", check_of(parameter))));
+    }
     let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
         return None;
     };
@@ -1179,11 +1277,122 @@ fn held_walk(
             bindings,
         );
     }
+    if !matches!(walk, Walk::Bound) && walked_with(named) && hands_on(arguments) {
+        return Some(walked_with_checks(owner, arguments, value, place, bindings));
+    }
     let (asked, answers) = match walk {
         Walk::Bound => ("swiftSchemaValidateBound", bounded(named)),
         Walk::Reported | Walk::Rules => ("validate", validates(named)),
     };
     answers.then(|| reporting(owner, place, &format!("{value}.{asked}()")))
+}
+
+/// Whether a holder of a generic type filled with `arguments` hands it a check or a reader that
+/// does anything: an argument that is a type parameter the holder walks, or one whose walk reaches
+/// a value. Where none is, the type is walked and read as one that declares no parameter.
+pub(super) fn hands_on(arguments: &[FieldDef]) -> bool {
+    arguments.iter().all(read_by_its_own_form)
+        && arguments.iter().any(|argument| {
+            held_walk(Walk::Rules, "", argument, "", &[], &mut Bindings::default()).is_some()
+        })
+}
+
+/// Whether a type argument `def` is held as the Swift type it is written as, which a reader can
+/// read: a type parameter, a string, a number, a `bool`, a named type at such arguments, and an
+/// `Option`, a list and a map under a key Swift reads as its text of those. A tuple, a range, a
+/// `Result`, a date, a fixed-size array and a map under a key Swift wraps are held in a type the
+/// holder writes for the argument.
+fn read_by_its_own_form(def: &FieldDef) -> bool {
+    if def.is_optional() {
+        return read_by_its_own_form(&under_option(def));
+    }
+    if def.array_depth > 0 {
+        return def
+            .fixed_length_at(def.array_depth.saturating_sub(1))
+            .is_none()
+            && read_by_its_own_form(&item_of(def));
+    }
+    match &def.field_type {
+        FieldDefType::Map(key, value) => {
+            matches!(super::map_keys(key), super::MapKeys::Text) && read_by_its_own_form(value)
+        }
+        FieldDefType::SiblingType(named, arguments) => {
+            if let [item] = arguments.as_slice()
+                && is_sequence_wrapper(named)
+            {
+                return read_by_its_own_form(&def.collection_element_field(item));
+            }
+            arguments.iter().all(read_by_its_own_form)
+        }
+        FieldDefType::TypeParam(_)
+        | FieldDefType::String
+        | FieldDefType::Boolean
+        | FieldDefType::U8
+        | FieldDefType::U16
+        | FieldDefType::U32
+        | FieldDefType::U64
+        | FieldDefType::Usize
+        | FieldDefType::I8
+        | FieldDefType::I16
+        | FieldDefType::I32
+        | FieldDefType::I64
+        | FieldDefType::Isize
+        | FieldDefType::F32
+        | FieldDefType::F64 => true,
+        FieldDefType::BooleanLiteral(_)
+        | FieldDefType::Char
+        | FieldDefType::NumberLiteral(_)
+        | FieldDefType::Range(..)
+        | FieldDefType::Result(..)
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::Tuple(_)
+        | FieldDefType::Unknown => false,
+        #[cfg(feature = "mongodb")]
+        FieldDefType::ObjectId => false,
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime
+        | FieldDefType::NaiveDate
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::NaiveTime => false,
+    }
+}
+
+/// The walk of `value`, of a generic type filled with `arguments`, through its `validateWith`,
+/// handed the check of each argument, each report under `place`.
+fn walked_with_checks(
+    owner: &str,
+    arguments: &[FieldDef],
+    value: &str,
+    place: &[Step],
+    bindings: &mut Bindings,
+) -> String {
+    let checks: Vec<String> = arguments
+        .iter()
+        .map(|argument| argument_check(owner, argument, bindings))
+        .collect();
+    reporting(
+        owner,
+        place,
+        &format!("{value}.validateWith({})", checks.join(", ")),
+    )
+}
+
+/// What a holder hands the `validateWith` of a generic type for one of its type arguments,
+/// `argument`: the check of the holder's own parameter where the argument is one, and otherwise a
+/// closure that answers what the walk of a value of the argument reports.
+fn argument_check(owner: &str, argument: &FieldDef, bindings: &mut Bindings) -> String {
+    if let FieldDefType::TypeParam(parameter) = &argument.field_type
+        && argument.array_depth == 0
+        && !argument.is_optional()
+        && walks_parameter(parameter)
+    {
+        return check_of(parameter);
+    }
+    let held = bindings.next_held();
+    held_walk(Walk::Reported, owner, argument, &held, &[], bindings).map_or_else(
+        || "{ _ in [] }".to_owned(),
+        |walked| format!("{{ {held} in var errors: [String] = []; {walked}; return errors }}"),
+    )
 }
 
 /// [`held_walk`] of the map `value` of `key` to `entry`: each entry's key and value judged under

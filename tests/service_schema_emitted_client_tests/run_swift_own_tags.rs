@@ -188,9 +188,11 @@ fn the_swift_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_memb
         (
             gonfalon_swift::swift_definition(),
             format!(
-                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ {}let container = try \
-                 decoder.container(keyedBy: CodingKeys.self); self.label = try \
-                 container.decode(SwiftSchemaFit<Held>.self, forKey: .label).value }};",
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOfHeld: \
+                 (Decoder) throws -> Held) throws {{ {}let container = try \
+                 decoder.container(keyedBy: CodingKeys.self); _ = try \
+                 container.decodeNil(forKey: .label); self.label = try \
+                 swiftSchemaReaderOfHeld(container.superDecoder(forKey: .label)) }};",
                 tag_held("Gonfalon")
             ),
         ),

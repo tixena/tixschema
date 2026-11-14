@@ -25,7 +25,7 @@ use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
-    brand_field, derives_hash, derives_partial_eq, has_serde_skip_serializing,
+    brand_field, derives_hash, derives_partial_eq, has_serde_default, has_serde_skip_serializing,
     keys_taken_when_flattened, parse_serde_key_omission, struct_tag,
     tag_and_content_when_flattened, variant_names_when_flattened, variants_on_the_wire,
     written_slots,
@@ -150,6 +150,9 @@ struct ValidForm<'form> {
     raw: bool,
     /// The constants of the valid type: one for each unit case, where nothing can refuse one.
     statics: &'form str,
+    /// The reads with readers and the `validateWith` the valid type forwards to its draft, where
+    /// the type walks its parameters.
+    with: &'form str,
 }
 
 /// Whether a member is a stored property of its struct or sits in a box.
@@ -277,6 +280,8 @@ struct VariantPayload {
     /// The one slot of the variant, with what its types are named from, where `validate()` runs
     /// the `validate()` of a value it holds.
     walked: Option<(FieldDef, String)>,
+    /// The type parameters a type written for the variant walks, whose readers its read is handed.
+    walking: Vec<String>,
     /// Whether the payload is a type written for the variant.
     written: bool,
 }
@@ -418,6 +423,14 @@ impl VariantPayload {
     ) -> String {
         let held = self.held.as_deref().unwrap_or_default();
         let source = from.source;
+        if self.written && !self.walking.is_empty() {
+            return read::held_handing(
+                source,
+                (held, self.takes_keys),
+                &read::readers_named(&self.walking),
+                sink,
+            );
+        }
         if self.written {
             return self
                 .takes_keys
@@ -1601,6 +1614,12 @@ fn unit_shape(name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
 /// decodes, and what turns the second into the first, generating an auxiliary struct into `aux`
 /// when the leaf needs one of its own.
 fn swift_field_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
+    // A type written for the value walks and reads no parameter of the type that holds it.
+    validate::walking(&[], || written_shape(field, name_hint, aux))
+}
+
+/// [`swift_field_shape`], each type it writes walking and reading its own values alone.
+fn written_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> SwiftFieldShape {
     match &field.field_type {
         // A type written as no path, a function pointer or a macro among them.
         FieldDefType::Unknown => direct_shape("String".to_owned()),
@@ -3848,10 +3867,17 @@ fn checked_alone(
     owner: &str,
     choosers: &mut String,
 ) -> String {
-    let Some((own, alone)) = keys
-        .filter(|_| !is_nonstrict())
-        .and_then(|held| Some((held, read.strip_suffix(", swiftSchemaWithout: taken)")?)))
-    else {
+    let Some((own, alone)) = keys.filter(|_| !is_nonstrict()).and_then(|held| {
+        // A read handed readers takes them after the keys.
+        let alone = read
+            .strip_suffix(", swiftSchemaWithout: taken)")
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                let (before, after) = read.split_once(", swiftSchemaWithout: taken, ")?;
+                Some(format!("{before}, {}", after.strip_suffix(')')?))
+            })?;
+        Some((held, alone))
+    }) else {
         return read.to_owned();
     };
     if !choosers.contains(ONLY_ITS_KEYS) {
@@ -4019,20 +4045,41 @@ fn brand_swift_tokens(
     } else {
         None
     };
-    let tokens = value_wrapper_tokens(
-        &item_struct.ident,
-        &item_struct.generics,
-        args,
-        &value_field,
-        &Wrapped::Brand {
-            bounds,
-            length_member: validate::brand_length_member(&value_field),
-            text_member: validate::brand_text_member(&value_field),
-        },
-        &rules,
-        hashes_as_key(&item_struct.attrs, &value_field),
+    let runs_its_own = !rules.is_empty();
+    // A brand over one of its own parameters hands the value it wraps to the check of it.
+    let walked: Vec<String> = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+        && !value_field.is_optional()
+        && bare.is_some()
+    {
+        walked_parameters(&rust_ident, &type_parameters, args.preprocess)
+            .into_iter()
+            .filter(|named| named == parameter)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    rules.extend(
+        walked
+            .iter()
+            .map(|parameter| format!("errors += {}(value)", validate::check_of(parameter))),
     );
+    let tokens = validate::walking(&walked, || {
+        value_wrapper_tokens(
+            &item_struct.ident,
+            &item_struct.generics,
+            args,
+            &value_field,
+            &Wrapped::Brand {
+                bounds,
+                length_member: validate::brand_length_member(&value_field),
+                text_member: validate::brand_text_member(&value_field),
+            },
+            &rules,
+            hashes_as_key(&item_struct.attrs, &value_field),
+        )
+    });
     validate::note_bare(&rust_ident, bare);
+    validate::note_validates(&rust_ident, runs_its_own);
     tokens
 }
 
@@ -4073,24 +4120,33 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     let valid = held_at(&export_name, &generic_params);
     let drafted = !args.undrafted;
     let declared = declared_name(&export_name, args.undrafted);
-    let mut rules = field_rules(&declared, &fields);
-    rules.extend(validate::own_checks(args.check));
-    validate::note(&rust_ident, None, !rules.is_empty());
-    let closed = closed_keys(&fields, own_tag.as_ref(), args.preprocess);
-    preprocess::note_closed(&rust_ident, closed.as_deref());
-    let declaration = struct_declaration(
-        &declared,
-        &generic_params,
-        &fields,
-        own_tag.as_ref(),
-        &rules,
-        OwnRead {
-            around: false,
-            closed,
-            corrects: args.preprocess,
-            valid: drafted.then_some(valid.as_str()),
-        },
-    );
+    let walked = struct_walked(&rust_ident, &fields, &type_parameters, args.preprocess);
+    // A holder asks `validate()` of the type where it runs a rule of its own, as before.
+    let runs_its_own = validate::walking(&[], || {
+        !field_rules(&declared, &fields).is_empty() || !args.check.is_empty()
+    });
+    let (declaration, written_with) = validate::walking(&walked, || {
+        let mut rules = field_rules(&declared, &fields);
+        rules.extend(validate::own_checks(args.check));
+        validate::note(&rust_ident, None, runs_its_own);
+        let closed = closed_keys(&fields, own_tag.as_ref(), args.preprocess);
+        preprocess::note_closed(&rust_ident, closed.as_deref());
+        let declaration = struct_declaration(
+            &declared,
+            &generic_params,
+            &fields,
+            own_tag.as_ref(),
+            &rules,
+            OwnRead {
+                around: false,
+                closed,
+                corrects: args.preprocess,
+                valid: drafted.then_some(valid.as_str()),
+            },
+        );
+        let written_with = valid_with(&export_name, &generic_params, &declaration);
+        (declaration, written_with)
+    });
     preprocess::note(&rust_ident, read::takes_keys(&declaration));
     let instance = if matches!(item_struct.fields, Fields::Unit)
         && generic_params.is_empty()
@@ -4111,6 +4167,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
             &generic_params,
             &ValidForm {
                 statics: &statics,
+                with: &written_with,
                 ..ValidForm::default()
             },
         )
@@ -4129,6 +4186,196 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         item_struct.ident.span(),
         &swift_source,
         &defaults,
+    )
+}
+
+/// The type parameters of the type `rust_ident` declares `type_parameters` whose values its walk
+/// hands to a check and its read to a reader each, which a holder that writes what fills them
+/// hands in: every one, where the type names no function of its own. The type is noted as one a
+/// holder hands them to.
+fn walked_parameters(
+    rust_ident: &str,
+    type_parameters: &[String],
+    corrects: &[FunctionName],
+) -> Vec<String> {
+    if type_parameters.is_empty() || !corrects.is_empty() {
+        return Vec::new();
+    }
+    validate::note_with(rust_ident);
+    type_parameters.to_vec()
+}
+
+/// [`walked_parameters`] of a struct over `fields`, none where a member holds what fills a
+/// parameter where [`plainly_handed`] says no reader reaches it.
+fn struct_walked(
+    rust_ident: &str,
+    fields: &[SwiftField],
+    type_parameters: &[String],
+    corrects: &[FunctionName],
+) -> Vec<String> {
+    if fields
+        .iter()
+        .all(|field| plainly_handed(field, type_parameters))
+    {
+        walked_parameters(rust_ident, type_parameters, corrects)
+    } else {
+        Vec::new()
+    }
+}
+
+/// [`walked_parameters`] of an enum, none where a member of a variant holds what fills a
+/// parameter where [`variants_plainly_handed`] says no reader reaches it.
+fn enum_walked(
+    item_enum: &ItemEnum,
+    args: &SwiftTypeArgs<'_>,
+    type_parameters: &[String],
+) -> Vec<String> {
+    if variants_plainly_handed(item_enum, args) {
+        walked_parameters(
+            &item_enum.ident.to_string(),
+            type_parameters,
+            args.preprocess,
+        )
+    } else {
+        Vec::new()
+    }
+}
+
+/// Whether `field`, a member of a type that declares `parameters`, holds what fills them where
+/// every read of the emitter hands a value to a reader: through an `Option`, a list, a map under a
+/// key Swift reads as its text, a generic type the emitter wrote above, or bare, in a member read
+/// under its own key with no function and no default of its own.
+fn plainly_handed(field: &SwiftField, parameters: &[String]) -> bool {
+    let reached = parameters_reached(&[&field.field_def]);
+    !reached
+        .iter()
+        .any(|parameter| parameters.contains(parameter))
+        || (!field.flatten
+            && field.default_at.is_none()
+            && field.held == Storage::Direct
+            && preprocess::functions(&field.field_def).is_empty()
+            && plainly_reached(&field.field_def))
+}
+
+/// Whether each value behind a type parameter `def` holds is reached through the wrappers
+/// [`plainly_handed`] names.
+fn plainly_reached(def: &FieldDef) -> bool {
+    if parameters_reached(&[def]).is_empty() {
+        return true;
+    }
+    if def.is_optional() {
+        return plainly_reached(&validate::under_option(def));
+    }
+    if def.array_depth > 0 {
+        return !read::holds_a_length(def) && plainly_reached(&validate::item_of(def));
+    }
+    match &def.field_type {
+        FieldDefType::TypeParam(_) => true,
+        FieldDefType::Map(key, value) => {
+            parameters_reached(&[key]).is_empty()
+                && !matches!(map_keys(key), MapKeys::Wrapped)
+                && plainly_reached(value)
+        }
+        FieldDefType::SiblingType(named, arguments) => {
+            if let [item] = arguments.as_slice()
+                && is_sequence_wrapper(named)
+            {
+                return plainly_reached(&def.collection_element_field(item));
+            }
+            !validate::walked_with(named) || arguments.iter().all(plainly_reached)
+        }
+        FieldDefType::Range(..) | FieldDefType::Result(..) | FieldDefType::Tuple(_) => false,
+        FieldDefType::Boolean
+        | FieldDefType::BooleanLiteral(_)
+        | FieldDefType::Char
+        | FieldDefType::F32
+        | FieldDefType::F64
+        | FieldDefType::I8
+        | FieldDefType::I16
+        | FieldDefType::I32
+        | FieldDefType::I64
+        | FieldDefType::Isize
+        | FieldDefType::NumberLiteral(_)
+        | FieldDefType::String
+        | FieldDefType::StringLiteral(_)
+        | FieldDefType::U8
+        | FieldDefType::U16
+        | FieldDefType::U32
+        | FieldDefType::U64
+        | FieldDefType::Unknown
+        | FieldDefType::Usize => true,
+        #[cfg(feature = "mongodb")]
+        FieldDefType::ObjectId => true,
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime
+        | FieldDefType::NaiveDate
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::NaiveTime => true,
+    }
+}
+
+/// Whether every member of `item_enum`'s variants holds what fills its parameters where
+/// [`plainly_handed`] says, a variant of several slots holding none.
+fn variants_plainly_handed(item_enum: &ItemEnum, args: &SwiftTypeArgs<'_>) -> bool {
+    let type_parameters = type_parameters_in_scope(&item_enum.generics);
+    // Under a tag alone a slot is read from the object without the tag, by a type of its own.
+    let tag_alone = enum_tag_attrs(&item_enum.attrs).tag_alone();
+    item_enum.variants.iter().all(|variant| {
+        let defs: Vec<(FieldDef, bool)> = variant
+            .fields
+            .iter()
+            .map(|member| {
+                let mut def = member_def(args, "value", member);
+                def.named_within(args.type_name, &type_parameters);
+                let plain = !field_is_flatten(&member.attrs)
+                    && !has_serde_default(&member.attrs)
+                    && preprocess::functions(&def).is_empty();
+                (def, plain)
+            })
+            .collect();
+        let reaching = defs
+            .iter()
+            .filter(|(def, _)| !parameters_reached(&[def]).is_empty())
+            .count();
+        (reaching == 0
+            || (variant.fields.len() == 1
+                && !tag_alone
+                && !matches!(variant.fields, Fields::Named(_)))
+            || matches!(variant.fields, Fields::Named(_)))
+            && defs.iter().all(|(def, plain)| {
+                parameters_reached(&[def]).is_empty() || (*plain && plainly_reached(def))
+            })
+    })
+}
+
+/// What the valid type `export_name` of `generic_params` forwards to its draft, written as
+/// `declaration`, of the reads with readers and of `validateWith`, where the type being written
+/// walks its parameters.
+fn valid_with(export_name: &str, generic_params: &str, declaration: &str) -> String {
+    let parameters = validate::walked_parameters();
+    if parameters.is_empty() {
+        return String::new();
+    }
+    let held = held_at(&format!("{export_name}Draft"), generic_params);
+    let (readers, handed) = (
+        read::readers_declared(&parameters),
+        read::readers_named(&parameters),
+    );
+    let taking = if read::takes_keys(declaration) {
+        format!(
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+             [String], {readers}) throws {{ draft = try {held}(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: taken, {handed}) }}; "
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, {readers}) throws {{ draft = try \
+         {held}(swiftSchemaUnjudged: decoder, {handed}) }}; {taking}fileprivate func \
+         validateWith({}) -> [String] {{ draft.validationIssuesWith({}) }}; ",
+        validate::checks_declared(&parameters),
+        validate::checks_named(&parameters)
     )
 }
 
@@ -4199,9 +4446,10 @@ fn with_valid_struct(
          fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
          draft = try {draft}(swiftSchemaUnjudged: decoder) }}; {taking}\
          public func encode(to encoder: Encoder) throws {{ try draft.encode(to: encoder) }}; \
-         fileprivate func validate() -> [String] {{ draft.validationIssues() }}; \
+         fileprivate func validate() -> [String] {{ draft.validationIssues() }}; {with}\
          fileprivate func swiftSchemaValidateBound() -> [String] {{ \
-         draft.swiftSchemaValidateBound() }} }};"
+         draft.swiftSchemaValidateBound() }} }};",
+        with = form.with
     )
 }
 
@@ -4217,6 +4465,7 @@ fn wrapper_form<'form>(
         keyed: matches!(wrapped, Wrapped::Slot).then_some(real_type),
         raw: false,
         statics: "",
+        with: "",
     }
 }
 
@@ -4437,8 +4686,10 @@ fn value_wrapper_tokens(
              try {}(value: value).validate() }}; ",
             held_at(&format!("{export_name}Draft"), &generic_params)
         );
+        let with = valid_with(&export_name, &generic_params, &declaration);
         let form = ValidForm {
             statics: &of,
+            with: &with,
             ..wrapper_form(wrapped, hashable, &real_type)
         };
         with_valid_struct(&declaration, &export_name, &generic_params, &form)
@@ -4582,6 +4833,17 @@ fn wrapper_read(wrapped: &Wrapped, shaped: &Shaped, real_type: &str, decode: &st
             &mut read::Locals::default(),
         );
     }
+    if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+        && validate::walks_parameter(parameter)
+    {
+        return read::unjudged(
+            value_field,
+            "value",
+            &read::Source::Decoder,
+            &|held| format!("self.value = {held}"),
+            &mut read::Locals::default(),
+        );
+    }
     if !value_field.is_optional() && preprocess::beside(value_field) {
         let taken = preprocess::taken_with(iter::empty());
         return format!(
@@ -4613,17 +4875,34 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         && unnamed.unnamed.len() == 1
     {
         let value_field = slot_def(only);
-        let mut rules = validate::lone_slot_rules(&owner, &value_field);
-        rules.extend(validate::own_checks(args.check));
-        return value_wrapper_tokens(
-            &item_struct.ident,
-            &item_struct.generics,
-            args,
-            &value_field,
-            &Wrapped::Slot,
-            &rules,
-            hashes_as_key(&item_struct.attrs, &value_field),
-        );
+        let walked =
+            if plainly_reached(&value_field) && preprocess::functions(&value_field).is_empty() {
+                walked_parameters(
+                    &item_struct.ident.to_string(),
+                    &type_parameters,
+                    args.preprocess,
+                )
+            } else {
+                Vec::new()
+            };
+        let runs_its_own = validate::walking(&[], || {
+            !validate::lone_slot_rules(&owner, &value_field).is_empty() || !args.check.is_empty()
+        });
+        let tokens = validate::walking(&walked, || {
+            let mut rules = validate::lone_slot_rules(&owner, &value_field);
+            rules.extend(validate::own_checks(args.check));
+            value_wrapper_tokens(
+                &item_struct.ident,
+                &item_struct.generics,
+                args,
+                &value_field,
+                &Wrapped::Slot,
+                &rules,
+                hashes_as_key(&item_struct.attrs, &value_field),
+            )
+        });
+        validate::note_validates(&item_struct.ident.to_string(), runs_its_own);
+        return tokens;
     }
     let slots: Vec<FieldDef> = unnamed
         .unnamed
@@ -4762,6 +5041,7 @@ fn resolve_variant_payload(
             rules: Vec::new(),
             takes_keys: false,
             walked: None,
+            walking: Vec::new(),
             written: false,
         },
         VariantKind::Named => named_payload(shape, variant, rename_all_fields, step, aux),
@@ -4792,7 +5072,6 @@ fn named_payload(
         aux,
         &|field| shape.defaults.at(Some(&variant_name), field),
     );
-    let members = field_rules(&struct_name, &fields);
     let reached = parameters_reached(
         &fields
             .iter()
@@ -4809,19 +5088,29 @@ fn named_payload(
     // Under a tag alone the payload is read from the object the tag is in, so it takes the keys
     // the enum hands it, the tag among them, where no member of its own reads one.
     let keys = closed_keys(&fields, None, &[]);
-    let declared = struct_declaration(
-        &struct_name,
-        &generic_params,
-        &fields,
-        None,
-        &members,
-        OwnRead {
-            around: shape.tag_attrs.tag_alone(),
-            closed: keys.clone(),
-            corrects: &[],
-            valid: None,
-        },
-    );
+    // The struct walks the parameters it declares where the enum walks its own.
+    let walked: Vec<String> = named_parameters
+        .iter()
+        .filter(|parameter| validate::walks_parameter(parameter))
+        .cloned()
+        .collect();
+    let (members, declared) = validate::walking(&walked, || {
+        let members = field_rules(&struct_name, &fields);
+        let declared = struct_declaration(
+            &struct_name,
+            &generic_params,
+            &fields,
+            None,
+            &members,
+            OwnRead {
+                around: shape.tag_attrs.tag_alone(),
+                closed: keys.clone(),
+                corrects: &[],
+                valid: None,
+            },
+        );
+        (members, declared)
+    });
     let takes_keys = read::takes_keys(&declared);
     aux.push(declared);
     let bound = fields
@@ -4846,8 +5135,9 @@ fn named_payload(
         held: Some(held_at(&struct_name, &generic_params)),
         keys,
         optional: false,
+        rules: validate::payload_rules(shape.declared, step, !members.is_empty(), &walked),
+        walking: walked,
         parameters: named_parameters,
-        rules: validate::payload_rules(shape.declared, step, !members.is_empty()),
         takes_keys,
         walked: None,
         written: true,
@@ -4916,6 +5206,7 @@ fn slot_payload(
         rules,
         takes_keys: false,
         walked,
+        walking: Vec::new(),
         written: false,
     }
 }
@@ -4938,7 +5229,9 @@ fn slots_payload(
     } else {
         &[]
     };
-    let checked = !validate::slot_rules(shape.declared, slots).is_empty();
+    // The type written for the slots walks no parameter of the enum.
+    let checked =
+        !validate::walking(&[], || validate::slot_rules(shape.declared, slots)).is_empty();
     let bound = slots
         .iter()
         .enumerate()
@@ -4970,9 +5263,10 @@ fn slots_payload(
         keys: None,
         optional: false,
         parameters: parameters_reached(&[&tuple_field]),
-        rules: validate::payload_rules(shape.declared, step, checked),
+        rules: validate::payload_rules(shape.declared, step, checked, &[]),
         takes_keys: false,
         walked: None,
+        walking: Vec::new(),
         written: true,
     }
 }
@@ -5736,17 +6030,22 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
         valid: drafted.then_some(valid.as_str()),
     };
     let mut aux = Vec::new();
-    let declaration = if plain && writes_bare_variant_names {
-        plain_enum_swift_source(&shape)
-    } else if tag_attrs.untagged {
-        untagged_enum_swift_source(&shape, &mut aux)
-    } else if tag_attrs.tag.is_some() && tag_attrs.content.is_some() {
-        adjacent_tagged_enum_swift_source(&shape, &mut aux)
-    } else if tag_attrs.tag.is_some() {
-        internal_tagged_enum_swift_source(&shape, &mut aux)
-    } else {
-        external_tagged_enum_swift_source(&shape, &mut aux)
-    };
+    let walked = enum_walked(item_enum, args, &type_parameters);
+    let (declaration, written_with) = validate::walking(&walked, || {
+        let declaration = if plain && writes_bare_variant_names {
+            plain_enum_swift_source(&shape)
+        } else if tag_attrs.untagged {
+            untagged_enum_swift_source(&shape, &mut aux)
+        } else if tag_attrs.tag.is_some() && tag_attrs.content.is_some() {
+            adjacent_tagged_enum_swift_source(&shape, &mut aux)
+        } else if tag_attrs.tag.is_some() {
+            internal_tagged_enum_swift_source(&shape, &mut aux)
+        } else {
+            external_tagged_enum_swift_source(&shape, &mut aux)
+        };
+        let with = valid_with(&export_name, &generic_params, &declaration);
+        (declaration, with)
+    });
     preprocess::note(&rust_ident, read::takes_keys(&declaration));
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let statics = if generic_params.is_empty() && args.check.is_empty() {
@@ -5764,6 +6063,7 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
             keyed: None,
             raw: plain && writes_bare_variant_names,
             statics: &statics,
+            with: &written_with,
         };
         let unpaired = declaration
             .strip_suffix(typealias.as_str())

@@ -2318,15 +2318,7 @@ fn a_bson_walker_with_no_field_to_walk_leaves_the_issue_list_unbound() {
 }
 
 #[test]
-fn a_generated_named_hook_is_read_past_and_an_authors_hook_is_read_through() {
-    let generated = fields_walk_of(
-        "pub struct Holder { \
-         #[serde(deserialize_with = \"holder_schema::deserialize_named_inner\")] pub inner: Inner }",
-    );
-    assert!(
-        generated.contains("< Inner > :: decode_with_value_issues (held ,"),
-        "got: {generated}"
-    );
+fn an_authors_hook_is_read_through() {
     let authored = fields_walk_of(
         "pub struct Holder { #[serde(deserialize_with = \"lenient\")] pub inner: Inner }",
     );
@@ -2903,10 +2895,6 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is(
         (
             "{ #[serde(with = \"as_text\")] pub inner: Vec<Inner> }",
             "(#[serde(with = \"as_text\")] pub Vec<Inner>);",
-        ),
-        (
-            "{ #[serde(deserialize_with = \"code_schema::deserialize_named_inner\")] pub inner: Inner }",
-            "(pub Inner);",
         ),
     ] {
         assert_eq!(

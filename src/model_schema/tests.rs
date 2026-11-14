@@ -7136,9 +7136,10 @@ fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
             .map(|key| super::PlaceStep::Written(key.to_owned()))
             .into_iter()
             .collect();
+        let def = get_field_def("", &ty, "");
         super::nested_place(&super::held_at(
             &held,
-            &super::nested_shape(&ty).unwrap(),
+            &super::held_shape(&ty, &def).unwrap().wraps,
             1,
         ))
         .map(|written| written.to_string())
@@ -7538,7 +7539,7 @@ fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
+fn a_field_holding_a_declared_type_is_read_through_a_hook_that_renames_no_refusal() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -7578,13 +7579,11 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
         "fn read_unjudged_customer_id < 'de , D > (deserializer : D) -> :: core :: result :: \
          Result < Slug , D :: Error >",
         "< Slug > :: model_schema_read_unjudged (deserializer) . map (Unjudged)",
-        // The key as the wire spells it: the name serde was reading for, and the one the schema
-        // reports.
-        "nested_under (\"customerId\" , violation)",
     ] {
         assert!(read.contains(written), "missing `{written}`, got: {read}");
     }
-    assert!(!read.contains("\"customer_id\""), "got: {read}");
+    // The holder's `validate()` names the field: no refusal of the read is worded again.
+    assert!(!read.contains("nested_under"), "got: {read}");
 }
 
 #[cfg(feature = "serde")]
@@ -7628,7 +7627,7 @@ fn the_names_a_read_declares_are_never_names_the_item_writes() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module() {
+fn a_field_the_unjudged_read_does_not_reach_is_read_by_its_own_type() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -7650,28 +7649,17 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
-
     let rendered = walked_field_attrs(item.fields.iter());
-    assert_eq!(
-        rendered,
-        quote::quote! {
-            #[serde(deserialize_with = "enrolment_schema::deserialize_named_customer_id")]
-        }
-        .to_string(),
-        "got: {rendered}"
-    );
-
-    let published = collected
-        .2
-        .iter()
-        .map(ToString::to_string)
-        .collect::<String>();
+    assert_eq!(rendered, "", "got: {rendered}");
     assert!(
-        published.contains("\"customerId\""),
-        "the name written is the key as the wire spells it, that being the name serde was reading \
-         for and the one the schema reports. Got: {published}"
+        collected.2.is_empty(),
+        "got: {:?}",
+        collected
+            .2
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
     );
-    assert!(!published.contains("\"customer_id\""), "got: {published}");
     let read = super::judged_read::of_struct(&mut item, true).to_string();
     assert!(!read.contains("read_unjudged_"), "got: {read}");
 }
@@ -7705,7 +7693,7 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
     );
     let rendered = walked_field_attrs(item.fields.iter());
     assert!(
-        !rendered.contains("deserialize_named_"),
+        !rendered.contains("schema::"),
         "serde admits one reader per field, and each of these already has one or has no read at \
          all. Got: {rendered}"
     );
@@ -7715,7 +7703,7 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
         .map(ToString::to_string)
         .collect::<String>();
     assert!(
-        !published.contains("deserialize_named_"),
+        published.is_empty(),
         "a reader nothing is hung with is a function nothing calls. Got: {published}"
     );
 }
@@ -15066,14 +15054,14 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
 #[cfg(feature = "serde")]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
-    // A model in a shared slice and in a boxed one is one the type's unjudged read does not reach,
-    // so its reader stays in the schema module.
-    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Arc<[Issue]>, pub trail: Box<[Segment]> }";
+    // A member held to a bound is checked and read by functions of the schema module, which name
+    // the member's type.
+    let source = "#[derive(Deserialize)] pub struct DecodeTicket { #[model_schema_prop(minLength = 1)] pub issue: Issue, #[model_schema_prop(minLength = 1)] pub trail: Box<Segment> }";
     let flagged = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
     for scoped in [
-        "Result < Arc < [super :: Issue] > , D :: Error >",
-        "< Arc < [super :: Issue] > > :: deserialize (deserializer)",
-        "Result < Box < [super :: Segment] > , D :: Error >",
+        "fn validate_issue_value (named : & super :: Issue)",
+        "Result < super :: Issue , D :: Error >",
+        "Result < Box < super :: Segment > , D :: Error >",
     ] {
         assert!(
             flagged.contains(scoped),
@@ -19484,8 +19472,7 @@ fn every_reference_is_read_through_to_what_it_borrows() {
     }
 }
 
-/// A held model is walked through every reference, by both walks, to what the owned spelling
-/// walks to.
+/// A held model is walked through every reference, to what the owned spelling walks to.
 #[cfg(feature = "serde")]
 #[test]
 fn a_held_model_is_walked_through_every_reference() {
@@ -19500,13 +19487,9 @@ fn a_held_model_is_walked_through_every_reference() {
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         let def = get_field_def("", &ty, "");
-        assert!(
-            super::nested_shape(&ty).unwrap() == wraps,
-            "the nested walk, for {spelling}"
-        );
         let held = super::held_shape(&ty, &def).unwrap();
         assert!(
-            matches!(held.end, super::HeldEnd::Declared),
+            matches!(&held.end, super::HeldEnd::Declared(arguments) if arguments.is_empty()),
             "for {spelling}"
         );
         assert!(held.wraps == wraps, "the held walk, for {spelling}");
@@ -19517,39 +19500,6 @@ fn a_held_model_is_walked_through_every_reference() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_field_read_through_a_reference_is_given_no_read_hook() {
-    let steps = [vec!["stamp".to_owned()]];
-    let ctx = FieldContext {
-        container_defaulted: false,
-        container_read_back: true,
-        container_wire: super::ContainerWire::OneWay,
-        enum_args: None,
-        member_steps: &steps,
-        on_the_wire: true,
-        rename_all: None,
-        schema_module_name: Some("probe_schema"),
-        type_name: "Probe",
-        type_parameters: &[],
-        variant_ident: None,
-    };
-    let named_below = |spelling: &str| {
-        let field: syn::Field =
-            syn::parse_str::<syn::FieldsNamed>(&format!("{{ stamp: {spelling} }}"))
-                .unwrap()
-                .named
-                .into_iter()
-                .next()
-                .unwrap();
-        let def = get_field_def("stamp", &field.ty, "");
-        super::named_below(&field, &def, &ctx)
-    };
-    assert!(named_below("Stamp").is_some());
-    assert!(named_below("Option<Stamp>").is_some());
-    // A type that names a lifetime is refused on that alone; the spellings with none are refused
-    // for the reference.
-    for spelling in ["&'a Stamp", "Option<&'a Stamp>", "&Stamp", "Option<&Stamp>"] {
-        assert!(named_below(spelling).is_none(), "for {spelling}");
-    }
-
     let mut item: syn::ItemStruct = syn::parse_quote! {
         #[derive(serde::Deserialize, serde::Serialize)]
         struct Probe<'a> {
@@ -23104,13 +23054,6 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
              { rows : Vec < String > }",
         ),
         (
-            "default_types(IdType = String)",
-            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct \
-             UnruledGeneric<IdType>(IdType);",
-            "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \
-             UnruledGeneric < IdType > (IdType) ;",
-        ),
-        (
             "enable = [\"decode_with\", \"mongodb\"]",
             "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledDecoded(\
              String);",
@@ -23132,6 +23075,41 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
                 "for {source}, found `{unwritten}` in: {expanded}"
             );
         }
+    }
+}
+
+/// A brand over one of its own parameters keeps the read serde's derive writes it, and gains the
+/// read a holder hands a reader of the parameter to, and the walk that hands the value to the
+/// holder's check of it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_brand_over_its_own_parameter_hands_the_value_to_its_holder() {
+    let expanded = expansion_under(
+        "default_types(IdType = String)",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct \
+         UnruledGeneric<IdType>(IdType);",
+    );
+    for written in [
+        "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct UnruledGeneric < \
+         IdType > (IdType) ;",
+        "pub fn model_schema_read_unjudged_by1 <",
+        "pub fn model_schema_issues_with1 (& self , model_schema_issues_of_id_type :",
+        "errors . extend (model_schema_issues_of_id_type (& self . 0)) ;",
+    ] {
+        assert!(
+            expanded.contains(written),
+            "missing `{written}` in: {expanded}"
+        );
+    }
+    for unwritten in [
+        "pub fn model_schema_read_unjudged <",
+        "model_schema_validate_bound",
+        "validate_value",
+    ] {
+        assert!(
+            !expanded.contains(unwritten),
+            "found `{unwritten}` in: {expanded}"
+        );
     }
 }
 

@@ -655,7 +655,13 @@ the consumer's view; this is what a change has to keep.
   `__TIXSCHEMA_MODELLED` constant of the type's path, which only a `#[model_schema]` type
   publishes, read at the type arguments the member writes (`note_written`), with the companion's
   read or with the type's own serializer. A member under a `cfg`, and a type argument that is a
-  type parameter of the holder, cannot be asked and keep the companion's read. The order the types
+  type parameter of the holder, cannot be asked and keep the companion's read. A generic type at
+  a filling that names no type parameter of the holder is read by an `object` of that filling
+  (`held_filled_unjudged`): the type's unjudged read handed the unjudged serializer of each
+  argument, beside the type's own serializer built from the judged one of each. Its walk is
+  `validationIssuesWith`, which every generic type the emitter writes declares, one check per type
+  parameter (`Rules::walking`), handed the check of each argument (`argument_check`); a type
+  without it answers nothing through `FallbackWith`. The order the types
   are declared in, and the crate each is in, decide nothing, and `run_kotlin_held_models.rs` holds
   the messages of a holder in each layout to Rust's and compiles a holder of an alias of a list,
   of a map and of a list with a parameter in two.

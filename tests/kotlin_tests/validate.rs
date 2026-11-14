@@ -23,7 +23,7 @@ use super::read::{
     kept_draft, to_valid, to_valid_free, valid_class_over, valid_unjudged, valid_unjudged_over,
 };
 #[cfg(feature = "serde")]
-use super::read::{held, valid_class, valid_class_with, with_of};
+use super::read::{held, valid_class, valid_class_with, walked_issues, with_of};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -504,11 +504,15 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&wrapper_kotlin::kotlin_definition()),
             format!(
-                "{} data class WrapperDraft<T>(val value: T) {{ {NO_ISSUES} {} }} \
+                "{} data class WrapperDraft<T>(val value: T) {{ {} {} }} \
                  @OptIn(ExperimentalSerializationApi::class) class \
                  WrapperDraftUnjudged<T>(tSerializer: KSerializer<T>) : KSerializer<WrapperDraft<T>> \
                  by WrapperDraft.generatedSerializer(tSerializer) {} {} {}",
                 kept_draft("Wrapper"),
+                walked_issues(
+                    "T",
+                    "violations.addAll(issuesOfT(value).map { kotlinSchemaUnder(\"value\", it) })"
+                ),
                 to_valid_free("Wrapper", "<T>"),
                 with_of(
                     valid_class_over("Wrapper", "<T>", "val value: T get() = draft.value; "),
@@ -534,8 +538,12 @@ fn every_shape_carries_validate() {
     let pair = super::tests::renumbered(&generic_pair_kotlin::kotlin_definition());
     assert!(
         pair.contains(&format!(
-            "data class GenericPairDraft<T>(val slot0: T, val slot1: UInt) {{ {NO_ISSUES} {} }} \
+            "data class GenericPairDraft<T>(val slot0: T, val slot1: UInt) {{ {} {} }} \
              class GenericPairDraftUnjudged<T: Any>(",
+            walked_issues(
+                "T",
+                "violations.addAll(issuesOfT(slot0).map { kotlinSchemaUnder(\"0\", it) })"
+            ),
             to_valid_free("GenericPair", "<T>")
         )),
         "got: {pair}"

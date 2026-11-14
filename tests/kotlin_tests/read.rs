@@ -227,9 +227,51 @@ pub fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
          {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
-         validationIssues(): List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): \
+         validationIssues(): List<String> = draft.validationIssues(); {}fun kotlinSchemaChecked(): \
          {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft); {} }} }}",
+        issues_with_forwarded(generic),
         unjudged_member(named, generic)
+    )
+}
+
+/// The `validationIssuesWith` a valid type of the parameters `generic` forwards to its draft,
+/// none where it declares none.
+fn issues_with_forwarded(generic: &str) -> String {
+    let parameters: Vec<&str> = generic
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .split(", ")
+        .filter(|parameter| !parameter.is_empty())
+        .collect();
+    if parameters.is_empty() {
+        return String::new();
+    }
+    let checks = parameters
+        .iter()
+        .map(|parameter| format!("issuesOf{parameter}: ({parameter}) -> List<String>"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let named = parameters
+        .iter()
+        .map(|parameter| format!("issuesOf{parameter}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "fun validationIssuesWith({checks}): List<String> = draft.validationIssuesWith({named}); "
+    )
+}
+
+/// The walk of a draft that declares the parameter `parameter`, whose `statements` hand each value
+/// behind it to its check.
+pub fn walked_issues(parameter: &str, statements: &str) -> String {
+    format!(
+        "fun validationIssues(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
+         validationIssuesWith(issuesOf{parameter}: ({parameter}) -> List<String>): List<String> \
+         {{ val violations = mutableListOf<String>(); {statements}; return violations }}; \
+         private fun kotlinSchemaUnder(place: String, violation: String): String {{ val end = \
+         violation.indexOf('\\'', 1); return if (violation.startsWith(\"'\") && end > 0) {{ \
+         \"'$place.${{violation.substring(1, end)}}'${{violation.substring(end + 1)}}\" }} else \
+         {{ \"'$place': $violation\" }} }}"
     )
 }
 
@@ -530,10 +572,17 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
         super::tests::renumbered(&cask_kotlin::kotlin_definition()),
         format!(
             "{} data class CaskDraft<Held>(val held: List<Held>, val label: String) {{ \
-             {LABELLED_ISSUES} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+             {} {} }} @OptIn(ExperimentalSerializationApi::class) class \
              CaskDraftUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
              KSerializer<CaskDraft<Held>> by CaskDraft.generatedSerializer(heldSerializer) {} {} {}",
             kept_draft("Cask"),
+            walked_issues(
+                "Held",
+                "held.forEachIndexed { index, held -> violations.addAll(issuesOfHeld(held).map { \
+                 kotlinSchemaUnder(\"held.$index\", it) }) }; if (label.codePointCount(0, \
+                 label.length) < 1) violations.add(\"'label': too short: minimum length is 1, got \
+                 ${label.codePointCount(0, label.length)}\")"
+            ),
             to_valid("Cask", "<Held>"),
             with_of(
                 valid_class_over(
@@ -552,8 +601,8 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     let cellar = super::tests::renumbered(&cellar_kotlin::kotlin_definition());
     assert!(
         cellar.contains(
-            "data class CellarDraft(@Serializable(with = KotlinHeld1::class) val cask: Cask<Pallet>, \
-             val casks: List<@Serializable(with = KotlinHeld1::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
+            "data class CellarDraft(@Serializable(with = KotlinHeld2::class) val cask: Cask<Pallet>, \
+             val casks: List<@Serializable(with = KotlinHeld3::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
         ),
         "got: {cellar}"
     );

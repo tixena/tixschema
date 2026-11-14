@@ -1722,6 +1722,12 @@ mod run_kotlin_check_order;
 #[path = "service_schema_emitted_client_tests/run_kotlin_held_models.rs"]
 mod run_kotlin_held_models;
 
+/// A holder that judges what fills a type parameter of a generic model it holds, in Dart, Kotlin
+/// and Swift as in Rust.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_parameter_holders.rs"]
+mod run_parameter_holders;
+
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.
 #[cfg(test)]

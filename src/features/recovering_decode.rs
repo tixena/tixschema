@@ -28,8 +28,8 @@ use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
-    Direction, NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default,
-    has_serde_read_hook, has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
+    Direction, SerdeFieldHooks, Tagging, has_serde_default, has_serde_read_hook,
+    has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
     parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
     parse_serde_type_attributes, parse_written_renames, transparent_field,
 };
@@ -283,17 +283,12 @@ impl<'item> Flattened<'item> {
         matches!(self, Self::Model(_) | Self::Optional(_, _))
     }
 
-    fn of(
-        field: &'item Field,
-        module_name: &str,
-        parameters: &[String],
-        corrected: &[FunctionName],
-    ) -> Self {
+    fn of(field: &'item Field, parameters: &[String], corrected: &[FunctionName]) -> Self {
         // serde reads nothing into the field, and the keys it wrote for it are still in the object.
         if parse_serde_key_omission(&field.attrs).skips_deserializing {
             return Self::Unwalked(None);
         }
-        let Walk { step, ty } = member_walk(field, module_name, parameters, corrected);
+        let Walk { step, ty } = member_walk(field, parameters, corrected);
         match step {
             Step::Entries(values) => Self::Entries(*values),
             // Flattened, serde reads an `Option` as absent where the type's own reader refuses, and
@@ -496,7 +491,7 @@ impl<'item> Shape<'item> {
             && let Some(only) = transparent_field(&item_struct.fields, Direction::Read)
         {
             // The slot of a brand names no function: a `preprocess` there is refused.
-            return Self::Held(held_walk(only, module_name, parameters, &[]));
+            return Self::Held(held_walk(only, parameters, &[]));
         }
         let named_on = preprocess::named();
         let defaulted = has_serde_default(&item_struct.attrs);
@@ -526,12 +521,7 @@ impl<'item> Shape<'item> {
             Fields::Unnamed(slots) => {
                 let mut written = slots.unnamed.iter();
                 if let (Some(only), None) = (written.next(), written.next()) {
-                    return Self::Held(held_walk(
-                        only,
-                        module_name,
-                        parameters,
-                        named_on.of_member(None, 0),
-                    ));
+                    return Self::Held(held_walk(only, parameters, named_on.of_member(None, 0)));
                 }
                 Self::Slots(
                     slots
@@ -543,7 +533,6 @@ impl<'item> Shape<'item> {
                             walked_slot(
                                 slot,
                                 defaulted,
-                                module_name,
                                 parameters,
                                 validator,
                                 named_on.of_member(None, index),
@@ -594,7 +583,6 @@ impl<'item> Shape<'item> {
                     }
                     return Self::Held(member_walk(
                         only,
-                        module_name,
                         parameters,
                         named_on.of_member(Some(&named), 0),
                     ));
@@ -609,7 +597,6 @@ impl<'item> Shape<'item> {
                             walked_slot(
                                 slot,
                                 false,
-                                module_name,
                                 parameters,
                                 validator,
                                 named_on.of_member(Some(&named), index),
@@ -4017,13 +4004,12 @@ fn held_in<'ty>(
 /// then one value whatever its type holds.
 fn held_walk<'item>(
     slot: &'item Field,
-    module_name: &str,
     parameters: &[String],
     corrected: &[FunctionName],
 ) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&slot.attrs);
     // A slot that names a `preprocess` is read through a hook of the type's own reader as well.
-    if corrected.is_empty() && hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_none() {
+    if corrected.is_empty() && hooked_leaf(&slot.ty, &hooks, parameters).is_none() {
         return walk_of(&slot.ty, parameters);
     }
     Walk {
@@ -4051,16 +4037,10 @@ fn holds_an_id(ty: &Type) -> bool {
 
 /// The functions a field is read and written back through when its author's serde attributes
 /// name any, and `None` for a field its own type reads.
-fn hooked_leaf(
-    ty: &Type,
-    hooks: &SerdeFieldHooks,
-    module_name: &str,
-    parameters: &[String],
-) -> Option<Step<'static>> {
-    let generated = format!("{module_name}::{NAMED_READ_HOOK_PREFIX}");
+fn hooked_leaf(ty: &Type, hooks: &SerdeFieldHooks, parameters: &[String]) -> Option<Step<'static>> {
     let named = |hook: Option<&LitStr>| {
-        let path = hook.filter(|path| !path.value().starts_with(&generated))?;
-        path.parse::<syn::ExprPath>()
+        hook?
+            .parse::<syn::ExprPath>()
             .ok()
             .map(resolved_at_the_mixed_site)
     };
@@ -4116,12 +4096,11 @@ fn is_off_the_wire(field: &Field) -> bool {
 /// name answer for what is stored, through the hook it carries or with its own type's reader.
 fn member_walk<'item>(
     member: &'item Field,
-    module_name: &str,
     parameters: &[String],
     corrected: &[FunctionName],
 ) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&member.attrs);
-    let hooked = hooked_leaf(&member.ty, &hooks, module_name, parameters);
+    let hooked = hooked_leaf(&member.ty, &hooks, parameters);
     if corrected.is_empty() {
         return hooked.map_or_else(
             || walk_of(&member.ty, parameters),
@@ -4979,8 +4958,7 @@ fn walked_field<'item>(
     };
     let key = renamed
         .unwrap_or_else(|| resolve_rename_rule(rule).apply_to_field(&ident.unraw().to_string()));
-    let walk = (!omission.skips_deserializing)
-        .then(|| member_walk(field, module_name, parameters, corrected));
+    let walk = (!omission.skips_deserializing).then(|| member_walk(field, parameters, corrected));
     // With a read hook on the field, serde's derive no longer reads a missing key as `None`. The
     // hook a `preprocess` is called from is hung with the `default` that reads it so.
     let optional = !has_serde_read_hook(&field.attrs)
@@ -5023,7 +5001,7 @@ fn walked_fields<'item>(
         } else if is_off_the_wire(field) {
             // serde neither writes nor reads the field, so no key in the object is its own.
         } else {
-            flattened.push(Flattened::of(field, module_name, parameters, corrected));
+            flattened.push(Flattened::of(field, parameters, corrected));
         }
     }
     let declared = fields
@@ -5043,7 +5021,6 @@ fn walked_fields<'item>(
 fn walked_slot<'item>(
     slot: &'item Field,
     container_defaulted: bool,
-    module_name: &str,
     parameters: &[String],
     validator: Option<FieldValidator>,
     corrected: &[FunctionName],
@@ -5053,7 +5030,7 @@ fn walked_slot<'item>(
         absence_is_read: omission.defaulted || container_defaulted,
         ty: &slot.ty,
         validator,
-        walk: member_walk(slot, module_name, parameters, corrected),
+        walk: member_walk(slot, parameters, corrected),
     })
 }
 

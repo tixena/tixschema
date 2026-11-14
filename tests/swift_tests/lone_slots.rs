@@ -362,34 +362,6 @@ fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
             "String",
             None,
         ),
-        (
-            single_swift::swift_definition(),
-            "public struct SingleDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public var value: Stowed; ",
-            "Stowed",
-            Some("SwiftSchemaFit<Stowed>.self).value"),
-        ),
-        (
-            stowed_list_swift::swift_definition(),
-            "public struct StowedListDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public var value: [Stowed]; ",
-            "[Stowed]",
-            Some("[SwiftSchemaFit<Stowed>].self).map({ $0.value })"),
-        ),
-        (
-            stowed_maybe_swift::swift_definition(),
-            "public struct StowedMaybeDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public var value: Stowed?; ",
-            "Stowed?",
-            Some("SwiftSchemaFit<Stowed>?.self)?.value"),
-        ),
-        (
-            stowed_by_name_swift::swift_definition(),
-            "public struct StowedByNameDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
-             public var value: [String: Stowed]; ",
-            "[String: Stowed]",
-            Some("[String: SwiftSchemaFit<Stowed>].self).mapValues({ $0.value })"),
-        ),
     ] {
         let decode = fitted.map_or_else(
             || format!("container.decode({read_as}.self)"),
@@ -402,6 +374,50 @@ fn a_struct_of_one_slot_reads_and_writes_the_value_of_its_slot() {
         holds(&swift, &[opened, &read, WRITTEN]);
         assert!(!swift.contains("Tuple"), "got: {swift}");
         assert!(!swift.contains("unkeyedContainer"), "got: {swift}");
+    }
+}
+
+/// A struct of one slot that holds its own parameter reads each value behind it with the reader a
+/// holder hands in, bare, in a list, under an `Option` and as a map's value.
+#[test]
+fn a_slot_over_its_parameter_reads_each_value_behind_it_with_the_reader_handed_in() {
+    for (swift, read) in [
+        (
+            single_swift::swift_definition(),
+            "self.value = try swiftSchemaReaderOfStowed(decoder) }; ",
+        ),
+        (
+            stowed_list_swift::swift_definition(),
+            "var listed = try decoder.unkeyedContainer(); var items: [Stowed] = []; while \
+             !listed.isAtEnd { items.append(try swiftSchemaReaderOfStowed(listed.superDecoder())) }; \
+             self.value = items }; ",
+        ),
+        (
+            stowed_maybe_swift::swift_definition(),
+            "if try !decoder.singleValueContainer().decodeNil() { self.value = try \
+             swiftSchemaReaderOfStowed(decoder) } else { self.value = nil } }; ",
+        ),
+        (
+            stowed_by_name_swift::swift_definition(),
+            "let keyed = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); var entries: \
+             [String: Stowed] = [:]; for entry in keyed.allKeys { entries[entry.stringValue] = \
+             try swiftSchemaReaderOfStowed(keyed.superDecoder(forKey: entry)) }; self.value = entries \
+             }; ",
+        ),
+    ] {
+        holds(
+            &swift,
+            &[
+                &format!(
+                    "fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ \
+                     swiftSchemaReaderOfStowed: (Decoder) throws -> Stowed) throws {{ {read}"
+                ),
+                "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { try \
+                 self.init(swiftSchemaUnjudged: decoder, { try SwiftSchemaFit<Stowed>(from: \
+                 $0).value }) }; ",
+                WRITTEN,
+            ],
+        );
     }
 }
 
@@ -446,11 +462,16 @@ fn a_slot_validate_walks_is_read_unjudged_from_the_decoder_itself() {
     holds(
         &sacked_swift::swift_definition(),
         &[
-            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
-           throws { self.value = try Sack<Stowed>(swiftSchemaUnjudged: decoder, \
-           swiftSchemaWithout: taken) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws \
-           { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
-           \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String], \
+           _ swiftSchemaReaderOfStowed: (Decoder) throws -> Stowed) throws { self.value = try \
+           Sack<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken, \
+           swiftSchemaReaderOfStowed) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, \
+           swiftSchemaWithout taken: [String]) throws { try self.init(swiftSchemaUnjudged: decoder, \
+           swiftSchemaWithout: taken, { try SwiftSchemaFit<Stowed>(from: $0).value }) }; \
+           fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOfStowed: \
+           (Decoder) throws -> Stowed) throws { if !(decoder.codingPath.isEmpty && \
+           decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for \
+           unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
            ![\"label\", \"stowed\"].contains(unknown.stringValue)",
         ],
     );

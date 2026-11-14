@@ -30,9 +30,9 @@ use crate::field_type::get_field_def;
 use crate::field_type::held_literal;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
-use crate::utils::unclaimed_parameter;
 use crate::utils::written_type;
 use crate::utils::{record_undrafted_enum, written_names};
+use crate::utils::{type_parameters_in_scope, unclaimed_parameter};
 
 /// The most parameters a `new` takes unless the author asks for it with `new = true`, which is
 /// where clippy's `too_many_arguments` starts to fire.
@@ -381,6 +381,13 @@ impl ValidType<'_> {
         let (valid_impl_generics, _, valid_where) = valid_generics.split_for_impl();
         let (conversion, constants, constructor) =
             (self.conversion(), self.constants(), self.constructor());
+        let parameters = type_parameters_in_scope(self.generics);
+        let handed = (!parameters.is_empty()).then(|| {
+            super::parameter_walk::issues_with_delegated(
+                &parameters,
+                &quote! { #draft #type_generics },
+            )
+        });
         quote! {
             #vis type #name #alias_generics = #module_ident::#sealed::#name<#draft #type_generics>;
 
@@ -410,6 +417,8 @@ impl ValidType<'_> {
                 pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
                     <#draft #type_generics>::validation_issues(self)
                 }
+
+                #handed
             }
 
             #conversion
@@ -550,25 +559,7 @@ impl ValidType<'_> {
 
     /// The function that words a serde message with the declared name where it names the draft.
     fn relabelled(&self) -> TokenStream {
-        let (draft_text, declared_text) = (self.draft.to_string(), self.name.to_string());
-        quote! {
-            fn relabelled(text: &str) -> ::core::option::Option<::std::string::String> {
-                let (draft_name, declared_name) = (#draft_text, #declared_text);
-                let is_word = |character: char| character.is_alphanumeric() || character == '_';
-                let mut relabelled = ::std::string::String::new();
-                let mut rest = text;
-                while let ::core::option::Option::Some(at) = rest.find(draft_name) {
-                    let end = at + draft_name.len();
-                    relabelled.push_str(&rest[..at]);
-                    let whole = !relabelled.chars().next_back().is_some_and(is_word)
-                        && !rest[end..].chars().next().is_some_and(is_word);
-                    relabelled.push_str(if whole { declared_name } else { draft_name });
-                    rest = &rest[end..];
-                }
-                relabelled.push_str(rest);
-                (relabelled != text).then_some(relabelled)
-            }
-        }
+        relabelled(&self.draft, self.name)
     }
 
     /// The generics of the declaration as an impl on the valid type reads them: a bound written on
@@ -613,6 +604,30 @@ impl ValidType<'_> {
                     }
                 }
             };
+        }
+    }
+}
+
+/// The function that words a serde message with `declared`, the declared name, where it names
+/// `draft`.
+pub fn relabelled(draft: &Ident, declared: &Ident) -> TokenStream {
+    let (draft_text, declared_text) = (draft.to_string(), declared.to_string());
+    quote! {
+        fn relabelled(text: &str) -> ::core::option::Option<::std::string::String> {
+                let (draft_name, declared_name) = (#draft_text, #declared_text);
+                let is_word = |character: char| character.is_alphanumeric() || character == '_';
+                let mut relabelled = ::std::string::String::new();
+                let mut rest = text;
+                while let ::core::option::Option::Some(at) = rest.find(draft_name) {
+                    let end = at + draft_name.len();
+                    relabelled.push_str(&rest[..at]);
+                    let whole = !relabelled.chars().next_back().is_some_and(is_word)
+                        && !rest[end..].chars().next().is_some_and(is_word);
+                    relabelled.push_str(if whole { declared_name } else { draft_name });
+                    rest = &rest[end..];
+                }
+                relabelled.push_str(rest);
+            (relabelled != text).then_some(relabelled)
         }
     }
 }
@@ -1120,7 +1135,7 @@ pub fn named_as_declared(attrs: &mut Vec<Attribute>, declared_name: &Ident) {
 }
 
 /// Whether a `#[serde(...)]` of `attrs` names the container under a key of its own.
-fn renames_the_container(attrs: &[Attribute]) -> bool {
+pub fn renames_the_container(attrs: &[Attribute]) -> bool {
     attrs
         .iter()
         .filter(|attr| attr.path().is_ident("serde"))

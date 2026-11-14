@@ -22,18 +22,6 @@ use quote::quote;
 ))]
 pub const REPEATED_ITEM: &str = "repeats an item: a set holds each item once";
 
-/// Every stem a violated bound's sentence can begin with. A refusal that reaches a reader as text
-/// is this crate's own only if it opens with one of these.
-#[cfg(feature = "serde")]
-pub const VIOLATION_STEMS: [&str; 6] = [
-    "does not match pattern '",
-    "not the literal ",
-    "too large: maximum is ",
-    "too long: maximum length is ",
-    "too short: minimum length is ",
-    "too small: minimum is ",
-];
-
 /// A bound a declaration can carry, at the one value it was written with. `MaxItems` and
 /// `MinItems` are `maxLength` and `minLength` written on a list, whose items they count, `Literal`
 /// is the one value a `literal` admits, and `Maximum` and `Minimum` hold what
@@ -93,9 +81,7 @@ impl Bound<'_> {
         }
     }
 
-    /// The words this bound opens with, before the value it was written at. Spelled here rather
-    /// than inside [`Self::stated`] so that [`VIOLATION_STEMS`] and the sentence itself cannot
-    /// drift: a reader tells one of these sentences from a deserializer's own by that list alone.
+    /// The words this bound opens with, before the value it was written at.
     const fn stem(self) -> &'static str {
         match self {
             Self::Literal(_) => "not the literal ",

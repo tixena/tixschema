@@ -102,8 +102,12 @@ Dart" section is the consumer's view; this is what a change has to keep.
   `if (x case final held?)`), each level of a list and of a set (`item_elements`, the index a
   step of the place), a map's values (the key's text from `dart_map_key_text`), a tuple's
   positions (`slot_elements`) and a declared type, whose `validate()` is called with no knowledge
-  of what it declares. A type parameter is not reached. A binder is named by its depth
-  (`binder`): `held`, `index` and `entry`, then `held1`.
+  of what it declares. A value behind one of the type's own parameters is handed to the check of
+  it, `issuesOf{Parameter}`, which `validationIssuesWith` takes (`walked_parameters`); a generic
+  type at a filling is asked `validationIssuesWith`, handed the check of each argument
+  (`argument_check`), and read with the converter of each argument's unjudged read
+  (`argument_converters`). A binder is named by its depth (`binder`): `held`, `index` and
+  `entry`, then `held1`.
 - **A place is the steps serde writes on the way to the value** (`Step`): a key, a position in an
   array, or nothing. `tagged_variant_steps` answers a variant's: the content key, nothing beside a
   tag, and otherwise the name the variant is written under. A tuple struct that declares one slot,

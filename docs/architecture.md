@@ -267,6 +267,8 @@ tixschema/
 │   ├── model_schema/
 │   │   ├── checks.rs             # check: the calls validate() makes, the alias refusal
 │   │   ├── judged_read.rs        # The Deserialize of a draft that publishes validate() or names a preprocess, and the unjudged read a holder calls
+│   │   ├── judged_read/readers.rs # model_schema_read_unjudged_by{n}: a type's unjudged read with a reader per type parameter, which a holder hands in
+│   │   ├── parameter_walk.rs     # model_schema_issues_with{n}: the check per type parameter a holder hands in, and the refusal of an alias that rearranges a model's parameters
 │   │   ├── valid_type.rs         # The valid type: the draft's ident, the hidden wrapper module and its alias, validate(), the valid type's reads and write
 │   │   ├── preprocess.rs         # preprocess: what an item names, the calls of a read, the refusals
 │   │   └── ranges.rs             # The identity check of a std range or a std Result written by its bare name; a flattened one, and one as a map key where no surface runs, refused; a map flattened beside another member refused, and one keyed by a number below a flattened member or in an enum serde buffers; serde_json's Value and Map refused by their full path and checked by their bare name

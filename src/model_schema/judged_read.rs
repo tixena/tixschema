@@ -12,6 +12,9 @@
 //! each function is called on the payload inside the unjudged read, ahead of what it corrects.
 
 #[cfg(feature = "serde")]
+mod readers;
+
+#[cfg(feature = "serde")]
 use core::cell::RefCell;
 use core::mem;
 use core::slice;
@@ -25,16 +28,13 @@ use syn::{Attribute, DeriveInput, Field, Fields, ItemEnum, ItemStruct, LitStr, T
 use super::preprocess::{self, Named};
 #[cfg(feature = "serde")]
 use super::{
-    ConstraintLeaf, ConstraintWrap, HeldEnd, constrained_shape, helper_name_stem,
-    joined_violations_fn, list_hook_header, map_value_argument, needs_injected_default,
-    nested_under_fn, reads_through, reports_a_bound_fn,
+    ConstraintLeaf, ConstraintWrap, HeldEnd, constrained_shape, helper_name_stem, list_hook_header,
+    map_value_argument, needs_injected_default, reads_through,
 };
 use super::{
     prefixed_guard_message, refusal_from_violations, sole_type_argument, wrapped_argument,
 };
 use crate::features::model_schema_prop::FunctionName;
-#[cfg(feature = "serde")]
-use crate::features::serde::NAMED_READ_HOOK_PREFIX;
 #[cfg(feature = "serde")]
 use crate::features::serde::has_serde_read_hook;
 #[cfg(feature = "serde")]
@@ -109,6 +109,14 @@ enum Judged {
 /// attributes that hang each on its member of the copy.
 #[derive(Default)]
 struct Hooked {
+    /// The number of type arguments of each generic model a hook reads through readers.
+    #[cfg(feature = "serde")]
+    arities: Vec<usize>,
+    /// Whether a hook holds a brand to its own bound as it is read.
+    #[cfg(feature = "serde")]
+    choosing: bool,
+    /// What answers the reads the hooks write for a type that has none of its own.
+    fallbacks: TokenStream,
     functions: TokenStream,
     hung: Vec<HungOn>,
 }
@@ -166,8 +174,6 @@ struct MemberHook {
     name: String,
     /// The member's type with each leaf's `held_as` written where it writes that model.
     read_as: String,
-    /// The key a refusal raised below is answered under, where it is answered under one.
-    renamed_under: Option<String>,
     ty: String,
     variant: Option<String>,
 }
@@ -181,9 +187,6 @@ pub(super) struct HookPlace<'item> {
     /// Whether the container answers a missing key itself, with `#[serde(default)]`.
     pub container_defaulted: bool,
     pub index: usize,
-    /// The key a refusal raised below the member is answered under, where it is answered under
-    /// one.
-    pub renamed_under: Option<&'item str>,
     pub variant: Option<&'item str>,
     /// Whether serde reads the member under a key of its own, so that a missing one has a meaning.
     pub written_under_a_key: bool,
@@ -324,6 +327,7 @@ impl MemberHook {
         reader: &Ident,
         corrects: &Corrects,
         scope: &HookScope,
+        arities: &mut Vec<usize>,
     ) -> Option<TokenStream> {
         let name = corrects.hook_name(&self.name);
         let cfgs = self.cfgs.parse::<TokenStream>().unwrap_or_default();
@@ -335,13 +339,10 @@ impl MemberHook {
             read_as,
             ty,
         } = scope.written(self)?;
-        let renamed = self.renamed_under.as_deref().map(|key| {
-            let renaming = named_refusal(key);
-            quote! { .map_err(#renaming) }
-        });
+        let taken = written_names(quote! { #ty #read_as });
         let held: TokenStream = leaves
             .iter()
-            .map(|written| self.held_type(written, unjudged, reader))
+            .map(|written| self.held_type(written, unjudged, reader, &taken, arities))
             .collect();
         let functions = corrects
             .named
@@ -355,7 +356,7 @@ impl MemberHook {
                     #(#predicates,)*
                 {
                     #held
-                    let held_0 = <#read_as as serde::Deserialize>::deserialize(deserializer) #renamed ?;
+                    let held_0 = <#read_as as serde::Deserialize>::deserialize(deserializer)?;
                     ::core::result::Result::Ok(#back)
                 }
             });
@@ -372,22 +373,46 @@ impl MemberHook {
             {
                 #held
                 #correction
-                let held_0 = <#read_as as serde::Deserialize>::deserialize(#corrected) #told #renamed ?;
+                let held_0 = <#read_as as serde::Deserialize>::deserialize(#corrected) #told ?;
                 ::core::result::Result::Ok(#back)
             }
         })
     }
 
-    /// What answers `leaf`, the model the member holds, as `held_as`: its `unjudged` read, held
-    /// to the bound a brand carries where the member chooses a variant.
-    fn held_leaf(&self, leaf: &TokenStream, held_as: &Ident, unjudged: &Ident) -> TokenStream {
+    /// What answers the model the member holds, as `written.held_as`: its `unjudged` read, or the
+    /// read of a generic model handed a reader of each type argument, held to the bound a brand
+    /// carries where the member chooses a variant.
+    fn held_leaf(
+        &self,
+        written: &LeafWritten,
+        unjudged: &Ident,
+        reader: &Ident,
+        taken: &[String],
+        arities: &mut Vec<usize>,
+    ) -> TokenStream {
+        let (leaf, held_as) = (&written.leaf, &written.held_as);
+        let read = readers::hooked_by_readers(
+            leaf,
+            &written.leaf_parameters,
+            &written.leaf_predicates,
+            &written.leaf_bounds,
+            reader,
+            taken,
+        )
+        .map_or_else(
+            || quote! { <#leaf>::#unjudged(deserializer) },
+            |(read, handed)| {
+                arities.extend(handed);
+                quote! { (#read) }
+            },
+        );
         if !self.choosing {
-            return quote! { <#leaf>::#unjudged(deserializer).map(#held_as) };
+            return quote! { #read.map(#held_as) };
         }
         let bound_alone = Ident::new(BOUND_ALONE, Span::call_site());
         let refusal = refusal_from_violations();
         quote! {
-            let held = <#leaf>::#unjudged(deserializer)?;
+            let held = #read?;
             let chosen = &held;
             chosen.#bound_alone().map_err(#refusal)?;
             ::core::result::Result::Ok(#held_as(held))
@@ -395,8 +420,15 @@ impl MemberHook {
     }
 
     /// The type a model the member holds is read as, and its `Deserialize`.
-    fn held_type(&self, written: &LeafWritten, unjudged: &Ident, reader: &Ident) -> TokenStream {
-        let held_leaf = self.held_leaf(&written.leaf, &written.held_as, unjudged);
+    fn held_type(
+        &self,
+        written: &LeafWritten,
+        unjudged: &Ident,
+        reader: &Ident,
+        taken: &[String],
+        arities: &mut Vec<usize>,
+    ) -> TokenStream {
+        let held_leaf = self.held_leaf(written, unjudged, reader, taken, arities);
         held_type(written, &held_leaf, reader)
     }
 }
@@ -966,7 +998,7 @@ fn walked_path(
     let held = held_binding(depth);
     let Some((walked, rest)) = wraps.split_first() else {
         return match end {
-            HeldEnd::Declared => {
+            HeldEnd::Declared(_) | HeldEnd::Parameter(_) => {
                 if let syn::PathArguments::AngleBracketed(arguments) = &last.arguments
                     && (wrapped_by(named, arguments).is_some()
                         || written_std_result(named).is_some()
@@ -1245,32 +1277,6 @@ fn range_built_back(
     }
 }
 
-/// What answers a refusal raised below the member with the key `named` written in front of each
-/// of this crate's own bound sentences it carries.
-#[cfg(feature = "serde")]
-pub fn named_refusal(named: &str) -> TokenStream {
-    let naming = nested_under_fn();
-    let recogniser = reports_a_bound_fn();
-    let splitter = joined_violations_fn();
-    quote! {
-        |refused| {
-            #naming
-            #recogniser
-            #splitter
-            let reported = refused.to_string();
-            let violations = joined_violations(&reported);
-            if !violations.iter().all(|violation| reports_a_bound(violation)) {
-                return refused;
-            }
-            let named: ::std::vec::Vec<::std::string::String> = violations
-                .iter()
-                .map(|violation| nested_under(#named, violation))
-                .collect();
-            serde::de::Error::custom(named.join("; "))
-        }
-    }
-}
-
 /// The hook a member reads the models it holds unjudged through, recorded for the read of the
 /// item being expanded: the member's type is read with each model `validate()` walks to read
 /// through its unjudged read. `shape` is the walk `validate()` makes of
@@ -1327,7 +1333,6 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
                 .collect(),
             name,
             read_as: read.read_as.to_token_stream().to_string(),
-            renamed_under: place.renamed_under.map(str::to_owned),
             ty: field.ty.to_token_stream().to_string(),
             variant: place.variant.map(str::to_owned),
         });
@@ -1594,6 +1599,7 @@ fn unjudged_hooks(
     reader: &Ident,
     written: &[String],
     corrects: &Corrects,
+    left_out: &dyn Fn(Option<&str>, usize) -> bool,
 ) -> Hooked {
     MEMBER_HOOKS.with(|held| {
         let hooks = held.borrow();
@@ -1601,24 +1607,26 @@ fn unjudged_hooks(
             return Hooked::default();
         }
         let scope = HookScope::of(input, bounds);
+        let mut arities = Vec::new();
         let functions: Vec<(&MemberHook, TokenStream)> = hooks
             .iter()
+            .filter(|hook| !left_out(hook.variant.as_deref(), hook.index))
             .filter_map(|hook| {
-                hook.function(unjudged, reader, corrects, &scope)
+                hook.function(unjudged, reader, corrects, &scope, &mut arities)
                     .map(|function| (hook, function))
             })
             .collect();
         if functions.is_empty() {
             return Hooked::default();
         }
-        let fallback = held_fallback(&unclaimed_parameter(FALLBACK, written), unjudged);
-        let chosen = functions
-            .iter()
-            .any(|(hook, _)| hook.choosing)
-            .then(|| chosen_by_shape(&unclaimed_parameter(CHOSEN_BY_SHAPE, written)));
+        let choosing = functions.iter().any(|(hook, _)| hook.choosing);
+        let fallbacks = hook_fallbacks(written, Some(unjudged), choosing, &arities);
         let written_functions = functions.iter().map(|(_, function)| function);
         Hooked {
-            functions: quote! { #fallback #chosen #(#written_functions)* },
+            arities,
+            choosing,
+            fallbacks,
+            functions: quote! { #(#written_functions)* },
             hung: functions
                 .iter()
                 .map(|(hook, _)| HungOn {
@@ -1632,6 +1640,23 @@ fn unjudged_hooks(
     })
 }
 
+/// What answers the reads the hooks of an item's read write, where the type they read has none of
+/// its own: its unjudged read, where they call `unjudged`, the bound of a brand where a hook is
+/// `choosing`, and the read of a generic model by readers, for each of `arities`.
+#[cfg(feature = "serde")]
+fn hook_fallbacks(
+    written: &[String],
+    unjudged: Option<&Ident>,
+    choosing: bool,
+    arities: &[usize],
+) -> TokenStream {
+    let fallback =
+        unjudged.map(|read| held_fallback(&unclaimed_parameter(FALLBACK, written), read));
+    let chosen = choosing.then(|| chosen_by_shape(&unclaimed_parameter(CHOSEN_BY_SHAPE, written)));
+    let by_readers = readers::reader_fallbacks(arities);
+    quote! { #fallback #chosen #by_readers }
+}
+
 /// No hook is recorded in a build that reads no serde attribute: a model below judges itself.
 #[cfg(not(feature = "serde"))]
 fn unjudged_hooks(
@@ -1641,6 +1666,7 @@ fn unjudged_hooks(
     _reader: &Ident,
     _written: &[String],
     _corrects: &Corrects,
+    _left_out: &dyn Fn(Option<&str>, usize) -> bool,
 ) -> Hooked {
     Hooked::default()
 }
@@ -1706,13 +1732,8 @@ fn reads_a_missing_key(field: &Field) -> bool {
 fn counted_list_header(
     field: &Field,
     key: &str,
-    path: &str,
 ) -> Option<(TokenStream, TokenStream, TokenStream)> {
-    let renames = path
-        .rsplit("::")
-        .next()
-        .is_some_and(|last| last.starts_with(NAMED_READ_HOOK_PREFIX));
-    if key != "deserialize_with" || renames {
+    if key != "deserialize_with" {
         return None;
     }
     let shape = constrained_shape(&field.ty)?;
@@ -1738,7 +1759,6 @@ fn counted_list_header(
 const fn counted_list_header(
     _field: &Field,
     _key: &str,
-    _path: &str,
 ) -> Option<(TokenStream, TokenStream, TokenStream)> {
     None
 }
@@ -1781,23 +1801,22 @@ fn corrected_hook(
             }
         },
     );
-    let (parameters, read, held_to) = counted_list_header(field, key, &path.value())
-        .unwrap_or_else(|| {
-            let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
-            written_lifetimes(&field.ty, &mut lifetimes);
-            let mut declared: Vec<syn::Lifetime> = Vec::new();
-            for lifetime in lifetimes {
-                if lifetime.ident != "static" && !declared.contains(&lifetime) {
-                    declared.push(lifetime);
-                }
+    let (parameters, read, held_to) = counted_list_header(field, key).unwrap_or_else(|| {
+        let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
+        written_lifetimes(&field.ty, &mut lifetimes);
+        let mut declared: Vec<syn::Lifetime> = Vec::new();
+        for lifetime in lifetimes {
+            if lifetime.ident != "static" && !declared.contains(&lifetime) {
+                declared.push(lifetime);
             }
-            let ty = &field.ty;
-            (
-                quote! { #(#declared,)* },
-                quote! { #ty },
-                TokenStream::new(),
-            )
-        });
+        }
+        let ty = &field.ty;
+        (
+            quote! { #(#declared,)* },
+            quote! { #ty },
+            TokenStream::new(),
+        )
+    });
     quote! {
         fn #named<'de, #reader, #parameters>(#deserializer: #reader) -> ::core::result::Result<#read, #reader::Error>
         where
@@ -1820,8 +1839,9 @@ fn hooked(
     reader: &Ident,
     written: &[String],
     corrects: &Corrects,
+    left_out: &dyn Fn(Option<&str>, usize) -> bool,
 ) -> Hooked {
-    let mut hooked = unjudged_hooks(input, bounds, unjudged, reader, written, corrects);
+    let mut hooked = unjudged_hooks(input, bounds, unjudged, reader, written, corrects, left_out);
     let container_defaulted = derive_reads_a_default(&input.attrs);
     for (variant, index, field) in members_of(input) {
         let functions = corrects.named.of_member(variant.as_deref(), index);
@@ -1885,7 +1905,17 @@ fn unjudged_read(
     let written = written_names(input.to_token_stream());
     let reader = unclaimed_parameter("D", &written);
     let corrects = Corrects::of(&written);
-    let Hooked { functions, hung } = hooked(input, &bounds, unjudged, &reader, &written, &corrects);
+    let hooks = hooked(
+        input,
+        &bounds,
+        unjudged,
+        &reader,
+        &written,
+        &corrects,
+        &|_, _| false,
+    );
+    let (fallbacks, hook_functions, hung) = (hooks.fallbacks, hooks.functions, hooks.hung);
+    let functions = quote! { #fallbacks #hook_functions };
     let remote_name = unclaimed_parameter(REMOTE, &written);
     let remote = remote_definition(input, &remote_name, &hung, &bounds, derive);
     let (_, type_generics, _) = input.generics.split_for_impl();
@@ -2139,14 +2169,51 @@ fn judged(input: &DeriveInput, publishes_validate: bool, valid: Option<&Ident>) 
 /// What a struct's read gains where it derives `Deserialize` and publishes `validate()` or names
 /// a `preprocess`, taking the struct's own `Deserialize` off it. Nothing for any other struct.
 pub fn of_struct(item: &mut ItemStruct, publishes_validate: bool) -> TokenStream {
-    match judged(&DeriveInput::from(item.clone()), publishes_validate, None) {
+    let input = DeriveInput::from(item.clone());
+    match judged(&input, publishes_validate, None) {
         Some(Judged::Written(read, _)) => {
             leave_the_read_to_the_macro(&mut item.attrs, item.fields.iter_mut());
-            read
+            let by = held_whole(&input, true);
+            quote! { #read #by }
         }
         Some(Judged::Refused(refusal)) => refusal,
-        None => TokenStream::new(),
+        None => held_whole(&input, false),
     }
+}
+
+/// The read of a brand, `input`, with a reader handed in for each of its type parameters: the
+/// reader of the parameter its slot is, where it is one, which the brand's
+/// `model_schema_issues_with{n}` hands to the check of it, and its own unjudged read otherwise,
+/// `own_read` where the macro writes one. A brand of neither has none: what a holder calls of it
+/// answers with the brand's own `Deserialize`.
+#[cfg(feature = "serde")]
+fn held_whole(input: &DeriveInput, own_read: bool) -> TokenStream {
+    let walks = holds_a_parameter(input);
+    if !(walks || own_read) {
+        return TokenStream::new();
+    }
+    readers::by_readers(input, None, own_read, walks).0
+}
+
+/// No read is handed a reader in a build that reads no serde attribute.
+#[cfg(not(feature = "serde"))]
+fn held_whole(_input: &DeriveInput, _own_read: bool) -> TokenStream {
+    TokenStream::new()
+}
+
+/// Whether a member of `input`, a brand, is one of its type parameters, written alone.
+#[cfg(feature = "serde")]
+fn holds_a_parameter(input: &DeriveInput) -> bool {
+    let parameters: Vec<String> = input
+        .generics
+        .type_params()
+        .map(|declared| declared.ident.to_string())
+        .collect();
+    members_of(input).iter().any(|(_, _, field)| {
+        matches!(written_type(&field.ty), syn::Type::Path(path)
+            if path.qself.is_none()
+                && path.path.get_ident().is_some_and(|only| parameters.contains(&only.to_string())))
+    })
 }
 
 /// [`of_struct`] for the draft `item` of the valid type `valid`.
@@ -2156,10 +2223,11 @@ pub fn drafted_struct(item: &mut ItemStruct, publishes_validate: bool, valid: &I
     match judged(&input, publishes_validate, wrapping) {
         Some(Judged::Written(draft, wrapper)) => {
             leave_the_read_to_the_macro(&mut item.attrs, item.fields.iter_mut());
+            let (by_draft, by_valid) = read_by(&input, wrapping, true);
             Drafted {
-                draft,
+                draft: quote! { #draft #by_draft },
                 refused: false,
-                valid: wrapper,
+                valid: quote! { #wrapper #by_valid },
             }
         }
         Some(Judged::Refused(refusal)) => Drafted {
@@ -2167,12 +2235,36 @@ pub fn drafted_struct(item: &mut ItemStruct, publishes_validate: bool, valid: &I
             refused: true,
             valid: TokenStream::new(),
         },
-        None => Drafted {
-            draft: TokenStream::new(),
-            refused: false,
-            valid: TokenStream::new(),
-        },
+        None => {
+            let (by_draft, by_valid) = read_by(&input, wrapping, false);
+            Drafted {
+                draft: by_draft,
+                refused: false,
+                valid: by_valid,
+            }
+        }
     }
+}
+
+/// The read of `input` with a reader handed in for each of its type parameters, and that of its
+/// valid type `valid`, where it has one. `own_read` says the macro writes the item's unjudged read.
+#[cfg(feature = "serde")]
+fn read_by(
+    input: &DeriveInput,
+    valid: Option<&Ident>,
+    own_read: bool,
+) -> (TokenStream, TokenStream) {
+    readers::by_readers(input, valid, own_read, true)
+}
+
+/// No read is handed a reader in a build that reads no serde attribute.
+#[cfg(not(feature = "serde"))]
+fn read_by(
+    _input: &DeriveInput,
+    _valid: Option<&Ident>,
+    _own_read: bool,
+) -> (TokenStream, TokenStream) {
+    (TokenStream::new(), TokenStream::new())
 }
 
 /// [`drafted_struct`] for an enum.
@@ -2192,10 +2284,11 @@ pub fn drafted_enum(item: &mut ItemEnum, publishes_validate: bool, valid: &Ident
                     .iter_mut()
                     .flat_map(|variant| variant.fields.iter_mut()),
             );
+            let (by_draft, by_valid) = read_by(&input, wrapping, true);
             Drafted {
-                draft,
+                draft: quote! { #draft #by_draft },
                 refused: false,
-                valid: wrapper,
+                valid: quote! { #wrapper #by_valid },
             }
         }
         Some(Judged::Refused(refusal)) => Drafted {
@@ -2203,11 +2296,14 @@ pub fn drafted_enum(item: &mut ItemEnum, publishes_validate: bool, valid: &Ident
             refused: true,
             valid: TokenStream::new(),
         },
-        None => Drafted {
-            draft: TokenStream::new(),
-            refused: false,
-            valid: TokenStream::new(),
-        },
+        None => {
+            let (by_draft, by_valid) = read_by(&input, wrapping, false);
+            Drafted {
+                draft: by_draft,
+                refused: false,
+                valid: by_valid,
+            }
+        }
     }
 }
 

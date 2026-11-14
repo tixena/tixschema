@@ -3079,9 +3079,9 @@ fn struct_rules<'item>(
     serializable: &'item [String],
     fields: &[KotlinField],
     args: &KotlinArgs<'_>,
-    (export_name, generic_params): (&str, &str),
+    (export_name, generic_params, type_parameters): (&str, &str, &[String]),
 ) -> (Rules<'item>, String) {
-    let mut rules = Rules::handing(serializable);
+    let mut rules = Rules::handing(serializable).walking(type_parameters);
     named_member_rules(&mut rules, fields, None);
     rules.own(args.check);
     let validated = valid::body(&mut rules, export_name, generic_params);
@@ -3188,7 +3188,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         &serializable,
         &fields,
         args,
-        (&export_name, &generic_params),
+        (&export_name, &generic_params, &type_parameters),
     );
     validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let names = (&*export_name, &*generic_params, &*type_parameters);
@@ -3201,7 +3201,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
             (
                 &format!(
                     "{forwards}{}",
-                    valid::forwarded_issues(&rules.handed_keys())
+                    valid::forwarded_issues(&rules.handed_keys(), &type_parameters)
                 ),
                 composed,
             ),
@@ -3320,16 +3320,16 @@ fn value_class_tokens(
     let value_type = read::with_text_forms(&value_field);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
     let serializable = serialized_parameters(&item_struct.generics);
-    let mut rules = Rules::handing(&serializable);
-    rules.brand(
-        &Member {
-            def: &value_field,
-            place: None,
-            read: "value".to_owned(),
-        },
-        declared_default(&value_field, args).as_ref(),
-    );
+    let mut rules =
+        Rules::handing(&serializable).walking(&type_parameters_in_scope(&item_struct.generics));
+    let value = Member {
+        def: &value_field,
+        place: None,
+        read: "value".to_owned(),
+    };
+    rules.brand(&value, declared_default(&value_field, args).as_ref());
     rules.own(args.check);
+    rules.handed_on(&value);
     let text = rules.text_member(&value_field);
     let length = rules.length_member(&value_field);
     let bare = if let FieldDefType::TypeParam(parameter) = &value_field.field_type
@@ -3445,7 +3445,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
     let (params, forwards) = tuple_members(&slots);
     let payload = preprocess::corrected(args.preprocess, "input.decodeJsonElement()");
     let serializable = serialized_parameters(&item_struct.generics);
-    let mut rules = Rules::handing(&serializable);
+    let mut rules = Rules::handing(&serializable).walking(&type_parameters);
     let lone_slot = slots.first().filter(|_| lone);
     if let Some(only) = lone_slot {
         note_bare_named(&rust_ident, only);
@@ -3481,7 +3481,10 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         (&export_name, &draft, &generic_params),
         &type_parameters,
         (
-            &format!("{forwards}{}", valid::forwarded_issues(&keyed)),
+            &format!(
+                "{forwards}{}",
+                valid::forwarded_issues(&keyed, &type_parameters)
+            ),
             true,
         ),
         &tuple_of_function(
@@ -3737,7 +3740,9 @@ fn variant_body(
     wire_tag: &str,
     ctx: &DispatchedTaggedContext<'_>,
 ) -> String {
-    let mut rules = Rules::of(ctx.serializable).handed(ctx.keyed);
+    let mut rules = Rules::of(ctx.serializable)
+        .handed(ctx.keyed)
+        .walking_variant(ctx.type_parameters, matches!(payload, VariantPayload::Unit));
     variant_rules(&mut rules, payload, ctx.tagging, wire_tag, ctx.args);
     format!("{{ {} }}", rules.issues("override "))
 }
@@ -4346,6 +4351,19 @@ fn enum_constants(item_enum: &ItemEnum, export_name: &str, args: &KotlinArgs<'_>
         })
 }
 
+/// The rules of a variant of an untagged enum that declares `type_parameters`, which its bounds
+/// choose.
+fn chosen_rules<'item>(
+    serializable: &'item [String],
+    keyed: &[String],
+    type_parameters: &[String],
+    payload: &VariantPayload,
+) -> Rules<'item> {
+    Rules::choosing(serializable)
+        .handed(keyed)
+        .walking_variant(type_parameters, matches!(payload, VariantPayload::Unit))
+}
+
 /// The Kotlin tokens a `#[serde(untagged)]` enum earns: a plain `sealed interface`, the unjudged
 /// `KSerializer` that tries each variant's own serializer in turn and takes the first that decodes
 /// and whose bounds hold, as serde's read of the enum does, and the enum's own, which judges.
@@ -4373,11 +4391,9 @@ fn untagged_enum_kotlin_source(
     let mut serialize_arms = Vec::new();
     let mut deserialize_chain = String::from("runCatching { error(\"unreachable\") as Nothing }");
     for variant in &item_enum.variants {
-        let variant_rust_name = variant.ident.to_string();
-        let subclass_name = format!("{export_name}{variant_rust_name}");
+        let subclass_name = format!("{export_name}{}", variant.ident);
         let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
-        let bare_value = matches!(payload, VariantPayload::Value(_));
-        let mut rules = Rules::choosing(&serializable).handed(&keyed);
+        let mut rules = chosen_rules(&serializable, &keyed, &type_parameters, &payload);
         variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);
         // A check and what a held model reports choose no variant: the enum's own read judges.
         let held_to_its_bounds = if rules.bounded() {
@@ -4399,7 +4415,7 @@ fn untagged_enum_kotlin_source(
                 &generic_params,
                 &nothing_generic_args,
                 None,
-                bare_value,
+                matches!(payload, VariantPayload::Value(_)),
                 &payload,
             );
             let serializer = variant_serializer(&plugin, &generic_params, &payload, None);
@@ -4425,8 +4441,7 @@ fn untagged_enum_kotlin_source(
         );
     }
 
-    let rule_less = is_rule_less();
-    let base = enum_base(item_enum, export_name, &draft, rule_less);
+    let base = enum_base(item_enum, export_name, &draft, is_rule_less());
     let serializer_head = read::written_head(&draft, &type_parameters);
     let serializer_object = format!(
         "{serializer_head} : KSerializer<{draft}{generic_params}> {{ \
@@ -4465,16 +4480,25 @@ fn untagged_enum_kotlin_source(
 fn enum_base(item_enum: &ItemEnum, export_name: &str, draft: &str, rule_less: bool) -> String {
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let out_params = kotlin_out_generic_params(&item_enum.generics);
+    let parameters = type_parameters_in_scope(&item_enum.generics);
+    let with = if parameters.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "fun validationIssuesWith({}): List<String>; ",
+            validate::checks_declared(&parameters)
+        )
+    };
     if valid::drafted() {
         format!(
             "@Serializable(with = {draft}Unjudged::class) sealed interface {draft}{out_params} \
-             {{ fun validationIssues(): List<String>; {} }}",
+             {{ fun validationIssues(): List<String>; {with}{} }}",
             valid::validate_method(export_name, &generic_params, rule_less)
         )
     } else {
         format!(
             "@Serializable(with = {draft}Serializer::class) sealed interface {draft}{out_params} \
-             {{ fun validate(): List<String>; fun validationIssues(): List<String> }}"
+             {{ fun validate(): List<String>; fun validationIssues(): List<String>; {with}}}"
         )
     }
 }
@@ -4511,12 +4535,17 @@ fn enum_valid_class(
             &generic_params,
         ),
         &type_parameters,
-        (&valid::enum_forwarded_issues(), true),
+        (&valid::enum_forwarded_issues(&type_parameters), true),
         statics,
     );
     format!(
         "{pair}{}",
-        valid::keyed_extension(export_name, &generic_params, keyed, taking)
+        valid::keyed_extension(
+            export_name,
+            &generic_params,
+            (keyed, taking),
+            &type_parameters
+        )
     )
 }
 
@@ -4587,7 +4616,7 @@ fn plain_enum_kotlin_source(
                 &draft,
                 ("", ""),
                 &[],
-                (&valid::enum_forwarded_issues(), false),
+                (&valid::enum_forwarded_issues(&[]), false),
                 &statics
             ),
             read::judged_valid(export_name, "", &[], false, (&[], &[]))

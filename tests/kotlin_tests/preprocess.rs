@@ -10,12 +10,11 @@ use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
 use super::read::DECODED;
 use super::read::plain_enum;
-use super::read::{
-    NO_ISSUES, judged_valid_over, kept_draft, to_valid, to_valid_free, valid_class_over,
-    valid_unjudged_over,
-};
 #[cfg(feature = "serde")]
-use super::read::{judged_valid, valid_class, valid_unjudged, with_of};
+use super::read::{judged_valid, valid_class, valid_unjudged, walked_issues, with_of};
+use super::read::{
+    judged_valid_over, kept_draft, to_valid, to_valid_free, valid_class_over, valid_unjudged_over,
+};
 
 /// The parcel of the documents' sample, under a name of this file's own.
 #[model_schema(preprocess = ["withoutFragile"])]
@@ -202,11 +201,17 @@ fn a_type_with_a_parameter_corrects_the_whole_payload_and_then_the_member() {
     assert_eq!(
         hamper_kotlin::kotlin_definition(),
         format!(
-            "{} data class HamperDraft<CodeType>(val codes: List<CodeType>) {{ {NO_ISSUES} {} }} \
+            "{} data class HamperDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
              @OptIn(ExperimentalSerializationApi::class) class \
              HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<HamperDraft<CodeType>> {} {} {} {}",
             kept_draft("Hamper"),
+            walked_issues(
+                "CodeType",
+                "codes.forEachIndexed { index, held -> \
+                 violations.addAll(issuesOfCodeType(held).map { \
+                 kotlinSchemaUnder(\"codes.$index\", it) }) }"
+            ),
             to_valid_free("Hamper", "<CodeType>"),
             transform(
                 "HamperDraft<CodeType>",

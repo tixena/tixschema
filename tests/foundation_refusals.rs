@@ -12,7 +12,9 @@
 //! const parameter to a written type and a string check on a `#[serde(transparent)]` struct,
 //! which is no brand without the `serde` feature, a path placeholder that names no member a
 //! declared message reads under a key of its own, an enum message among them, or binds a member of
-//! a message no `#[model_schema]` wrote, and two services that share a prompt name.
+//! a message no `#[model_schema]` wrote, two services that share a prompt name, and a member
+//! written with an alias that rearranges the parameters of the generic model it names, recorded
+//! above the holder or not.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
 //! and the name of each error, which rustc reports differently from one release to the next.

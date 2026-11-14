@@ -1,0 +1,5 @@
+error: model_schema: field `pages`: `PagesOf<Parcel>` is the alias `type PagesOf<Item> = Page<Page<Item>>`, which rearranges the parameters of the generic model it names, and a holder hands a generic model what fills each of its own parameters. Write `Page<Page<Parcel>>` in place of `PagesOf<Parcel>`.
+  --> tests/foundation_refusals/rearranging_alias_recorded.rs:35:16
+   |
+35 |     pub pages: PagesOf<Parcel>,
+   |                ^^^^^^^^^^^^^^^

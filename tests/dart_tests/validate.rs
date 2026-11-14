@@ -746,9 +746,11 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     let filled = crate_dart::dart_definition();
     assert!(
         filled.contains(
-            "List<String> validationIssues() => [ if (label.runes.length < 1) \"'label': too \
-             short: minimum length is 1, got ${label.runes.length}\", ...withACode(this), ]; \
-             Crate<CodeType> validate()"
+            "List<String> validationIssuesWith(List<String> Function(CodeType) issuesOfCodeType) \
+             => [ for (final (index, held) in codes.indexed) for (final violation in \
+             issuesOfCodeType(held)) _under('codes.$index', violation), if (label.runes.length < \
+             1) \"'label': too short: minimum length is 1, got ${label.runes.length}\", \
+             ...withACode(this), ];"
         ),
         "got: {filled}"
     );

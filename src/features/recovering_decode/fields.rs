@@ -380,12 +380,7 @@ impl<'item> Emitter<'item> {
     /// `Option` of one, and for one serde writes as one value, which has no key to put there.
     fn flattened(&self, field: &Field, under: &str, read: bool) -> Option<Member> {
         let hooks = parse_serde_field_hooks(&field.attrs);
-        let hooked = hooked_leaf(
-            &field.ty,
-            &hooks,
-            &self.own.module_name,
-            &self.own.type_parameters,
-        );
+        let hooked = hooked_leaf(&field.ty, &hooks, &self.own.type_parameters);
         if !read || hooked.is_some() {
             return None;
         }
@@ -697,12 +692,7 @@ impl<'item> Emitter<'item> {
     /// one, and by its type where it has none. `read` says serde reads the value back.
     fn member(&mut self, field: &Field, place: &Place, stem: &str, read: bool) -> Option<Member> {
         let hooks = parse_serde_field_hooks(&field.attrs);
-        let hooked = hooked_leaf(
-            &field.ty,
-            &hooks,
-            &self.own.module_name,
-            &self.own.type_parameters,
-        );
+        let hooked = hooked_leaf(&field.ty, &hooks, &self.own.type_parameters);
         if let Some(Step::Leaf(whole)) = &hooked
             && let Some(write) = &whole.write
         {
@@ -734,7 +724,6 @@ impl<'item> Emitter<'item> {
             own: Own {
                 generics,
                 module: Ident::new(&module_name, Span::call_site()),
-                module_name,
                 name,
                 parameters: named(|parameter| match parameter {
                     GenericParam::Const(constant) => Some(&constant.ident),
@@ -888,7 +877,6 @@ impl OfVariant<'_> {
 struct Own<'item> {
     generics: &'item Generics,
     module: Ident,
-    module_name: String,
     name: &'item Ident,
     /// The type's own type and const parameters, by name.
     parameters: Vec<String>,

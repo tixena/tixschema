@@ -126,9 +126,20 @@ to keep.
   `dataCorrupted` at the entry's coding path with its messages joined by `; `: with `outer:
   BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose check refuses
   `mute`, `{"outer":{"mute":1}}` is refused at `outer.mute` with `mute is silent`.
-- **Any other value is read through `Decodable` and judges itself**: one behind a type parameter,
-  one in a field with a bound of its own, and the value a brand wraps, a brand's `validate()`
-  running no `validate()` of what it holds.
+- **A value behind a type parameter is handed to a check and read by a reader**, each handed in
+  by the holder that writes what fills the parameter. A generic type the emitter writes walks its
+  parameters (`validate::walking`, noted by `validate::note_with`): its draft has
+  `validationIssuesWith`, one check per parameter, and its valid type `validateWith`; its own read
+  takes one `(Decoder) throws -> Parameter` per parameter beside the one that takes none, which
+  reads through `SwiftSchemaFit` (`read::both`). A holder of the type at a filling asks
+  `validateWith`, handed the check of each argument (`validate::argument_check`), and reads it
+  with the unjudged read of each argument (`read::argument_reader`). A type written for a tuple,
+  a range or a result walks no parameter of the type that holds it (`swift_field_shape`), and a
+  type that names a function of its own, or is declared below its holder or in another crate, is
+  read through `Decodable` at its filling.
+- **Any other value is read through `Decodable` and judges itself**: one in a field with a bound
+  of its own, and the value a brand wraps, a brand's `validate()` running no `validate()` of what
+  it holds but the check of the parameter it wraps bare.
 - **A held type is handed a decoder of its own** (`Source`): `superDecoder(forKey:)` under a key,
   `superDecoder()` in a list, and the holder's decoder for a flattened member, the tuple of a
   tuple struct and a payload beside a tag.

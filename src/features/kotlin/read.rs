@@ -223,13 +223,7 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
             };
         }
         if annotated.models && reads_unjudged(name) {
-            held_site(
-                field,
-                name,
-                arguments.len(),
-                |unjudged| format!("@Serializable(with = {unjudged}::class) {written}"),
-                || written.clone(),
-            )
+            annotated_held(field, (name, arguments), &written)
         } else {
             written
         }
@@ -769,34 +763,32 @@ pub fn plugin_read(field: &FieldDef) -> (String, String) {
         && let FieldDefType::SiblingType(name, arguments) = &field.field_type
         && reads_unjudged(name)
     {
-        let annotation = held_site(
-            field,
-            name,
-            arguments.len(),
-            |unjudged| format!("@Serializable(with = {unjudged}::class) "),
-            String::new,
+        let site = |modelled: &dyn Fn(&str) -> String, unmodelled: &dyn Fn() -> String| {
+            if filled_by_the_holder(arguments) {
+                held_filled_site(field, (name, arguments), modelled, unmodelled)
+            } else {
+                held_site(field, name, arguments.len(), modelled, unmodelled)
+            }
+        };
+        let annotation = site(
+            &|unjudged| format!("@Serializable(with = {unjudged}::class) "),
+            &String::new,
         );
-        let declared = held_site(
-            field,
-            name,
-            arguments.len(),
-            |_| with_text_forms(field),
-            || {
-                if texts::declared(field) || arrays::declared(field) {
-                    annotated_typename(
-                        field,
-                        Annotated {
-                            models: false,
-                            texts: true,
-                            numbers: Numbers::Refusing,
-                            unjudged: false,
-                        },
-                    )
-                } else {
-                    kotlin_typename(field)
-                }
-            },
-        );
+        let declared = site(&|_| with_text_forms(field), &|| {
+            if texts::declared(field) || arrays::declared(field) {
+                annotated_typename(
+                    field,
+                    Annotated {
+                        models: false,
+                        texts: true,
+                        numbers: Numbers::Refusing,
+                        unjudged: false,
+                    },
+                )
+            } else {
+                kotlin_typename(field)
+            }
+        });
         return (annotation, declared);
     }
     (
@@ -1137,6 +1129,102 @@ fn held_unjudged(field: &FieldDef, name: &str, arguments: usize) -> String {
     })
 }
 
+/// The private `object`, declared once per item, that reads the type written `name` filled with
+/// `written`, which names no type parameter of the holder: the type's unjudged read, handed the
+/// unjudged read of each argument, so that the holder judges what fills each parameter, beside
+/// the type's own serializer, built from the judged read of each.
+fn held_filled_unjudged(
+    field: &FieldDef,
+    name: &str,
+    written: &[FieldDef],
+    type_parameters: &[String],
+) -> String {
+    let class = lookup_kotlin_name(name).unwrap_or_else(|| name.to_owned());
+    let filled = kotlin_typename(&innermost(field));
+    let key = (filled.clone(), 0);
+    if let Some(named) = KOTLIN_HELD.with(|held| {
+        held.borrow()
+            .iter()
+            .find(|(declared, _)| *declared == key)
+            .map(|(_, named)| named.clone())
+    }) {
+        return named;
+    }
+    let judged = written
+        .iter()
+        .map(|argument| kotlin_serializer_expr(argument, type_parameters))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let unjudged = written
+        .iter()
+        .map(|argument| unjudged_serializer(argument, type_parameters))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let index = KOTLIN_HELD_COUNTER.with(|counter| {
+        let next = counter.get() + 1;
+        counter.set(next);
+        next
+    });
+    let named = format!("KotlinHeld{index}{}", crate_tag());
+    let read = format!("{class}.kotlinSchemaUnjudged({class}.serializer({judged}), {unjudged})");
+    let declared_text = held_declared(&named, &filled, 0, Some(&read));
+    let aux = match asked_type(field, name, written.len()) {
+        Some(ty) => ask(
+            &ty,
+            &(name.to_owned(), written.len()),
+            declared_text,
+            String::new(),
+        ),
+        None => declared_text,
+    };
+    KOTLIN_TUPLE_AUX.with(|list| list.borrow_mut().push(aux));
+    KOTLIN_HELD.with(|held| held.borrow_mut().push((key, named.clone())));
+    named
+}
+
+/// [`held_site`] of the held type `name` filled with `written`, none of which names a type
+/// parameter of the holder, through [`held_filled_unjudged`].
+fn held_filled_site(
+    field: &FieldDef,
+    (name, written): (&str, &[FieldDef]),
+    modelled: impl FnOnce(&str) -> String,
+    unmodelled: impl FnOnce() -> String,
+) -> String {
+    let unjudged = held_filled_unjudged(field, name, written, &[]);
+    let read = modelled(&unjudged);
+    match asked_type(field, name, written.len()) {
+        Some(ty) => ask(&ty, &(name.to_owned(), written.len()), read, unmodelled()),
+        None => read,
+    }
+}
+
+/// Whether the held type filled with `written` is read by an `object` of its filling: each
+/// argument written, none naming a type parameter of the holder, and none nullable, which the
+/// type's unjudged read binds to `Any`.
+fn filled_by_the_holder(written: &[FieldDef]) -> bool {
+    !written.is_empty()
+        && !written
+            .iter()
+            .any(|argument| reaches_a_parameter(argument) || argument.is_optional())
+}
+
+/// The type `written` of the held type `name` filled with `arguments`, annotated with the
+/// serializer that reads it unjudged.
+fn annotated_held(
+    field: &FieldDef,
+    (name, arguments): (&str, &[FieldDef]),
+    written: &str,
+) -> String {
+    let annotated = |unjudged: &str| format!("@Serializable(with = {unjudged}::class) {written}");
+    if filled_by_the_holder(arguments) {
+        held_filled_site(field, (name, arguments), annotated, || written.to_owned())
+    } else {
+        held_site(field, name, arguments.len(), annotated, || {
+            written.to_owned()
+        })
+    }
+}
+
 /// The text a site that reads the held type `name` unjudged writes: `modelled`, written for the
 /// serializer `held_unjudged` names, where the type is a model or the holder cannot ask, and a
 /// placeholder of it and `unmodelled` where the compiler is asked.
@@ -1294,6 +1382,7 @@ fn held_declared(named: &str, class: &str, arguments: usize, asked: Option<&str>
     let serializers: Vec<String> = (0..arguments)
         .map(|at| format!("argument{at}Serializer"))
         .collect();
+
     let (opens, own, held) = if arguments == 0 {
         (
             format!("private object {named}"),
@@ -1338,7 +1427,7 @@ pub fn held_resolved(declarations: Vec<String>) -> Vec<String> {
     declarations
         .into_iter()
         .map(|declared| {
-            pending.iter().fold(declared, |text, asked| {
+            pending.iter().rev().fold(declared, |text, asked| {
                 text.replace(&asked.needle, &asked.modelled)
             })
         })
@@ -1352,6 +1441,7 @@ pub fn held_modelled(text: &str) -> String {
         resolved
             .borrow()
             .iter()
+            .rev()
             .fold(text.to_owned(), |written, (needle, modelled)| {
                 written.replace(needle, modelled)
             })
@@ -1379,7 +1469,8 @@ pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream
     let mut flags = Vec::new();
     let mut keys: Vec<&(String, usize)> = Vec::new();
     let mut statements = TokenStream::new();
-    for asked in &pending {
+    // A read written inside another one's is asked first, so it is filled after the one around it.
+    for asked in pending.iter().rev() {
         let at = keys
             .iter()
             .position(|key| **key == asked.key)
@@ -1437,6 +1528,10 @@ pub(super) fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) 
         // A serializer the emitter writes binds a parameter to `Any`, which no nullable is.
         if !reads_unjudged(name) || written.iter().any(FieldDef::is_optional) {
             kotlin_serializer_expr(&innermost(field), type_parameters)
+        } else if filled_by_the_holder(written) {
+            held_filled_site(field, (name, written), ToOwned::to_owned, || {
+                kotlin_serializer_expr(&innermost(field), type_parameters)
+            })
         } else {
             let own = || {
                 written

@@ -7,6 +7,19 @@ use crate::utils::note_rule_less;
 /// What the draft of a type with no rule answers.
 const NO_ISSUES: &str = "fun validationIssues(): List<String> = emptyList()";
 
+/// The walk of a draft over `codes: Vec<CodeType>`, then `more`, each value behind the parameter
+/// handed to its check.
+fn walked_codes(more: &str) -> String {
+    format!(
+        "fun validationIssues(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
+         validationIssuesWith(issuesOfCodeType: (CodeType) -> List<String>): List<String> {{ val \
+         violations = mutableListOf<String>(); codes.forEachIndexed {{ index, held -> \
+         violations.addAll(issuesOfCodeType(held).map {{ kotlinSchemaUnder(\"codes.$index\", it) \
+         }}) }}{more}; return violations }}; {}",
+        super::UNDER
+    )
+}
+
 /// The functions `names` name, as an attribute writes them.
 fn named(names: &[&str]) -> Vec<FunctionName> {
     names
@@ -171,11 +184,12 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
     assert_eq!(
         corrected_by(&generic, &["unwrapped"]),
         format!(
-            "{} data class CrateDraft<CodeType>(val codes: List<CodeType>) {{ {NO_ISSUES} {} }} \
+            "{} data class CrateDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
              @OptIn(ExperimentalSerializationApi::class) class \
              CrateDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<CrateDraft<CodeType>> {} {} {} {}",
             kept_draft("Crate"),
+            walked_codes(""),
             to_valid_free("Crate", "<CodeType>"),
             transform(
                 "CrateDraft<CodeType>",
@@ -527,10 +541,13 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
             format!(
                 "{} data class HamperDraft<CodeType>(val codes: List<CodeType>, val held: CodeType, \
                  @Serializable(with = HamperLabelPreprocess::class) val label: String) {{ \
-                 {NO_ISSUES} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+                 {} {} }} @OptIn(ExperimentalSerializationApi::class) class \
                  HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
                  KSerializer<HamperDraft<CodeType>> {} {} {} {} {}",
                 kept_draft("Hamper"),
+                walked_codes(
+                    "; violations.addAll(issuesOfCodeType(held).map { kotlinSchemaUnder(\"held\", it) })"
+                ),
                 to_valid_free("Hamper", "<CodeType>"),
                 transform(
                     "HamperDraft<CodeType>",

@@ -376,9 +376,44 @@ DepotDraft {
 // Err(["'numbered.label': too short: minimum length is 1, got 0", "'named.label': too short: minimum length is 1, got 0"])
 ```
 
-A [branded newtype](generics-and-brands.md#branded-newtype-validation-constraints) that declares a parameter has `validate()` at every filling as well, and runs its string checks where the filling is its declared default.
+A [branded newtype](generics-and-brands.md#branded-newtype-validation-constraints) that declares a parameter has `validate()` at every filling as well, and runs its string checks where the filling is its declared default. A holder that writes what fills the brand's parameter judges the value the brand wraps as well, as below.
 
-**`validate()` reads nothing behind a type parameter.** The `validate()` of a `Crate<CodeType>` runs nothing on its `codes`, whatever fills `CodeType`, a type that has a `validate()` of its own included. A read of the same payload is refused: what fills the parameter is read by its own `Deserialize`, and judges itself [as it is read](#a-read-refuses-what-validate-refuses), with its own messages and no place of the holder in front of them:
+**The holder that writes what fills a type parameter judges what fills it.** A type that declares type parameters has `model_schema_issues_with{n}`, `n` its number of type parameters, which takes one check per parameter, `&dyn Fn(&CodeType) -> Vec<String>`, and runs it on every value behind that parameter, each message under the place of the value. Its `validation_issues()` is that function with checks that report nothing, since the type alone does not know what fills its parameters. A holder that writes the filling, `first_page: Page<Parcel>`, hands the check of a `Parcel`, so its `validate()` names each broken parcel at its full path. Its read reads every parcel with no judgement and judges the whole value once:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parcel {
+    #[model_schema_prop(minLength = 1)]
+    pub item_label: String,
+}
+
+#[model_schema(default_types(Item = String))]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Page<Item> {
+    pub items: Vec<Item>,
+    #[model_schema_prop(minLength = 1)]
+    pub page_title: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shelf {
+    pub first_page: Page<Parcel>,
+}
+
+serde_json::from_str::<Shelf>(r#"{"firstPage":{"items":[{"itemLabel":""},{"itemLabel":"a"},{"itemLabel":""}],"pageTitle":"t"}}"#);
+// Err: 'firstPage.items.0.itemLabel': too short: minimum length is 1, got 0; 'firstPage.items.2.itemLabel': too short: minimum length is 1, got 0
+```
+
+The check is handed on through every generic model the filling passes: a `binder: Page<Page<Parcel>>` names `'binder.items.0.items.1.itemLabel'`, a `lists: Page<Vec<Parcel>>` both indices, `'lists.items.0.1.itemLabel'`, a generic enum the variant and the member, `'slot.filled.held.itemLabel'`, a type that holds itself as `Self` each level, and a brand over its own parameter, `wrapped: Wrapper<Parcel>`, the parcel it wraps at the brand's place, `'wrapped.itemLabel'`. A generic type no `#[model_schema()]` was written on is read by its own `Deserialize`, so what it holds judges itself as it is read. An `#[serde(untagged)]` generic enum is read as serde's derive reads it, with what fills its parameter read with no judgement, and the holder judges the variant it chose: with `Either<Item> { Labelled(Item), Plain(String) }` held as `Either<Label>`, `Label` a brand under `minLength = 2`, `"a"` reads as `Labelled`, and the holder refuses it with `'either': too short: minimum length is 2, got 1`.
+
+**An alias that rearranges the parameters of a generic model stops the build.** With `type PagesOf<Item> = Page<Page<Item>>`, a member written `pages: PagesOf<Parcel>` hands `Page` a filling the member's type does not write, so its holder cannot name what fills each parameter of `Page`. Where the alias is declared above the holder with `#[model_schema]`, the macro answers ``error: model_schema: field `pages`: `PagesOf<Parcel>` is the alias `type PagesOf<Item> = Page<Page<Item>>`, which rearranges the parameters of the generic model it names, and a holder hands a generic model what fills each of its own parameters. Write `Page<Page<Parcel>>` in place of `PagesOf<Parcel>`.``; anywhere else the compiler answers ``error[E0277]: model_schema: ... fills a type parameter of the generic model this member holds, where the member's type writes ...``, with the note ``for `type PagesOf<Item> = Page<Page<Item>>`, a member that holds `PagesOf<Parcel>` is written `Page<Page<Parcel>>` ``. Write the model the alias names, `pages: Page<Page<Parcel>>`.
+
+Read by itself, or validated by itself, a generic type knows no filling: its `validate()` runs nothing on what fills a parameter, and its read reads what fills one with that type's own `Deserialize`, which judges itself [as it is read](#a-read-refuses-what-validate-refuses), with its own messages and no place of the holder in front of them:
 
 ```rust
 let outer = CrateDraft {
@@ -628,12 +663,13 @@ The messages come in the order `validate()` reports them: member by member as de
 - **A payload that keeps every rule** is read to the value it was read to before, and written back to the same text. Writing judges nothing: `Serialize` is still serde's derive, and a broken value built in code is written as it is.
 - **A type that publishes no `validate()`** is left as it was written, with serde's own `Deserialize`, unless it names a [`preprocess`](preprocess.md#preprocessing-preprocess), on itself or on a member: its `Deserialize` is written too, and calls each function ahead of the read. A type that derives `Serialize` alone is left as it was written.
 
-**Where a held model is judged.** A holder reads a model unjudged where `validate()` walks it: held itself, or under `Option`, `Vec`, `Box`, `Rc`, `Arc`, a fixed array, a set, a deque, a heap, as a map's value and as a position of a tuple, in any nesting of those, in a named field, a slot or a `#[serde(flatten)]` member. That holds where the member's type is written with the holder's own type parameters, `entries: Vec<Entry<IdType>>` in a `Ledger<IdType>`, and where it is written with `Self`, `children: Vec<Self>`. A model held any other way judges itself as it is read, and the payload is refused there too, with that model's own messages, the first broken model ending the read:
+**Where a held model is judged.** A holder reads a model unjudged where `validate()` walks it: held itself, or under `Option`, `Vec`, `Box`, `Rc`, `Arc`, a fixed array, a set, a deque, a heap, as a map's value and as a position of a tuple, in any nesting of those, in a named field, a slot or a `#[serde(flatten)]` member. That holds where the member's type is written with the holder's own type parameters, `entries: Vec<Entry<IdType>>` in a `Ledger<IdType>`, where it is written with `Self`, `children: Vec<Self>`, and where the model fills a type parameter of a generic model the member holds, `first_page: Page<Parcel>`, through any number of generic models. A model held any other way judges itself as it is read, and the payload is refused there too, with that model's own messages, the first broken model ending the read:
 
 | Held | Judged |
 |---|---|
 | in a field, an `Option`, a `Vec`, a `Box`, an `Rc`, an `Arc`, a fixed array, a set, a deque, a heap, a position of a tuple, a map's value, whether its type is written with a concrete filling, with the holder's own type parameter (`Vec<Entry<IdType>>`) or as `Self` | once, with its holder, each message at its full path |
-| filling one of the holder's own type parameters, as what fills `Held` in `held: Vec<Held>` | by itself, as it is read |
+| filling a type parameter of a generic model the member holds, as `Parcel` in `first_page: Page<Parcel>`, `binder: Page<Page<Parcel>>` and `slot: Slot<Parcel>` | once, with its holder, each message at its full path |
+| filling one of the holder's own type parameters, as what fills `Held` in `held: Vec<Held>` | once, with the type that holds the holder and writes the filling; by itself, as it is read, where the holder is read by itself |
 | in a member whose type names a lifetime | by itself, as it is read |
 | in a member written with a type parameter that a bound of the holder ties to another of its parameters or to a lifetime (`where IdType: From<Held>`), or with one of a holder read at `'static` | by itself, as it is read |
 | in a field read through a `deserialize_with` or a `with` of your own | by whatever that function calls |

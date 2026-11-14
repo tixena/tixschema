@@ -599,15 +599,20 @@ fn a_flattened_struct_is_read_from_its_holders_whole_object() {
     );
 }
 
-/// A value behind a type parameter is read through `Decodable`, so a model there judges itself,
-/// within `SwiftSchemaFit`, which refuses an integer there at its own coding path.
+/// A value behind a type parameter is read by the reader a holder hands in, and, where none is,
+/// through `Decodable` within `SwiftSchemaFit`, which refuses an integer there at its own coding
+/// path.
 #[test]
 fn a_value_behind_a_type_parameter_is_read_through_decodable_and_fitted() {
     holds(
         &envelope_swift::swift_definition(),
         &[
-            "self.note = try container.decode(String.self, forKey: .note); ",
-            "self.value = try container.decode(SwiftSchemaFit<T>.self, forKey: .value).value }; ",
+            "_ swiftSchemaReaderOfT: (Decoder) throws -> T) throws { let container = try \
+             decoder.container(keyedBy: CodingKeys.self); self.note = try \
+             container.decode(String.self, forKey: .note); _ = try container.decodeNil(forKey: \
+             .value); self.value = try swiftSchemaReaderOfT(container.superDecoder(forKey: .value)) }; ",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { try \
+             self.init(swiftSchemaUnjudged: decoder, { try SwiftSchemaFit<T>(from: $0).value }) }; ",
         ],
     );
 }
@@ -644,7 +649,10 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     holds(
         &marker_swift::swift_definition(),
         &[
-            "self.value = try container.decode(SwiftSchemaFit<IdType>.self).value }; ",
+            "_ swiftSchemaReaderOfIdType: (Decoder) throws -> IdType) throws { self.value = try \
+             swiftSchemaReaderOfIdType(decoder) }; fileprivate init(swiftSchemaUnjudged decoder: \
+             Decoder) throws { try self.init(swiftSchemaUnjudged: decoder, { try \
+             SwiftSchemaFit<IdType>(from: $0).value }) }; ",
             concat!(
                 "public func swiftSchemaValidateBound() -> [String] { var errors: [String] = []; ",
                 "if let held = value as? String { if held.unicodeScalars.count < 2 {",

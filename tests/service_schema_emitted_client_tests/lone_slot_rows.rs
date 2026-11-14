@@ -375,7 +375,7 @@ fn tote(label: &str, count: u32) -> Tote {
 }
 
 /// [`Laden`] whose models and texts are labelled `label` and whose counts are `count`, but those it
-/// holds as a type argument and the brand, each of which judges itself as it is read.
+/// holds as a type argument and the brand.
 fn laden(label: &str, count: u32) -> Laden {
     let bales = || BalesDraft(vec![bale(label)]);
     Laden::model_schema_wrap_unjudged(LadenDraft {
@@ -498,8 +498,8 @@ fn holder_rows() -> Vec<Row> {
             "Laden",
             laden("", 0).into_draft()
         ),
-        // What fills a type parameter judges itself as it is read, and no `validate()` of its
-        // holder walks it.
+        // What fills a type parameter of a model the holder holds is judged with the holder, at
+        // its full path.
         refused_row(
             "a number below its bound, as a type argument",
             "Laden",
@@ -507,7 +507,9 @@ fn holder_rows() -> Vec<Row> {
                 carried_count: sack_of("c", Count::model_schema_wrap_unjudged(CountDraft(0))),
                 ..laden("l", 2).into()
             },
-            Err::<Laden, _>(CountDraft(0).validation_issues()),
+            Err::<Laden, _>(vec![
+                "'carried_count.stowed': too small: minimum is 1, got 0".to_owned(),
+            ]),
         ),
         refused_row(
             "a model, unlabelled, as a type argument",
@@ -519,7 +521,9 @@ fn holder_rows() -> Vec<Row> {
                 ),
                 ..laden("l", 2).into()
             },
-            Err::<Laden, _>(BaledDraft(bale("")).validation_issues()),
+            Err::<Laden, _>(vec![
+                "'carried_model.stowed.label': too short: minimum length is 1, got 0".to_owned(),
+            ]),
         ),
     ];
     rows.extend(entry_rows());
@@ -688,7 +692,7 @@ fn the_table_holds_what_serde_and_validate_answer() {
         "a model, unlabelled: refused\n    'label': too short",
         "two slots, one skipped, empty: refused\n    '0': too short",
         "a number below its bound, no tag attribute: refused\n    'Counted': too small",
-        "as a type argument: refused\n    too small: minimum is 1, got 0\n",
+        "as a type argument: refused\n    'carried_count.stowed': too small: minimum is 1, got 0\n",
         "    'counts_by_name.n': too small: minimum is 1, got 0\n",
         "    'stacks.0.0.label': too short",
     ] {

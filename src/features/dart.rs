@@ -33,6 +33,7 @@ use crate::field_type::{
     dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
     get_field_def, is_plain_enum, is_sequence_wrapper,
 };
+use crate::model_schema::parameter_walk;
 use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
@@ -2406,13 +2407,15 @@ pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
 }
 
 /// The converters a holder hands the type `name` for `arguments`, one per type parameter, each
-/// reading the argument judged: no `validationIssues()` reaches a value behind a parameter. A value that
+/// reading the argument as `read` reads the type: unjudged where the holder judges the whole value
+/// once, through the type's `validationIssuesWith`, and judged where the type is read by itself,
+/// whose `validationIssues()` reaches no value behind a parameter. A value that
 /// reads one key alone is handed that key alone where the type reads its parameter flattened
 /// alone, and by a converter of the flattened reads where it reads it otherwise too. A parameter
 /// of the holder's own is handed the holder's converter of its flattened reads there. Where the
 /// type reads a parameter flattened under an `Option`, it is handed the keys of the argument, where
 /// they are known, and a parameter of the holder's own the keys the holder is handed for it.
-fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
+fn argument_converters(name: &str, arguments: &[FieldDef], read_as: Read) -> String {
     let through = flattenings_of(name);
     let looked_up = looked_up_by(name);
     let mut converters = Vec::new();
@@ -2431,12 +2434,7 @@ fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
         } else {
             None
         };
-        let read = |handed: &str| {
-            format!(
-                "(e) => {}",
-                dart_decode_expr(argument, handed, Read::Judged)
-            )
-        };
+        let read = |handed: &str| format!("(e) => {}", dart_decode_expr(argument, handed, read_as));
         match (through.get(at), alone, held) {
             (Some(Flattening::Alone), Some(handed), _) => converters.push(read(&handed)),
             (Some(Flattening::Alone), None, Some((named, own))) => {
@@ -2562,7 +2560,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             if generics.is_empty() {
                 format!("{class_name}.{constructor}({expr})")
             } else {
-                let converters = argument_converters(name, generics);
+                let converters = argument_converters(name, generics, read);
                 format!("{class_name}.{constructor}({expr}, {converters})")
             }
         }
@@ -3716,13 +3714,22 @@ fn held_at(
                 let wrapped = combined.array_depth.saturating_sub(field.array_depth);
                 return held_at(&combined, wrapped, expr, place, depth, asked, helpers);
             }
-            vec![match asked {
-                Asked::Bound => {
-                    helpers.call(Helper::HeldBound);
-                    format!("..._heldBound({expr})")
-                }
-                Asked::Rules => reported(&format!("{expr}.validationIssues()"), place, helpers),
-            }]
+            vec![named_element(
+                expr,
+                arguments,
+                place,
+                (depth, asked),
+                helpers,
+            )]
+        }
+        FieldDefType::TypeParam(parameter)
+            if matches!(asked, Asked::Rules) && walked_parameters().contains(parameter) =>
+        {
+            vec![reported(
+                &format!("{}({expr})", dart_check_of(parameter)),
+                place,
+                helpers,
+            )]
         }
         FieldDefType::Map(key, value) => {
             let entry = binder("entry", depth);
@@ -3788,6 +3795,106 @@ fn held_at(
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => Vec::new(),
     }
+}
+
+/// What a value `expr` of a declared type filled with `arguments` answers `asked`: the bound it
+/// carries, or what it reports, handed the check of each argument where it declares parameters.
+fn named_element(
+    expr: &str,
+    arguments: &[FieldDef],
+    place: &[Step],
+    (depth, asked): (usize, Asked),
+    helpers: &mut Helpers,
+) -> String {
+    match asked {
+        Asked::Bound => {
+            helpers.call(Helper::HeldBound);
+            format!("..._heldBound({expr})")
+        }
+        Asked::Rules if arguments.is_empty() => {
+            reported(&format!("{expr}.validationIssues()"), place, helpers)
+        }
+        Asked::Rules => {
+            let handed: Vec<String> = arguments
+                .iter()
+                .map(|argument| argument_check(argument, depth, helpers))
+                .collect();
+            reported(
+                &format!("{expr}.validationIssuesWith({})", handed.join(", ")),
+                place,
+                helpers,
+            )
+        }
+    }
+}
+
+/// The type parameters of the item being emitted, whose values its `validationIssuesWith` hands to
+/// a check each.
+fn walked_parameters() -> Vec<String> {
+    parameter_walk::scope().parameters
+}
+
+/// The check `validationIssuesWith` takes for the values behind `parameter`.
+fn dart_check_of(parameter: &str) -> String {
+    format!("issuesOf{parameter}")
+}
+
+/// What a holder hands a generic model's `validationIssuesWith` for one of its type arguments,
+/// `argument`: the check of the holder's own parameter where the argument is one, and otherwise
+/// what the walk of a value of the argument reports of it, nothing where it holds no rule.
+fn argument_check(argument: &FieldDef, depth: usize, helpers: &mut Helpers) -> String {
+    if let FieldDefType::TypeParam(parameter) = &argument.field_type
+        && argument.array_depth == 0
+        && !argument.is_optional()
+        && walked_parameters().contains(parameter)
+    {
+        return dart_check_of(parameter);
+    }
+    let held = binder("argument", depth);
+    let elements = held_elements(
+        argument,
+        &held,
+        &[],
+        depth.saturating_add(1),
+        Asked::Rules,
+        helpers,
+    );
+    if elements.is_empty() {
+        return "(_) => const <String>[]".to_owned();
+    }
+    format!("({held}) => [ {}, ]", elements.join(", "))
+}
+
+/// The parameters of `validationIssuesWith` on a type that declares `parameters`.
+fn issues_with_parameters(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| {
+            format!(
+                "List<String> Function({parameter}) {}",
+                dart_check_of(parameter)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The checks `validationIssues()` hands `validationIssuesWith`: none reports anything.
+fn checks_of_nothing(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|_| "(_) => const <String>[]")
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The checks a type that declares `parameters` hands on to the `validationIssuesWith` it calls.
+fn checks_handed_on(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| dart_check_of(parameter))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// What the arms of the `Result` `expr` report of the value the one it holds holds, each message
@@ -4118,7 +4225,17 @@ fn validate_members(rules: &[String], helpers: &Helpers, overrides: bool) -> Str
     } else {
         format!("[ {}, ]", rules.join(", "))
     };
-    let mut written = format!("{annotation}List<String> validationIssues() => {answered};");
+    let parameters = walked_parameters();
+    let mut written = if parameters.is_empty() {
+        format!("{annotation}List<String> validationIssues() => {answered};")
+    } else {
+        format!(
+            "{annotation}List<String> validationIssues() => validationIssuesWith({}); \
+             {annotation}List<String> validationIssuesWith({}) => {answered};",
+            checks_of_nothing(&parameters),
+            issues_with_parameters(&parameters),
+        )
+    };
     for (called, helper) in [
         (helpers.calls(Helper::Under), UNDER_HELPER.to_owned()),
         (helpers.calls(Helper::BoundLength), bound_length_helper()),
@@ -4186,6 +4303,14 @@ fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
     let mut repeated = own_repeat_elements(value_field, "value", &[], 0, &mut helpers);
     repeated.append(&mut rules);
     rules = repeated;
+    // A brand that holds one of its own parameters hands the value to the check of it.
+    if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+        && !value_field.is_list()
+        && !value_field.is_optional()
+        && walked_parameters().contains(parameter)
+    {
+        rules.push(format!("...{}(value)", dart_check_of(parameter)));
+    }
     rules.extend(own_check_elements(args.check));
     format!(
         "{}{}",
@@ -4334,11 +4459,26 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
          factory {export_name}.fromJson({kind} json{parameters}) {} factory \
          {export_name}.fromJsonUnjudged({kind} json{parameters}) => {built}({read}); {statics}\
          {json_type} toJson({tp}) => _draft.toJson({args}); List<String> validationIssues() => \
-         _draft.validationIssues(); {identity}static Object $thrown{generic_params}(Object thrown) => \
+         _draft.validationIssues(); {handed}{identity}static Object $thrown{generic_params}(Object thrown) => \
          thrown is {draft}{generic_params} ? thrown.validate() : thrown; }}",
         judged_body_returning(&read, &format!("{built}(read)")),
         tp = codec.to_json_params,
         args = codec.to_json_args,
+        handed = issues_with_delegated(),
+    )
+}
+
+/// `validationIssuesWith` of a valid type, which runs the draft's, where the type declares
+/// parameters.
+fn issues_with_delegated() -> String {
+    let parameters = walked_parameters();
+    if parameters.is_empty() {
+        return String::new();
+    }
+    format!(
+        "List<String> validationIssuesWith({}) => _draft.validationIssuesWith({}); ",
+        issues_with_parameters(&parameters),
+        checks_handed_on(&parameters),
     )
 }
 
@@ -5273,10 +5413,16 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
     let named = !target.is_list()
         && !target.is_optional()
         && matches!(target.field_type, FieldDefType::SiblingType(_, _));
-    let rules: Vec<String> = named
-        .then(|| "...value.validationIssues()".to_owned())
-        .into_iter()
-        .collect();
+    let mut helpers = Helpers::default();
+    let rules: Vec<String> = if type_parameters.is_empty() {
+        named
+            .then(|| "...value.validationIssues()".to_owned())
+            .into_iter()
+            .collect()
+    } else {
+        // What fills the alias's parameters is handed on to the type it names.
+        held_elements(&target, "value", &[], 0, Asked::Rules, &mut helpers)
+    };
     if type_parameters.is_empty() {
         note_key_value(&item_type.ident.to_string(), &target);
     }
@@ -5288,7 +5434,7 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
         if named { Read::Unjudged } else { Read::Judged },
         // An alias is refused a `preprocess`: it has no read of its own.
         &Corrects::of(&[]),
-        &Validation::Plain(&validate_members(&rules, &Helpers::default(), false)),
+        &Validation::Plain(&validate_members(&rules, &helpers, false)),
     )
 }
 
@@ -5822,9 +5968,18 @@ fn enum_classes(
         ),
         ReadForm::Whole => format!(" {}", thrown_as_is(generic_params)),
     };
+    let parameters = walked_parameters();
+    let handed = if parameters.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " List<String> validationIssuesWith({});",
+            issues_with_parameters(&parameters)
+        )
+    };
     let base = format!(
         "sealed class {base_name}{generic_params} {{ const {base_name}(); {reads} dynamic \
-         toJson({tp}); {VALIDATE_DECLARED}{validate} }}",
+         toJson({tp}); {VALIDATE_DECLARED}{handed}{validate} }}",
         tp = codec.to_json_params,
     );
     match form {

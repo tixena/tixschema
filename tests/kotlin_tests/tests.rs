@@ -2080,8 +2080,15 @@ fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
             renumbered(&broaching_kotlin::kotlin_definition()),
             "@Serializable(with = BroachingCountedUnjudged::class) data class \
              BroachingCounted<Count>(val counts: Map<String, Count>) : BroachingDraft<Count> { \
-             override fun validationIssues(): List<String> = emptyList() } class \
-             BroachingCountedUnjudged<Count: Any>(private val countSerializer: \
+             override fun validationIssues(): List<String> = validationIssuesWith({ emptyList() \
+             }); override fun validationIssuesWith(issuesOfCount: (Count) -> List<String>): \
+             List<String> { val violations = mutableListOf<String>(); for ((key, held) in counts) \
+             { violations.addAll(issuesOfCount(held).map { kotlinSchemaUnder(\"Counted.$key\", \
+             it) }) }; return violations }; private fun kotlinSchemaUnder(",
+        ),
+        (
+            renumbered(&broaching_kotlin::kotlin_definition()),
+            "} class BroachingCountedUnjudged<Count: Any>(private val countSerializer: \
              KSerializer<Count>) : KSerializer<BroachingCounted<Count>> {",
         ),
         (

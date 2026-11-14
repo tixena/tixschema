@@ -238,10 +238,11 @@ fn a_holder_reads_what_it_names_unjudged() {
     );
 }
 
-/// A generic type takes its converters in both reads. A value behind a parameter and the key of
-/// a map are not reached by `validate()`, so each is read by its own judged read.
+/// A generic type takes its converters in both reads. A holder hands the converter of a model's
+/// unjudged read where the model fills a parameter, and judges it through `validationIssuesWith`.
+/// The key of a map is not reached by `validate()`, so it is read by its own judged read.
 #[test]
-fn a_value_validate_does_not_reach_judges_itself() {
+fn a_value_behind_a_parameter_is_read_unjudged_and_a_key_judges_itself() {
     let converters = "Map<String, dynamic> json, CodeType Function(dynamic) codeTypeFromJson";
     assert_written(
         &crate_dart::dart_definition(),
@@ -258,7 +259,12 @@ fn a_value_validate_does_not_reach_judges_itself() {
     assert_written(
         &hold,
         "filled: _readAt(json, 'filled', () => Bin.fromJsonUnjudged(json['filled'], (e) => \
-         Item.fromJson(e))),",
+         Item.fromJsonUnjudged(e))),",
+    );
+    assert_written(
+        &hold,
+        "for (final violation in filled.validationIssuesWith((argument) => [ \
+         ...argument.validationIssues(), ])) _under('filled', violation),",
     );
     assert_written(
         &hold,

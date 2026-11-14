@@ -136,8 +136,14 @@ fn a_default_with_no_json_keeps_its_key_required() {
     let harbour = harbour_swift::swift_definition();
     assert!(
         harbour.contains(
-            "let container = try decoder.container(keyedBy: CodingKeys.self); self.berths = try \
-             container.decode([SwiftSchemaFit<Moored>].self, forKey: .berths).map({ $0.value }); self.flagship = try container.decode(SwiftSchemaFit<Moored>.self, forKey: .flagship).value; self.slips = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .slips).map({ $0.value }) }"
+            "let container = try decoder.container(keyedBy: CodingKeys.self); var listed = try \
+             container.nestedUnkeyedContainer(forKey: .berths); var items: [Moored] = []; while \
+             !listed.isAtEnd { items.append(try swiftSchemaReaderOfMoored(listed.superDecoder())) }; \
+             self.berths = items; _ = try container.decodeNil(forKey: .flagship); self.flagship = \
+             try swiftSchemaReaderOfMoored(container.superDecoder(forKey: .flagship)); var listed1 = \
+             try container.nestedUnkeyedContainer(forKey: .slips); var items1: [Moored] = []; while \
+             !listed1.isAtEnd { items1.append(try swiftSchemaReaderOfMoored(listed1.superDecoder())) \
+             }; self.slips = items1 }"
         ),
         "{harbour}"
     );

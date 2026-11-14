@@ -41,11 +41,6 @@ const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invi
      model_schema and will be silently ignored by the generator; write #[serde(...)] \
      unconditionally (serde attrs are inert without the serde derive)";
 
-/// What the name of every read hook generated to name a field in its type's refusal starts with.
-/// The recovering decode reads past such a hook, which changes a message and never a verdict.
-#[cfg(feature = "serde")]
-pub const NAMED_READ_HOOK_PREFIX: &str = "deserialize_named_";
-
 /// The container keys that put a conversion of the author's between an item and what serde reads
 /// or writes for it.
 const CONVERSION_KEYS: [&str; 4] = ["remote", "from", "try_from", "into"];

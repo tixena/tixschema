@@ -269,9 +269,37 @@ fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
          {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
-         validationIssues(): List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): \
+         validationIssues(): List<String> = draft.validationIssues(); {}fun kotlinSchemaChecked(): \
          {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft); {} }} }}",
+        issues_with_forwarded(generic),
         unjudged_member(named, generic)
+    )
+}
+
+/// The `validationIssuesWith` a valid type of the parameters `generic` writes forwards to its
+/// draft, none where it writes none.
+fn issues_with_forwarded(generic: &str) -> String {
+    let parameters: Vec<&str> = generic
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .split(", ")
+        .filter(|parameter| !parameter.is_empty())
+        .collect();
+    if parameters.is_empty() {
+        return String::new();
+    }
+    let checks = parameters
+        .iter()
+        .map(|parameter| format!("issuesOf{parameter}: ({parameter}) -> List<String>"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let named = parameters
+        .iter()
+        .map(|parameter| format!("issuesOf{parameter}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "fun validationIssuesWith({checks}): List<String> = draft.validationIssuesWith({named}); "
     )
 }
 
@@ -515,8 +543,12 @@ fn a_key_typed_with_a_parameter_is_written_where_the_type_declares_serialize() {
     );
     assert!(
         written_under_its_key.contains(
-            "fun validationIssues(): List<String> = validationIssues(null); \
-             fun validationIssues(keySerializer: KSerializer<Key>?): List<String>"
+            "fun validationIssues(): List<String> = validationIssuesWith({ emptyList() }, \
+             null); fun validationIssues(keySerializer: KSerializer<Key>?): List<String> = \
+             validationIssuesWith({ emptyList() }, keySerializer); fun \
+             validationIssuesWith(issuesOfKey: (Key) -> List<String>): List<String> = \
+             validationIssuesWith(issuesOfKey, null); fun validationIssuesWith(issuesOfKey: (Key) \
+             -> List<String>, keySerializer: KSerializer<Key>?): List<String>"
         ),
         "got: {written_under_its_key}"
     );
@@ -690,10 +722,16 @@ fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
     let held = "{ val violations = mutableListOf<String>(); if (value is String) { if \
                 (value.codePointCount(0, value.length) < 3) violations.add(\"too short: minimum \
                 length is 3, got ${value.codePointCount(0, value.length)}\") }; return violations }";
+    let handed_on = held.replace(
+        "; return violations }",
+        "; violations.addAll(issuesOfIdType(value)); return violations }",
+    );
     assert!(
         bounded(&[]).contains(&format!(
-            "{{ fun validate(): List<String> {held}; fun validationIssues(): List<String> = \
-             validate(); fun kotlinSchemaBound(): List<String> {held}; "
+            "{{ fun validate(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
+             validationIssuesWith(issuesOfIdType: (IdType) -> List<String>): List<String> \
+             {handed_on}; fun validationIssues(): List<String> = validate(); fun \
+             kotlinSchemaBound(): List<String> {held}; "
         )),
         "a parameter with no declared type is bounded as a string"
     );
@@ -705,8 +743,11 @@ fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
     let filled = bounded(&[(parameter, syn::parse_quote!(Other<String>))]);
     assert!(
         filled.contains(
-            "{ fun validate(): List<String> = emptyList(); fun validationIssues(): List<String> = \
-             validate(); companion object"
+            "{ fun validate(): List<String> = validationIssuesWith({ emptyList() }); fun \
+             validationIssuesWith(issuesOfIdType: (IdType) -> List<String>): List<String> { val \
+             violations = mutableListOf<String>(); violations.addAll(issuesOfIdType(value)); \
+             return violations }; fun validationIssues(): List<String> = validate(); companion \
+             object"
         ),
         "got: {filled}"
     );
@@ -831,10 +872,13 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
         plain(&item),
         format!(
             "{} data class CrateDraft<CodeType>(val codes: List<CodeType>, val label: String) {{ \
-             fun validationIssues(): List<String> {{ val violations = mutableListOf<String>(); if \
-             (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: \
-             minimum length is 1, got ${{label.codePointCount(0, label.length)}}\"); return \
-             violations }} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+             fun validationIssues(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
+             validationIssuesWith(issuesOfCodeType: (CodeType) -> List<String>): List<String> {{ \
+             val violations = mutableListOf<String>(); codes.forEachIndexed {{ index, held -> \
+             violations.addAll(issuesOfCodeType(held).map {{ kotlinSchemaUnder(\"codes.$index\", \
+             it) }}) }}; if (label.codePointCount(0, label.length) < 1) violations.add(\"'label': \
+             too short: minimum length is 1, got ${{label.codePointCount(0, label.length)}}\"); \
+             return violations }}; {UNDER} {} }} @OptIn(ExperimentalSerializationApi::class) class \
              CrateDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<CrateDraft<CodeType>> by CrateDraft.generatedSerializer(codeTypeSerializer) \
              {} {} {}",
@@ -978,7 +1022,11 @@ fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
             "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
              UserIdSerializer::class) @KeepGeneratedSerializer value class UserId<IdType> \
              private constructor(val value: IdType) {{ fun validate(): List<String> = \
-             emptyList(); fun validationIssues(): List<String> = validate(); {} }} @OptIn(ExperimentalSerializationApi::class) private class \
+             validationIssuesWith({{ emptyList() }}); fun validationIssuesWith(issuesOfIdType: \
+             (IdType) -> List<String>): List<String> {{ val violations = \
+             mutableListOf<String>(); violations.addAll(issuesOfIdType(value)); return \
+             violations }}; fun validationIssues(): List<String> = validate(); {} }} \
+             @OptIn(ExperimentalSerializationApi::class) private class \
              UserIdUnjudged<IdType>(idTypeSerializer: KSerializer<IdType>) : \
              KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) {}",
             factory("UserId", "IdType", "IdType"),

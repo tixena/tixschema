@@ -100,8 +100,8 @@ fn a_struct_reads_a_member_under_each_alias() {
         assert!(hawsing.contains(held), "no `{held}` in: {hawsing}");
     }
     let gybing = gybing_swift::swift_definition();
-    let held =
-        "self.label = try aliased.decode(SwiftSchemaFit<LabelType>.self, forKey: labelKey).value;";
+    let held = "_ = try aliased.decodeNil(forKey: labelKey); self.label = try \
+         swiftSchemaReaderOfLabelType(aliased.superDecoder(forKey: labelKey));";
     assert!(gybing.contains(held), "no `{held}` in: {gybing}");
 }
 

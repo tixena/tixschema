@@ -4,8 +4,9 @@
 use crate::utils::is_rule_less;
 use core::cell::Cell;
 use core::fmt::Write as _;
+use core::iter::once;
 
-use super::validate::Rules;
+use super::validate::{Rules, checks_declared, checks_named};
 use super::{KotlinArgs, kotlin_property_name, kotlin_serializer_param_name, read};
 
 thread_local! {
@@ -42,38 +43,88 @@ fn keyed_issues(keys: &[String], variants: &[String]) -> (String, String) {
 }
 
 /// The members through which a valid type answers what its draft reports, which every holder asks
-/// of a value it holds. `keys` are the type parameters whose serializers the draft takes.
-pub fn forwarded_issues(keys: &[String]) -> String {
-    if keys.is_empty() {
-        return PLAIN_ISSUES.to_owned();
+/// of a value it holds. `keys` are the type parameters whose serializers the draft takes, and
+/// `parameters` those whose checks its `validationIssuesWith` takes.
+pub fn forwarded_issues(keys: &[String], parameters: &[String]) -> String {
+    let mut forwarded = enum_forwarded_issues(parameters);
+    if !keys.is_empty() {
+        let (taken, asked) = keyed_issues(keys, &[]);
+        let _ = write!(
+            forwarded,
+            "fun validationIssues({taken}): List<String> = {asked}; "
+        );
+        if !parameters.is_empty() {
+            let _ = write!(
+                forwarded,
+                "fun validationIssuesWith({}, {taken}): List<String> = \
+                 draft.validationIssuesWith({}, {}); ",
+                checks_declared(parameters),
+                checks_named(parameters),
+                serializer_names(keys)
+            );
+        }
     }
-    let (taken, asked) = keyed_issues(keys, &[]);
-    format!("{PLAIN_ISSUES}fun validationIssues({taken}): List<String> = {asked}; ")
+    forwarded
 }
 
 /// [`forwarded_issues`] for the valid type of an enum, which declares its parameters `out` as its
 /// draft does: a member cannot take a serializer of a parameter in that position, so the keyed
 /// one is an extension, private to the file the emitted types are joined into.
-pub fn enum_forwarded_issues() -> String {
-    PLAIN_ISSUES.to_owned()
+pub fn enum_forwarded_issues(parameters: &[String]) -> String {
+    if parameters.is_empty() {
+        return PLAIN_ISSUES.to_owned();
+    }
+    format!(
+        "{PLAIN_ISSUES}fun validationIssuesWith({}): List<String> = \
+         draft.validationIssuesWith({}); ",
+        checks_declared(parameters),
+        checks_named(parameters)
+    )
 }
 
-/// The extension of the valid enum `export_name` that answers what its draft reports given the
-/// serializers of `keys`, where there are any.
+/// The extensions of the valid enum `export_name` that answer what its draft reports given the
+/// serializers of `keys`, where there are any, and the checks of `parameters` besides.
 pub fn keyed_extension(
     export_name: &str,
     generic_params: &str,
-    keys: &[String],
-    variants: &[String],
+    (keys, variants): (&[String], &[String]),
+    parameters: &[String],
 ) -> String {
     if keys.is_empty() {
         return String::new();
     }
     let (taken, asked) = keyed_issues(keys, variants);
-    format!(
+    let mut written = format!(
         " private fun {generic_params} {export_name}{generic_params}.validationIssues({taken}): \
          List<String> = {asked}"
-    )
+    );
+    if !parameters.is_empty() {
+        let (checks, handed) = (checks_declared(parameters), checks_named(parameters));
+        let names = serializer_names(keys);
+        let arms = variants
+            .iter()
+            .map(|variant| format!("is {variant} -> draft.validationIssuesWith({handed}, {names})"))
+            .chain(once(format!(
+                "else -> draft.validationIssuesWith({handed})"
+            )))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let _ = write!(
+            written,
+            "; private fun {generic_params} \
+             {export_name}{generic_params}.validationIssuesWith({checks}, {taken}): List<String> \
+             = when (draft) {{ {arms} }}"
+        );
+    }
+    written
+}
+
+/// The names of the serializers of `keys`, handed on.
+fn serializer_names(keys: &[String]) -> String {
+    keys.iter()
+        .map(|key| kotlin_serializer_param_name(key))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Whether the item being expanded has a draft: a type a service writes for itself has none.

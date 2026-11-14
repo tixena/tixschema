@@ -72,9 +72,12 @@ fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
          Tag._(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
          idTypeToJson(value); List<String> validateBound() => [ if (value case final String \
          held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
-         ${held.runes.length}\", ]; List<String> validationIssues() => [ if (value case final String \
-         held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
-         ${held.runes.length}\", ]; static Object $thrown<IdType>(Object thrown) => thrown; }"
+         ${held.runes.length}\", ]; List<String> validationIssues() => \
+         validationIssuesWith((_) => const <String>[]); List<String> \
+         validationIssuesWith(List<String> Function(IdType) issuesOfIdType) => [ if (value case \
+         final String held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
+         ${held.runes.length}\", ...issuesOfIdType(value), ]; static Object \
+         $thrown<IdType>(Object thrown) => thrown; }"
     );
 }
 

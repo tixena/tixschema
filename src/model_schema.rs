@@ -14,6 +14,7 @@ pub mod literal_union;
 pub mod mcp_form;
 #[cfg(feature = "serde")]
 pub mod needs_wrapper;
+pub mod parameter_walk;
 pub mod preprocess;
 pub mod ranges;
 #[cfg(feature = "serde")]
@@ -74,8 +75,6 @@ use crate::{
 };
 
 use crate::bound_message::Bound;
-#[cfg(feature = "serde")]
-use crate::bound_message::VIOLATION_STEMS;
 use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
@@ -160,9 +159,8 @@ use crate::features::serde::rename_direction_rejection;
 // author's own, which only matters where a generated reader might displace one.
 #[cfg(feature = "serde")]
 use crate::features::serde::{
-    NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize,
-    derives_serialize, has_serde_read_hook, parse_read_renames, parse_written_renames,
-    read_member_keys, struct_tag,
+    SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize, derives_serialize,
+    has_serde_read_hook, parse_read_renames, parse_written_renames, read_member_keys, struct_tag,
 };
 use crate::features::serde::{
     brand_field, carries_untagged, has_serde_default, member_steps, parse_serde_key_omission,
@@ -631,6 +629,8 @@ struct BrandedNewtypeOutput<'parts> {
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     display_tokens: &'parts proc_macro2::TokenStream,
     example_test: Option<ExampleTest>,
+    /// `model_schema_issues_with{n}`, where the brand declares parameters.
+    issues_with: Option<&'parts proc_macro2::TokenStream>,
     item_struct: &'parts syn::ItemStruct,
     module_ident: &'parts Ident,
     name: &'parts Ident,
@@ -850,8 +850,13 @@ enum HeldEnd {
     /// A std `Result`: each arm that holds something the walk reaches, by the key serde writes it
     /// under, with the walk below it.
     Arms(Vec<(&'static str, HeldShape)>),
-    /// A value of a declared type, whose own `validate()` is run.
-    Declared,
+    /// A value of a declared type, whose own `validate()` is run, with the type arguments it is
+    /// written with: a generic model is handed the walk of each, as
+    /// `model_schema_issues_with{n}`.
+    Declared(Vec<syn::Type>),
+    /// A value behind one of the item's own type parameters, handed to the check the item's
+    /// `model_schema_issues_with{n}` takes for it.
+    Parameter(String),
     /// A tuple: each position that holds something the walk reaches, with the walk below it.
     Positions(Vec<(usize, HeldShape)>),
 }
@@ -887,6 +892,21 @@ impl BrandBound {
 }
 
 impl HeldShape {
+    /// The walk read so far, through no wrapper yet.
+    const fn begun() -> Self {
+        Self {
+            end: HeldEnd::Declared(Vec::new()),
+            #[cfg(feature = "serde")]
+            keys: Vec::new(),
+            wraps: Vec::new(),
+        }
+    }
+
+    /// The walk read so far, ending on `end`.
+    fn ended(self, end: HeldEnd) -> Self {
+        Self { end, ..self }
+    }
+
     /// Whether the walk reads a map, at any depth.
     fn walks_a_map(&self) -> bool {
         self.wraps
@@ -894,7 +914,7 @@ impl HeldShape {
             .any(|wrap| matches!(*wrap, ConstraintWrap::Map))
             || match &self.end {
                 HeldEnd::Arms(arms) => arms.iter().any(|(_, held)| held.walks_a_map()),
-                HeldEnd::Declared => false,
+                HeldEnd::Declared(_) | HeldEnd::Parameter(_) => false,
                 HeldEnd::Positions(positions) => {
                     positions.iter().any(|(_, held)| held.walks_a_map())
                 }
@@ -2442,6 +2462,14 @@ fn note_what_it_declares(item: &Item, args: &ModelSchemaArgs) {
     ));
 }
 
+/// Starts the expansion of `item`: its read holds the hooks of its own members alone, and its walks
+/// read its own type parameters.
+fn entered(item: &Item) {
+    #[cfg(feature = "serde")]
+    judged_read::forget_member_hooks();
+    parameter_walk::enter(item);
+}
+
 pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let parsed_args = parse_model_schema_args(args);
     // Written out rather than `parse_macro_input!`, which returns from the enclosing function and
@@ -2462,9 +2490,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         return output;
     }
     let refused = |errors: &[TokenStream]| refused_item_output(&item, errors, &parsed_args);
-    // An item's read holds the hooks of its own members alone.
-    #[cfg(feature = "serde")]
-    judged_read::forget_member_hooks();
+    entered(&item);
     // Read in every feature combination: a transport, and a type that lists `"mongodb"` for the
     // keys of its maps, read it whether or not a surface is on.
     record_wire_form(&item);
@@ -2901,6 +2927,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     // Registered only once the target has been classified: the alias's own expansion is the only
     // place that still holds the aliased type's tokens.
     let alias_field_def = get_field_def(export_name.as_str(), &alias.ty, "");
+    parameter_walk::record_alias(&alias);
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
@@ -3714,14 +3741,40 @@ fn validate_method(
     let imported = module_ident
         .filter(|_| !checks.named)
         .map(|module| quote! { use #module::*; });
+    let body = quote! {
+        #imported
+        let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+        #(#validate_bodies)*
+        #(#own)*
+        errors
+    };
+    let parameters = parameter_walk::scope().parameters;
+    if parameters.is_empty() {
+        return Some(quote! {
+            /// Lists every rule the value breaks: the constrained members, then the checks.
+            pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
+                #body
+            }
+        });
+    }
+    // A type that runs nothing but the checks of what fills its parameters publishes no
+    // `validate()` of its own: it is the type it was with no value behind a parameter walked.
+    if own.is_empty() && !parameter_walk::ruled() {
+        parameter_walk::keep_parameters_alone(body);
+        return None;
+    }
+    let nothing = parameter_walk::issues_with_nothing(&parameters);
+    let signature = parameter_walk::issues_with_signature(&parameters, &body);
     Some(quote! {
         /// Lists every rule the value breaks: the constrained members, then the checks.
         pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
-            #imported
-            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-            #(#validate_bodies)*
-            #(#own)*
-            errors
+            #nothing
+        }
+
+        /// `validation_issues()`, with each check handed in run on every value behind its type
+        /// parameter, for a holder that knows what fills each.
+        #signature {
+            #body
         }
     })
 }
@@ -3754,11 +3807,18 @@ fn valid_items(
 /// `method`, or the `validation_issues()` of a type with no rule to run.
 fn issues_or_none(method: Option<&proc_macro2::TokenStream>) -> proc_macro2::TokenStream {
     method.cloned().unwrap_or_else(|| {
+        let parameters = parameter_walk::scope().parameters;
+        let handed = (!parameters.is_empty()).then(|| {
+            let walk = parameter_walk::parameters_alone();
+            parameter_walk::issues_with_ignoring(&parameters, walk.as_ref())
+        });
         quote! {
             /// Lists every rule the value breaks, of which this type has none.
             pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
                 ::std::vec::Vec::new()
             }
+
+            #handed
         }
     })
 }
@@ -6013,7 +6073,7 @@ fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
     let mut keys: Vec<&syn::Type> = shape.keys.iter().collect();
     match &shape.end {
         HeldEnd::Arms(arms) => keys.extend(arms.iter().flat_map(|(_, held)| map_keys_of(held))),
-        HeldEnd::Declared => {}
+        HeldEnd::Declared(_) | HeldEnd::Parameter(_) => {}
         HeldEnd::Positions(positions) => {
             keys.extend(positions.iter().flat_map(|(_, held)| map_keys_of(held)));
         }
@@ -11809,6 +11869,51 @@ fn with_branded_checks(
     branded_validate_method(bound, &own)
 }
 
+/// `model_schema_issues_with{n}` of a brand that declares `parameters`: its `validation_issues()`,
+/// where it `validates`, then the check of the parameter its slot `held` holds, where `inner` is
+/// one of them, run on the value. A brand is the value, so no message here names a path.
+fn brand_issues_with(
+    parameters: &[String],
+    inner: &syn::Type,
+    held: &syn::Member,
+    validates: bool,
+) -> Option<proc_macro2::TokenStream> {
+    if parameters.is_empty() {
+        return None;
+    }
+    let own = if validates {
+        quote! { self.validation_issues() }
+    } else {
+        quote! { ::std::vec::Vec::new() }
+    };
+    let behind = bare_parameter(inner, parameters).map(|parameter| {
+        let check = parameter_walk::check_of(&parameter);
+        quote! { errors.extend(#check(&self.#held)); }
+    });
+    let body = quote! {
+        let mut errors: ::std::vec::Vec<::std::string::String> = #own;
+        #behind
+        errors
+    };
+    let signature = parameter_walk::issues_with_signature(parameters, &body);
+    Some(quote! {
+        /// `validation_issues()`, with each check handed in run on the value behind its type
+        /// parameter, for a holder that knows what fills each.
+        #signature {
+            #body
+        }
+    })
+}
+
+/// The type parameter among `parameters` that `ty` is, written alone.
+fn bare_parameter(ty: &syn::Type, parameters: &[String]) -> Option<String> {
+    let syn::Type::Path(path) = written_type(ty) else {
+        return None;
+    };
+    let named = path.path.get_ident()?.to_string();
+    (path.qself.is_none() && parameters.contains(&named)).then_some(named)
+}
+
 /// A brand's `validate()`: its own string checks, then the checks it names, each on the brand
 /// itself. A brand is the value and no member of anything, so no message here names a path.
 fn branded_validate_method(
@@ -12005,6 +12110,7 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     );
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
+    let issues_with = parts.issues_with;
 
     let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
@@ -12045,6 +12151,7 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
                     #(#delegate_impl_items)*
                     #schema_example_tokens
                     #validate_method
+                    #issues_with
                     #bound_alone
                     #bound_text_method
                 }
@@ -12215,6 +12322,12 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
 
     let validate_method = with_branded_checks(bound.held.as_ref(), &args.check);
+    let handed = brand_issues_with(
+        &generic_params,
+        inner_ty,
+        &held,
+        !validate_method.is_empty(),
+    );
 
     // The brand as it is emitted keeps no serde attribute where it derives `Deserialize` alone.
     let (bound_text_method, counted_as) = branded_bound_text_method(&item_struct);
@@ -12241,6 +12354,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
         example_test: ExampleTest::of_struct(&read_struct, args),
+        issues_with: handed.as_ref(),
         item_struct: &read_struct,
         module_ident: &module_ident,
         name: &name,
@@ -15505,7 +15619,6 @@ fn read_untagged_member_unjudged(
             choosing: true,
             container_defaulted: ctx.container_defaulted,
             index,
-            renamed_under: None,
             variant: ctx.variant_ident,
             written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
         },
@@ -15592,15 +15705,7 @@ fn collect_untagged_variant_members(
     // An untagged variant has no name on the wire, so the rename the seam also resolves is unused
     // here.
     let (_, variant_rename_all) = variant_serde_names(&variant.attrs, walk.rename_all_fields);
-    let mut walked = UntaggedVariantMembers {
-        bound: Vec::new(),
-        checks: Vec::new(),
-        deferred_attrs: Vec::new(),
-        field_defs: Vec::new(),
-        flattened_fields: Vec::new(),
-        guard_errors: Vec::new(),
-        validation_fns: Vec::new(),
-    };
+    let mut walked = UntaggedVariantMembers::default();
 
     for (index, field) in variant.fields.iter_mut().enumerate() {
         let omission = parse_serde_key_omission(&field.attrs);
@@ -15650,6 +15755,9 @@ fn collect_untagged_variant_members(
         field.attrs = new_attrs;
         if !is_flatten {
             walked.validation_fns.extend(validation_fn);
+        }
+        if validate_body.is_some() {
+            parameter_walk::note_ruled();
         }
 
         let (mut member_def, member_guard_errors) = untagged_member_field_def(
@@ -18566,13 +18674,18 @@ fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro
         .iter()
         .map(|key| PlaceStep::Written(key.clone()))
         .collect();
-    let walk = held_walk(shape, &head, 1, &under);
+    let mut arities = Vec::new();
+    let walk = held_walk(shape, &head, 1, &under, &mut arities);
     let fallback = unpublished_validate_fallback();
+    arities.sort_unstable();
+    arities.dedup();
+    let handed = parameter_walk::issues_with_fallbacks(&arities);
     let keyed = shape.walks_a_map().then(written_key_items);
     let checked = &place.checked;
     quote! {
         {
             #fallback
+            #handed
             #keyed
             let #head = #checked;
             #walk
@@ -18580,12 +18693,14 @@ fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro
     }
 }
 
-/// The walk of `shape` from `value`, held at `place`, whose first wrapper binds at `depth`.
+/// The walk of `shape` from `value`, held at `place`, whose first wrapper binds at `depth`. The
+/// number of type arguments of each generic model it ends on is added to `arities`.
 fn held_walk(
     shape: &HeldShape,
     value: &proc_macro2::Ident,
     depth: usize,
     place: &[PlaceStep],
+    arities: &mut Vec<usize>,
 ) -> proc_macro2::TokenStream {
     let below = depth.saturating_add(shape.wraps.len());
     let held = held_at(place, &shape.wraps, depth);
@@ -18595,14 +18710,28 @@ fn held_walk(
         .filter(|_| !shape.wraps.is_empty())
         .map_or_else(|| value.clone(), wrap_binding);
     let end = match &shape.end {
-        HeldEnd::Declared => nested_leaf(&reached, &held),
+        HeldEnd::Declared(arguments) if arguments.is_empty() => nested_leaf(&reached, &held),
+        HeldEnd::Declared(arguments) => {
+            let reported = handed_walks(&reached, arguments, below, arities);
+            nested_report(&reported, &held)
+        }
+        HeldEnd::Parameter(parameter) => {
+            let check = parameter_walk::check_of(parameter);
+            nested_report(&quote! { #check(#reached) }, &held)
+        }
         HeldEnd::Positions(positions) => {
             let position = wrap_binding(below);
             let walks = positions.iter().map(|(at, of_position)| {
                 let slot = syn::Index::from(*at);
                 let mut held_under = held.clone();
                 held_under.push(PlaceStep::Written(at.to_string()));
-                let walk = held_walk(of_position, &position, below.saturating_add(1), &held_under);
+                let walk = held_walk(
+                    of_position,
+                    &position,
+                    below.saturating_add(1),
+                    &held_under,
+                    arities,
+                );
                 quote! {
                     {
                         let #position = &#reached.#slot;
@@ -18618,7 +18747,13 @@ fn held_walk(
                 let variant = proc_macro2::Ident::new(arm, proc_macro2::Span::call_site());
                 let mut held_under = held.clone();
                 held_under.push(PlaceStep::Written((*arm).to_owned()));
-                let walk = held_walk(of_arm, &held_by_arm, below.saturating_add(1), &held_under);
+                let walk = held_walk(
+                    of_arm,
+                    &held_by_arm,
+                    below.saturating_add(1),
+                    &held_under,
+                    arities,
+                );
                 quote! {
                     if let ::core::result::Result::#variant(#held_by_arm) = #reached {
                         #walk
@@ -18722,9 +18857,79 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
 /// The nested check a walk ends on: whatever the type of `value` reported, attributed to `place`,
 /// which holds it.
 fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::TokenStream {
+    nested_report(&quote! { #value.validation_issues() }, place)
+}
+
+/// What a generic model at `value` reports of itself and of what fills its parameters: its
+/// `model_schema_issues_with{n}`, handed the walk of each of `arguments`, the type arguments it
+/// is written with. Each walk binds below `depth`, and the arity is added to `arities`.
+fn handed_walks(
+    value: &proc_macro2::Ident,
+    arguments: &[syn::Type],
+    depth: usize,
+    arities: &mut Vec<usize>,
+) -> proc_macro2::TokenStream {
+    arities.push(arguments.len());
+    let walk = parameter_walk::issues_with(arguments.len());
+    let held = wrap_binding(depth);
+    let handed = arguments.iter().map(|argument| {
+        let written = parameter_walk::argument_written(argument);
+        let reported = argument_walk(argument, &held, depth.saturating_add(1), arities);
+        // Placed at the argument, with the macro's hygiene: an alias that rearranges the model's
+        // parameters is refused at the argument it writes.
+        let at = argument.span().resolved_at(proc_macro2::Span::call_site());
+        let written_as = quote_spanned! {at=>
+            ModelSchemaWrittenAs::<#written>::model_schema_written(#held)
+        };
+        quote! {
+            &|#held| {
+                let #held: &#written = #written_as;
+                #reported
+            }
+        }
+    });
+    quote! { #value.#walk(#(#handed),*) }
+}
+
+/// What the walk of a value of `argument`, a type argument of a generic model, held at `value`,
+/// reports of it, each message at its place below the value: the check of the item's own type
+/// parameter where it is one, the walk of what it holds where it holds a model, and nothing
+/// otherwise.
+fn argument_walk(
+    argument: &syn::Type,
+    value: &proc_macro2::Ident,
+    depth: usize,
+    arities: &mut Vec<usize>,
+) -> proc_macro2::TokenStream {
+    let walked = parameter_walk::scope();
+    let mut def = get_field_def("_held", argument, "");
+    def.resolve_self_references(&walked.type_name, &walked.parameters);
+    def.erase_type_parameters(&walked.parameters);
+    let Some(shape) = held_shape_reaching(argument, &def, &walked.parameters) else {
+        let written = parameter_walk::argument_written(argument);
+        return quote! {
+            let _: &#written = #value;
+            ::std::vec::Vec::new()
+        };
+    };
+    let walk = held_walk(&shape, value, depth, &[], arities);
+    let keyed = shape.walks_a_map().then(written_key_items);
+    quote! {
+        #keyed
+        let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+        #walk
+        errors
+    }
+}
+
+/// `reported`, the messages of a value a walk ends on, each attributed to `place`, which holds it.
+fn nested_report(
+    reported: &proc_macro2::TokenStream,
+    place: &[PlaceStep],
+) -> proc_macro2::TokenStream {
     let Some(named) = named_at(place) else {
         return quote! {
-            errors.extend(#value.validation_issues());
+            errors.extend(#reported);
         };
     };
     let naming = nested_under_fn();
@@ -18741,7 +18946,7 @@ fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::
         .collect();
     let keyed = (!keys.is_empty()).then(keyed_under_fn);
     quote! {
-        let reported = #value.validation_issues();
+        let reported = #reported;
         if !reported.is_empty() {
             #naming
             #keyed
@@ -18834,25 +19039,6 @@ pub fn nested_under_fn() -> proc_macro2::TokenStream {
                 ::core::option::Option::Some((named, tail)) => format!("'{field}.{named}'{tail}"),
                 ::core::option::Option::None => format!("'{field}': {violation}"),
             }
-        }
-    }
-}
-
-/// Whether a refusal is one of this crate's own bound sentences, under whatever field name it
-/// already carries.
-#[cfg(feature = "serde")]
-fn reports_a_bound_fn() -> proc_macro2::TokenStream {
-    let stems: Vec<&str> = VIOLATION_STEMS.to_vec();
-    quote! {
-        fn reports_a_bound(reported: &str) -> bool {
-            let said = match reported
-                .strip_prefix('\'')
-                .and_then(|rest| rest.split_once('\''))
-            {
-                ::core::option::Option::Some((_, tail)) => tail.strip_prefix(": ").unwrap_or(tail),
-                ::core::option::Option::None => reported,
-            };
-            [#(#stems),*].iter().any(|stem| said.starts_with(stem))
         }
     }
 }
@@ -19736,74 +19922,39 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     }
 }
 
-/// Reads a field's type down to the value whose own type would publish the validator, collecting
-/// the wrappers it is reached through, each level of a list and each reference among them.
-#[cfg(feature = "serde")]
-fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
-    let mut wraps = Vec::new();
-    let mut current = ty;
-    loop {
-        current = written_type(current);
-        if let syn::Type::Reference(reference) = current {
-            wraps.push(ConstraintWrap::Borrowed);
-            current = &reference.elem;
-        } else if let syn::Type::Array(array) = current {
-            wraps.push(ConstraintWrap::Sequence);
-            current = &array.elem;
-        } else if let syn::Type::Slice(slice) = current {
-            wraps.push(ConstraintWrap::Sequence);
-            current = &slice.elem;
-        } else if let syn::Type::Path(path) = current {
-            let segment = path.path.segments.last()?;
-            let ident = segment.ident.to_string();
-            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                let Some(wrap) = generic_wrap(&ident) else {
-                    return (!reads_through(&ident)).then_some(wraps);
-                };
-                current = wrapped_argument(wrap, args)?;
-                wraps.push(wrap);
-            } else if matches!(segment.arguments, syn::PathArguments::None) {
-                return Some(wraps);
-            } else {
-                return None;
-            }
-        } else {
-            return None;
-        }
-    }
-}
-
 /// Reads a member's type down to every value whose own type would publish the validator, against
 /// what `def` says the type holds: through every reference and each level of a list, to a map's
 /// values and to each position of a tuple. `None` where it holds no declared type.
+#[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
-    let mut wraps = Vec::new();
-    #[cfg(feature = "serde")]
-    let mut keys: Vec<syn::Type> = Vec::new();
+    held_shape_reaching(ty, def, &[])
+}
+
+/// [`held_shape`], ending as well on each value behind one of `parameters`, the item's own type
+/// parameters, which `model_schema_issues_with{n}` hands to a check. A value below a map keyed by
+/// one of them is not reached: its entry would be named by a key with no text in reach.
+fn held_shape_reaching(ty: &syn::Type, def: &FieldDef, parameters: &[String]) -> Option<HeldShape> {
+    let mut walked = HeldShape::begun();
     let mut current = ty;
     let mut held = def;
+    let mut reaching = parameters;
     loop {
         current = written_type(current);
         if let syn::Type::Reference(reference) = current {
-            wraps.push(ConstraintWrap::Borrowed);
+            walked.wraps.push(ConstraintWrap::Borrowed);
             current = &reference.elem;
         } else if let syn::Type::Array(array) = current {
-            wraps.push(ConstraintWrap::Sequence);
+            walked.wraps.push(ConstraintWrap::Sequence);
             current = &array.elem;
         } else if let syn::Type::Slice(slice) = current {
-            wraps.push(ConstraintWrap::Sequence);
+            walked.wraps.push(ConstraintWrap::Sequence);
             current = &slice.elem;
         } else if let syn::Type::Tuple(tuple) = current {
             let FieldDefType::Tuple(of_positions) = &held.field_type else {
                 return None;
             };
-            let positions = held_positions(tuple, of_positions);
-            return (!positions.is_empty()).then_some(HeldShape {
-                end: HeldEnd::Positions(positions),
-                #[cfg(feature = "serde")]
-                keys,
-                wraps,
-            });
+            let positions = held_positions(tuple, of_positions, reaching);
+            return (!positions.is_empty()).then(|| walked.ended(HeldEnd::Positions(positions)));
         } else if let syn::Type::Path(path) = current {
             let segment = path.path.segments.last()?;
             let ident = segment.ident.to_string();
@@ -19812,56 +19963,53 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 if let FieldDefType::Range(kind, bound) = &held.field_type
                     && RangeKind::named(&ident) == Some(*kind)
                 {
-                    wraps.push(ConstraintWrap::Range(*kind));
+                    walked.wraps.push(ConstraintWrap::Range(*kind));
                     current = sole_type_argument(args)?;
                     held = bound;
                     continue;
                 }
                 if let FieldDefType::Result(ok, err) = &held.field_type
-                    && let Some((ok_type, err_type)) = written_std_result(path)
+                    && let Some(written) = written_std_result(path)
                 {
-                    let arms: Vec<(&'static str, HeldShape)> = RESULT_ARMS
-                        .into_iter()
-                        .zip([(ok_type, &**ok), (err_type, &**err)])
-                        .filter_map(|(arm, (arm_type, arm_def))| {
-                            Some((arm, held_shape(arm_type, arm_def)?))
-                        })
-                        .collect();
-                    return (!arms.is_empty()).then_some(HeldShape {
-                        end: HeldEnd::Arms(arms),
-                        #[cfg(feature = "serde")]
-                        keys,
-                        wraps,
-                    });
+                    let arms = held_arms(written, [&**ok, &**err], reaching);
+                    return (!arms.is_empty()).then(|| walked.ended(HeldEnd::Arms(arms)));
                 }
                 if is_map_wrapper(&ident) {
                     let FieldDefType::Map(_, of_values) = &held.field_type else {
                         return None;
                     };
-                    wraps.push(ConstraintWrap::Map);
+                    let key = type_arguments(args).next()?;
+                    if tokens_name_any(&quote! { #key }, reaching) {
+                        reaching = &[];
+                    }
+                    walked.wraps.push(ConstraintWrap::Map);
                     #[cfg(feature = "serde")]
-                    keys.push(map_key_argument(args)?.clone());
+                    walked.keys.push(key.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
                     continue;
                 }
                 let Some(wrap) = generic_wrap(&ident) else {
-                    return (declared && !reads_through(&ident)).then_some(HeldShape {
-                        end: HeldEnd::Declared,
-                        #[cfg(feature = "serde")]
-                        keys,
-                        wraps,
+                    return (declared && !reads_through(&ident)).then(|| {
+                        let arguments = parameter_walk::leaf_arguments(segment);
+                        walked.ended(HeldEnd::Declared(arguments))
                     });
                 };
                 current = wrapped_argument(wrap, args)?;
-                wraps.push(wrap);
+                walked.wraps.push(wrap);
                 held = list_item_def(held, &ident);
             } else if matches!(segment.arguments, syn::PathArguments::None) {
-                return declared.then_some(HeldShape {
-                    end: HeldEnd::Declared,
-                    #[cfg(feature = "serde")]
-                    keys,
-                    wraps,
+                if let FieldDefType::TypeParam(parameter) = &held.field_type
+                    && path.qself.is_none()
+                    && path.path.segments.len() == 1
+                    && reaching.contains(parameter)
+                {
+                    let end = HeldEnd::Parameter(parameter.clone());
+                    return Some(walked.ended(end));
+                }
+                return declared.then(|| {
+                    let arguments = parameter_walk::leaf_arguments(segment);
+                    walked.ended(HeldEnd::Declared(arguments))
                 });
             } else {
                 return None;
@@ -19872,15 +20020,37 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     }
 }
 
-/// [`held_shape`] of each position of `tuple` that holds a declared type, by its place, against
-/// what `of_positions` says each one holds.
-fn held_positions(tuple: &syn::TypeTuple, of_positions: &[FieldDef]) -> Vec<(usize, HeldShape)> {
+/// [`held_shape_reaching`] of each arm of a std `Result`, by the key serde writes it under: its
+/// `Ok` and its `Err` type as written, against what each def beside them says it holds.
+fn held_arms(
+    (ok_type, err_type): (&syn::Type, &syn::Type),
+    [ok, err]: [&FieldDef; 2],
+    parameters: &[String],
+) -> Vec<(&'static str, HeldShape)> {
+    RESULT_ARMS
+        .into_iter()
+        .zip([(ok_type, ok), (err_type, err)])
+        .filter_map(|(arm, (arm_type, arm_def))| {
+            Some((arm, held_shape_reaching(arm_type, arm_def, parameters)?))
+        })
+        .collect()
+}
+
+/// [`held_shape_reaching`] of each position of `tuple` that holds a declared type, or a value
+/// behind one of `reaching`, by its place, against what `of_positions` says each one holds.
+fn held_positions(
+    tuple: &syn::TypeTuple,
+    of_positions: &[FieldDef],
+    reaching: &[String],
+) -> Vec<(usize, HeldShape)> {
     tuple
         .elems
         .iter()
         .zip(of_positions)
         .enumerate()
-        .filter_map(|(at, (position, of_position))| Some((at, held_shape(position, of_position)?)))
+        .filter_map(|(at, (position, of_position))| {
+            Some((at, held_shape_reaching(position, of_position, reaching)?))
+        })
         .collect()
 }
 
@@ -19894,12 +20064,6 @@ fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
     } else {
         def
     }
-}
-
-/// The type of a map's keys, its first type argument.
-#[cfg(feature = "serde")]
-fn map_key_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
-    type_arguments(args).next()
 }
 
 /// The type of a map's values, its second type argument.
@@ -20539,6 +20703,7 @@ fn collect_field_guard_errors(
             prop_meta,
         ))
         .chain(serde_guard_errors)
+        .chain(parameter_walk::rearranged_alias_errors(&field.ty, &label))
         .collect()
 }
 
@@ -21562,24 +21727,15 @@ fn process_field(
         &model_schema_prop_meta.check,
         VALIDATE_SINK,
     );
+    if validate_body.is_some() || own_checks.is_some() {
+        parameter_walk::note_ruled();
+    }
 
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
 
-    // The read-time half of the reach `validate()` has below: what the field's own type turns
-    // away before `validate()` is ever asked.
+    // What `validate()` walks is read unjudged, the whole value being judged once it is read.
     #[cfg(feature = "serde")]
-    let validation_fn =
-        match member_read_hook(ctx, field, &field_def, index, place.reported.as_deref()) {
-            Some((hook, attrs)) => {
-                injected_attrs.extend(attrs);
-                Some(match bound_fns {
-                    Some(already) => quote! { #already #hook },
-                    None => hook,
-                })
-            }
-            None => bound_fns,
-        };
-    #[cfg(not(feature = "serde"))]
+    read_unjudged_below(ctx, field, &field_def, index);
     let validation_fn = bound_fns;
 
     let declared = named_member_validate_body(validate_body, field, &field_def, &place);
@@ -21593,37 +21749,28 @@ fn process_field(
     (field_def, validation_fn, body, guard_errors)
 }
 
-/// The wrapper chain a field's own type is reached through, where the field is a reference to a
-/// declared type under an `Option`, a list, the transparent wrappers and every borrow, and `None`
-/// for any other. A list is read by what it holds, as [`held_shape`] reads it, so a set of strings
-/// is no reference to a declared type.
-#[cfg(feature = "serde")]
-fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<ConstraintWrap>> {
-    let held = held_shape(&field.ty, field_def)?;
-    (matches!(held.end, HeldEnd::Declared)
-        && !held
-            .wraps
-            .iter()
-            .any(|wrap| matches!(*wrap, ConstraintWrap::Range(_))))
-    .then(|| nested_shape(&field.ty))
-    .flatten()
-}
-
 /// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot.
+#[cfg(feature = "serde")]
 fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def)
 }
 
 /// The `validate()` contribution of what a member's *own type* declares — a constrained brand, or
-/// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — or
-/// `None` where there is nothing below it to run. `place` is where the member is read and the name
-/// it is reported under, which is none for a member serde writes as the value of what holds it.
+/// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — and
+/// of each value behind one of the item's own type parameters, or `None` where there is nothing
+/// below it to run. `place` is where the member is read and the name it is reported under, which
+/// is none for a member serde writes as the value of what holds it.
 fn nested_validate_body(
     field: &Field,
     field_def: &FieldDef,
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
-    member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
+    if held_shape_reaching(&field.ty, field_def, &[]).is_some() {
+        parameter_walk::note_ruled();
+    }
+    let parameters = parameter_walk::scope().parameters;
+    held_shape_reaching(&field.ty, field_def, &parameters)
+        .map(|shape| build_nested_validation(&shape, place))
 }
 
 /// `checked`, a member's statements in `validate()`, under the member's `#[cfg(...)]` attributes:
@@ -21640,43 +21787,13 @@ fn under_member_cfgs(field: &Field, checked: proc_macro2::TokenStream) -> proc_m
     quote! { #(#cfgs)* { #checked } }
 }
 
-/// The wrappers a named field's own type is reached through, where a refusal it raises as it is
-/// read is answered under the field's key, and `None` for every field it is answered as it is. A
-/// field read through a reference has no hook: serde reads no reference to a model.
-#[cfg(feature = "serde")]
-fn named_below(
-    field: &Field,
-    field_def: &FieldDef,
-    ctx: &FieldContext<'_>,
-) -> Option<Vec<ConstraintWrap>> {
-    ctx.schema_module_name?;
-    field.ident.as_ref()?;
-    if !ctx.container_read_back
-        || is_flattened_field(field)
-        || names_what_the_module_cannot_repeat(&field.ty, ctx.type_parameters)
-    {
-        return None;
-    }
-    let serde_meta = parse_serde_field_attributes(&field.attrs);
-    if serde_meta.skip || has_serde_read_hook(&field.attrs) {
-        return None;
-    }
-    reachable_nested_shape(field, field_def).filter(|wraps| !ends_on_a_borrow(wraps))
-}
-
 /// Gives a member of a struct, or of a tagged variant, the hook that reads the models it holds
-/// unjudged, where the item is read back and `validate()` walks what the member holds. Answers
-/// whether it was given one. `reported` is the name `validate()` reports the member under.
+/// unjudged, where the item is read back and `validate()` walks what the member holds: the whole
+/// value is judged once it is read. A member no hook is hung on is read by its own `Deserialize`.
 #[cfg(feature = "serde")]
-fn read_unjudged_below(
-    ctx: &FieldContext<'_>,
-    field: &Field,
-    field_def: &FieldDef,
-    index: usize,
-    reported: Option<&str>,
-) -> bool {
+fn read_unjudged_below(ctx: &FieldContext<'_>, field: &Field, field_def: &FieldDef, index: usize) {
     if !ctx.container_read_back {
-        return false;
+        return;
     }
     let walked = if field.ident.is_some() {
         member_held_shape(field, field_def)
@@ -21684,7 +21801,7 @@ fn read_unjudged_below(
         held_shape(&field.ty, field_def)
     };
     let Some(shape) = walked else {
-        return false;
+        return;
     };
     judged_read::hook_member(
         field,
@@ -21693,129 +21810,10 @@ fn read_unjudged_below(
             choosing: false,
             container_defaulted: ctx.container_defaulted,
             index,
-            renamed_under: named_below(field, field_def, ctx).and(reported),
             variant: ctx.variant_ident,
             written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
         },
-    )
-}
-
-/// The hook a member's own type is read through as the item is read, with the attributes that
-/// hang it on the field. What `validate()` walks is read unjudged, through a hook of the item's
-/// own read, the whole value being judged once it is read: `None` then, and for every member no
-/// hook is hung on.
-#[cfg(feature = "serde")]
-fn member_read_hook(
-    ctx: &FieldContext<'_>,
-    field: &Field,
-    field_def: &FieldDef,
-    index: usize,
-    reported: Option<&str>,
-) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
-    if read_unjudged_below(ctx, field, field_def, index, reported) {
-        return None;
-    }
-    named_read_hook(field, field_def, ctx, &field_ident_string(field), reported?)
-}
-
-/// The read-time hook for a named field whose *own type* carries the bound — a constrained brand,
-/// or a nested `#[model_schema()]` type holding one — together with the serde attributes that hang
-/// it on the field. `None` for every field no hook may be hung on. `reported` is the name
-/// `validate()` reports the field under.
-#[cfg(feature = "serde")]
-fn named_read_hook(
-    field: &Field,
-    field_def: &FieldDef,
-    ctx: &FieldContext<'_>,
-    raw_field_ident: &str,
-    reported: &str,
-) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
-    let module_name = ctx.schema_module_name?;
-    let wraps = named_below(field, field_def, ctx)?;
-
-    let stem = helper_name_stem(raw_field_ident, ctx.variant_ident);
-    let hook_ident = proc_macro2::Ident::new(
-        &format!("{NAMED_READ_HOOK_PREFIX}{stem}"),
-        proc_macro2::Span::call_site(),
     );
-    let path_lit = syn::LitStr::new(
-        &format!("{module_name}::{hook_ident}"),
-        proc_macro2::Span::call_site(),
-    );
-    let mut attrs: Vec<syn::Attribute> = vec![syn::parse_quote! {
-        #[serde(deserialize_with = #path_lit)]
-    }];
-    // A `deserialize_with` turns off serde's reading of a missing `Option` key as `None`, and the
-    // `default` puts it back. Only alongside the hook.
-    if needs_injected_default(&wraps, has_serde_default(&field.attrs)) {
-        attrs.push(syn::parse_quote! { #[serde(default)] });
-    }
-    Some((
-        build_named_read_hook(&hook_ident, &field.ty, reported),
-        attrs,
-    ))
-}
-
-/// The hook itself: read the field's declared type, and where the refusal is one of this crate's
-/// own bound sentences, answer it again with `reported`, the holding field's name, written into
-/// every violation it carries.
-#[cfg(feature = "serde")]
-fn build_named_read_hook(
-    hook_ident: &proc_macro2::Ident,
-    field_ty: &syn::Type,
-    reported: &str,
-) -> proc_macro2::TokenStream {
-    let renaming = judged_read::named_refusal(reported);
-    quote! {
-        pub fn #hook_ident<'de, D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            use serde::Deserialize;
-            <#field_ty>::deserialize(deserializer).map_err(#renaming)
-        }
-    }
-}
-
-/// Reads a joined report back into the violations it was built from.
-#[cfg(feature = "serde")]
-fn joined_violations_fn() -> proc_macro2::TokenStream {
-    quote! {
-        fn joined_violations(reported: &str) -> ::std::vec::Vec<&str> {
-            let mut found: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
-            let mut rest = reported;
-            loop {
-                let cut = rest.match_indices("; ").find_map(|(at, _)| {
-                    let (head, tail) = rest.split_at(at);
-                    let tail = tail.strip_prefix("; ")?;
-                    reports_a_bound(tail).then_some((head, tail))
-                });
-                match cut {
-                    ::core::option::Option::Some((head, tail)) => {
-                        found.push(head);
-                        rest = tail;
-                    }
-                    ::core::option::Option::None => {
-                        found.push(rest);
-                        return found;
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Whether a written type says anything a free function in the schema module cannot repeat: a
-/// lifetime it borrows for, `Self`, or one of the item's own type parameters.
-#[cfg(feature = "serde")]
-fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String]) -> bool {
-    let written = quote! { #ty }.to_string();
-    if written.contains('\'') {
-        return true;
-    }
-    written
-        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
-        .any(|word| word == "Self" || type_parameters.iter().any(|named| named == word))
 }
 
 /// What a member contributes to `validate()`: the check its type declares, then its own. A
@@ -21870,7 +21868,11 @@ fn held_member_checks(
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     let named = &field_def.model_schema_prop_meta.as_ref()?.check;
-    checks::member_calls(place, &field.ty, named, VALIDATE_SINK)
+    let called = checks::member_calls(place, &field.ty, named, VALIDATE_SINK);
+    if called.is_some() {
+        parameter_walk::note_ruled();
+    }
+    called
 }
 
 /// What a member's arm runs: the check its type declares, then its own, the order Zod reports.

@@ -60,6 +60,9 @@ enum Helper {
     /// What a held value answers where its type carries no `validate()`: a type of the
     /// consumer's own, and an alias of a string or of a list. A member is found ahead of it.
     Fallback,
+    /// What a held value of a generic type answers where its type carries no
+    /// `validationIssuesWith`: a type of the consumer's own, whose read judges what it holds.
+    FallbackWith,
     /// The text serde writes for a map's key typed with a type parameter, read from the
     /// serializer of the class the key is an instance of; a class of a parameter of its own has
     /// none to find, and its key is written as Kotlin prints it.
@@ -170,6 +173,11 @@ pub struct Rules<'item> {
     helpers: BTreeSet<Helper>,
     /// The type parameters a map is keyed by, whose serializers the overload of `validate()` takes.
     keys: BTreeSet<String>,
+    /// Whether the type is an `object` of the enum it implements, which fills each of the enum's
+    /// parameters with `Nothing`.
+    nothing: bool,
+    /// The type's own type parameters, whose checks `validationIssuesWith` takes, one each.
+    parameters: Vec<String>,
     /// The type parameters the item declares `Serialize` for: a map's key typed with one is
     /// written into a place, as Rust writes it.
     serializable: &'item [String],
@@ -193,6 +201,10 @@ impl Helper {
             }
             Self::Checked => "private fun <T> T.kotlinSchemaChecked(): T = this",
             Self::Fallback => "private fun Any?.validationIssues(): List<String> = emptyList()",
+            Self::FallbackWith => {
+                "private fun Any?.validationIssuesWith(vararg handed: Any?): List<String> = \
+                 emptyList()"
+            }
             Self::Key => {
                 "private fun <T> kotlinSchemaKey(key: T, serializer: KSerializer<T>?): String = \
                  (serializer?.let { Json.encodeToJsonElement(it, key) } ?: \
@@ -295,6 +307,38 @@ impl Number {
 }
 
 impl<'item> Rules<'item> {
+    /// What a holder hands the `validationIssuesWith` of a generic type for one of its type
+    /// arguments, `argument`: the check of the holder's own parameter where the argument is one,
+    /// and otherwise a function that answers what the walk of a value of the argument reports.
+    fn argument_check(&mut self, argument: &FieldDef, depth: usize) -> String {
+        if let FieldDefType::TypeParam(parameter) = &argument.field_type
+            && argument.array_depth == 0
+            && !argument.is_optional()
+            && self.parameters.contains(parameter)
+        {
+            return check_of(parameter);
+        }
+        let (held, listed) = (
+            bound_name("argument", depth),
+            bound_name(VIOLATIONS, depth.saturating_add(1)),
+        );
+        let typed = kotlin_typename(argument);
+        let inside = self.held_statements(
+            argument,
+            &held,
+            None,
+            depth.saturating_add(1),
+            Asked::Report,
+        );
+        if inside.is_empty() {
+            return format!("{{ _: {typed} -> emptyList() }}");
+        }
+        format!(
+            "{{ {held}: {typed} -> val {listed} = mutableListOf<String>(); {}; {listed} }}",
+            collected_into(&inside.join("; "), &listed)
+        )
+    }
+
     /// What the bounds written on `member` add, each measured on `read`, the value under the
     /// member's own `Option`.
     fn bound_statements(
@@ -389,6 +433,8 @@ impl<'item> Rules<'item> {
             handing: false,
             helpers: BTreeSet::new(),
             keys: BTreeSet::new(),
+            nothing: false,
+            parameters: Vec::new(),
             serializable,
             statements: Vec::new(),
         }
@@ -502,6 +548,20 @@ impl<'item> Rules<'item> {
         self.keys.iter().cloned().collect()
     }
 
+    /// What a brand over one of its own type parameters adds after its own rules: the check of
+    /// that parameter, run on the value it wraps.
+    pub fn handed_on(&mut self, member: &Member<'_>) {
+        if let FieldDefType::TypeParam(parameter) = &member.def.field_type
+            && member.def.array_depth == 0
+            && !member.def.is_optional()
+            && self.parameters.contains(parameter)
+        {
+            let called = format!("{}({})", check_of(parameter), member.read);
+            let collected = self.collected(&called, member.place.as_deref());
+            self.statements.push(collected);
+        }
+    }
+
     /// [`Self::of`] for a type a judged serializer reads, which hands `validate()` the serializer
     /// of each parameter a map is keyed by.
     pub const fn handing(serializable: &'item [String]) -> Self {
@@ -551,21 +611,14 @@ impl<'item> Rules<'item> {
                 let listed = def.collection_element_field(element);
                 return self.held_statements(&listed, read, place, depth, asked);
             }
-            let mut found = Vec::new();
-            if let Some(method) = self.method_asked(name, asked) {
-                let handed = if matches!(asked, Asked::Report) {
-                    self.serializers_for(name, arguments)
-                } else {
-                    String::new()
-                };
-                let called = format!("{read}.{method}({handed})");
-                found.push(self.collected(&called, place));
+            self.named_statements((name, arguments), read, place, depth, asked)
+        } else if let FieldDefType::TypeParam(parameter) = &def.field_type {
+            if matches!(asked, Asked::Report) && self.parameters.contains(parameter) {
+                let called = format!("{}({read})", check_of(parameter));
+                vec![self.collected(&called, place)]
+            } else {
+                Vec::new()
             }
-            if let Some(filling) = self.filling_told(name, arguments) {
-                let counted = format!("{read}.kotlinSchemaAtFilling({})", kotlin_quoted(&filling));
-                found.push(self.collected(&counted, place));
-            }
-            found
         } else if let FieldDefType::Map(key, value) = &def.field_type {
             let (entry, held) = (bound_name("key", depth), bound_name("held", depth));
             let written = self.key_step(key, &entry);
@@ -834,6 +887,46 @@ impl<'item> Rules<'item> {
         }
     }
 
+    /// What a value `read` of the declared type `name` filled with `arguments` answers `asked`:
+    /// what it reports, handed the check of each argument where it declares parameters, and what
+    /// it counts at the filling it is told.
+    fn named_statements(
+        &mut self,
+        (name, arguments): (&str, &[FieldDef]),
+        read: &str,
+        place: Option<&str>,
+        depth: usize,
+        asked: Asked,
+    ) -> Vec<String> {
+        let mut found = Vec::new();
+        if let Some(method) = self.method_asked(name, asked) {
+            let handed = if matches!(asked, Asked::Report) {
+                self.serializers_for(name, arguments)
+            } else {
+                String::new()
+            };
+            let called = if matches!(asked, Asked::Report) && !arguments.is_empty() {
+                if !validates(name) {
+                    self.helpers.insert(Helper::FallbackWith);
+                }
+                let mut passed: Vec<String> = arguments
+                    .iter()
+                    .map(|argument| self.argument_check(argument, depth))
+                    .collect();
+                passed.extend((!handed.is_empty()).then_some(handed));
+                format!("{read}.validationIssuesWith({})", passed.join(", "))
+            } else {
+                format!("{read}.{method}({handed})")
+            };
+            found.push(self.collected(&called, place));
+        }
+        if let Some(filling) = self.filling_told(name, arguments) {
+            let counted = format!("{read}.kotlinSchemaAtFilling({})", kotlin_quoted(&filling));
+            found.push(self.collected(&counted, place));
+        }
+        found
+    }
+
     pub const fn of(serializable: &'item [String]) -> Self {
         Self {
             bounds: Vec::new(),
@@ -844,6 +937,8 @@ impl<'item> Rules<'item> {
             handing: false,
             helpers: BTreeSet::new(),
             keys: BTreeSet::new(),
+            nothing: false,
+            parameters: Vec::new(),
             serializable,
             statements: Vec::new(),
         }
@@ -955,6 +1050,20 @@ impl<'item> Rules<'item> {
         }
     }
 
+    /// `self` for a type that declares `parameters`: its `validationIssuesWith` takes a check of
+    /// each, and runs it on every value behind that parameter.
+    pub fn walking(mut self, parameters: &[String]) -> Self {
+        self.parameters = parameters.to_vec();
+        self
+    }
+
+    /// [`Self::walking`] for a variant of an enum that declares `parameters`: the `object` of a
+    /// unit variant, `unit`, fills each with `Nothing`.
+    pub fn walking_variant(mut self, parameters: &[String], unit: bool) -> Self {
+        self.nothing = unit;
+        self.walking(parameters)
+    }
+
     /// The members the type's body carries: `validate()`, written as `modifier` opens it,
     /// `kotlinSchemaBound()` where the type answers its bounds alone, and each function their
     /// statements call.
@@ -969,7 +1078,9 @@ impl<'item> Rules<'item> {
             statements.iter().any(|statement| hands(statement, &name))
         });
         let mut aliased = String::new();
-        let validate = if statements.is_empty() {
+        let validate = if !self.parameters.is_empty() {
+            self.written_with(method, modifier, &statements, &mut aliased)
+        } else if statements.is_empty() {
             format!("{modifier}fun {method}(): List<String> = emptyList()")
         } else if self.keys.is_empty() {
             format!(
@@ -1037,6 +1148,73 @@ impl<'item> Rules<'item> {
                 .map(|helper| helper.written().to_owned()),
         );
         members.join("; ")
+    }
+
+    /// `validate()` of a type that declares type parameters, written as `modifier` opens it: the
+    /// walk is `validationIssuesWith`, which takes a check of each parameter beside the serializer
+    /// of each key parameter, and `validate()` hands it checks that report nothing. Where `method`
+    /// is `validate`, `aliased` gains the `validationIssues` that answers it.
+    fn written_with(
+        &self,
+        method: &str,
+        modifier: &str,
+        statements: &[String],
+        aliased: &mut String,
+    ) -> String {
+        let checks = if self.nothing {
+            self.parameters
+                .iter()
+                .map(|parameter| format!("{}: (Nothing) -> List<String>", check_of(parameter)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            checks_declared(&self.parameters)
+        };
+        let check_names = checks_named(&self.parameters);
+        let nothing = vec!["{ emptyList() }"; self.parameters.len()].join(", ");
+        let body = if statements.is_empty() {
+            " = emptyList()".to_owned()
+        } else {
+            format!(
+                " {{ val {VIOLATIONS} = mutableListOf<String>(); {}; return {VIOLATIONS} }}",
+                statements.join("; ")
+            )
+        };
+        if self.keys.is_empty() {
+            return format!(
+                "{modifier}fun {method}(): List<String> = validationIssuesWith({nothing}); \
+                 {modifier}fun validationIssuesWith({checks}): List<String>{body}"
+            );
+        }
+        let taken_by: Vec<&String> = if self.declared.is_empty() {
+            self.keys.iter().collect()
+        } else {
+            self.declared.iter().collect()
+        };
+        let nulls = vec!["null"; taken_by.len()].join(", ");
+        let taken = taken_by
+            .iter()
+            .map(|key| format!("{}: KSerializer<{key}>?", kotlin_serializer_param_name(key)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let names = taken_by
+            .iter()
+            .map(|key| kotlin_serializer_param_name(key))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if method == "validate" {
+            let _ = write!(
+                aliased,
+                "; fun validationIssues({taken}): List<String> = validate({names})"
+            );
+        }
+        format!(
+            "{modifier}fun {method}(): List<String> = validationIssuesWith({nothing}, {nulls}); \
+             fun {method}({taken}): List<String> = validationIssuesWith({nothing}, {names}); \
+             {modifier}fun validationIssuesWith({checks}): List<String> = \
+             validationIssuesWith({check_names}, {nulls}); fun validationIssuesWith({checks}, \
+             {taken}): List<String>{body}"
+        )
     }
 }
 
@@ -1108,6 +1286,54 @@ fn behind(member: &Member<'_>, read: &str, statements: &[String]) -> Vec<String>
     } else {
         statements.to_vec()
     }
+}
+
+/// The check `validationIssuesWith` takes for the values behind `parameter`.
+fn check_of(parameter: &str) -> String {
+    format!("issuesOf{parameter}")
+}
+
+/// The checks `validationIssuesWith` takes on a type that declares `parameters`, declared.
+pub fn checks_declared(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| format!("{}: ({parameter}) -> List<String>", check_of(parameter)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The checks `validationIssuesWith` takes on a type that declares `parameters`, handed on.
+pub fn checks_named(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| check_of(parameter))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// `statements` with each message they collect added to `listed` in place of the list
+/// `validate()` collects into, which a function a holder hands down would shadow.
+fn collected_into(statements: &str, listed: &str) -> String {
+    let stem = format!("{VIOLATIONS}.");
+    let mut written = String::with_capacity(statements.len());
+    let mut rest = statements;
+    while let Some(at) = rest.find(&stem) {
+        let (before, from) = rest.split_at(at);
+        written.push_str(before);
+        let named = written
+            .chars()
+            .next_back()
+            .is_some_and(|ahead| ahead.is_alphanumeric() || matches!(ahead, '_' | '.' | '`'));
+        if named {
+            written.push_str(&stem);
+        } else {
+            written.push_str(listed);
+            written.push('.');
+        }
+        rest = &from[stem.len()..];
+    }
+    written.push_str(rest);
+    written
 }
 
 /// The name a walk binds at `depth`: `held`, then `held2` below it, so no lambda shadows another.

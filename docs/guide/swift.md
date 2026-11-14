@@ -48,7 +48,7 @@ for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += 
 
 A key of a brand over a brand is judged by both checks, each under the key, as serde judges each: the walk runs the outer brand's, and the read the inner brand's, as the read of the brand inside a value judges it. With `outer: BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose `check` refuses `mute`, and `Outer`'s `check` refusing `soft`, `{"outer":{"mute":1}}` is refused at the coding path `outer.mute` with `mute is silent`, and `{"outer":{"soft":1}}` with `'outer.soft': soft is quiet`. The `ws_rpc` client names the field `outer.mute` and `outer.soft`, as the Rust dispatcher names each.
 
-A value behind a type parameter is not reached, as in Rust. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
+A value behind a type parameter is judged by the holder that writes what fills it, as in Rust: a generic type has `validationIssuesWith`, one check per type parameter, which `validationIssues()` hands checks that report nothing, and a holder of `firstPage: Page<Parcel>` hands the check of a `Parcel`. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
 
 **The path a message names** is the steps serde writes on the way to the value, joined by dots: a key, a position in an array, or nothing where serde writes the value itself.
 
@@ -180,7 +180,9 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 | Held | Judged |
 |---|---|
 | in a field, an optional, a list, a map's value, a tuple, a flattened member or the payload of a variant, in any nesting of those | once, with its holder, each message at its full path |
-| under one of the holder's type parameters | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with `'fragileItemCodes.1': y is outside of itemCodeList`, under the coding path `codes`, `1` |
+| filling a type parameter of a generic type the holder holds, as `Parcel` in `firstPage: Page<Parcel>`, where the generic type is written above the holder | once, with its holder, each message at its full path |
+| under one of the holder's type parameters, the holder read by itself | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with `'fragileItemCodes.1': y is outside of itemCodeList`, under the coding path `codes`, `1` |
+| filling a type parameter of a generic type declared below the holder or in another crate, of one that names a `preprocess` on itself, or of one a member of which reaches the parameter through a tuple, a range, a `Result`, a fixed-size array, a map under a key Swift wraps, a `#[serde(flatten)]`, a `#[serde(default)]` or a `preprocess` of its own | by itself, as it is read |
 | as the value a brand wraps | by itself, as it is read |
 
 - **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`. A key under `#[serde(default)]` is read as its default where it is absent ([A Key Read as Its Default](models.md#a-key-read-as-its-default-serdedefault)).
