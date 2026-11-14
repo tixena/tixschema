@@ -23757,3 +23757,51 @@ fn a_braced_variant_serde_never_reads_or_reads_through_its_authors_function_leav
     .to_string();
     assert!(!lenient.contains("deny_unknown_fields"));
 }
+
+#[cfg(feature = "serde")]
+fn sealed_methods_of(declaration: &str) -> String {
+    let item: syn::ItemStruct = syn::parse_str(declaration).unwrap();
+    let field = item.fields.iter().next().unwrap();
+    super::sealed_access(&item, 0, field, true)
+        .methods
+        .to_string()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn a_brands_new_takes_a_named_type_parameter() {
+    let written = sealed_methods_of("pub struct Code(String);");
+    assert!(
+        written
+            .contains("pub fn new < Value : :: core :: convert :: Into < String >> (value : Value"),
+        "{written}"
+    );
+    assert!(!written.contains("impl"), "{written}");
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn a_brands_new_parameter_is_numbered_where_the_inner_writes_value() {
+    let written = sealed_methods_of("pub struct Payload(Value);");
+    assert!(
+        written.contains(
+            "pub fn new < Value2 : :: core :: convert :: Into < Value >> (value : Value2"
+        ),
+        "{written}"
+    );
+    let numbered = sealed_methods_of("pub struct Pair(Result<Value, Value2>);");
+    assert!(
+        numbered.contains("pub fn new < Value3 : :: core :: convert :: Into <"),
+        "{numbered}"
+    );
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn a_generic_brands_new_keeps_the_inner_as_its_parameter() {
+    let written = sealed_methods_of("pub struct Held<Item>(Item);");
+    assert!(written.contains("pub fn new (value : Item"), "{written}");
+}

@@ -17,7 +17,6 @@ use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Generics, Path, Token, Visibility};
 
-use super::judged_read::unclaimed_parameter;
 use super::refusal_from_violations;
 use super::unbounded;
 use super::{LiteralLeaf, literal_shape};
@@ -30,6 +29,7 @@ use crate::field_type::get_field_def;
 use crate::field_type::held_literal;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
+use crate::utils::unclaimed_parameter;
 use crate::utils::written_names;
 
 /// The most parameters a `new` takes unless the author asks for it with `new = true`, which is

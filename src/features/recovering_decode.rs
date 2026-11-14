@@ -46,7 +46,8 @@ use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
     Declared, asked_of, asked_trait, asking_more, asks_one_of, declared,
     field_validator_judges_items, field_validator_name, holds_field_validator,
-    ident_schema_module_name, to_snake_case, type_parameters_in_scope, written_names, written_type,
+    ident_schema_module_name, to_snake_case, type_parameters_in_scope, unclaimed_parameter,
+    written_names, written_type,
 };
 
 #[cfg(not(feature = "mongodb"))]
@@ -4876,19 +4877,6 @@ fn unclaimed(base: &str, taken: &[String]) -> String {
         name = format!("{base}{number}");
     }
     name
-}
-
-/// A name for a type parameter of a method's own: `base`, numbered where the item writes that
-/// name. The method's parameter would hide a type of its name wherever the method's body writes
-/// one, and be refused beside a parameter of the type's own.
-fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
-    let mut name = base.to_owned();
-    let mut number = 1_u32;
-    while written.contains(&name) {
-        number += 1;
-        name = format!("{base}{number}");
-    }
-    Ident::new(&name, Span::call_site())
 }
 
 /// What lists every key of `object`, held at `segments`, that is none of `declared` as `Unknown`.

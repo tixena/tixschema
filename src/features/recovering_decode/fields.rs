@@ -17,7 +17,7 @@ use super::aliases::PRIMITIVES;
 use super::enums::{TagArm, WrittenVariant, tag_arms, written_variants};
 use super::{
     Step, TypedPaths, bound_parameters, hooked_leaf, starts_at_a_parameter, type_arguments,
-    unclaimed, unclaimed_parameter, value_slot, written_names,
+    unclaimed, value_slot, written_names,
 };
 use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
@@ -30,6 +30,7 @@ use crate::field_type::{
 };
 use crate::model_schema::{helper_name_stem, written_spelling};
 use crate::rename_rule::resolve_rename_rule;
+use crate::utils::unclaimed_parameter;
 use crate::utils::{Declared, declared, ident_schema_module_name, written_type};
 
 /// How many modules below the type its members module is.

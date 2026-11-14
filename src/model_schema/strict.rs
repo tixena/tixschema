@@ -15,7 +15,6 @@ use super::flatten_order::{
     Culprit, held_open_refusal, open_member_refusal, open_variant_refusal, refused_by_a_member,
     takes_only, variant_refuses_a_stray,
 };
-use super::judged_read::unclaimed_parameter;
 use super::{ModelSchemaArgs, prefixed_guard_message};
 use crate::features::serde::defaults::unread_member_built;
 use crate::features::serde::read_bounds::undeclared_bounds;
@@ -24,7 +23,7 @@ use crate::features::serde::{
     parse_serde_field_attributes, parse_serde_key_omission, parse_serde_type_attributes, read_hook,
     struct_tag, variant_on_the_wire,
 };
-use crate::utils::{record_unconsumed, to_snake_case, written_names};
+use crate::utils::{record_unconsumed, to_snake_case, unclaimed_parameter, written_names};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ext::IdentExt as _;

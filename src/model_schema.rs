@@ -201,8 +201,7 @@ use crate::features::serde::defaults::unread_members_built;
 use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::features::serde::read_bounds;
-#[cfg(feature = "serde")]
-use crate::utils::written_names;
+use crate::utils::{unclaimed_parameter, written_names};
 
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -9371,7 +9370,7 @@ fn empty_struct_read(
     let written = written_names(quote::ToTokens::to_token_stream(&input));
     let built = unread_members_built(
         item_struct,
-        &judged_read::unclaimed_parameter("container_default", &written),
+        &unclaimed_parameter("container_default", &written),
     );
     let mut generics = item_struct.generics.clone();
     generics
@@ -9511,7 +9510,7 @@ fn unit_struct_read(
         publishes_validate,
         strict,
     } = how;
-    let reader = judged_read::unclaimed_parameter(
+    let reader = unclaimed_parameter(
         "D",
         &written_names(quote::ToTokens::to_token_stream(generics)),
     );
@@ -11755,11 +11754,16 @@ fn sealed_access(
     let held = brand_member(position, inner_field);
     let inner_ty = &inner_field.ty;
     let generic = type_mentions_generic_param(inner_ty, &item_struct.generics);
-    let (accepts, given) = if generic {
-        (quote! { #inner_ty }, quote! { value })
+    let value_param = unclaimed_parameter(
+        "Value",
+        &written_names(quote::ToTokens::to_token_stream(inner_ty)),
+    );
+    let (parameters, accepts, given) = if generic {
+        (quote! {}, quote! { #inner_ty }, quote! { value })
     } else {
         (
-            quote! { impl ::core::convert::Into<#inner_ty> },
+            quote! { <#value_param: ::core::convert::Into<#inner_ty>> },
+            quote! { #value_param },
             quote! { value.into() },
         )
     };
@@ -11795,7 +11799,7 @@ fn sealed_access(
     let methods = quote! {
         /// Builds the brand from a value, refused with the messages `validate()` gives where the
         /// value breaks the brand's rules.
-        pub fn new(
+        pub fn new #parameters(
             value: #accepts,
         ) -> ::core::result::Result<Self, ::std::vec::Vec<::std::string::String>> {
             let built = #built;
