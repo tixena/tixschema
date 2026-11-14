@@ -99,7 +99,7 @@ fn each_kotlin_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_check
         return;
     };
     let told: serde_json::Value = serde_json::from_str(printed.trim()).unwrap();
-    let thrown = "kotlinx.serialization.SerializationException: a verdict is upheld";
+    let thrown = "VerdictRefusal: [a verdict is upheld]";
     assert_eq!(
         told,
         serde_json::json!({
@@ -109,7 +109,7 @@ fn each_kotlin_client_refuses_a_reply_typed_with_a_plain_enum_that_names_a_check
             "socketBroken": {
                 "kind": "failed-validation",
                 "detail": null,
-                "issues": [{ "detail": thrown, "field": null }],
+                "issues": [{ "detail": "a verdict is upheld", "field": null }],
             }
         })
     );

@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use crate::swift_plain_enum::PLACED;
 use crate::swift_valid;
 use crate::tests::{
     adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift, by_u32_swift,
@@ -174,7 +175,8 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
         format!(
             "{}{} }};",
             concat!(
-                "public struct ParcelDraft: Codable, Sendable { public var fragileItemCodes: [String]; ",
+                "public struct ParcelDraft: Codable, Sendable { public var fragileItemCodes: \
+                 [String]; ",
                 "public var itemCodeList: [String]; public var label: String; ",
                 "enum CodingKeys: String, CodingKey { case fragileItemCodes; case itemCodeList; ",
                 "case label;  }; ",
@@ -199,9 +201,7 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
                 "swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
                 "public init(from decoder: Decoder) throws { ",
                 "try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); ",
-                "if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(",
-                "codingPath: decoder.codingPath, ",
-                r#"debugDescription: violations.joined(separator: "; "))) } }; "#,
+                "if !violations.isEmpty { throw ParcelRefusal(issues: @PLACED@) } }; ",
                 "public func validationIssues() -> [String] { var errors: [String] = []; ",
                 "errors += withoutDuplicates(itemCodeList).map ",
                 r#"{ ParcelDraft.swiftSchemaUnder("itemCodeList", $0) }; "#,
@@ -215,7 +215,8 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
                 r#"\(violation[violation.index(after: end)...])" }; "#,
                 r#"return "'\(place)': \(violation)" }; "#,
                 "public func swiftSchemaValidateBound() -> [String] { [] }; ",
-            ),
+            )
+            .replace("@PLACED@", PLACED),
             swift_valid::validating("Parcel")
         )
     );
@@ -275,7 +276,8 @@ fn every_emitted_type_has_validate() {
     ] {
         let declared = swift.matches("public struct ").count()
             + swift.matches("public enum ").count()
-            - swift.matches("KeyedMap: Codable").count();
+            - swift.matches("KeyedMap: Codable").count()
+            - swift.matches(": Error, CustomStringConvertible").count();
         let valid = swift.matches("@dynamicMemberLookup public struct ").count();
         assert_eq!(
             swift.matches("public func validate() -> [String]").count()

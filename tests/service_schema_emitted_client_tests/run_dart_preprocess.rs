@@ -26,7 +26,7 @@ use super::preprocess_models::{
     stack_dart, tagged_dart, transfer_dart, trimmed, unnamed_dart, weighed_dart, with_its_keys,
     wrapped_dart,
 };
-use super::run_dart_validate::{dart, from_heading, from_until, module};
+use super::run_dart_validate::{ISSUES_OF, dart, from_heading, from_until, module};
 use super::runtime::ran;
 use super::tests::{ShelfError, shelf_error_dart};
 
@@ -53,7 +53,7 @@ void tallied(String name, Object? Function() read) {
   var answered = 'read';
   try {
     read();
-  } on FormatException {
+  } on Exception {
     answered = 'not read';
   }
   print('$name: $answered; ${calls.entries.map((entry) => '${entry.key} ${entry.value}').join(', ')}');
@@ -169,9 +169,9 @@ const ROW: &str = "
 void row(String name, Object? Function() written) {
   try {
     print('$name: read ${jsonEncode(written())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   }
@@ -900,7 +900,7 @@ fn the_sample_reads_as_the_rust_read_does() {
                 parcel_dart::dart_definition(),
                 manifest_dart::dart_definition(),
             ],
-            &[FUNCTIONS, ROW],
+            &[FUNCTIONS, ROW, ISSUES_OF],
             &driver(&rows),
         ),
     ) else {
@@ -956,7 +956,7 @@ fn every_position_and_every_shape_prints_the_line_of_the_shared_table() {
         "positions.dart",
         &module(
             &model_definitions(),
-            &[FUNCTIONS, WITH_CHILDREN, CORRECTIONS, CHECK, ROW],
+            &[FUNCTIONS, WITH_CHILDREN, CORRECTIONS, CHECK, ROW, ISSUES_OF],
             &driver(&rows),
         ),
     ) else {
@@ -996,7 +996,7 @@ fn a_type_that_names_a_function_takes_a_payload_of_any_kind() {
         "kinds.dart",
         &module(
             &definitions,
-            &[TEXT_FUNCTIONS, CORRECTIONS, ROW],
+            &[TEXT_FUNCTIONS, CORRECTIONS, ROW, ISSUES_OF],
             &driver(&rows),
         ),
     ) else {
@@ -1143,7 +1143,7 @@ fn each_shape_declared_here_prints_what_the_rust_read_prints() {
         "shapes.dart",
         &module(
             &shape_definitions(),
-            &[FUNCTIONS, CORRECTIONS, ROW],
+            &[FUNCTIONS, CORRECTIONS, ROW, ISSUES_OF],
             &driver(&read),
         ),
     ) else {
@@ -1270,7 +1270,11 @@ fn a_function_named_after_a_name_of_the_read_is_called() {
         RUNTIME_VAR,
         "dart",
         "named.dart",
-        &module(&definitions, &[NAMED_FUNCTIONS, ROW], &driver(&rows)),
+        &module(
+            &definitions,
+            &[NAMED_FUNCTIONS, ROW, ISSUES_OF],
+            &driver(&rows),
+        ),
     ) else {
         return;
     };
@@ -1281,7 +1285,11 @@ fn a_function_named_after_a_name_of_the_read_is_called() {
 #[test]
 fn a_preprocess_with_no_dart_function_does_not_compile() {
     let rows = dart_row("row 1", "Parcel.fromJson(@).toJson()", SAMPLE_ROWS[0].1);
-    let source = module(&[parcel_dart::dart_definition()], &[ROW], &driver(&rows));
+    let source = module(
+        &[parcel_dart::dart_definition()],
+        &[ROW, ISSUES_OF],
+        &driver(&rows),
+    );
     let Some((built, said)) = dart("missing-preprocess", &[], &source) else {
         return;
     };
@@ -1304,7 +1312,7 @@ fn the_emitted_source_of_a_preprocess_has_no_issue() {
             parcel_dart::dart_definition(),
             manifest_dart::dart_definition(),
         ],
-        &[FUNCTIONS, ROW],
+        &[FUNCTIONS, ROW, ISSUES_OF],
         &driver(&rows),
     );
     let Some((clean, said)) = dart("analyze-sample", &["analyze"], &sample) else {
@@ -1348,6 +1356,7 @@ fn the_emitted_source_of_a_preprocess_has_no_issue() {
             COUNTED,
             TEXT_FUNCTIONS,
             ROW,
+            ISSUES_OF,
         ],
         "void main() {\n  row('none', () => null);\n}\n",
     );
@@ -1415,7 +1424,7 @@ fn answers(kind: &str) -> Value {
         )
     } else {
         (
-            serde_json::json!("FormatException: 'label': too short: minimum length is 1, got 0"),
+            serde_json::json!("ParcelRefusal: ['label': too short: minimum length is 1, got 0]"),
             Value::Null,
         )
     };
@@ -1516,7 +1525,7 @@ fn the_readme_shows_the_read_that_is_emitted_and_what_it_answers() {
     }
     for answered in [
         "| 1 | read; `label` is `\"A\"` |",
-        "| 2 | refused with a `FormatException`: `'label': too short: minimum length is 1, got 0` |",
+        "| 2 | refused with a `ParcelRefusal`: `['label': too short: minimum length is 1, got 0]` |",
         "| 3 | read; `fragile_item_codes` is `[]` |",
         "| 5 | read; `parcel.label` is `\"A\"` |",
         "is refused with ``missing field `label` ``, as the Rust read answers it",

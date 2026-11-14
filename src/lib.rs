@@ -438,7 +438,7 @@ fn kotlin_file() -> String {
 fn main() {
     let dart = dart_file();
     assert!(dart.contains("factory Invoice.fromJson(Map<String, dynamic> json)"));
-    assert!(dart.contains("throw FormatException(violations.join('; '))"));
+    assert!(dart.contains("throw InvoiceRefusal(violations)"));
 
     let swift = swift_file();
     assert!(swift.contains("public struct Invoice: Codable, Sendable"));
@@ -883,6 +883,8 @@ mod emitted_names_tests;
 mod features;
 mod field_type;
 mod foundation;
+#[cfg(test)]
+mod joined_messages_tests;
 mod model_schema;
 mod rename_rule;
 mod service_schema;

@@ -8,7 +8,12 @@ pub const READ_AT: &str = "static Read _readAt<Read>(Map<String, dynamic>? objec
      !object.containsKey(key)) throw FormatException('missing field `$key`', <Object>[key]); if \
      (refused is TypeError) throw FormatException('$refused', <Object>[key]); if (refused is \
      FormatException) { final at = refused.source; throw FormatException(refused.message, \
-     <Object>[key, if (at is List<Object>) ...at]); } rethrow; } }";
+     <Object>[key, if (at is List<Object>) ...at]); } if (refused is Exception) { Object? listed; \
+     try { listed = (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if \
+     (listed is List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = \
+     listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = \
+     end > 0 ? \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': \
+     $said\"; } } } rethrow; } }";
 
 /// The helper a class reads the members it takes from content its holder buffers with, which words
 /// a refusal of the shape of an externally tagged enum's value as a value of the wrong kind.

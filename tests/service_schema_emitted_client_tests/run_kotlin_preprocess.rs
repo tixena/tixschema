@@ -109,12 +109,15 @@ fun withinLimit(value: ScaledDraft): List<String> =
 /// of what the read threw. `thrown` names what was thrown, and the first line of what the
 /// serialization library says of it.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun told(name: String, read: () -> String) {
     try {
         println("$name: read ${read()}")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 
@@ -1435,8 +1438,7 @@ fn each_client_reads_a_reply_through_the_functions_of_its_type() {
     };
     let (answered, listed) = printed.trim().split_once('\n').unwrap();
     let told: Value = serde_json::from_str(answered).unwrap();
-    let thrown = "kotlinx.serialization.SerializationException: 'label': too short: minimum \
-                  length is 1, got 0";
+    let thrown = "PacketRefusal: ['label': too short: minimum length is 1, got 0]";
     assert_eq!(
         told,
         json!({

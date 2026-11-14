@@ -110,14 +110,16 @@ fn library(imports: &[String], client: String, entry: &str) -> String {
 }
 
 fn answers(kind: &str) -> serde_json::Value {
-    let refused = serde_json::json!("FormatException: a verdict is upheld");
     let (detail, issues) = if kind == "failedValidation" {
         (
             serde_json::Value::Null,
-            serde_json::json!([{ "detail": refused, "field": null }]),
+            serde_json::json!([{ "detail": "a verdict is upheld", "field": null }]),
         )
     } else {
-        (refused, serde_json::Value::Null)
+        (
+            serde_json::json!("VerdictRefusal: [a verdict is upheld]"),
+            serde_json::Value::Null,
+        )
     };
     serde_json::json!({
         "kept": {"kind": "ok", "value": "Upheld"},

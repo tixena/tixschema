@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use crate::swift_plain_enum::refusal;
 use crate::swift_valid::draft_of;
 use crate::tests::{
     envelope_swift, external_tagged_swift, status_swift, tuple_point_swift, window_request_swift,
@@ -92,11 +93,14 @@ fn a_generic_type_and_an_enum_are_wrapped_at_their_parameters() {
 fn a_plain_enum_is_hashable_and_built_from_its_raw_value_in_the_generated_file_alone() {
     let swift = status_swift::swift_definition();
     assert!(
-        swift.starts_with("public enum Status: String, Codable, Sendable { "),
+        swift.starts_with(&format!(
+            "{} public enum Status: String, Codable, Sendable {{ ",
+            refusal("Status")
+        )),
         "got: {swift}"
     );
     assert!(
-        !swift.contains("StatusDraft") && !swift.contains("struct Status"),
+        !swift.contains("StatusDraft") && !swift.contains("struct Status:"),
         "got: {swift}"
     );
 }

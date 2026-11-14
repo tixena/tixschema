@@ -65,10 +65,9 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
      kotlinSchemaKinded(serializer, element, at).toString()) }; ";
 
-/// What a serializer throws for the violations `validate()` answers: its cause marks a message that
-/// names each place from the value judged, which [`PATHED`] leaves as it is.
-pub const JUDGED: &str = "SerializationException(violations.joinToString(\"; \"), \
-     IllegalArgumentException(\"validate()\"))";
+/// The private function that names the place of the map key `key` refused where `input` read it:
+/// the steps of the path kotlinx states, then the key.
+pub const PLACE: &str = r#"@OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaPlace(input: Decoder, key: String): String { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path }; return (Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at.orEmpty()).map { step -> step.groupValues.drop(1).joinToString("") }.toList() + key).joinToString(".") }; "#;
 
 /// The private functions a serializer holds where it refuses a value it took off the decoder: kotlinx
 /// states its path only in an exception, so the refusal is rebased onto the path a second read of
@@ -409,6 +408,13 @@ fn in_a_position(field: &FieldDef) -> bool {
     !matches!(field.field_type, FieldDefType::Tuple(_)) && holds_an_unjudged(field)
 }
 
+/// What a serializer throws for the violations `validate()` answers: the refusal of the item being
+/// emitted, whose cause marks a list that names each place from the value judged, which [`PATHED`]
+/// leaves as it is.
+pub fn refused() -> String {
+    format!("{}(violations)", super::refusal())
+}
+
 /// The serializer of `export_name`, the type's own: it reads through the unjudged one and throws
 /// what `validate()` answers of the value read, joined by `; `. Called, it answers the unjudged
 /// one, which a holder that cannot name it reads by. `composed` says the unjudged one is written
@@ -538,7 +544,8 @@ fn judging(
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
          {{ val read = {unjudged}.deserialize(decoder); val violations = {validated}; if \
-         (violations.isNotEmpty()) throw {JUDGED}; return read }} }}"
+         (violations.isNotEmpty()) throw {}; return read }} }}",
+        refused()
     )
 }
 
@@ -860,11 +867,13 @@ pub fn helpers_for(declarations: &str) -> String {
         || declarations.contains("kotlinSchemaUnder(");
     let flattened = declarations.contains("kotlinSchemaFlattened {");
     let buffered = declarations.contains("kotlinSchemaBuffered {");
+    let placed = declarations.contains("kotlinSchemaPlace(");
     format!(
-        "{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}",
         if decoded { DECODED } else { "" },
         if flat { FLATTENED_NAME } else { "" },
         if pathed { PATHED } else { "" },
+        if placed { PLACE } else { "" },
         if inner { INNER } else { "" },
         if flattened {
             flattened_function()

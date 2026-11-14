@@ -279,15 +279,19 @@ fn each_read_of_the_table_is_one_a_test_of_its_language_holds() {
             ".fromJsonUnjudged(",
             include_str!("../dart_tests/read.rs"),
         ),
-        ("a `FormatException`", "on FormatException catch", DART_READ),
+        (
+            "`ParcelRefusal`, whose `issues` hold the messages",
+            "refused (ParcelRefusal)",
+            DART_READ,
+        ),
         (
             "`init(swiftSchemaUnjudged:)`",
             "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws",
             include_str!("../swift_tests/read.rs"),
         ),
         (
-            "`DecodingError.dataCorrupted`",
-            "catch DecodingError.dataCorrupted(let context)",
+            "`ParcelRefusal`, whose `issues` hold the messages",
+            "refused (ParcelRefusal)",
             SWIFT_READ,
         ),
         (
@@ -301,8 +305,8 @@ fn each_read_of_the_table_is_one_a_test_of_its_language_holds() {
             include_str!("../kotlin_tests/read.rs"),
         ),
         (
-            "a `SerializationException`",
-            "catch (refused: SerializationException)",
+            "a `SerializationException` whose `issues` hold the messages",
+            "catch (refusal: ParcelRefusal)",
             KOTLIN_READ,
         ),
     ] {

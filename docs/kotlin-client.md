@@ -13,9 +13,17 @@ List<String>` and a `validationIssues()` that answers the same (`Rules::written_
 `valid::drafted`) keeps its one class. `docs/guide/kotlin.md`'s "`validate()` in the Kotlin client"
 section is the consumer's view; this is what a change has to keep.
 
+- **Every type that judges a value declares its refusal.** `{Name}Refusal`, named after the valid
+  class (`refusals::refusal_name`), is a `SerializationException` whose cause marks it as a
+  judgement (`refusal_class`); `entered` and `alias_kotlin_tokens` make it the refusal of the item
+  being emitted (`KOTLIN_REFUSAL`), and `kotlin_module_tokens` declares it at the head of the
+  type's text where the text throws it, recording it in `KOTLIN_REFUSALS`. An alias is a
+  `typealias` and records the refusals of what it names. `run_kotlin_refusal_classes.rs` compiles
+  a struct, an enum, a generic type, a brand and an alias in one file and holds each refusal's
+  `issues` to the Rust `validate()` of the same value.
 - **A model is a draft and a valid class.** `{Name}Draft` is the declared class, with its own
-  `validate(): {Name}`, which throws `SerializationException` joined by `; ` with the cause
-  `IllegalArgumentException("validate()")` the read throws, and builds the valid class through
+  `validate(): {Name}`, which throws `{Name}Refusal` holding the issues, the refusal the read
+  throws, and builds the valid class through
   `{Name}.checked(draft)`. `{Name}` is `@ConsistentCopyVisibility data class {Name} private
   constructor(val draft: {Name}Draft)` (`valid::valid_class`), with a forwarding property for each
   member the draft's constructor declares (`valid::forwarded_properties`, over the type the
@@ -191,8 +199,8 @@ the consumer's view; this is what a change has to keep.
 
 - **A type has two serializers.** `{Type}Unjudged` reads and writes the type
   and judges nothing. `{Type}Serializer` (`judged`) is the type's own, named by
-  `@Serializable(with = ...)`: it reads through the first and throws
-  `SerializationException(validationIssues().joinToString("; "))`, `validate()` on a brand. It is also a `() -> KSerializer<{Type}>`, and called it answers the first, which a
+  `@Serializable(with = ...)`: it reads through the first and throws `{Name}Refusal` over
+  `validationIssues()` (`read::refused`), `validate()` on a brand. It is also a `() -> KSerializer<{Type}>`, and called it answers the first, which a
   holder that cannot name it reads by (`read_or_judged`, below). A type with parameters writes
   both as classes over one serializer per parameter. A model's draft has a third,
   `{Type}DraftUnjudged`, the one the draft is annotated with.
@@ -540,26 +548,28 @@ the consumer's view; this is what a change has to keep.
   `toString()`, which is `Pitch(value=3)` for a value class. `annotated_base` names it on a map the
   plugin reads, the key keeping the serializer it names, and `map_serializer` composes it where
   the emitter writes the read. `{Type}KeySerializer`, which a brand over a number or a `bool`
-  declares, refuses a key its brand's `validate()` refuses inside `kotlinSchemaAt(decoder)`, which
-  states the map's path, each message under the key's text, so the field names the key below its
-  map. Any other brand, one over a text or a date, has none: `map_object`, told so by
-  `value_class_tokens`, reads its key through `{Brand}Unjudged` and throws what the key's
-  `validate()` answers inside the map's `kotlinSchemaAt`, in the same form, `'mute': mute is
-  silent at path: $.tones`, so each key is judged once. A brand over such a brand, one whose value
-  `texts::mapped_by` answers, reads its value through the inner brand's own serializer, which
-  throws `read::JUDGED`: `map_object` (`KeyRead::OverABrand`) catches a refusal whose cause is
-  `validate()` around the key's read and throws its message under the key's text, so the inner
-  brand's check answers `'mute': mute is silent at path: $.outer` as the outer brand's own answers
-  `'soft': soft is quiet at path: $.outer`. `run_kotlin_brand_key_paths.rs` holds a value refused
+  declares, refuses a key its brand's `validate()` refuses with the brand's refusal, each message
+  under the path `kotlinSchemaPlace` (`read::PLACE`) reads off the decoder, as `kotlinSchemaAt`
+  does, and the key's text, so the field names the key below its map. Any other brand, one over a
+  text or a date, has none: `map_object`, told so by `value_class_tokens`, reads its key through
+  `{Brand}Unjudged` and throws the brand's refusal over what the key's `validate()` answers, in the
+  same form, `'tones.mute': mute is silent`, so each key is judged once. A brand over such a brand,
+  one whose value `texts::mapped_by` answers, reads its value through the inner brand's own
+  serializer, which throws the inner brand's refusal: `map_object` (`KeyRead::OverABrand`) catches
+  it around the key's read and throws it again with each issue under the key's place, so the inner
+  brand's check answers `'outer.mute': mute is silent` as the outer brand's own answers
+  `'outer.soft': soft is quiet`. A refusal's cause, `IllegalArgumentException("validate()")`, tells
+  `kotlinSchemaRebased` to hand it on as it is. `run_kotlin_brand_key_paths.rs` holds a value refused
   under a key over a text, a number and a date, a key each brand's check refuses, and a key of a
   brand over the brand over a text refused by either brand's check, to the field serde names. A
   flattened member is read
   through `kotlinSchemaFlattened` (`read::FLATTENED`), which states the root as the refusal's path
   and drops the place it states, keeping the key it names as unknown or missing, so the holder's
   `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the field of the
-  problem the fault lists off the path (`kotlin_ws_client::refused_at_fn`), and list each line
-  of a `validate()` message apart (`WsRefusedIssues`, which `kotlin_ws_client::refused_fn`
-  writes); `run_carillon.rs` holds each shape to the field
+  problem the fault lists off the path (`kotlin_ws_client::refused_at_fn`), and list each issue of
+  a refusal of a type the service reads apart (`WsRefusal` names each class `kotlin_read_refusals`
+  finds through `kotlin_refusals_of`, and `WsRefusedIssues` cuts each issue at its field, both
+  written by `kotlin_ws_client::refused_fn`); `run_carillon.rs` holds each shape to the field
   the Rust dispatcher names.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):
   written through `value.{member}?.forEach`, so `null` writes no entry, and read inside
@@ -811,7 +821,7 @@ say so.
 `src/features/service_schema/kotlin_mcp_service.rs` writes `kotlin_mcp_service()`, and `kotlin_mcp_client.rs` writes `kotlin_mcp_client()`, on a service that asks for `mcp`, behind the `kotlin` feature.
 
 - **Two halves of the text.** The accessor writes over markers, when it runs in the consuming program, what only the compiled service knows: `@MCP_TOOLS@`, `@MCP_RESOURCES@` and `@MCP_TEMPLATES@` (one Kotlin string literal per entry, escaped by a function the accessor writes itself, since no support crate is named), `@MCP_NAMES@`, `@MCP_INSTRUCTIONS@`, `@MCP_VERSION@` (the version of the crate that declares the service) and `@MCP_WRAPPED_n@` (`wrapped_{operation}()`).
-- **The read judges, and tells the two faults apart.** A handler's message is read by `{p}McpReceive`, which takes the judged serializer and the unjudged one `message_unjudged_serializer` writes beside it (a list, a map or an optional of models composes each model's `{Type}Unjudged`). A message the unjudged serializer cannot read answers as the Rust dispatcher answers a refusal of the arguments it reads out of a `Value`: ``invalid value: expected key to be a number in quotes`` is `undeserializable-payload` naming no field, ``expected value`` (a `Result` of other than one key) names the path the unjudged serializer states when it reads the arguments from their text (`{p}WsRefusedAt`) ahead of the walk's, and so does a refusal inside a flattened member, whose walk path (`frame.oak`) is below the holder the serializer refused at (`frame`) as serde names it, the walk's entries below the holder dropped (`run_carillon_mcp.rs` holds each to the Rust dispatcher, beside a refusal under each shape of tag and under an untagged enum), and any other answers `failed-validation` too: `{p}McpMismatches` walks the tool's JSON schema from the catalog (`{p}McpToolSchema`) beside the arguments, past the `header_in` keys and the form's answers, and collects every value that does not match in the order met: the path of the first (`drafts.1.title`) is the field of the fault and the opening of its detail in single quotes, and with `every = true`, which a tool, a prompt (`{p}McpPromptSchema`) and a resource template (`{p}McpReadSchema`, over the `mcp_read_inputs()` the text embeds) pass, two or more join the detail in the walk's words and are listed in `issues`, as on the Rust dispatcher; a completion names the first alone. A key an object's schema does not declare under `"additionalProperties": false` is such a value, so a stray key is the field; a refusal that names no path (the arguments are not an object) keeps `undeserializable-payload`. The walk follows `$ref`, the first alternative of an `anyOf` that has no mismatch (else the first one's), `enum`, an object's `properties`, `required` and `additionalProperties`, an array's `items`, and the type of a leaf. It does not follow `oneOf` or `const`, which the schema of an enum under a tag, adjacently tagged, externally tagged or untagged holds, so a value inside such an enum reaches no mismatch of the walk and the fault names the path the read refused at, as serde does (`run_carillon_mcp.rs` holds the field of each shape to the Rust dispatcher's). A wrapped message missing its `value` key answers `failed-validation` with the field `value`. One the judged serializer refuses answers `failed-validation` naming the field the validator names.
+- **The read judges, and tells the two faults apart.** A handler's message is read by `{p}McpReceive`, which takes the judged serializer and the unjudged one `message_unjudged_serializer` writes beside it (a list, a map or an optional of models composes each model's `{Type}Unjudged`). A message the unjudged serializer cannot read answers as the Rust dispatcher answers a refusal of the arguments it reads out of a `Value`: ``invalid value: expected key to be a number in quotes`` is `undeserializable-payload` naming no field, ``expected value`` (a `Result` of other than one key) names the path the unjudged serializer states when it reads the arguments from their text (`{p}WsRefusedAt`) ahead of the walk's, and so does a refusal inside a flattened member, whose walk path (`frame.oak`) is below the holder the serializer refused at (`frame`) as serde names it, the walk's entries below the holder dropped (`run_carillon_mcp.rs` holds each to the Rust dispatcher, beside a refusal under each shape of tag and under an untagged enum), and any other answers `failed-validation` too: `{p}McpMismatches` walks the tool's JSON schema from the catalog (`{p}McpToolSchema`) beside the arguments, past the `header_in` keys and the form's answers, and collects every value that does not match in the order met: the path of the first (`drafts.1.title`) is the field of the fault and the opening of its detail in single quotes, and with `every = true`, which a tool, a prompt (`{p}McpPromptSchema`) and a resource template (`{p}McpReadSchema`, over the `mcp_read_inputs()` the text embeds) pass, two or more join the detail in the walk's words and are listed in `issues`, as on the Rust dispatcher; a completion names the first alone. A key an object's schema does not declare under `"additionalProperties": false` is such a value, so a stray key is the field; a refusal that names no path (the arguments are not an object) keeps `undeserializable-payload`. The walk follows `$ref`, the first alternative of an `anyOf` that has no mismatch (else the first one's), `enum`, an object's `properties`, `required` and `additionalProperties`, an array's `items`, and the type of a leaf. It does not follow `oneOf` or `const`, which the schema of an enum under a tag, adjacently tagged, externally tagged or untagged holds, so a value inside such an enum reaches no mismatch of the walk and the fault names the path the read refused at, as serde does (`run_carillon_mcp.rs` holds the field of each shape to the Rust dispatcher's). A wrapped message missing its `value` key answers `failed-validation` with the field `value`. One the judged serializer refuses with the refusal of a type the service reads (`{p}WsRefusal`) answers `failed-validation` listing each of its issues at the field it opens with (`{p}McpIssue`).
 - **The server follows `mcp/dispatcher.rs` function for function**, with `canonical` as `{p}McpServeText`, so every object is written with its keys in order.
 - **A route answers a `JsonObject`** holding one member, `result` or `error` (`{p}McpResultOf`, `{p}McpErrorOf`), so the routes of several services share one type with no declaration per service; `{p}McpRouted` answers `-32603` for an answer with neither member or with both. The route sends `tools/call` to `{p}McpTool`, and the resource, listing and completion requests to `{p}McpRead`, `{p}McpList` and `{p}McpComplete`, which answer a `-32602` through `{p}McpUnread` where a tool answers a tool error.
 - **Handlers are built per call**, because `{Service}Handlers` takes no `Ctx`: `route` receives the `{Service}McpCall` of the request and builds the handlers from it, and over HTTP `admit` answers `{Service}McpAdmitted.Caller(handlers)`.

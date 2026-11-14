@@ -11,6 +11,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use crate::swift_plain_enum::PLACED;
+
 /// A brand over a map under a key Swift wraps.
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -116,5 +118,5 @@ fn a_tuple_struct_reads_its_tuple_through_the_struct_written_for_it() {
              self.value = try TrunkTuple(swiftSchemaUnjudged: decoder) }; ",
         ],
     );
-    assert!(!swift.contains("}()"), "got: {swift}");
+    assert!(!swift.replace(PLACED, "").contains("}()"), "got: {swift}");
 }

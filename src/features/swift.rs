@@ -23,6 +23,7 @@ use crate::bound_message::swift_literal_text;
 #[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::refusals;
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, derives_hash, derives_partial_eq, has_serde_default, has_serde_skip_serializing,
@@ -571,6 +572,13 @@ thread_local! {
     /// this carries no forward-reference bookkeeping.
     static SWIFT_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 
+    /// The refusal struct the reads and `validate()` of the item being emitted throw.
+    static SWIFT_REFUSAL: RefCell<String> = const { RefCell::new(String::new()) };
+
+    /// The refusal structs a judged read of each type emitted so far throws, by Rust ident: its
+    /// own, or for an alias those of the type it names.
+    static SWIFT_REFUSALS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+
     /// The unit variants of each externally tagged enum the emitter wrote, by Rust ident: serde
     /// writes such a variant flattened as an entry of its holder's object, its name over `null`.
     static UNIT_ENTRIES: RefCell<HashMap<String, Vec<UnitEntry>>> = RefCell::new(HashMap::new());
@@ -767,7 +775,21 @@ fn through_alias(def: &FieldDef) -> Option<Shaped> {
 /// The Swift tokens `item` earns, given what `#[model_schema(...)]` says of it. Dispatches on the
 /// item's own shape; an item this module has nothing to say about earns nothing.
 pub fn swift_schema_dispatch(item: &Item, args: &SwiftTypeArgs<'_>) -> TokenStream {
+    let ident = refusals::item_ident(item);
+    if let Some(named) = &ident {
+        forget_refusals(named);
+    }
     forwarded::record(item, args);
+    let export_name = if let Item::Type(item_type) = item {
+        compute_alias_export_name(&item_type.ident.to_string(), args.name_override)
+    } else if let Item::Struct(item_struct) = item {
+        compute_item_export_name(&item_struct.ident.to_string(), args.name_override)
+    } else if let Item::Enum(item_enum) = item {
+        compute_item_export_name(&item_enum.ident.to_string(), args.name_override)
+    } else {
+        compute_item_export_name(args.type_name, args.name_override)
+    };
+    SWIFT_REFUSAL.with(|held| *held.borrow_mut() = refusals::refusal_name(&export_name));
     let tokens = if let Item::Struct(item_struct) = item {
         struct_swift_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
@@ -777,8 +799,77 @@ pub fn swift_schema_dispatch(item: &Item, args: &SwiftTypeArgs<'_>) -> TokenStre
     } else {
         TokenStream::new()
     };
+    if let Some(named) = &ident {
+        record_refusals(named, refusals::held_by(item, &own_refusals));
+    }
     forwarded::clear();
+    SWIFT_REFUSAL.with(|held| held.borrow_mut().clear());
     tokens
+}
+
+/// The refusal struct the item being emitted throws.
+fn refusal() -> String {
+    SWIFT_REFUSAL.with(|held| held.borrow().clone())
+}
+
+/// The refusal structs a judged read of `def` throws where the value it reads, or one it holds,
+/// breaks a rule, as far as the types it names were emitted before.
+pub fn swift_refusals_of(def: &FieldDef) -> Vec<String> {
+    refusals::reached(def, &own_refusals)
+}
+
+/// The refusal classes recorded for the type written `name`.
+fn own_refusals(name: &str) -> Vec<String> {
+    SWIFT_REFUSALS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Drops what was recorded for a type written `rust_ident`: of two types of one ident in a crate,
+/// a holder names the refusals of the one expanded last.
+fn forget_refusals(rust_ident: &str) {
+    SWIFT_REFUSALS.with(|recorded| {
+        recorded.borrow_mut().remove(rust_ident);
+    });
+}
+
+/// Records that a judged read of `rust_ident` throws `refused` as well.
+fn record_refusals(rust_ident: &str, refused: Vec<String>) {
+    SWIFT_REFUSALS.with(|recorded| {
+        let mut held = recorded.borrow_mut();
+        let listed = held.entry(rust_ident.to_owned()).or_default();
+        for refusal in refused {
+            if !listed.contains(&refusal) {
+                listed.push(refusal);
+            }
+        }
+    });
+}
+
+/// The refusal struct a judged read of the declared type `rust_ident` throws: its own, under the
+/// name it publishes.
+fn refusal_of(rust_ident: &str) -> String {
+    refusals::refusal_name(&lookup_swift_name(rust_ident).unwrap_or_else(|| rust_ident.to_owned()))
+}
+
+/// The Swift expression of the issues `listed` names, each placed under `path`, the Swift expression
+/// of the coding path a read refused them at: as they are where it is empty, the value the read was
+/// asked for.
+fn placed(path: &str, listed: &str) -> String {
+    format!(
+        "{{ () -> [String] in let at = {path}.map {{ $0.intValue.map(String.init) ?? $0.stringValue \
+         }}.joined(separator: \".\"); return at.isEmpty ? {listed} : {listed}.map {{ said in guard \
+         said.hasPrefix(\"'\"), let end = said.dropFirst().firstIndex(of: \"'\") else {{ return \
+         \"'\\(at)': \\(said)\" }}; return \"'\\(at).\\(said[said.index(after: \
+         said.startIndex)..<end])'\\(said[said.index(after: end)...])\" }} }}()"
+    )
+}
+
+/// The struct the item being emitted throws as `refused`, holding the list of broken rules.
+fn refusal_struct(refused: &str) -> String {
+    format!(
+        "public struct {refused}: Error, CustomStringConvertible {{ public let issues: [String]; \
+         public var description: String {{ \"{refused}: [\\(issues.joined(separator: \", \"))]\" \
+         }} }}; "
+    )
 }
 
 /// Whether `field`'s own declared type has no Swift mapping: a `u64`.
@@ -817,7 +908,17 @@ fn swift_module_tokens(
 ) -> TokenStream {
     let module_ident = swift_module_ident(rust_ident, span);
     let holder = defaults.holder();
-    let full_source = format!("{}{swift_source}", forwarded::take());
+    let refused = refusal();
+    let full_source = if swift_source.contains(&format!("throw {refused}(")) {
+        record_refusals(rust_ident, vec![refused.clone()]);
+        format!(
+            "{}{}{swift_source}",
+            forwarded::take(),
+            refusal_struct(&refused)
+        )
+    } else {
+        format!("{}{swift_source}", forwarded::take())
+    };
     let written = Ident::new("written", proc_macro2::Span::call_site());
     let escaped = [('\\', "\\\\"), ('"', "\\\"")];
     let (beside, keys) = unmet_keys_filled(
@@ -1318,8 +1419,9 @@ fn judged_inner_brands(key: &FieldDef) -> String {
         if validate::validates(&rust_ident) {
             judged.push(format!(
                 "do {{ let violations = {held}.validate(); if !violations.isEmpty {{ \
-                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
-                 debugDescription: violations.joined(separator: \"; \")) }} }}; "
+                 throw {}(issues: {}) }} }}; ",
+                refusal_of(&rust_ident),
+                placed("(container.codingPath + [codingKey])", "violations")
             ));
         }
         below = Some(value);
@@ -2297,8 +2399,17 @@ fn swift_full_real_type(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>
 /// name a message, success or error type by the same spelling its own declaration publishes.
 #[cfg(all(feature = "serde", feature = "swift"))]
 pub fn swift_reference_type(field: &FieldDef, name_hint: &str) -> (String, Vec<String>) {
+    let refused = refusals::refusal_name(name_hint);
+    let held = SWIFT_REFUSAL.with(|current| current.replace(refused.clone()));
     let mut aux = Vec::new();
     let real_type = swift_full_real_type(field, name_hint, &mut aux);
+    SWIFT_REFUSAL.with(|current| *current.borrow_mut() = held);
+    if aux
+        .iter()
+        .any(|declared| declared.contains(&format!("throw {refused}(")))
+    {
+        aux.insert(0, refusal_struct(&refused));
+    }
     (real_type, aux)
 }
 
@@ -4740,8 +4851,8 @@ fn value_init(sealed: bool, real_type: &str) -> String {
             "fileprivate init(value: {real_type}) {{ self.value = value }}; \
              public init(validating value: {real_type}) throws {{ self.init(value: value); \
              let violations = self.validate(); if !violations.isEmpty {{ throw \
-             DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], \
-             debugDescription: violations.joined(separator: \"; \"))) }} }}; "
+             {}(issues: violations) }} }}; ",
+            refusal()
         )
     } else {
         format!("public init(value: {real_type}) {{ self.value = value }}; ")
@@ -4846,11 +4957,16 @@ fn wrapper_read(wrapped: &Wrapped, shaped: &Shaped, real_type: &str, decode: &st
     }
     if !value_field.is_optional() && preprocess::beside(value_field) {
         let taken = preprocess::taken_with(iter::empty());
+        // The value is judged as its own read judges it, so it is refused as that read refuses it.
+        let refused = if let FieldDefType::SiblingType(name, _) = &value_field.field_type {
+            refusal_of(name)
+        } else {
+            refusal()
+        };
         return format!(
             "self.value = try {real_type}(swiftSchemaUnjudged: decoder, swiftSchemaWithout: {taken}); \
-             let held = value.validate(); if !held.isEmpty {{ throw DecodingError.dataCorrupted(\
-             DecodingError.Context(codingPath: decoder.codingPath, \
-             debugDescription: held.joined(separator: \"; \"))) }}"
+             let held = value.validate(); if !held.isEmpty {{ throw {refused}(issues: {}) }}",
+            placed("decoder.codingPath", "held")
         );
     }
     format!("let container = try decoder.singleValueContainer(); self.value = {decode}")
@@ -4949,6 +5065,8 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
     let type_parameters = type_parameters_in_scope(&item_type.generics);
     let mut target = arrayed(get_field_def(&export_name, &item_type.ty, ""));
     target.erase_type_parameters(&type_parameters);
+    // An alias is its target in Swift, so a read of it throws what a read of the target throws.
+    record_refusals(&item_type.ident.to_string(), swift_refusals_of(&target));
     validate::note(
         &item_type.ident.to_string(),
         validate::text_of(&target),

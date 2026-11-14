@@ -33,12 +33,20 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// What a run reads a payload with, and prints the answer with: the value written back, or each
 /// message of a refusal.
 const HARNESS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   do {
     let held = try JSONDecoder().decode(type, from: Data(payload.utf8))
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     print("\(name): read \(String(data: try encoder.encode(held), encoding: .utf8)!)")
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    print("\(name): refused")
+    for line in issues { print("    \(line)") }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused")
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }

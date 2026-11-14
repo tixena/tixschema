@@ -134,9 +134,10 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
     assert_eq!(
         corrected_by(&parcel, &["unwrapped", "withoutFragile"]),
         format!(
-            "{} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} \
+            "{} {} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} \
              @OptIn(ExperimentalSerializationApi::class) object ParcelDraftUnjudged : \
              KSerializer<ParcelDraft> {} {} {} {}",
+            refusal("Parcel"),
             kept_draft("Parcel"),
             to_valid_free("Parcel", ""),
             transform(
@@ -158,9 +159,10 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
     assert_eq!(
         corrected_by(&closed, &["unwrapped"]),
         format!(
-            "{} object ClosedDockDraft {{ {NO_ISSUES} {} }} \
+            "{} {} object ClosedDockDraft {{ {NO_ISSUES} {} }} \
              @OptIn(ExperimentalSerializationApi::class) object ClosedDockDraftUnjudged : \
              KSerializer<ClosedDockDraft> {} {} {} {}",
+            refusal("ClosedDock"),
             kept_draft("ClosedDock"),
             to_valid_free("ClosedDock", ""),
             transform(
@@ -184,10 +186,11 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
     assert_eq!(
         corrected_by(&generic, &["unwrapped"]),
         format!(
-            "{} data class CrateDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
+            "{} {} data class CrateDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
              @OptIn(ExperimentalSerializationApi::class) class \
              CrateDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<CrateDraft<CodeType>> {} {} {} {}",
+            refusal("Crate"),
             kept_draft("Crate"),
             walked_codes(""),
             to_valid_free("Crate", "<CodeType>"),
@@ -221,7 +224,8 @@ fn a_type_that_names_no_function_keeps_the_plugins_serializer_under_its_name() {
     assert_eq!(
         corrected_by(&parcel, &[]),
         format!(
-            "{} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} {} {} {} {}",
+            "{} {} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} {} {} {} {}",
+            refusal("Parcel"),
             kept_draft("Parcel"),
             to_valid_free("Parcel", ""),
             generated("ParcelDraft"),
@@ -307,7 +311,8 @@ fn a_plain_enum_is_read_by_its_unjudged_serializer() {
         assert_eq!(
             choice_corrected_by(&grade, functions),
             format!(
-                "{} {members} {} {} {} {}",
+                "{} {} {members} {} {} {} {}",
+                refusal("Grade"),
                 kept_plain_draft("Grade"),
                 plain_enum_unjudged("GradeDraft", &["Express", "Standard"], correction),
                 valid_class_with(
@@ -435,12 +440,13 @@ fn a_member_the_plugin_reads_is_read_through_a_serializer_of_its_own() {
     };
     let kotlin = plain(&chit);
     let opens = format!(
-        "{} {} data class ChitDraft(@Serializable(with = ChitCodePreprocess::class) val code: \
+        "{} {} {} data class ChitDraft(@Serializable(with = ChitCodePreprocess::class) val code: \
          String, @Serializable(with = ChitNotePreprocess::class) val note: String? = null, \
          @Serializable(with = ChitParcelsPreprocess::class) val parcels: List<Parcel>, val \
          plain: String, @SerialName(\"spare_parcel\") @Serializable(with = \
          ChitSpareParcelPreprocess::class) val spareParcel: Parcel? = null) {{ fun \
          validationIssues(): ",
+        refusal("Chit"),
         held("KotlinHeld1", "Parcel"),
         kept_draft("Chit")
     );
@@ -539,11 +545,12 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
         assert_eq!(
             corrected_by(&hamper, functions),
             format!(
-                "{} data class HamperDraft<CodeType>(val codes: List<CodeType>, val held: CodeType, \
-                 @Serializable(with = HamperLabelPreprocess::class) val label: String) {{ \
-                 {} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+                "{} {} data class HamperDraft<CodeType>(val codes: List<CodeType>, val held: \
+                 CodeType, @Serializable(with = HamperLabelPreprocess::class) val label: String) \
+                 {{ {} {} }} @OptIn(ExperimentalSerializationApi::class) class \
                  HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
                  KSerializer<HamperDraft<CodeType>> {} {} {} {} {}",
+                refusal("Hamper"),
                 kept_draft("Hamper"),
                 walked_codes(
                     "; violations.addAll(issuesOfCodeType(held).map { kotlinSchemaUnder(\"held\", it) })"

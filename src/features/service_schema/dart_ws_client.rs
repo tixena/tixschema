@@ -4,11 +4,12 @@
 
 use super::dart_http_client::{dart_call, dart_parameter, fault_said, message_type};
 use super::result::result_name;
-use super::{left_to_http_rest, on_one_line};
+use super::{left_to_http_rest, on_one_line, read_refusals};
 use crate::features::dart::{
-    dart_json_decode, dart_json_encode, dart_named_class_of, dart_typename, quoted,
-    read_at_function, reading_at,
+    dart_json_decode, dart_json_encode, dart_named_class_of, dart_refusals_of, dart_typename,
+    quoted, read_at_function, reading_at,
 };
+use crate::features::refusals::refusal_name;
 use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE, get_field_def};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
@@ -75,7 +76,11 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
     });
     published.extend(fault_helpers(&named, &fn_prefix, answers, reads_a_header));
     if answers {
-        published.push(refused_at_fn(&named, &fn_prefix));
+        published.push(refused_at_fn(
+            &named,
+            &fn_prefix,
+            &dart_read_refusals(service),
+        ));
         published.push(refused_fn(&named, &fn_prefix));
     }
     if service
@@ -125,36 +130,58 @@ fn held_fn(fn_prefix: &str) -> String {
 
 /// The functions that answer the field a fault names for a value a read refused, as the Rust
 /// dispatcher names it: the path a generated read's `FormatException` carries as its `source`, or
-/// the place a `validate()` message opens with; and the problems the refusal lists, each line of
-/// a `validate()` message cut at its field, as the Rust dispatcher lists them.
-fn refused_at_fn(named: &str, fn_prefix: &str) -> String {
+/// the place its message opens with; and the problems the refusal lists: each broken rule a
+/// refusal of a type the service reads holds, `refusals`, cut at its field, as the Rust dispatcher
+/// lists them, or the one refusal at the field it names.
+fn refused_at_fn(named: &str, fn_prefix: &str, refusals: &[String]) -> String {
     let issue = fault_issue_name(named);
+    let arms = refusals.iter().fold(String::new(), |mut arms, refusal| {
+        let _ = writeln!(arms, "  {refusal}(:final issues) => issues,");
+        arms
+    });
     format!(
-        "/// The field a read's refusal names: the path it carries, or the place its first message opens with.\n\
+        "/// The field a read's refusal names: the path it carries, or the place its message opens with.\n\
          String? _{fn_prefix}WsRefusedAt(Object rejected) => switch (rejected) {{\n  \
          FormatException(source: final List<Object> at) when at.isNotEmpty => at.join('.'),\n  \
          FormatException(:final String message) when message.startsWith(\"'\") && message.indexOf(\"'\", 1) > 0 =>\n    \
          message.substring(1, message.indexOf(\"'\", 1)),\n  \
          _ => null,\n\
          }};\n\n\
-         /// One line of a refusal as a fault lists it: the field the line names, cut off its front, and what it says there.\n\
+         /// One broken rule as a fault lists it: the field the line names, cut off its front, and what it says there.\n\
          {issue} _{fn_prefix}WsIssue(String line) {{\n  \
          final end = line.startsWith(\"'\") ? line.indexOf(\"'\", 1) : -1;\n  \
          if (end < 0) return {issue}(detail: line);\n  \
          final rest = line.substring(end + 1);\n  \
          return {issue}(detail: rest.startsWith(': ') ? rest.substring(2) : rest, field: line.substring(1, end));\n\
          }}\n\n\
-         /// Every line of `said`, the one sentence a read refused with, as a fault lists it.\n\
-         List<{issue}> _{fn_prefix}WsIssues(String said) => [\n  \
-         for (final (at, piece) in said.split(\"; '\").indexed) _{fn_prefix}WsIssue(at == 0 ? piece : \"'$piece\"),\n\
-         ];\n\n\
-         /// The problems a read's refusal lists: the one at the path it carries, or each line of a `validate()` message.\n\
-         List<{issue}> _{fn_prefix}WsRefusedIssues(Object rejected) => switch (rejected) {{\n  \
-         FormatException(:final Object? source, :final String message)\n      \
-         when (source is! List || source.isEmpty) && message.startsWith(\"'\") =>\n    \
-         _{fn_prefix}WsIssues(message),\n  \
-         _ => [{issue}(detail: '$rejected', field: _{fn_prefix}WsRefusedAt(rejected))],\n\
-         }};"
+         /// The broken rules a refusal of a type this service reads holds, or `null` for any other refusal.\n\
+         List<String>? _{fn_prefix}WsRefusal(Object rejected) => switch (rejected) {{\n\
+         {arms}  \
+         _ => null,\n\
+         }};\n\n\
+         /// The problems a read's refusal lists: each broken rule of a type's refusal, or the one at the path it carries.\n\
+         List<{issue}> _{fn_prefix}WsRefusedIssues(Object rejected) {{\n  \
+         final listed = _{fn_prefix}WsRefusal(rejected);\n  \
+         if (listed != null) return [for (final line in listed) _{fn_prefix}WsIssue(line)];\n  \
+         return switch (rejected) {{\n    \
+         FormatException(:final Object? source, :final String message)\n        \
+         when (source is! List || source.isEmpty) && message.startsWith(\"'\") =>\n      \
+         [_{fn_prefix}WsIssue(message)],\n    \
+         _ => [{issue}(detail: '$rejected', field: _{fn_prefix}WsRefusedAt(rejected))],\n  \
+         }};\n\
+         }}"
+    )
+}
+
+/// The refusal classes the reads of `service` throw a list of broken rules in.
+pub(super) fn dart_read_refusals(service: &ServiceDef) -> Vec<String> {
+    read_refusals(
+        service,
+        &|ident| {
+            let named: Type = syn::parse_quote! { #ident };
+            refusal_name(&dart_type_of(&named))
+        },
+        &|ty| dart_refusals_of(&get_field_def("value", ty, "")),
     )
 }
 

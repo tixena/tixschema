@@ -2,15 +2,28 @@
 
 Every model type `kotlin_definition()` writes is two classes, the draft code builds and the valid class that only `validate()` and a read make. `ShipmentDraft` is the data class, the `object` of a unit struct, the tuple struct, the `enum class` of an enum no variant of which holds a value or the sealed interface with its variants that the declaration is, and it carries `fun validationIssues(): List<String>` and `fun validate(): Shipment`. `Shipment` wraps a draft that passed in a private constructor, forwards each member as a property, and answers `draft` for the draft back. A [brand](generics-and-brands.md#a-brand-is-sealed) is one type with `fun validate(): List<String>` and `fun validationIssues(): List<String>`, the same list, a model a service writes for itself keeps its one class, and a type with no rule answers `emptyList()`.
 
-`validationIssues()` answers the messages Rust's [`validate()`](validation.md#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. `validate()` throws a `SerializationException` whose message is those lines joined by `; `, the text the read throws, and answers the valid class where there are none:
+`validationIssues()` answers the messages Rust's [`validate()`](validation.md#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. `validate()` throws [the type's refusal](#the-refusal-of-a-kotlin-type), `ShipmentRefusal`, whose `issues` are those lines, what the read throws, and answers the valid class where there are none:
 
 ```kotlin
 val shipment = Shipment.of(LabelText.of("Shipping"), 3u)
 println(shipment.parcelCount)                       // 3
 println(Json.encodeToString(shipment))              // {"label":"Shipping","parcelCount":3}
-runCatching { shipment.draft.copy(parcelCount = 200u).validate() }.onFailure { println(it.message) }
-// 'parcelCount': too large: maximum is 100, got 200
+try { shipment.draft.copy(parcelCount = 200u).validate() } catch (refusal: ShipmentRefusal) { println(refusal.issues) }
+// ['parcelCount': too large: maximum is 100, got 200]
 ```
+
+#### The refusal of a Kotlin type
+
+Every type whose text has `validate()`, `of(..)` or a judged serializer declares its refusal in that text, `{Name}Refusal`, named after the valid class: `ShipmentRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`. An alias is a `typealias` of what it names, and a read of it throws the refusal of that type. Nothing is shared between two types, so the file the types are joined into declares each refusal once, and you add nothing to it:
+
+```kotlin
+class ShipmentRefusal(val issues: List<String>) : SerializationException("$issues", IllegalArgumentException("validate()"))
+```
+
+- **`issues` is what `validationIssues()` answers of the value**, the list the Rust `validation_issues()` answers of the same value, entry by entry, for the value the read was asked for.
+- **A refusal is a `SerializationException`**, so kotlinx hands it on as a refused read and a `catch (refused: SerializationException)` still catches it; its message is the list, `[..]`, so it prints as `ShipmentRefusal: [..]`, and its cause marks it as a judgement, which no serializer rebases onto a path. A refusal of shape, a missing key or a value of the wrong kind, is the `SerializationException` it was.
+- **A key of a map a brand's check refuses is refused at its full path**: the brand's refusal holds each message under the path of the map and the key's text, `'tones.mute': mute is silent` for `{"tones":{"mute":1}}`.
+- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second class of the name, as one named `{Name}Draft` does: kotlinc refuses the file with ``error: redeclaration:``. Rename one of them.
 
 The valid class has no public constructor and a private `copy()` (`@ConsistentCopyVisibility`, from Kotlin 2.0.20): from another file `Shipment(draft)` is ``cannot access 'constructor(draft: ShipmentDraft): Shipment': it is private in 'Shipment'`` and `shipment.copy(...)` is ``cannot access 'fun copy(draft: ShipmentDraft = ...): Shipment': it is private in 'Shipment'``. `Json.encodeToString(shipment)` is the encoding of its draft, and a read of `Shipment` throws what `validate()` throws. A draft is read as no rule judges it, `Json.decodeFromString<ShipmentDraft>(text)`, and is what you change: `shipment.draft.copy(parcelCount = 5u).validate()`. `Shipment.of(label = "Shipping", parcelCount = 3u)` builds a valid struct from the parameters of the draft's constructor, with their defaults, and answers `validate()` of the draft: the valid class, or the `SerializationException` `validate()` throws. A property a `literal` fixes is no parameter, and `of` writes its value. A tuple struct's `of` takes its slots as `slot0`, `slot1`, .., and a unit struct's `of()` takes nothing. `of` sits in the `companion object` of the valid class, beside the constants, and a struct has it whatever `new` says on the Rust declaration. A property named `of` builds as `Shipment.of(of = "x")`. A unit struct that declares no rule has `SealAck.instance`. A unit variant of an enum that names no `check` and takes no parameter is a constant of the valid class, `Status.Active` over `StatusDraft.Active` and `Freight.Held` over `FreightHeld`, each a `val` of its `companion object`, and `ShipmentDraft(..).toValid()` answers the valid class with no exception to catch, on the draft of a type that declares no rule alone. A member named `draft` is declared `draft_`, on the draft and as the valid class's forwarding property, with `@SerialName("draft")`: the key on the wire is still `draft`, `holder.draft_` reads the member and `holder.draft` is the draft.
 
@@ -19,6 +32,7 @@ The serializer of a type calls the rules on the value it read: [the read refuses
 This is what the `Parcel` and the `Manifest` of [Checks](checks.md#checks-check) emit. The emitter writes each type on one line, and each line break below stands for one space of it:
 
 ```kotlin
+class ParcelRefusal(val issues: List<String>) : SerializationException("$issues", IllegalArgumentException("validate()"))
 @OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelDraftUnjudged::class) @KeepGeneratedSerializer
 data class ParcelDraft(val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
   fun validationIssues(): List<String> {
@@ -34,7 +48,7 @@ data class ParcelDraft(val label: String, val itemCodeList: List<String>, val fr
   }
   fun validate(): Parcel {
     val violations = validationIssues();
-    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    if (violations.isNotEmpty()) throw ParcelRefusal(violations);
     return Parcel.checked(this)
   }
 }
@@ -68,11 +82,12 @@ object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   override fun deserialize(decoder: Decoder): Parcel {
     val read = ParcelUnjudged.deserialize(decoder);
     val violations = read.validationIssues();
-    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    if (violations.isNotEmpty()) throw ParcelRefusal(violations);
     return read
   }
 }
 
+class ManifestRefusal(val issues: List<String>) : SerializationException("$issues", IllegalArgumentException("validate()"))
 private object KotlinHeld1 : KSerializer<Parcel> {
   private fun <KotlinSchemaCompanion, KotlinSchemaHeld> KotlinSchemaCompanion.kotlinSchemaUnjudged(own: KSerializer<KotlinSchemaHeld>, vararg arguments: KSerializer<*>): KSerializer<KotlinSchemaHeld> = own;
   private val held: KSerializer<Parcel> = Parcel.kotlinSchemaUnjudged(serializer<Parcel>());
@@ -93,7 +108,7 @@ data class ManifestDraft(@Serializable(with = KotlinHeld1::class) val parcel: Pa
   }
   fun validate(): Manifest {
     val violations = validationIssues();
-    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    if (violations.isNotEmpty()) throw ManifestRefusal(violations);
     return Manifest.checked(this)
   }
 }
@@ -125,7 +140,7 @@ object ManifestSerializer : KSerializer<Manifest>, () -> KSerializer<Manifest> {
   override fun deserialize(decoder: Decoder): Manifest {
     val read = ManifestUnjudged.deserialize(decoder);
     val violations = read.validationIssues();
-    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    if (violations.isNotEmpty()) throw ManifestRefusal(violations);
     return read
   }
 }
@@ -256,11 +271,15 @@ error: unresolved reference 'withinParcel'.
 
 #### The read in the Kotlin client
 
-The serializer of a type throws for a payload whose value breaks a bound or a check, and hands no object back. `Json.decodeFromString<Parcel>(payload)`, `serializer<Parcel>()` and a property typed `Parcel` in a class of your own all read through `ParcelSerializer`, the type's own serializer: it reads the value and asks its draft for `validationIssues()`. What it throws is `SerializationException`, the exception of `kotlinx.serialization`, and its message is what `validate()` answers of the value read, every message, joined by `; `:
+The serializer of a type throws for a payload whose value breaks a bound or a check, and hands no object back. `Json.decodeFromString<Parcel>(payload)`, `serializer<Parcel>()` and a property typed `Parcel` in a class of your own all read through `ParcelSerializer`, the type's own serializer: it reads the value and asks its draft for `validationIssues()`. What it throws is the type's refusal, `ParcelRefusal`, a `SerializationException`, and its `issues` are what `validate()` answers of the value read, every message:
 
 ```kotlin
-Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCodes":["x","y"]}""")
-// SerializationException: 'label': too short: minimum length is 1, got 0; 'fragileItemCodes.1': y is outside of itemCodeList
+try {
+    Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCodes":["x","y"]}""")
+} catch (refusal: ParcelRefusal) {
+    println(refusal.issues)
+}
+// ['label': too short: minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]
 ```
 
 **Every type has two serializers**, and a model's draft has a third:
@@ -268,7 +287,7 @@ Json.decodeFromString<Parcel>("""{"label":"","itemCodeList":["x"],"fragileItemCo
 | | What it reads | Who names it |
 |---|---|---|
 | `{Type}Unjudged` | the payload, with no judgement, into the valid class | the type's own companion, `Parcel.kotlinSchemaUnjudged(...)`, which a holder asks: `private` to the file the emitted types are joined into |
-| `{Type}Serializer` | through the first, and then throws what the draft's `validationIssues()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
+| `{Type}Serializer` | through the first, and then throws the type's refusal holding what the draft's `validationIssues()` answers | the type: `@Serializable(with = ParcelSerializer::class)` |
 | `{Type}DraftUnjudged` | the payload, with no judgement, into the draft | the draft: `@Serializable(with = ParcelDraftUnjudged::class)`, and you, to read a value that breaks a rule |
 
 All write the same payload, and writing judges nothing: a broken draft built in code is written as it is. A type with parameters writes the two as classes over one serializer per parameter, `CrateUnjudged(serializer<String>())`. The type's own serializer is a function too: called, `ParcelSerializer()` answers `ParcelUnjudged`. A holder reaches the unjudged serializer of a type it holds through the companion of that type, `Parcel.kotlinSchemaUnjudged(serializer<Parcel>())`, which answers it whether the type is declared above or below the holder, or in another crate.
@@ -404,6 +423,7 @@ fun withoutFragile(payload: JsonElement): JsonElement =
 This is what the `Parcel` of that example emits. The emitter writes it on one line, and each line break below stands for one space of it:
 
 ```kotlin
+class ParcelRefusal(val issues: List<String>) : SerializationException("$issues", IllegalArgumentException("validate()"))
 @OptIn(ExperimentalSerializationApi::class) @Serializable(with = ParcelDraftUnjudged::class) @KeepGeneratedSerializer
 data class ParcelDraft(@Serializable(with = ParcelLabelPreprocess::class) val label: String, val itemCodeList: List<String>, val fragileItemCodes: List<String>) {
   fun validationIssues(): List<String> {
@@ -413,7 +433,7 @@ data class ParcelDraft(@Serializable(with = ParcelLabelPreprocess::class) val la
   }
   fun validate(): Parcel {
     val violations = validationIssues();
-    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    if (violations.isNotEmpty()) throw ParcelRefusal(violations);
     return Parcel.checked(this)
   }
 }
@@ -467,7 +487,7 @@ object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   override fun deserialize(decoder: Decoder): Parcel {
     val read = ParcelUnjudged.deserialize(decoder);
     val violations = read.validationIssues();
-    if (violations.isNotEmpty()) throw SerializationException(violations.joinToString("; "), IllegalArgumentException("validate()"));
+    if (violations.isNotEmpty()) throw ParcelRefusal(violations);
     return read
   }
 }

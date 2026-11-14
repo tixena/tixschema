@@ -353,7 +353,7 @@ pub(super) fn rules_method(rules: &[String]) -> String {
 
 /// What a draft declares in place of [`method`]: `validationIssues()` lists the rules, the
 /// bound is answered as any type answers it, and `validate()` makes the valid value `valid` names
-/// or throws the rules broken, joined as a read joins them.
+/// or throws the type's refusal holding the rules broken.
 pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
     let converts = if is_rule_less() {
         format!("; public var valid: {valid} {{ {valid}(draft: self) }}")
@@ -362,10 +362,10 @@ pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
     };
     format!(
         "{}; {EMPTY_BOUND}; public func validate() throws -> {valid} {{ \
-         let found = validationIssues(); if !found.isEmpty {{ throw \
-         DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: \
-         found.joined(separator: \"; \"))) }}; return {valid}(draft: self) }}{converts}",
-        listing("validationIssues", rules)
+         let found = validationIssues(); if !found.isEmpty {{ throw {}(issues: found) }}; return \
+         {valid}(draft: self) }}{converts}",
+        listing("validationIssues", rules),
+        super::refusal()
     )
 }
 

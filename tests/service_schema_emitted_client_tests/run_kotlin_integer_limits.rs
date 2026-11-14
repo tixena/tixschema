@@ -31,7 +31,8 @@ fun report(name: String, answered: List<String>, read: () -> Any) {
         read()
         if (answered.isNotEmpty()) println("    the read passed it")
     } catch (refused: SerializationException) {
-        if (refused.message != answered.joinToString("; ")) println("    the read said ${refused.message}")
+        val said = if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else listOf(refused.message.orEmpty())
+        if (said != answered) println("    the read said $said")
     }
 }
 "#;

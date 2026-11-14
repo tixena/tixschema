@@ -35,6 +35,9 @@ pub mod text_forms;
 #[cfg(feature = "dart")]
 pub mod dart;
 
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub mod refusals;
+
 #[cfg(all(
     feature = "serde",
     any(feature = "dart", feature = "swift", feature = "kotlin")

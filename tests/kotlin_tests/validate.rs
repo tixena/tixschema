@@ -14,6 +14,7 @@ use super::kotlin_inner::INNER;
 use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
 use super::read::plain_enum;
+use super::read::refusal;
 #[cfg(feature = "serde")]
 use super::read::{
     DECODED, brand_companion, brand_serializers, kept_inline, mapped, mapped_over_a_brand,
@@ -326,7 +327,7 @@ fn a_class_runs_each_members_rules_and_then_its_own_check() {
     assert_eq!(
         super::tests::renumbered(&parcel_kotlin::kotlin_definition()),
         format!(
-            "{} data class ParcelDraft(val fragileItemCodes: List<String>, val itemCodeList: \
+            "{} {} data class ParcelDraft(val fragileItemCodes: List<String>, val itemCodeList: \
              List<String>, val label: String) {{ fun validationIssues(): List<String> {{ val \
              violations = mutableListOf<String>(); \
              violations.addAll(withoutDuplicates(itemCodeList).map {{ \
@@ -334,6 +335,7 @@ fn a_class_runs_each_members_rules_and_then_its_own_check() {
              label.length) < 1) violations.add(\"'label': too short: minimum length is 1, got \
              ${{label.codePointCount(0, label.length)}}\"); \
              violations.addAll(withinParcel(this)); return violations }}; {UNDER} {} }} {}",
+            refusal("Parcel"),
             kept_draft("Parcel"),
             to_valid("Parcel", ""),
             drafted_serializers(
@@ -347,11 +349,12 @@ fn a_class_runs_each_members_rules_and_then_its_own_check() {
     assert_eq!(
         super::tests::renumbered(&manifest_kotlin::kotlin_definition()),
         format!(
-            "{} {} data class ManifestDraft(@Serializable(with = KotlinHeld1::class) val parcel: \
+            "{} {} {} data class ManifestDraft(@Serializable(with = KotlinHeld1::class) val parcel: \
              Parcel) {{ fun validationIssues(): List<String> {{ val violations = \
              mutableListOf<String>(); \
              violations.addAll(parcel.validationIssues().map {{ kotlinSchemaUnder(\"parcel\", \
              it) }}); return violations }}; {UNDER} {} }} {}",
+            refusal("Manifest"),
             held("KotlinHeld1", "Parcel"),
             kept_draft("Manifest"),
             to_valid_free("Manifest", ""),
@@ -365,10 +368,11 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
     assert_eq!(
         super::tests::renumbered(&shelf_kotlin::kotlin_definition()),
         format!(
-            "{} {} data class ShelfDraft(@Serializable(with = KotlinHeld1::class) val later: \
+            "{} {} {} data class ShelfDraft(@Serializable(with = KotlinHeld1::class) val later: \
              Later) {{ fun validationIssues(): List<String> {{ val violations = \
              mutableListOf<String>(); violations.addAll(later.validationIssues().map {{ \
              kotlinSchemaUnder(\"later\", it) }}); return violations }}; {FALLBACK}; {UNDER} {} }} {}",
+            refusal("Shelf"),
             held("KotlinHeld1", "Later"),
             kept_draft("Shelf"),
             to_valid_free("Shelf", ""),
@@ -378,7 +382,8 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
     assert_eq!(
         super::tests::renumbered(&later_kotlin::kotlin_definition()),
         format!(
-            "{} data class LaterDraft(val label: String) {{ {NO_ISSUES} {} }} {}",
+            "{} {} data class LaterDraft(val label: String) {{ {NO_ISSUES} {} }} {}",
+            refusal("Later"),
             kept_draft("Later"),
             to_valid_free("Later", ""),
             drafted_serializers("Later", "val label: String get() = draft.label; ")
@@ -395,9 +400,10 @@ fn a_brand_answers_its_text() {
     assert_eq!(
         super::tests::renumbered(&slug_kotlin::kotlin_definition()),
         format!(
-            "{} value class Slug private constructor(val value: String) {{ fun \
+            "{} {} value class Slug private constructor(val value: String) {{ fun \
              kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
              value.codePointCount(0, value.length); {NO_RULE}; {} }} {} {}",
+            refusal("Slug"),
             kept_inline("Slug"),
             brand_companion("Slug", "String"),
             brand_serializers("Slug"),
@@ -407,13 +413,14 @@ fn a_brand_answers_its_text() {
     assert_eq!(
         super::tests::renumbered(&badge_kotlin::kotlin_definition()),
         format!(
-            "{} value class Badge private constructor(val value: Slug) {{ fun \
+            "{} {} value class Badge private constructor(val value: Slug) {{ fun \
              kotlinSchemaText(): String = value.kotlinSchemaText(); fun kotlinSchemaLength(): Int \
              = value.kotlinSchemaLength(); {NO_RULE}; {LENGTH}; {TEXT}; {} }} {} {}",
+            refusal("Badge"),
             kept_inline("Badge"),
             brand_companion("Badge", "Slug"),
             brand_serializers("Badge"),
-            mapped_over_a_brand("Badge")
+            mapped_over_a_brand("Badge", "Slug")
         )
     );
 }
@@ -426,11 +433,12 @@ fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
         super::tests::renumbered(&entry_kotlin::kotlin_definition()),
         format!(
-            "{} {} {} data class EntryDraft(@Serializable(with = KotlinHeld1::class) val late: \
+            "{} {} {} {} data class EntryDraft(@Serializable(with = KotlinHeld1::class) val late: \
              LateSlug, @Serializable(with = KotlinHeld2::class) val slug: Slug, val titled: \
              TitleType) {{ fun validationIssues(): List<String> {{ val violations = \
              mutableListOf<String>(); {}; {}; {}; {}; {}; {}; return violations }}; private fun \
              Any?.validationIssues(): List<String> = emptyList(); {LENGTH}; {UNDER} {} }} {}",
+            refusal("Entry"),
             held("KotlinHeld1", "LateSlug"),
             held("KotlinHeld2", "Slug"),
             kept_draft("Entry"),
@@ -478,7 +486,8 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&ping_kotlin::kotlin_definition()),
             format!(
-                "{} object PingDraft {{ {NO_ISSUES} {} }} {}",
+                "{} {} object PingDraft {{ {NO_ISSUES} {} }} {}",
+                refusal("Ping"),
                 kept_draft("Ping"),
                 to_valid_free("Ping", ""),
                 drafted_serializers_with(
@@ -492,9 +501,10 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&correlation_id_kotlin::kotlin_definition()),
             format!(
-                "{} value class CorrelationId private constructor(val value: String) {{ \
+                "{} {} value class CorrelationId private constructor(val value: String) {{ \
                  fun kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
                  value.codePointCount(0, value.length); {NO_RULE}; {} }} {} {}",
+                refusal("CorrelationId"),
                 kept_inline("CorrelationId"),
                 brand_companion("CorrelationId", "String"),
                 brand_serializers("CorrelationId"),
@@ -504,10 +514,11 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&wrapper_kotlin::kotlin_definition()),
             format!(
-                "{} data class WrapperDraft<T>(val value: T) {{ {} {} }} \
+                "{} {} data class WrapperDraft<T>(val value: T) {{ {} {} }} \
                  @OptIn(ExperimentalSerializationApi::class) class \
                  WrapperDraftUnjudged<T>(tSerializer: KSerializer<T>) : KSerializer<WrapperDraft<T>> \
                  by WrapperDraft.generatedSerializer(tSerializer) {} {} {}",
+                refusal("Wrapper"),
                 kept_draft("Wrapper"),
                 walked_issues(
                     "T",
@@ -525,8 +536,9 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&widget_kotlin::kotlin_definition()),
             format!(
-                "{} data class RenamedWidgetDraft(val label: String) {{ {NO_ISSUES} {} }} {} typealias \
+                "{} {} data class RenamedWidgetDraft(val label: String) {{ {NO_ISSUES} {} }} {} typealias \
                  Widget = RenamedWidget;",
+                refusal("RenamedWidget"),
                 kept_draft("RenamedWidget"),
                 to_valid_free("RenamedWidget", ""),
                 drafted_serializers("RenamedWidget", "val label: String get() = draft.label; ")
@@ -535,6 +547,10 @@ fn every_shape_carries_validate() {
     ] {
         assert_eq!(definition, written);
     }
+}
+
+#[test]
+fn a_tuple_struct_over_a_parameter_and_a_holder_of_a_tuple_carry_validate() {
     let pair = super::tests::renumbered(&generic_pair_kotlin::kotlin_definition());
     assert!(
         pair.contains(&format!(

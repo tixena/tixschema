@@ -22,6 +22,9 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
 /// What prints a row: its name and whether it is read, then each violation the read refused it
 /// with, where `named` asks for them.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun <T> told(name: String, named: Boolean, serializer: KSerializer<T>, payload: String) {
     try {
         Json.decodeFromString(serializer, payload)
@@ -29,7 +32,7 @@ fun <T> told(name: String, named: Boolean, serializer: KSerializer<T>, payload: 
     } catch (refused: SerializationException) {
         println("$name: refused")
         if (named) {
-            refused.message.orEmpty().split("; ").forEach { println("    $it") }
+            issuesOf(refused).forEach { println("    $it") }
         }
     }
 }

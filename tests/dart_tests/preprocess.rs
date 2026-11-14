@@ -10,10 +10,6 @@ use tixschema::model_schema;
 use super::held_numbers::u32_held;
 use super::unknown_keys::{READ_AT, READ_BUFFERED, READ_FLATTENED, plain_enum_read, refusing};
 
-/// What a judged read does with the value its unjudged read answered.
-const JUDGED: &str = "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
-     FormatException(violations.join('; ')); return read; }";
-
 /// The parcel of the documents: a function on the type, and one on a field held to a bound.
 #[model_schema(preprocess = ["withoutFragile"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -250,6 +246,15 @@ const fn payload(payload: Value) -> Value {
     payload
 }
 
+/// What a judged read of the type published as `named` does with the value its unjudged read
+/// answered.
+fn judged(named: &str) -> String {
+    format!(
+        "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
+         {named}Refusal(violations); return read; }}"
+    )
+}
+
 fn rated(value: &RatingDraft) -> Result<(), Vec<String>> {
     if matches!(value, RatingDraft::Unrated) {
         return Err(vec!["a parcel is rated".to_owned()]);
@@ -302,15 +307,16 @@ fn sealed_pair(
     handed: &str,
 ) -> String {
     format!(
-        "factory {named}.of({value} value) {{ final read = {named}{generics}._(value); {JUDGED} \
+        "factory {named}.of({value} value) {{ final read = {named}{generics}._(value); {judged} \
          factory {named}.fromJson({kind} json{converters}) {{ final read = \
-         {named}.fromJsonUnjudged(json{handed}); {JUDGED} factory \
+         {named}.fromJsonUnjudged(json{handed}); {judged} factory \
          {named}.fromJsonUnjudged({kind} {taken}{converters}) ",
         value = if generics.is_empty() {
             "String"
         } else {
             "IdType"
         },
+        judged = judged(named),
     )
 }
 

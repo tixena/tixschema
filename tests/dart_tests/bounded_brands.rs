@@ -38,20 +38,21 @@ fn every_declared_brand_is_constructible() {
 fn a_brand_over_a_string_measures_its_value_under_no_place() {
     assert_eq!(
         slug_dart::dart_definition(),
-        "class Slug { const Slug._(this.value); final String value; factory Slug.of(String value) \
-         { final read = Slug._(value); final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory Slug.fromJson(dynamic \
-         json) { final read = Slug.fromJsonUnjudged(json); final violations = read.validationIssues(); \
-         if (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory Slug.fromJsonUnjudged(dynamic json) => Slug._(json as String); dynamic toJson() \
-         => value; List<String> validateBound() => [ if (value.runes.length < 2) \"too short: \
-         minimum length is 2, got ${value.runes.length}\", if \
+        "class SlugRefusal implements Exception { const SlugRefusal(this.issues); final \
+         List<String> issues; @override String toString() => 'SlugRefusal: $issues'; } class Slug \
+         { const Slug._(this.value); final String value; factory Slug.of(String value) { final \
+         read = Slug._(value); final violations = read.validationIssues(); if \
+         (violations.isNotEmpty) throw SlugRefusal(violations); return read; } factory \
+         Slug.fromJson(dynamic json) { final read = Slug.fromJsonUnjudged(json); final violations \
+         = read.validationIssues(); if (violations.isNotEmpty) throw SlugRefusal(violations); \
+         return read; } factory Slug.fromJsonUnjudged(dynamic json) => Slug._(json as String); \
+         dynamic toJson() => value; List<String> validateBound() => [ if (value.runes.length < 2) \
+         \"too short: minimum length is 2, got ${value.runes.length}\", if \
          (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match pattern '^[A-Z]+\\$'\", ]; \
-         List<String> validationIssues() => [ \
-         if (value.runes.length < 2) \"too short: minimum length is 2, got \
-         ${value.runes.length}\", if (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match \
-         pattern '^[A-Z]+\\$'\", ]; static Object $thrown(Object thrown) => thrown; }"
+         List<String> validationIssues() => [ if (value.runes.length < 2) \"too short: minimum \
+         length is 2, got ${value.runes.length}\", if (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \
+         \"does not match pattern '^[A-Z]+\\$'\", ]; static Object $thrown(Object thrown) => \
+         thrown; }"
     );
 }
 
@@ -61,22 +62,22 @@ fn a_brand_over_a_string_measures_its_value_under_no_place() {
 fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
     assert_eq!(
         tag_dart::dart_definition(),
-        "class Tag<IdType> { const Tag._(this.value); final IdType value; factory \
-         Tag.of(IdType value) { final read = Tag<IdType>._(value); final violations = \
-         read.validationIssues(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
-         ')); return read; } factory \
+        "class TagRefusal implements Exception { const TagRefusal(this.issues); final \
+         List<String> issues; @override String toString() => 'TagRefusal: $issues'; } class \
+         Tag<IdType> { const Tag._(this.value); final IdType value; factory Tag.of(IdType value) \
+         { final read = Tag<IdType>._(value); final violations = read.validationIssues(); if \
+         (violations.isNotEmpty) throw TagRefusal(violations); return read; } factory \
          Tag.fromJson(dynamic json, IdType Function(dynamic) idTypeFromJson) { final read = \
-         Tag.fromJsonUnjudged(json, idTypeFromJson); final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return read; } \
-         factory Tag.fromJsonUnjudged(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
+         Tag.fromJsonUnjudged(json, idTypeFromJson); final violations = read.validationIssues(); \
+         if (violations.isNotEmpty) throw TagRefusal(violations); return read; } factory \
+         Tag.fromJsonUnjudged(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
          Tag._(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
-         idTypeToJson(value); List<String> validateBound() => [ if (value case final String \
-         held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
-         ${held.runes.length}\", ]; List<String> validationIssues() => \
-         validationIssuesWith((_) => const <String>[]); List<String> \
-         validationIssuesWith(List<String> Function(IdType) issuesOfIdType) => [ if (value case \
-         final String held) if (held.runes.length < 2) \"too short: minimum length is 2, got \
-         ${held.runes.length}\", ...issuesOfIdType(value), ]; static Object \
+         idTypeToJson(value); List<String> validateBound() => [ if (value case final String held) \
+         if (held.runes.length < 2) \"too short: minimum length is 2, got ${held.runes.length}\", \
+         ]; List<String> validationIssues() => validationIssuesWith((_) => const <String>[]); \
+         List<String> validationIssuesWith(List<String> Function(IdType) issuesOfIdType) => [ if \
+         (value case final String held) if (held.runes.length < 2) \"too short: minimum length is \
+         2, got ${held.runes.length}\", ...issuesOfIdType(value), ]; static Object \
          $thrown<IdType>(Object thrown) => thrown; }"
     );
 }
@@ -85,25 +86,32 @@ fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
 fn a_brand_over_a_list_counts_its_items() {
     assert_eq!(
         batch_dart::dart_definition(),
-        "class Batch { const Batch._(this.value); final List<String> value; factory \
+        "class BatchRefusal implements Exception { const BatchRefusal(this.issues); final \
+         List<String> issues; @override String toString() => 'BatchRefusal: $issues'; } class \
+         Batch { const Batch._(this.value); final List<String> value; factory \
          Batch.of(List<String> value) { final read = Batch._(value); final violations = \
-         read.validationIssues(); if (violations.isNotEmpty) throw FormatException(violations.join('; \
-         ')); return read; } factory \
-         Batch.fromJson(dynamic json) { final read = Batch.fromJsonUnjudged(json); final \
-         violations = read.validationIssues(); if (violations.isNotEmpty) throw \
-         FormatException(violations.join('; ')); return read; } factory \
-         Batch.fromJsonUnjudged(dynamic json) => Batch._((json as List<dynamic>).indexed.map((e) => \
-         _readAt(null, e.$1, () => e.$2 as String)).toList()); static Read \
+         read.validationIssues(); if (violations.isNotEmpty) throw BatchRefusal(violations); \
+         return read; } factory Batch.fromJson(dynamic json) { final read = \
+         Batch.fromJsonUnjudged(json); final violations = read.validationIssues(); if \
+         (violations.isNotEmpty) throw BatchRefusal(violations); return read; } factory \
+         Batch.fromJsonUnjudged(dynamic json) => Batch._((json as List<dynamic>).indexed.map((e) \
+         => _readAt(null, e.$1, () => e.$2 as String)).toList()); static Read \
          _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) { try { \
          return read(); } catch (refused) { if (object != null && !object.containsKey(key)) throw \
          FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) throw \
          FormatException('$refused', <Object>[key]); if (refused is FormatException) { final at = \
          refused.source; throw FormatException(refused.message, <Object>[key, if (at is \
-         List<Object>) ...at]); } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); \
-         List<String> validateBound() => [ if (value.length < 1) \"too short: minimum length is \
-         1, got ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
-         ${value.length}\", ]; List<String> validationIssues() => [ if (value.length < 1) \"too short: \
-         minimum length is 1, got ${value.length}\", if (value.length > 2) \"too long: maximum \
-         length is 2, got ${value.length}\", ]; static Object $thrown(Object thrown) => thrown; }"
+         List<Object>) ...at]); } if (refused is Exception) { Object? listed; try { listed = \
+         (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if (listed is \
+         List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
+         final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
+         } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); List<String> \
+         validateBound() => [ if (value.length < 1) \"too short: minimum length is 1, got \
+         ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
+         ${value.length}\", ]; List<String> validationIssues() => [ if (value.length < 1) \"too \
+         short: minimum length is 1, got ${value.length}\", if (value.length > 2) \"too long: \
+         maximum length is 2, got ${value.length}\", ]; static Object $thrown(Object thrown) => \
+         thrown; }"
     );
 }

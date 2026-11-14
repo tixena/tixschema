@@ -12,7 +12,7 @@ use super::range_models::{
     waymark_dart, waypost_dart,
 };
 use super::range_rows::{declares_a_parameter, expected, judged, rows};
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 
 /// What prints a row: the value read, written back, or `refused`, with each message of what
 /// `validate()` refused where the type judges a model or a brand it holds.
@@ -20,10 +20,10 @@ const ROW: &str = "
 void row(String name, bool judged, Object? Function() written) {
   try {
     print('$name: read ${jsonEncode(written())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
     if (!judged) return;
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   } catch (_) {
@@ -53,7 +53,7 @@ fn source() -> String {
     });
     module(
         &definitions(),
-        &[ROW],
+        &[ROW, ISSUES_OF],
         &format!("void main() {{\n{calls}}}\n"),
     )
 }
@@ -106,7 +106,7 @@ fn each_range_reads_and_writes_in_dart_as_serde_does() {
 fn the_emitted_ranges_have_no_issue() {
     let analyzed = module(
         &definitions(),
-        &[ROW],
+        &[ROW, ISSUES_OF],
         "void main() => row('a list', false, () => jsonDecode('[]'));\n",
     );
     let Some((clean, said)) = dart("ranges-analyze", &["analyze"], &analyzed) else {

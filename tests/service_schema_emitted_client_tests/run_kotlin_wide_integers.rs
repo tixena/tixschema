@@ -34,7 +34,7 @@ fun <T> told(at: Int, serializer: KSerializer<T>, payload: String) {
 
 /// What the Kotlin read answers of each payload of [`REFUSED`], in its order. The read refuses the
 /// string of an `i64`'s digits, a fraction and an out-of-range number in serde's words, each at
-/// the path of the number.
+/// the path of the number, and a value a bound or a literal refuses with its type's own refusal.
 const KOTLIN_REFUSED: [&str; 8] = [
     "SerializationException: invalid value: integer `9223372036854775808`, expected i64 at path: $",
     "SerializationException: invalid type: string \"7\", expected i64 at path: $",
@@ -42,10 +42,10 @@ const KOTLIN_REFUSED: [&str; 8] = [
      at path: $.listed[1]",
     "SerializationException: invalid type: floating point `1.5`, expected i64 at path: \
      $.Moved.from",
-    "SerializationException: 'level': too large: maximum is 5, got 6",
+    "SixtyLevelRefusal: ['level': too large: maximum is 5, got 6]",
     "SerializationException: invalid value: integer `9223372036854775808`, expected i64 at path: \
      $.ranged.end",
-    "SerializationException: 'fixed': not the literal 214, got 215",
+    "SixtyReachedRefusal: ['fixed': not the literal 214, got 215]",
     "SerializationException: invalid type: string \"x\", expected i64 at path: $.keyed['4']",
 ];
 

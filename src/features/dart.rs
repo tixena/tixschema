@@ -19,6 +19,7 @@ use crate::features::member_keys;
 use crate::features::model_schema_prop::{
     FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
 };
+use crate::features::refusals;
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
@@ -702,13 +703,71 @@ thread_local! {
     /// How many classes of a `Result` have been named, never reset: every one lands in the same
     /// consuming file, where no two may share a name.
     static DART_RESULT_COUNTER: Cell<u32> = const { Cell::new(0) };
+
+    /// The refusal class the reads and `validate()` of the item being emitted throw.
+    static DART_REFUSAL: RefCell<String> = const { RefCell::new(String::new()) };
+
+    /// The refusal classes a judged read of each type a class has been emitted for throws, by
+    /// Rust ident: its own, and for an alias those of what it reads judged.
+    static DART_REFUSALS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+}
+
+/// Makes the refusal of the type published as `export_name` the one the item being emitted throws.
+fn enter_refusal(export_name: &str) {
+    DART_REFUSAL.with(|held| *held.borrow_mut() = refusals::refusal_name(export_name));
+}
+
+/// The refusal class the item being emitted throws.
+fn refusal() -> String {
+    DART_REFUSAL.with(|held| held.borrow().clone())
+}
+
+/// The refusal classes a judged read of `def` throws where the value it reads, or one it holds,
+/// breaks a rule, as far as the types it names were emitted before.
+pub fn dart_refusals_of(def: &FieldDef) -> Vec<String> {
+    refusals::reached(def, &own_refusals)
+}
+
+/// The refusal classes recorded for the type written `name`.
+fn own_refusals(name: &str) -> Vec<String> {
+    DART_REFUSALS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Drops what was recorded for a type written `rust_ident`: of two types of one ident in a crate,
+/// a holder names the refusals of the one expanded last.
+fn forget_refusals(rust_ident: &str) {
+    DART_REFUSALS.with(|recorded| {
+        recorded.borrow_mut().remove(rust_ident);
+    });
+}
+
+/// Records that a judged read of `rust_ident` throws `refused` as well.
+fn record_refusals(rust_ident: &str, refused: Vec<String>) {
+    DART_REFUSALS.with(|recorded| {
+        let mut held = recorded.borrow_mut();
+        let listed = held.entry(rust_ident.to_owned()).or_default();
+        for refusal in refused {
+            if !listed.contains(&refusal) {
+                listed.push(refusal);
+            }
+        }
+    });
+}
+
+/// The class the item being emitted throws as `refused`, holding the list of broken rules.
+fn refusal_class(refused: &str) -> String {
+    format!(
+        "class {refused} implements Exception {{ const {refused}(this.issues); final List<String> \
+         issues; @override String toString() => '{refused}: $issues'; }}"
+    )
 }
 
 /// The helper, named `name`, a read reads a value under a key or an index with. A refusal carries
 /// the path of the value refused as its `FormatException`'s `source`, a list of steps a holder puts
 /// its own step ahead of. One of a key `object` does not hold is `missing field`, as serde words
 /// it, and a cast's `TypeError` and a Dart parser's refusal become a `FormatException` with the
-/// path.
+/// path. A type's refusal a value read judged throws keeps its class, and each issue it holds is
+/// placed under the step: no refusal class is shared to name, so its `issues` is read dynamically.
 pub fn read_at_function(name: &str) -> String {
     format!(
         "Read {name}<Read>(Map<String, dynamic>? object, Object key, Read Function() read) {{ try \
@@ -716,7 +775,12 @@ pub fn read_at_function(name: &str) -> String {
          throw FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
          throw FormatException('$refused', <Object>[key]); if (refused is FormatException) {{ \
          final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
-         is List<Object>) ...at]); }} rethrow; }} }}"
+         is List<Object>) ...at]); }} if (refused is Exception) {{ Object? listed; try {{ listed = \
+         (refused as dynamic).issues; }} on NoSuchMethodError {{ listed = null; }} if (listed is \
+         List<String>) {{ for (var at = 0; at < listed.length; at += 1) {{ final said = \
+         listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; \
+         listed[at] = end > 0 ? \"'$key.${{said.substring(1, end)}}'${{said.substring(end + 1)}}\" \
+         : \"'$key': $said\"; }} }} }} rethrow; }} }}"
     )
 }
 
@@ -781,6 +845,10 @@ fn with_read_at(reads: String, called: bool) -> String {
 /// own shape; an item this module has nothing to say about (anything but a struct, an enum or a
 /// type alias) earns nothing.
 pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream {
+    let ident = refusals::item_ident(item);
+    if let Some(named) = &ident {
+        forget_refusals(named);
+    }
     record_called(called_by(item, args));
     record_members(item, args);
     record_flattenings(item);
@@ -793,7 +861,11 @@ pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream
     } else {
         TokenStream::new()
     };
+    if let Some(named) = &ident {
+        record_refusals(named, refusals::held_by(item, &own_refusals));
+    }
     record_called(Vec::new());
+    DART_REFUSAL.with(|held| held.borrow_mut().clear());
     DART_MEMBERS.with(|held| *held.borrow_mut() = (String::new(), Vec::new()));
     DART_FORWARDERS.with(|held| held.borrow_mut().clear());
     DART_FLATTENING.with(|current| current.borrow_mut().clear());
@@ -1178,7 +1250,13 @@ fn dart_module_tokens(
             declared
         },
     );
-    let source = format!("{forwarders}{dart_source}");
+    let refused = refusal();
+    let source = if dart_source.contains(&format!("throw {refused}(")) {
+        record_refusals(rust_ident, vec![refused.clone()]);
+        format!("{forwarders}{} {dart_source}", refusal_class(&refused))
+    } else {
+        format!("{forwarders}{dart_source}")
+    };
     let full_source = if classes.is_empty() {
         source
     } else {
@@ -2390,13 +2468,6 @@ pub fn dart_named_class_of(ty: &syn::Type) -> Option<(String, String)> {
 #[cfg(feature = "serde")]
 pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
     dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Judged)
-}
-
-/// [`dart_json_decode`] reading each declared type by its `fromJsonUnjudged`, which throws for what
-/// does not read and never for what `validationIssues()` refuses.
-#[cfg(feature = "serde")]
-pub fn dart_json_decode_unjudged(ty: &syn::Type, expr: &str) -> String {
-    dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Unjudged)
 }
 
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
@@ -4360,7 +4431,7 @@ fn variant_bounds(payload: &VariantPayload) -> Option<String> {
 }
 
 /// The body of a judged read over `unjudged`, the call of the unjudged one: the value it
-/// answers, refused with what its `validationIssues()` answers of it, joined as the Rust read joins it.
+/// answers, refused with the list its `validationIssues()` answers of it.
 fn judged_body(unjudged: &str) -> String {
     judged_body_returning(unjudged, "read")
 }
@@ -4369,7 +4440,8 @@ fn judged_body(unjudged: &str) -> String {
 fn judged_body_returning(unjudged: &str, returned: &str) -> String {
     format!(
         "{{ final read = {unjudged}; final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return {returned}; }}"
+         (violations.isNotEmpty) throw {}(violations); return {returned}; }}",
+        refusal()
     )
 }
 
@@ -4483,7 +4555,7 @@ fn issues_with_delegated() -> String {
 }
 
 /// `validate()` of a draft of the type published as `export_name`: its valid type where
-/// `validationIssues()` is empty, else a refusal with those issues joined as a read joins them.
+/// `validationIssues()` is empty, else its refusal holding those issues.
 fn validate_method(export_name: &str, generic_params: &str, rule_less: bool) -> String {
     let converts = if rule_less {
         format!(
@@ -4494,8 +4566,9 @@ fn validate_method(export_name: &str, generic_params: &str, rule_less: bool) -> 
     };
     format!(
         "{export_name}{generic_params} validate() {{ final found = validationIssues(); if \
-         (found.isNotEmpty) throw FormatException(found.join('; ')); return \
-         {export_name}{generic_params}._(this); }}{converts}"
+         (found.isNotEmpty) throw {}(found); return {export_name}{generic_params}._(this); \
+         }}{converts}",
+        refusal()
     )
 }
 
@@ -5121,6 +5194,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
 
     let rust_ident = item_struct.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
+    enter_refusal(&export_name);
     register_dart_name(&rust_ident, &export_name);
     note_writes_an_object(&rust_ident, true);
 
@@ -5253,6 +5327,7 @@ fn value_wrapper_tokens(
 ) -> TokenStream {
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, name_override);
+    enter_refusal(&export_name);
     register_dart_name(&rust_ident, &export_name);
     let sealed = matches!(held, Held::Brand(_));
     note_wrapper(&rust_ident, held, corrects);
@@ -5426,7 +5501,7 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
     if type_parameters.is_empty() {
         note_key_value(&item_type.ident.to_string(), &target);
     }
-    value_wrapper_tokens(
+    let tokens = value_wrapper_tokens(
         &item_type.ident,
         &item_type.generics,
         Some(&export_name),
@@ -5435,7 +5510,11 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
         // An alias is refused a `preprocess`: it has no read of its own.
         &Corrects::of(&[]),
         &Validation::Plain(&validate_members(&rules, &helpers, false)),
-    )
+    );
+    if !named {
+        record_refusals(&item_type.ident.to_string(), dart_refusals_of(&target));
+    }
+    tokens
 }
 
 /// The Dart tokens an enum earns: a plain enhanced enum for an all-unit, untagged-by-default
@@ -5447,6 +5526,7 @@ fn enum_dart_tokens(declared: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStream
     let item_enum = &variants_on_the_wire(declared);
     let rust_ident = item_enum.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
+    enter_refusal(&export_name);
     register_dart_name(&rust_ident, &export_name);
     note_writes_an_object(&rust_ident, false);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);

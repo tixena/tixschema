@@ -6,6 +6,23 @@ pub const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var str
                            var intValue: Int? { nil }; init?(stringValue: String) { \
                            self.stringValue = stringValue }; init?(intValue: Int) { nil } }";
 
+/// The broken rules `violations` names, each placed under the coding path the value was read at.
+pub const PLACED: &str = concat!(
+    r#"{ () -> [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? "#,
+    r#"$0.stringValue }.joined(separator: "."); return at.isEmpty ? violations : violations.map { "#,
+    r#"said in guard said.hasPrefix("'"), let end = said.dropFirst().firstIndex(of: "'") else { "#,
+    r#"return "'\(at)': \(said)" }; return "'\(at).\(said[said.index(after: "#,
+    r#"said.startIndex)..<end])'\(said[said.index(after: end)...])" } }()"#,
+);
+
+/// The struct the text of the type published as `named` opens with, which its reads throw.
+pub fn refusal(named: &str) -> String {
+    format!(
+        "public struct {named}Refusal: Error, CustomStringConvertible {{ public let issues: \
+         [String]; public var description: String {{ \"{named}Refusal: [\\(issues.joined(separator: \", \"))]\" }} }};"
+    )
+}
+
 /// The statements that read `named`, a plain enum, from a string or from an object of one key
 /// over `null`.
 pub fn plain_enum_read(named: &str) -> String {
@@ -32,9 +49,8 @@ pub fn plain_enum_reads(named: &str) -> String {
     format!(
         "{ANY_KEY}; public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {} }}; public \
          init(from decoder: Decoder) throws {{ try self.init(swiftSchemaUnjudged: decoder); let \
-         violations = validate(); if !violations.isEmpty {{ throw \
-         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: violations.joined(separator: \"; \"))) }} }};",
+         violations = validate(); if !violations.isEmpty {{ throw {named}Refusal(issues: \
+         {PLACED}) }} }};",
         plain_enum_read(named)
     )
 }

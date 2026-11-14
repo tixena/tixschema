@@ -40,9 +40,10 @@ fn a_brand_over_a_char_names_the_serializer_of_its_form_on_its_value() {
     let kotlin = plain(&item);
     assert!(
         kotlin.starts_with(&format!(
-            "{} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
+            "{} {} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
              InitialSerializer::class) @KeepGeneratedSerializer value class Initial private \
              constructor(val value: @Serializable(with = KotlinText1::class) String) {{",
+            refusal("Initial"),
             letter("KotlinText1")
         )),
         "got: {kotlin}"
@@ -57,7 +58,10 @@ fn where_the_emitter_writes_the_read_it_composes_the_serializer_of_the_form() {
         struct Marks(char, Vec<Option<char>>);
     };
     let marks = plain(&item);
-    assert!(marks.starts_with(&letter("KotlinText1")), "got: {marks}");
+    assert!(
+        marks.starts_with(&format!("{} {}", refusal("Marks"), letter("KotlinText1"))),
+        "got: {marks}"
+    );
     assert!(
         marks.contains(
             "data class MarksDraft(val slot0: String, val slot1: List<String?>) { fun \
@@ -131,7 +135,11 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
     };
     let initials_read = plain(&initials);
     assert!(
-        initials_read.starts_with(&letter("KotlinText2")),
+        initials_read.starts_with(&format!(
+            "{} {}",
+            refusal("Initials"),
+            letter("KotlinText2")
+        )),
         "got: {initials_read}"
     );
     assert!(

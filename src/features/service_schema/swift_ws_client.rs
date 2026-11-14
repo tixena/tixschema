@@ -3,7 +3,8 @@
 //! declared type, and settles every waiting call with a `transport-failure` fault when the socket
 //! closes — the TypeScript client's feature set, item for item, read at [`super::ws_client`].
 
-use crate::features::swift::{forms, swift_quoted, swift_reference_type};
+use crate::features::refusals;
+use crate::features::swift::{forms, swift_quoted, swift_reference_type, swift_refusals_of};
 use crate::features::text_forms::TextForm;
 use crate::field_type::{NOT_A_DOCUMENT, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -20,7 +21,7 @@ use super::swift_http_client::{
     tuple_hint,
 };
 use super::swift_type::swift_typename_of;
-use super::{left_to_http_rest, on_one_line};
+use super::{left_to_http_rest, on_one_line, read_refusals};
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {
     let apart = left_to_http_rest(declared, "method", on_one_line);
@@ -38,7 +39,11 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         published.push(header_in_type(&named));
     }
     published.push(transport_failure_helper(&named, &prefix));
-    published.push(failed_validation_helper(&named, &prefix));
+    published.push(failed_validation_helper(
+        &named,
+        &prefix,
+        &swift_read_refusals(service),
+    ));
     published.push(dated_encoder_helper(&prefix));
     if service
         .operations
@@ -335,9 +340,41 @@ fn transport_failure_helper(named: &str, prefix: &str) -> String {
     )
 }
 
-fn failed_validation_helper(named: &str, prefix: &str) -> String {
+/// The refusal structs the reads of `service` throw a list of broken rules in: those of the types
+/// it reads, and that of the struct a tuple success is read as.
+fn swift_read_refusals(service: &ServiceDef) -> Vec<String> {
+    let mut found = read_refusals(
+        service,
+        &|ident| {
+            let named: Type = syn::parse_quote! { #ident };
+            refusals::refusal_name(&swift_typename_of(&named))
+        },
+        &|ty| swift_refusals_of(&get_field_def("value", ty, "")),
+    );
+    let named = service.ident.to_string();
+    for operation in &service.operations {
+        if let OperationOutcome::Reply {
+            success,
+            error: _error,
+        } = &operation.outcome
+            && is_plain_tuple(&HttpShape::of(operation), success)
+        {
+            found.push(refusals::refusal_name(&tuple_hint(&named, operation)));
+        }
+    }
+    found
+}
+
+fn failed_validation_helper(named: &str, prefix: &str, refusals: &[String]) -> String {
     let fault = fault_name(named);
     let issue = fault_issue_name(named);
+    let arms = refusals.iter().fold(String::new(), |mut arms, refusal| {
+        let _ = writeln!(
+            arms,
+            "  case let refused as {refusal}: return refused.issues"
+        );
+        arms
+    });
     format!(
         "/// The fault a `{named}` `ws_rpc` call answers with when a reply will not become the \
          operation's\n\
@@ -348,19 +385,45 @@ fn failed_validation_helper(named: &str, prefix: &str) -> String {
          operation)\n\
          }}\n\
          \n\
-         /// The problems a read's refusal lists: each line of a `validate()` message the value it \
-         was asked for refused, cut at its field,\n\
-         /// as the Rust dispatcher lists them, or the one refusal at the field it names.\n\
+         /// The broken rules a refusal of a type this service reads holds, or `nil` for any other \
+         refusal.\n\
+         func {prefix}WsRefusal(_ refusal: Error) -> [String]? {{\n  \
+         switch refusal {{\n\
+         {arms}  \
+         default: return nil\n  \
+         }}\n\
+         }}\n\
+         \n\
+         /// A broken rule of a reply's value as the value's own read names it: a refusal places \
+         each under the coding path,\n\
+         /// whose first step is the key of the reply the value was read under.\n\
+         func {prefix}WsUnwrapped(_ line: String) -> String {{\n  \
+         for key in [\"value\", \"error\"] {{\n    \
+         if line.hasPrefix(\"'\\(key)': \") {{ return String(line.dropFirst(key.count + 4)) }}\n    \
+         if line.hasPrefix(\"'\\(key).\") {{ return \"'\" + line.dropFirst(key.count + 2) }}\n  \
+         }}\n  \
+         return line\n\
+         }}\n\
+         \n\
+         /// One broken rule as a fault lists it: the field the line names, cut off its front, and \
+         what it says there.\n\
+         func {prefix}WsIssue(_ line: String) -> {issue} {{\n  \
+         guard line.hasPrefix(\"'\"), let end = line.dropFirst().firstIndex(of: \"'\") else {{ return {issue}(detail: line, field: nil) }}\n  \
+         let rest = line[line.index(after: end)...]\n  \
+         return {issue}(detail: String(rest.hasPrefix(\": \") ? rest.dropFirst(2) : rest), field: \
+         String(line[line.index(after: line.startIndex)..<end]))\n\
+         }}\n\
+         \n\
+         /// The problems a read's refusal lists: each broken rule of a type's refusal, as the Rust \
+         dispatcher lists them,\n\
+         /// or the one refusal at the field it names.\n\
          func {prefix}WsRefusedIssues(_ refusal: Error) -> [{issue}] {{\n  \
+         if let listed = {prefix}WsRefusal(refusal) {{\n    \
+         return listed.map {{ {prefix}WsIssue({prefix}WsUnwrapped($0)) }}\n  \
+         }}\n  \
          if case DecodingError.dataCorrupted(let context) = refusal, context.codingPath.count <= 1, \
          context.debugDescription.hasPrefix(\"'\") {{\n    \
-         return context.debugDescription.components(separatedBy: \"; '\").enumerated().map {{ pair -> {issue} in\n      \
-         let line = pair.offset == 0 ? pair.element : \"'\" + pair.element\n      \
-         guard line.hasPrefix(\"'\"), let end = line.dropFirst().firstIndex(of: \"'\") else {{ return {issue}(detail: line, field: nil) }}\n      \
-         let rest = line[line.index(after: end)...]\n      \
-         return {issue}(detail: String(rest.hasPrefix(\": \") ? rest.dropFirst(2) : rest), field: \
-         String(line[line.index(after: line.startIndex)..<end]))\n    \
-         }}\n  \
+         return [{prefix}WsIssue(context.debugDescription)]\n  \
          }}\n  \
          return [{issue}(detail: \"\\(refusal)\", field: {prefix}WsRefusedAt(refusal))]\n\
          }}\n\

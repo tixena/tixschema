@@ -904,31 +904,41 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
 fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(
         reserved_members_dart::dart_definition(),
-        "class ReservedMembersDraft { const ReservedMembersDraft({required this.class_,required \
-         this.in_,required this.type,}); final String class_;final String in_;final String type; \
-         factory ReservedMembersDraft.fromJson(Map<String, dynamic> json) { for (final key in \
-         json.keys) { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
+        "class ReservedMembersRefusal implements Exception { const \
+         ReservedMembersRefusal(this.issues); final List<String> issues; @override String \
+         toString() => 'ReservedMembersRefusal: $issues'; } class ReservedMembersDraft { const \
+         ReservedMembersDraft({required this.class_,required this.in_,required this.type,}); \
+         final String class_;final String in_;final String type; factory \
+         ReservedMembersDraft.fromJson(Map<String, dynamic> json) { for (final key in json.keys) \
+         { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
          FormatException('Unknown key of a ReservedMembers: $key', <Object>[key]); } return \
-         ReservedMembersDraft(class_: _readAt(json, 'class', () => json['class'] as \
-         String),in_: _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, \
-         'type', () => json['type'] as String),); } static Read _readAt<Read>(Map<String, \
-         dynamic>? object, Object key, Read Function() read) { try { return read(); } catch \
-         (refused) { if (object != null && !object.containsKey(key)) throw \
-         FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
-         throw FormatException('$refused', <Object>[key]); if (refused is FormatException) { \
-         final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
-         is List<Object>) ...at]); } rethrow; } } Map<String, dynamic> toJson() => { 'class': \
-         class_,'in': in_,'type': type, }; List<String> validationIssues() => const []; \
-         ReservedMembers validate() { final found = validationIssues(); if (found.isNotEmpty) \
-         throw FormatException(found.join('; ')); return ReservedMembers._(this); } \
-         ReservedMembers toValid() => ReservedMembers._(this); } class ReservedMembers { const ReservedMembers._(this._draft); final ReservedMembersDraft \
-         _draft; String get class_ => _draft.class_; String get in_ => _draft.in_; String get \
-         type => _draft.type; ReservedMembersDraft toDraft() => _draft; factory \
-         ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
+         ReservedMembersDraft(class_: _readAt(json, 'class', () => json['class'] as String),in_: \
+         _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, 'type', () => \
+         json['type'] as String),); } static Read _readAt<Read>(Map<String, dynamic>? object, \
+         Object key, Read Function() read) { try { return read(); } catch (refused) { if (object \
+         != null && !object.containsKey(key)) throw FormatException('missing field `$key`', \
+         <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
+         <Object>[key]); if (refused is FormatException) { final at = refused.source; throw \
+         FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); } if \
+         (refused is Exception) { Object? listed; try { listed = (refused as dynamic).issues; } \
+         on NoSuchMethodError { listed = null; } if (listed is List<String>) { for (var at = 0; \
+         at < listed.length; at += 1) { final said = listed[at]; final end = \
+         said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
+         } rethrow; } } Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': \
+         type, }; List<String> validationIssues() => const []; ReservedMembers validate() { final \
+         found = validationIssues(); if (found.isNotEmpty) throw ReservedMembersRefusal(found); \
+         return ReservedMembers._(this); } ReservedMembers toValid() => ReservedMembers._(this); \
+         } class ReservedMembers { const ReservedMembers._(this._draft); final \
+         ReservedMembersDraft _draft; String get class_ => _draft.class_; String get in_ => \
+         _draft.in_; String get type => _draft.type; ReservedMembersDraft toDraft() => _draft; \
+         factory ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
          ReservedMembersDraft.fromJson(json); final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
-         ReservedMembers._(read); } factory ReservedMembers.fromJsonUnjudged(Map<String, \
-         dynamic> json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); factory ReservedMembers.of({required String class_,required String in_,required String type,}) => ReservedMembersDraft(class_: class_,in_: in_,type: type,).validate(); Map<String, \
+         (violations.isNotEmpty) throw ReservedMembersRefusal(violations); return \
+         ReservedMembers._(read); } factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> \
+         json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); factory \
+         ReservedMembers.of({required String class_,required String in_,required String type,}) \
+         => ReservedMembersDraft(class_: class_,in_: in_,type: type,).validate(); Map<String, \
          dynamic> toJson() => _draft.toJson(); List<String> validationIssues() => \
          _draft.validationIssues(); static Object $thrown(Object thrown) => thrown is \
          ReservedMembersDraft ? thrown.validate() : thrown; }"

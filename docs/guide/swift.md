@@ -46,7 +46,7 @@ A Swift dictionary keeps no order, so a map is walked by its sorted keys. A map'
 for (key, _) in pitches.sorted(by: { $0.key.value < $1.key.value }) { errors += key.validate().map { ChimeDraft.swiftSchemaUnder("pitches.\(key.value)", $0) } }
 ```
 
-A key of a brand over a brand is judged by both checks, each under the key, as serde judges each: the walk runs the outer brand's, and the read the inner brand's, as the read of the brand inside a value judges it. With `outer: BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose `check` refuses `mute`, and `Outer`'s `check` refusing `soft`, `{"outer":{"mute":1}}` is refused at the coding path `outer.mute` with `mute is silent`, and `{"outer":{"soft":1}}` with `'outer.soft': soft is quiet`. The `ws_rpc` client names the field `outer.mute` and `outer.soft`, as the Rust dispatcher names each.
+A key of a brand over a brand is judged by both checks, each under the key, as serde judges each: the walk runs the outer brand's, and the read the inner brand's, as the read of the brand inside a value judges it. With `outer: BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose `check` refuses `mute`, and `Outer`'s `check` refusing `soft`, `{"outer":{"mute":1}}` is refused with a `ToneRefusal` whose one issue is `'outer.mute': mute is silent`, the inner brand's refusal placed under the coding path of the key, and `{"outer":{"soft":1}}` with the holder's refusal, `'outer.soft': soft is quiet`. The `ws_rpc` client names the field `outer.mute` and `outer.soft`, as the Rust dispatcher names each.
 
 A value behind a type parameter is judged by the holder that writes what fills it, as in Rust: a generic type has `validationIssuesWith`, one check per type parameter, which `validationIssues()` hands checks that report nothing, and a holder of `firstPage: Page<Parcel>` hands the check of a `Parcel`. `swiftSchemaUnder` is a private function written into each type that names a place: nothing is shared between two emitted types, and nothing is declared beside them.
 
@@ -106,27 +106,40 @@ error: cannot find 'withinParcel' in scope
 
 #### A Swift read refuses what `validate()` refuses
 
-`init(from:)` of every type `swift_definition()` writes reads the type and then calls `validate()` on the value it read, as [the Rust read](validation.md#a-read-refuses-what-validate-refuses) does. A payload whose value breaks a bound or a check is thrown as `DecodingError.dataCorrupted`, and no value is handed back:
+`init(from:)` of every type `swift_definition()` writes reads the type and then calls `validate()` on the value it read, as [the Rust read](validation.md#a-read-refuses-what-validate-refuses) does. A payload whose value breaks a bound or a check is thrown as [the type's refusal](#the-refusal-of-a-swift-type), `ManifestRefusal`, and no value is handed back:
 
 ```swift
 do {
   let manifest = try JSONDecoder().decode(Manifest.self, from: payload)
   carry(manifest)
-} catch DecodingError.dataCorrupted(let context) {
-  print(context.debugDescription)
+} catch let refusal as ManifestRefusal {
+  for issue in refusal.issues { print(issue) }
 }
 ```
 
-The `debugDescription` is the list `validate()` answers of the value read, every message, joined by `; `. A manifest that holds a broken parcel in a field, a list, a map and an optional is refused once, each message at its full path. The error is one line, broken here after each `; `:
+`issues` is the list `validate()` answers of the value read, every message. A manifest that holds a broken parcel in a field, a list, a map and an optional is refused once, each message at its full path:
 
 ```text
-'firstParcel.label': too short: minimum length is 1, got 0;
-'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList;
-'parcelsByDock.north.label': too short: minimum length is 1, got 0;
+'firstParcel.label': too short: minimum length is 1, got 0
+'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
+'parcelsByDock.north.label': too short: minimum length is 1, got 0
 'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
 ```
 
-The text holds no coding path. `codingPath` is the decoder's own, as for every decoding error: empty for the value the read was asked for, and `1` for the second manifest of a `[Manifest]`.
+Each issue is placed under the coding path the value was read at: as it is for the value the read was asked for, and under `1` for the second manifest of a `[Manifest]`, `'1.firstParcel.label': too short: minimum length is 1, got 0`.
+
+#### The refusal of a Swift type
+
+Every type whose text has `validate()`, `of(..)`, `init(validating:)` or a judged `init(from:)` declares its refusal in that text, `{Name}Refusal`, named after the valid type: `ManifestRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`. An alias is a `typealias` of what it names, and a read of it throws the refusal of that type. Nothing is shared between two types, so a file that holds many types declares each refusal once, and you add nothing to it:
+
+```swift
+public struct ManifestRefusal: Error, CustomStringConvertible { public let issues: [String]; public var description: String { "ManifestRefusal: [\(issues.joined(separator: ", "))]" } }
+```
+
+- **`issues` is what `validationIssues()` answers of the value**, the list the Rust `validation_issues()` answers of the same value, entry by entry, for the value the read was asked for.
+- **`description` prints the name and the issues**, `ManifestRefusal: ['firstParcel.label': too short: minimum length is 1, got 0]`, as the Dart and Kotlin refusals print.
+- **A refusal of shape keeps its `DecodingError`**: a missing key, a value of the wrong type and a key no member reads are refused as before, and a `ManifestRefusal` says a value was read and broke a rule.
+- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second struct of the name, as one named `{Name}Draft` does: the Swift compiler refuses the file with ``error: invalid redeclaration of 'ManifestRefusal'``. Rename one of them.
 
 **What the emitter writes.** Every draft has two initializers that read it, and the valid type forwards them. The read alone is `fileprivate`, which the generated file alone reaches:
 
@@ -142,7 +155,7 @@ public init(from decoder: Decoder) throws {
   try self.init(swiftSchemaUnjudged: decoder)
   let violations = validationIssues()
   if !violations.isEmpty {
-    throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: "; ")))
+    throw ParcelRefusal(issues: { () -> [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: "."); return at.isEmpty ? violations : violations.map { said in guard said.hasPrefix("'"), let end = said.dropFirst().firstIndex(of: "'") else { return "'\(at)': \(said)" }; return "'\(at).\(said[said.index(after: said.startIndex)..<end])'\(said[said.index(after: end)...])" } }())
   }
 }
 ```
@@ -175,13 +188,13 @@ self.parcelsByDock = entries
 if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParcel) { self.spareParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .spareParcel)) } else { self.spareParcel = nil }
 ```
 
-`SwiftSchemaAnyKey` is a private key type written into each type that reads a map entry by entry. A value is read with no judgement exactly where the `validate()` of its holder runs its `validate()`. Anywhere else it is read through `Decodable` and judges itself: the first broken one ends the read with its own messages, under the coding path it sits at.
+`SwiftSchemaAnyKey` is a private key type written into each type that reads a map entry by entry. A value is read with no judgement exactly where the `validate()` of its holder runs its `validate()`. Anywhere else it is read through `Decodable` and judges itself: the first broken one ends the read with its own refusal, each issue placed under the coding path it sits at.
 
 | Held | Judged |
 |---|---|
 | in a field, an optional, a list, a map's value, a tuple, a flattened member or the payload of a variant, in any nesting of those | once, with its holder, each message at its full path |
 | filling a type parameter of a generic type the holder holds, as `Parcel` in `firstPage: Page<Parcel>`, where the generic type is written above the holder | once, with its holder, each message at its full path |
-| under one of the holder's type parameters, the holder read by itself | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with `'fragileItemCodes.1': y is outside of itemCodeList`, under the coding path `codes`, `1` |
+| under one of the holder's type parameters, the holder read by itself | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with a `ParcelRefusal` of `'codes.1.fragileItemCodes.1': y is outside of itemCodeList` |
 | filling a type parameter of a generic type declared below the holder or in another crate, of one that names a `preprocess` on itself, or of one a member of which reaches the parameter through a tuple, a range, a `Result`, a fixed-size array, a map under a key Swift wraps, a `#[serde(flatten)]`, a `#[serde(default)]` or a `preprocess` of its own | by itself, as it is read |
 | as the value a brand wraps | by itself, as it is read |
 
@@ -202,15 +215,15 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 - **A flattened `Option` of any type but a map is read as `nil` where the object it is handed holds none of that type's keys, and a key there that does not read refuses the payload**, as TypeScript and Zod refuse it, where serde reads `None` and drops the key with no error. With `struct Flaking { #[serde(flatten, default, skip_serializing_if = "Option::is_none")] tabling: Option<Tabling> }` over a `Tabling` that reads `label`, `{}` is read with `tabling` `nil` and `{"label":"north"}` with the `Tabling` it holds, and `{"label":5}` is refused, where serde reads `None`. A struct of two keys is refused where one of them is there and the other is not. The keys are those serde reads the type under, each member's name and each alias, and they are looked for in the object the type is read from: the whole object for a struct, or an enum under a tag key, declared above its holder that names no function, a key a member of its holder's own reads too among them, as Zod looks for them, where serde reads `None`. An externally tagged enum is `nil` where the object holds no entry under one of the names its variants are read under, an enum under a tag key alone where it holds no tag, and an enum under a tag and a content key where it holds neither, and each is refused where one of those is there and the enum does not read it: with `#[serde(tag = "kind", content = "body")] enum Becket { Calm, Round { turns: u32 } }` flattened beside `note`, `{"note":"n"}` reads `nil`, and `{"kind":"Gale","note":"n"}` and `{"body":{"turns":2},"note":"n"}` are refused, where serde reads `None`. A type whose keys are not known is read as `nil` wherever its read throws, as serde reads `None`: an enum under a tag key alone, or an untagged enum, declared below its holder or in another crate, a struct that reads no key of its holder's (one with a `#[serde(flatten)]` member of its own, one that names a [`preprocess`](preprocess.md#preprocess-in-the-swift-client) on itself, one with no member serde reads), an untagged enum, an enum that names a [`preprocess`](preprocess.md#preprocess-in-the-swift-client) on itself, an alias, and a type parameter filled at any type but those that follow. A type parameter is looked for by the keys of the type that fills it, as an `Option` of that type is above, where that type is an `ObjectId`, a brand or a struct of one slot over one that declares no parameter, or a struct or an enum under a tag key whose keys are known, written above the type that flattens the `Option`, told by its name as it is read: with `struct Waxing<Held> { #[serde(flatten)] annotation: Notation, #[serde(flatten)] held: Option<Held> }`, `Waxing<ObjectId>` reads `{"note":"n"}` with `held` `nil` and refuses `{"$oid":"507f1f77bcf86cd79943901z","note":"n"}`, as TypeScript and Zod refuse it, where serde reads `None`. A model the holder's `validate()` walks is read with no judgement where it reads, so one that breaks its rule still refuses the payload, as serde refuses it. A flattened `Option` that names a [`preprocess`](preprocess.md#preprocess-in-the-swift-client) is read as the Zod schema of its holder reads it: its functions are called first, on the object the member is handed, and the type is read from what they answer. Where that read throws, an answer of `null` among it, it is `nil` where that object holds none of a struct's keys, or no key at all for a type whose keys are not known, an enum among them, and the payload is refused where the object holds one. A struct that flattens such a member is marked `nonstrict` ([Order and strictness of flattened members](flatten.md#order-and-strictness-of-flattened-members)), and is read as the next item states.
 - **Beside a `nonstrict` holder, a flattened `Option` whose type does not read is `nil`**, as serde reads `None` and the Zod schema of the holder reads it absent, and the holder reads past its keys: with `Becket` above flattened under an `Option` into a `nonstrict` holder, `{"kind":"Gale","note":"n"}` and `{"body":{"turns":2},"note":"n"}` read with the member `nil`, and so does a struct's key, an externally tagged enum's entry and an `ObjectId` that does not read. One that names a [`preprocess`](preprocess.md#preprocess-in-the-swift-client) is `nil` exactly where its functions answer `NSNull()`, and is read from any other answer, so an answer its type does not read refuses the payload, as serde refuses it: with `#[model_schema(nonstrict)] struct Reeved { note: String, #[model_schema_prop(preprocess = ["asGiven"])] #[serde(flatten, default, skip_serializing_if = "Option::is_none")] tholepin: Option<Tholepin> }` over a `Tholepin` that reads `label`, and `func asGiven(_ payload: Any) -> Any { payload }`, `{"note":"n"}` and `{"label":5,"note":"n"}` are refused, and under a function that answers `NSNull()`, `{"label":"north","note":"n"}` reads `tholepin` as `nil`. Each function is called once. The type reads the answer as a payload of its own, through `SwiftSchemaPayload.readRefusing`, so a key it does not declare refuses the payload, as serde refuses it: `{"label":"north","note":"n","stray":1}` is refused under `asGiven` with ``unknown field `stray` ``, and so is a member flattened with no `Option` that names a function.
 - **What a variant under a tag alone holds is read from the object without the tag**, as serde reads it: serde takes the tag off the object and hands the variant the rest. The type a variant holds as its one slot, and each member a variant flattens, beside a member of its own or alone, are read from that object: a type that takes the keys the types around it took through `init(swiftSchemaUnjudged:swiftSchemaWithout:)`, the tag among those keys, and any other through [`SwiftSchemaPayload`](preprocess.md#preprocess-in-the-swift-client), from the object without them. A struct, and an enum under a tag key, declared above the enum and naming no function, is read from the whole object, the tag in it, as TypeScript and the generated Zod schema read it: with `#[serde(tag = "kind")] enum Grafting { Held { #[serde(flatten)] flag: Kinded }, Slot(Kinded) }` over a `Kinded` that reads `kind`, `{"kind":"Held"}` and `{"kind":"Slot"}` read the tag into `kind` and are written back as they were, where serde refuses each with `missing field`. A model the enum's `validate()` walks is still read with no judgement.
-- **The service clients answer the fault they had** for a reply that breaks a rule, the thrown error reaching the handling they have for a reply that does not read: `swift_http_client()` answers `undeserializable-payload`, the messages in its `detail`, and `swift_ws_client()` answers `failed-validation`, listing each message of the `validate()` refusal in `issues`, cut at the field it opens with, or the one refusal of the read at the field the Rust `ws_rpc` dispatcher names for the same payload, the steps of the `DecodingError`'s coding path. See [the field a refused message names](ws-rpc.md).
+- **The service clients answer the fault they had** for a reply that breaks a rule, the thrown error reaching the handling they have for a reply that does not read: `swift_http_client()` answers `undeserializable-payload`, the refusal's `description` in its `detail`, and `swift_ws_client()` answers `failed-validation`, listing each issue of the refusal of a type the service reads in `issues`, cut at the field it opens with below the key of the reply, or the one refusal of the read at the field the Rust `ws_rpc` dispatcher names for the same payload, the steps of the `DecodingError`'s coding path. See [the field a refused message names](ws-rpc.md).
 
 #### A Swift brand is sealed
 
-A [branded newtype](generics-and-brands.md#a-brand-is-sealed) is built in Swift through `init(validating:)`, which throws `DecodingError.dataCorrupted` whose description joins the messages `validate()` gives, as `init(from:)` does for a value it read. Its `init(value:)` and its `init(swiftSchemaUnjudged:)` are `fileprivate`, so a file of your module other than the generated one does not compile a call of either:
+A [branded newtype](generics-and-brands.md#a-brand-is-sealed) is built in Swift through `init(validating:)`, which throws the brand's refusal holding the messages `validate()` gives, as `init(from:)` does for a value it read. Its `init(value:)` and its `init(swiftSchemaUnjudged:)` are `fileprivate`, so a file of your module other than the generated one does not compile a call of either:
 
 ```swift
 let text = try LabelText(validating: "Shipping")      // text.value == "Shipping"
-_ = try LabelText(validating: "")                     // throws: too short: minimum length is 1, got 0
+_ = try LabelText(validating: "")                     // throws LabelTextRefusal: ["too short: minimum length is 1, got 0"]
 let label = Label(text: text)
 let data = try JSONEncoder().encode(label)            // {"text":"Shipping"}
 ```
@@ -226,16 +239,16 @@ var draft = ShipmentDraft(label: try LabelText(validating: "Shipping"), parcelCo
 let shipment = try draft.validate()
 print(shipment.parcelCount)                  // 3, read through @dynamicMemberLookup
 draft.parcelCount = 200
-do { _ = try draft.validate() } catch { print(error) }
-// dataCorrupted(... debugDescription: "'parcelCount': too large: maximum is 100, got 200")
+do { _ = try draft.validate() } catch let refusal as ShipmentRefusal { print(refusal.issues) }
+// ["'parcelCount': too large: maximum is 100, got 200"]
 let again: ShipmentDraft = shipment.draft    // the draft back, to change and validate again
 ```
 
-`validate()` throws `DecodingError.dataCorrupted` with an empty coding path and the messages `validationIssues()` lists joined with `; `, which is the text `init(from:)` throws for a read of the same value. `JSONEncoder().encode(shipment)` writes what `JSONEncoder().encode(shipment.draft)` writes, and `JSONDecoder().decode(Shipment.self, from:)` judges as it did.
+`validate()` throws `ShipmentRefusal`, whose `issues` are the messages `validationIssues()` lists, which is what `init(from:)` throws for a read of the same value. `JSONEncoder().encode(shipment)` writes what `JSONEncoder().encode(shipment.draft)` writes, and `JSONDecoder().decode(Shipment.self, from:)` judges as it did.
 
 A file of the module other than the generated one builds a `Shipment` through `validate()` or a read alone. Its initializer and its unjudged reads are `fileprivate`, so `Shipment(draft: draft)` does not compile there (``error: incorrect argument label in call (have 'draft:', expected 'from:')``), nor does `Shipment(label: label, parcelCount: 3)` (``error: extra arguments at positions #1, #2 in call`` and ``error: missing argument for parameter 'from' in call``). A member of a valid value is read and not changed: `shipment.parcelCount = 1` is ``error: cannot assign to property: 'shipment' is immutable``, and `shipment.draft.parcelCount = 1` is ``error: cannot assign to property: 'draft' is a 'let' constant``. The seal is for immutability, not for security: the generated file itself is not held to it.
 
-`of` builds a valid struct from its members: `try Parcel.of(label: "Shipping", parcelCount: 3)` takes the labels, the types and the order of the draft's initializer, builds the draft and answers `try draft.validate()`, the valid `Parcel` or the `DecodingError.dataCorrupted` that holds the messages joined by `; `. A property a `literal` fixes is no parameter, and `of` writes its value. A tuple struct's `of(value:)` takes its one value, and a unit struct's `of()` takes nothing. A struct has `of` whatever `new` says on the Rust declaration. A property named `of` builds as `Parcel.of(of: "x")`.
+`of` builds a valid struct from its members: `try Parcel.of(label: "Shipping", parcelCount: 3)` takes the labels, the types and the order of the draft's initializer, builds the draft and answers `try draft.validate()`, the valid `Parcel` or the `ParcelRefusal` it throws. A property a `literal` fixes is no parameter, and `of` writes its value. A tuple struct's `of(value:)` takes its one value, and a unit struct's `of()` takes nothing. A struct has `of` whatever `new` says on the Rust declaration. A property named `of` builds as `Parcel.of(of: "x")`.
 
 An enum that holds data, or names a `check`, is read through its draft: `switch shipmentLeg.draft { case .voyage: ... }`. A valid enum has no case of its own, so `switch leg { case .voyage: ... }` is ``error: type 'Leg' has no member 'voyage'``. A plain enum that names no `check` is a `String`-backed `enum` alone, with no draft: `switch lane { case .air: ... }` reads it. A unit struct that declares no rule has `SealAck.instance`. A unit case of an enum that has a draft, names no `check` and takes no parameter is a static constant of the valid type, `Route.anchored`, so a function that answers a `Route` writes `return Route.anchored`; `RouteDraft.anchored.valid` is the same value from the draft of a type that declares no rule, and `try RouteDraft.anchored.validate()` is the call for one that does. A property named `valid` is `valid_`, as one named `validate` is `validate_`, and a case named `valid` is `valid_`.
 

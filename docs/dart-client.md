@@ -8,8 +8,8 @@ A struct, a tuple struct, a unit struct and every enum, a plain enum included, a
 (`struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens` write the pair). The class the
 emitter wrote before is the draft, named `{Name}Draft` (`draft_name`): its constructor, its fields,
 its one read, `toJson` and `validationIssues()` are the class as it was, and `validate_method` adds
-`{Name} validate()`, which answers `{Name}._(this)` where `validationIssues()` is empty and throws a
-`FormatException` of the issues joined by `; ` otherwise. `valid_class` writes `{Name}`: the only
+`{Name} validate()`, which answers `{Name}._(this)` where `validationIssues()` is empty and throws
+`{Name}Refusal` holding the issues otherwise. `valid_class` writes `{Name}`: the only
 constructor `const {Name}._(this._draft)`, a getter for each member of the draft
 (`forwarding_getters`; `value` for a tuple struct, none for an enum), `toDraft()`, `fromJson`, which
 is `judged_body_returning` over the draft's read, `fromJsonUnjudged`, which is `{Name}._` over it
@@ -45,9 +45,26 @@ with a parameter (`GenericCodec::to_json_args`), and `validationIssues()`.
   taken in a plain enum (`DART_ENUM_NAMES_TAKEN`).
 - **The tests.** `tests/service_schema_emitted_client_tests/run_dart_valid_types.rs` analyzes a
   second library that writes `Cargo(...)`, `const Cargo(...)` and `Cargo._(draft)`, and runs one
-  that builds through the draft: the getters, `toDraft()`, `toJson()`, a `validate()` whose message
-  is the Rust `validation_issues()` joined by `; `, and a holder in another library that reads
+  that builds through the draft: the getters, `toDraft()`, `toJson()`, a `validate()` whose refusal
+  holds the Rust `validation_issues()`, and a holder in another library that reads
   through `fromJsonUnjudged`.
+
+#### The refusal of a type
+
+`validate()`, `of(..)` and every judged read throw `{Name}Refusal`, named after the valid type the
+item is published as (`refusals::refusal_name`, `src/features/refusals.rs`), with the list
+`validationIssues()` answered. `enter_refusal` makes it the refusal of the item being emitted
+(`DART_REFUSAL`), from `struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens`, and
+`judged_body_returning` and `validate_method` throw it, a variant's class the enum's.
+`dart_module_tokens` declares the class (`refusal_class`) at the head of the type's text where the
+text throws it, so a type with no judged read, a plain enum with no check that a service writes,
+declares none, and records it in `DART_REFUSALS` under the Rust ident; `alias_dart_tokens` adds the
+refusals of what an alias reads judged. `dart_refusals_of` answers what a read of a `FieldDef`
+throws, through a list, a set, a map, an option, a tuple and a `Result`, for the service surfaces.
+A type of the consumer's published under the name collides as one published as `{Name}Draft` does,
+and the expansion refuses neither: `dart analyze` does. `tests/service_schema_emitted_client_tests/
+run_dart_refusal_classes.rs` holds a struct, an enum, a generic type, a brand and an alias in one
+file to `dart analyze`, and each refusal's `issues` to the Rust `validate()` of the same value.
 
 #### `validationIssues()` on the Dart types
 
@@ -135,8 +152,8 @@ Dart" section is the consumer's view; this is what a change has to keep.
 #### The Dart read refuses what `validate()` refuses
 
 `fromJson` of every type `src/features/dart.rs` writes is its own unjudged read followed by its
-`validationIssues()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
-read joins it. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
+`validationIssues()`, and throws `{Name}Refusal` holding the list, the one the Rust
+`validation_issues()` answers. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
 consumer's view; this is what a change has to keep.
 
 - **One writer of the read.** A draft holds one read, `draft_read`: `fromJson` over the body
@@ -146,8 +163,8 @@ consumer's view; this is what a change has to keep.
   static `fromJson` of a plain enum draft takes too. A generic type takes its converters in each read.
 - **A brand is sealed.** `struct_dart_tokens` hands `value_wrapper_tokens` `Held::Brand` for a
   brand alone: the class writes `const X._(this.value)`, the only constructor, and `factory X.of(value)`
-  (`judged_body` over `X._(value)`, so it throws the `FormatException` `fromJson` throws, the messages
-  of `validationIssues()` joined by `; `). `fromJsonUnjudged` stays public under that name and builds through
+  (`judged_body` over `X._(value)`, so it throws the `XRefusal` `fromJson` throws, holding the
+  messages of `validationIssues()`). `fromJsonUnjudged` stays public under that name and builds through
   `X._`, as Rust keeps `model_schema_read_unjudged` public: a holder in another file, which is another
   library, or in another crate calls it, so a holder reads a brand as it reads any type. A name
   starting with an underscore is private to the library, so a second library builds a brand through
@@ -194,11 +211,17 @@ consumer's view; this is what a change has to keep.
   `FormatException` of its words, and a Dart parser's refusal one with the path. A flattened
   member is read through `_readFlattened` (`READ_FLATTENED`, which a class with one declares),
   which drops the path of its refusal but for the key a `missing field` or an unknown key names,
-  so the holder's step is the place, as serde names the holder. The `ws_rpc` attachment and
-  client list the refusal at the joined path, or each line of a `validate()` message at the
-  place it opens with (`refused_at_fn` in `dart_ws_client.rs`, which writes `_WsRefusedAt`,
-  `_WsIssues` and `_WsRefusedIssues`; the `mcp` server cuts a `validate()` message through
-  `_WsIssues` as well).
+  so the holder's step is the place, as serde names the holder. A type's refusal a value read
+  judged below the top throws keeps its class, and the helper places each of its issues under its
+  step: no refusal class is shared to name, so the helper reads `issues` through `dynamic`, as
+  `HELD_BOUND_HELPER` reads `validateBound()`, and rewrites the list in place. The `ws_rpc`
+  attachment and client list each issue of a refusal of a type the service reads, cut at the
+  place it opens with, or the one refusal at the joined path (`refused_at_fn` in
+  `dart_ws_client.rs`, which writes `_WsRefusedAt`, `_WsIssue`, `_WsRefusal` and
+  `_WsRefusedIssues`; `_WsRefusal` names each refusal class `dart_read_refusals` finds through
+  `dart_refusals_of`, the registry of what each type emitted before it throws, and a type the
+  expansion has not met is answered as any other refusal). The `mcp` server answers a refusal
+  `_WsRefusal` names as `failed-validation` through `_WsIssue` as well.
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever

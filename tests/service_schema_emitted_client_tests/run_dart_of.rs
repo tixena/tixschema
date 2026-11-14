@@ -148,7 +148,7 @@ fn of_throws_what_validate_throws() {
     }
     .validate()
     .unwrap_err();
-    let user = "import 'models.dart';\n\nvoid main() {\n  try {\n    DockTime.of(hour: 24, minute: 0);\n    print('built');\n  } on FormatException catch (error) {\n    print(error.message);\n  }\n}\n";
+    let user = "import 'models.dart';\n\nvoid main() {\n  try {\n    DockTime.of(hour: 24, minute: 0);\n    print('built');\n  } on DockTimeRefusal catch (error) {\n    error.issues.forEach(print);\n  }\n}\n";
     let Some((ran, printed)) = dart_files(
         "of-refuses",
         &[],
@@ -158,5 +158,10 @@ fn of_throws_what_validate_throws() {
         return;
     };
     assert!(ran, "{printed}");
-    assert_eq!(printed, format!("{}\n", refused.join("; ")));
+    let told = refused.iter().fold(String::new(), |mut told, issue| {
+        told.push_str(issue);
+        told.push('\n');
+        told
+    });
+    assert_eq!(printed, told);
 }

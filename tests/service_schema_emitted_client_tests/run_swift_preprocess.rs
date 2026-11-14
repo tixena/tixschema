@@ -150,6 +150,10 @@ func withinLimit(_ value: WeighedDraft) -> [String] {
 /// message of a refusal, or the error a payload that does not read is answered with, at the
 /// coding path it names.
 const HARNESS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func place(_ path: [CodingKey]) -> String {
   path.isEmpty ? "" : " at [" + path.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ", ") + "]"
 }
@@ -164,6 +168,9 @@ func attempt<Read: Decodable>(_ name: String, _ type: Read.Type, _ payload: Stri
   do {
     let held = try JSONDecoder().decode(type, from: Data(payload.utf8))
     print("\(name): \(shown(held))")
+  } catch let refused where issuesOf(refused) != nil {
+    print("\(name): refused")
+    for line in issuesOf(refused)! { print("    \(line)") }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused\(place(context.codingPath))")
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }
@@ -939,7 +946,8 @@ fn a_date_is_read_from_what_its_function_answers() {
 }
 
 /// A payload the read refuses once a function has answered is reported at the coding path of the
-/// value: the field's own, under the path of whatever holds the type.
+/// value: the field's own, under the path of whatever holds the type. A type's refusal thrown in
+/// the payload a function answered is placed from that payload down, without the steps above it.
 #[test]
 fn a_payload_refused_after_the_correction_is_reported_at_its_coding_path() {
     let kept = r#"{"parcel":{"label":"A","itemCodeList":[]}}"#;
@@ -1007,8 +1015,8 @@ a number for a text, in a held parcel: mismatch at [1, parcel, label]
 no key, in a held parcel: no key itemCodeList at [1, parcel]
 no key, in a member read from an envelope: no key label at [firstParcel]
 a number for a text, in a slot: mismatch at [0, 0]
-a parcel that judges itself, in a corrected type: refused at [0, codes, 1]
-    'label': too short: minimum length is 1, got 0
+a parcel that judges itself, in a corrected type: refused
+    'codes.1.label': too short: minimum length is 1, got 0
 an answer that is no JSON: refused at [stamp]
     a preprocess answered a value that is not JSON
 "

@@ -8,7 +8,7 @@ use super::aliased_models::{
     careening_swift, fairleading_swift, gybing_swift, hawsing_swift, lulling_swift, pennon_swift,
     scending_swift, surging_swift, swell_swift, veering_swift,
 };
-use super::swift_plain_enum::plain_enum_reads;
+use super::swift_plain_enum::{plain_enum_reads, refusal};
 use super::swift_valid;
 
 /// What finds the name a payload holds `label` under, of `label` and `name`, and refuses the two
@@ -61,11 +61,12 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_swift::swift_definition(),
         format!(
-            "public enum Swell: String, Codable, Sendable {{ case ebb = \"Ebb\"; case flood = \
+            "{} public enum Swell: String, Codable, Sendable {{ case ebb = \"Ebb\"; case flood = \
              \"Flood\"; public init?(rawValue: String) {{ switch rawValue {{ case \"Ebb\", \"Low\", \
              \"Neap\": self = .ebb; case \"Flood\": self = .flood; default: return nil }} }}; {} \
              public func validate() -> [String] {{ [] }}; public func \
              swiftSchemaValidateBound() -> [String] {{ [] }} }}",
+            refusal("Swell"),
             plain_enum_reads("Swell"),
         ),
         "the text of a plain enum with a variant under two aliases"
@@ -146,7 +147,32 @@ fn a_member_flattened_after_one_under_an_alias_is_handed_neither_name() {
 fn a_struct_with_no_alias_is_read_as_it_was() {
     assert_eq!(
         swift_valid::draft_of(&pennon_swift::swift_definition()),
-        "public struct PennonDraft: Codable, Sendable { public var keys: [String]; enum CodingKeys: String, CodingKey { case keys;  }; public init(keys: [String]) { self.keys = keys;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.keys = try container.decode([String].self, forKey: .keys) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"keys\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> Pennon { let found = validationIssues(); if !found.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: found.joined(separator: \"; \"))) }; return Pennon(draft: self) }; public var valid: Pennon { Pennon(draft: self) } };",
+        "public struct PennonDraft: Codable, Sendable { public var keys: [String]; enum \
+         CodingKeys: String, CodingKey { case keys;  }; public init(keys: [String]) { self.keys = \
+         keys;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var \
+         intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; \
+         init?(intValue: Int) { nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, \
+         swiftSchemaWithout taken: [String]) throws { let container = try \
+         decoder.container(keyedBy: CodingKeys.self); self.keys = try \
+         container.decode([String].self, forKey: .keys) }; fileprivate init(swiftSchemaUnjudged \
+         decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for \
+         unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+         ![\"keys\"].contains(unknown.stringValue) { throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+         [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
+         self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
+         decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = \
+         validationIssues(); if !violations.isEmpty { throw PennonRefusal(issues: { () -> \
+         [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? \
+         $0.stringValue }.joined(separator: \".\"); return at.isEmpty ? violations : \
+         violations.map { said in guard said.hasPrefix(\"'\"), let end = \
+         said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; return \
+         \"'\\(at).\\(said[said.index(after: said.startIndex)..<end])'\\(said[said.index(after: \
+         end)...])\" } }()) } }; public func validationIssues() -> [String] { [] }; public func \
+         swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> Pennon { \
+         let found = validationIssues(); if !found.isEmpty { throw PennonRefusal(issues: found) \
+         }; return Pennon(draft: self) }; public var valid: Pennon { Pennon(draft: self) } };",
         "the text of a struct with no alias"
     );
 }

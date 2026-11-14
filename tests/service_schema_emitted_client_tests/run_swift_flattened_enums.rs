@@ -46,6 +46,10 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// read and written back or the refusal of its read, what prints a row read, and the coding path a
 /// refusal is thrown at.
 const HELPERS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func withItsKeys(_ payload: Any) -> Any {
   guard let object = payload as? [String: Any] else { return payload }
   return ["keys": object.keys.sorted()]
@@ -62,6 +66,9 @@ func written<Read: Encodable>(_ value: Read) -> String {
 func writtenBack<Read: Codable>(_ type: Read.Type, _ payload: String) -> String {
   do {
     return written(try JSONDecoder().decode(type, from: Data(payload.utf8)))
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    return issues.joined(separator: "; ")
   } catch DecodingError.dataCorrupted(let context) {
     return context.debugDescription
   } catch {
@@ -75,6 +82,9 @@ func entry<Read: Decodable>(
   do {
     let read = try JSONDecoder().decode(type, from: Data(payload.utf8))
     print("\(at): \(shown(read))")
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    print("\(at): \(issues.joined(separator: "; "))")
   } catch DecodingError.dataCorrupted(let context) {
     print("\(at): \(context.debugDescription)")
   } catch {

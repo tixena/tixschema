@@ -5,7 +5,7 @@
 
 use core::fmt::Write as _;
 
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 use super::set_models::{
     PAYLOADS, PRINTED, assert_rust_keeps_one_item, coin_dart, declares_a_parameter,
     every_list_dart, folder_dart, lanyard_dart, nesting_dart, point_dart, pouch_dart,
@@ -18,9 +18,9 @@ void row(String name, Object? Function() read) {
   try {
     read();
     print('$name: read');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   }
@@ -68,7 +68,7 @@ fn calls() -> String {
 fn source() -> String {
     module(
         &definitions(),
-        &[ROW],
+        &[ROW, ISSUES_OF],
         &format!("void main() {{\n{}}}\n", calls()),
     )
 }
@@ -93,7 +93,7 @@ fn a_set_that_repeats_an_item_is_refused_by_the_dart_read() {
 fn the_emitted_sets_have_no_issue() {
     let analyzed = module(
         &definitions(),
-        &[ROW],
+        &[ROW, ISSUES_OF],
         "void main() => row('a list', () => jsonDecode('[]'));\n",
     );
     let Some((clean, said)) = dart("sets-analyze", &["analyze"], &analyzed) else {

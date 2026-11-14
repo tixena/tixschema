@@ -15,8 +15,8 @@ section is the consumer's view; this is what a change to the emitter has to keep
   unless `SwiftTypeArgs::undrafted` says a service wrote the type for itself (it is declared as
   written, with `validate() -> [String]`). A brand is neither: it has no draft. The draft holds its
   members in `var` (`OwnRead::valid`), declares `validationIssues()`, the body `validate()` was, and
-  `validate() throws -> {Name}`, which throws the messages joined with `; ` as a
-  `DecodingError.dataCorrupted` with codingPath `[]` (`validate::draft_method`), and its reads are
+  `validate() throws -> {Name}`, which throws `{Name}Refusal` holding the messages
+  (`validate::draft_method`), and its reads are
   `fileprivate` (`Written::draft`), its judged `init(from:)` calling `validationIssues()`.
   `{Name}` is `@dynamicMemberLookup` over a `let draft`, with a `fileprivate init(draft:)`, an
   `init(from:)` that reads the draft, the `fileprivate` unjudged reads the draft declares
@@ -41,8 +41,8 @@ section is the consumer's view; this is what a change to the emitter has to keep
   property (`swift_property`). The valid type reads it as `holder.draft_`.
 - **A brand is sealed.** `value_wrapper_tokens` in `src/features/swift.rs` writes a brand's
   `init(value:)` and its own reads `fileprivate`, through `Written::sealed`, and adds
-  `public init(validating:)`, which runs `validate()` and throws the `DecodingError.dataCorrupted`
-  that `init(from:)` throws, with codingPath `[]`. A holder in the generated file reads the brand
+  `public init(validating:)`, which runs `validate()` and throws the brand's refusal holding its
+  messages (`value_init`). A holder in the generated file reads the brand
   through `init(swiftSchemaUnjudged:)` as before, so every answer is unchanged. An alias is a
   `typealias` of what it names.
 
@@ -99,9 +99,28 @@ section is the consumer's view; this is what a change to the emitter has to keep
 
 The Swift read of a strict type refuses a key no member reads, as the Rust, Zod, Dart and Kotlin reads do. A type whose keys are known (`closed_keys` in `src/features/swift.rs`: its own members, and those it flattens whose type was written above and refuses a key itself or takes known keys) writes its own read twice: `init(swiftSchemaUnjudged:swiftSchemaWithout:)` reads the members and refuses nothing, and `init(swiftSchemaUnjudged:)` refuses a key outside the list, then calls it with no key taken. A holder, an enum under a tag and a lone slot read a type beside other keys through the first, and refuse the keys of the whole object once, in the second; a list element, a map value and a member read the type through the second. An enum under a tag alone, or under a tag and a content key, and an untagged enum refuse a key none of their variants reads in their second read; an untagged enum tries a variant's struct through its second read, and where the enum is itself handed keys, through `swiftSchemaOnly`, which refuses a key that is neither the struct's nor taken and then reads the struct through its first read, as serde tries a strict variant on the keys its holder leaves. A `nonstrict` type, a type that names a function on itself, a struct under its own tag and a type that flattens a member whose keys are not known refuse nothing. The case of a unit variant of a strict enum under a tag alone refuses a key that is neither the tag nor one the types around the enum took (`unit_beside_the_tag`), as the Rust read the macro writes for that variant does, whatever its other variants hold. Where the Swift registries hold no keys of a flattened member (`flattened_contribution`), the macro's classifier answers them (`flatten_order::flattened_keys`): an externally tagged enum's variant names, a struct of one slot's slot, and, for a member serde hands every key its holder leaves, the keys of one that refuses a key beside its own, a strict struct that flattens one, enum under a tag alone or untagged enum among them. A member that reads past a key leaves the holder refusing nothing. One declared below its holder or in another crate is listed by a placeholder (`unmet_keys`, `member_keys::of`), which `swift_definition()` replaces with the keys the type publishes in `__TIXSCHEMA_KEYS`.
 
+#### The refusal of a type
+
+`validate()`, `init(validating:)`, `of(..)` and every judged `init(from:)` throw `{Name}Refusal`,
+named after the valid type the item is published as (`refusals::refusal_name`,
+`src/features/refusals.rs`). `swift_schema_dispatch` makes it the refusal of the item being
+emitted (`SWIFT_REFUSAL`), and `swift_module_tokens` declares the struct (`refusal_struct`) at the
+head of the type's text where the text throws it, recording it in `SWIFT_REFUSALS` under the Rust
+ident. An alias is a `typealias`, so `alias_swift_tokens` records the refusals of what it names, and
+`swift_refusals_of` answers what a read of a `FieldDef` throws, through a list, a set, a map, an
+option, a tuple and a `Result`, for `swift_ws_client()`. The value a wrapper reads beside the keys
+its holder took is judged as its own read judges it, and refused with its type's refusal
+(`refusal_of`). `swift_ws_client()` lists the refusals its reads throw in `{prefix}WsRefusal`, reads
+`issues` off them through `{prefix}WsUnwrapped`, which drops the key of the reply's envelope, and
+answers any other refusal as before. `tests/service_schema_emitted_client_tests/
+run_swift_refusal_classes.rs` compiles a struct, an enum, a generic type, a brand and an alias in
+one file and holds each refusal's `issues` to the Rust `validate()` of the same value.
+
 Every Swift type the emitter writes has two reads: `init(swiftSchemaUnjudged:)` is the type's own,
-and `init(from:)` runs it and then `validate()`, or `validationIssues()` for a draft, throwing `DecodingError.dataCorrupted` with every
-message joined by `; ` under the decoder's own coding path. `docs/guide/swift.md`'s "A Swift read refuses
+and `init(from:)` runs it and then `validate()`, or `validationIssues()` for a draft, throwing the
+type's refusal, `{Name}Refusal`, with every message placed under the decoder's own coding path
+(`read::judged`, through `placed`): as it is for the value the read was asked for, and under the
+steps ahead of it for one a holder reads judged. `docs/guide/swift.md`'s "A Swift read refuses
 what `validate()` refuses" section is the consumer's view; this is what a change to the emitter has
 to keep.
 
@@ -123,9 +142,9 @@ to keep.
   outer brand's check alone, as Rust's does, and serde reads each brand below it through its own
   judged read. So a map's wrapper (`wrapper_bound_key`, `judged_inner_brands`) runs the
   `validate()` of each brand below the key's own that runs a rule, the innermost first, and throws
-  `dataCorrupted` at the entry's coding path with its messages joined by `; `: with `outer:
+  that brand's refusal with its messages placed under the entry's coding path: with `outer:
   BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose check refuses
-  `mute`, `{"outer":{"mute":1}}` is refused at `outer.mute` with `mute is silent`.
+  `mute`, `{"outer":{"mute":1}}` is refused with `ToneRefusal` and `'outer.mute': mute is silent`.
 - **A value behind a type parameter is handed to a check and read by a reader**, each handed in
   by the holder that writes what fills the parameter. A generic type the emitter writes walks its
   parameters (`validate::walking`, noted by `validate::note_with`): its draft has

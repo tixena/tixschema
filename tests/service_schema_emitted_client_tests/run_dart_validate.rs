@@ -82,6 +82,14 @@ List<String> knownParcels(List<Parcel> value) =>
     value.isNotEmpty && value.first.label == 'unknown' ? const ["'0': the first parcel is known"] : const [];
 "#;
 
+/// What a harness reads the messages of a refusal with: the `issues` of a type's refusal, which
+/// shares no class with another type's, or the message of a refusal of shape.
+pub const ISSUES_OF: &str = "
+List<String> issuesOf(Exception refused) => refused is FormatException
+    ? refused.message.split('; ')
+    : (refused as dynamic).issues as List<String>;
+";
+
 /// The 13 lines of the shared table, a member's lines in the order the parcel declares it.
 const TABLE: &str = "\
 case 1: passes

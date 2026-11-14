@@ -68,10 +68,16 @@ func read<Read: Decodable>(_ type: Read.Type, _ payload: String) -> Read {
   try! JSONDecoder().decode(type, from: Data(payload.utf8))
 }
 
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == \"issues\" }?.value as? [String]
+}
+
 func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
   do {
     _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
     return \"read\"
+  } catch let refused where issuesOf(refused) != nil {
+    return issuesOf(refused)!.joined(separator: \"; \")
   } catch DecodingError.dataCorrupted(let context) {
     return context.debugDescription
   } catch DecodingError.keyNotFound(let key, _) {

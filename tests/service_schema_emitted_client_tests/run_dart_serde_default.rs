@@ -6,7 +6,7 @@
 use core::fmt::Write as _;
 
 use super::omitted_models::{OMITTED, OMITTED_WRITTEN, muster_dart, roster_dart, squad_dart};
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT, REQUIRED,
     REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_dart, basin_dart,
@@ -26,9 +26,9 @@ const ROW: &str = "
 void row(String name, Object? Function() written) {
   try {
     print('$name: read ${jsonEncode(written())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   }
@@ -76,7 +76,7 @@ fn source() -> String {
             pontoon_dart::dart_definition(),
             bollard_dart::dart_definition(),
         ],
-        &[ROW, TRIMMED_DOCK],
+        &[ROW, TRIMMED_DOCK, ISSUES_OF],
         &format!("void main() {{\n{rows}}}\n"),
     )
 }
@@ -201,7 +201,7 @@ fn filled_source() -> String {
     ];
     module(
         &definitions,
-        &[ROW, REQUIRES],
+        &[ROW, REQUIRES, ISSUES_OF],
         &format!("void main() {{\n{filled}{required}}}\n"),
     )
 }
@@ -265,7 +265,7 @@ fn variant_source() -> String {
             untagged_berthing_dart::dart_definition(),
             quay_dart::dart_definition(),
         ],
-        &[ROW],
+        &[ROW, ISSUES_OF],
         &format!("void main() {{\n{rows}}}\n"),
     )
 }
@@ -320,7 +320,7 @@ fn omitted_source() -> String {
             muster_dart::dart_definition(),
             squad_dart::dart_definition(),
         ],
-        &[ROW],
+        &[ROW, ISSUES_OF],
         &format!("void main() {{\n{rows}}}\n"),
     )
 }

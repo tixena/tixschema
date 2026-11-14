@@ -37,22 +37,27 @@ const FIXED_WIDTH: [&str; 9] = [
 /// filled with a `Float` reads one beyond its range as a `Double` narrowed to an infinity of its
 /// sign, as serde reads an `f32`. It refuses too an integer whose coding path is one `userInfo`
 /// names under `swiftSchemaFloated`: the paths where the payload of a preprocess holds a float,
-/// which `JSONSerialization` writes back with no fraction.
+/// which `JSONSerialization` writes back with no fraction. A type's refusal, which holds `issues`,
+/// passes through as it was thrown.
 const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>: Decodable { \
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
      value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where \
-     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) { do { value = \
-     Float(try single.decode(Double.self)) as! SwiftSchemaLeaf } catch let wider where !(wider is \
-     DecodingError) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-     decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: wider)) } } \
-     catch let refused where !(refused is DecodingError) { throw \
+     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) && \
+     !Self.breaksARule(refused) { do { value = Float(try single.decode(Double.self)) as! \
+     SwiftSchemaLeaf } catch let wider where !(wider is DecodingError) && \
+     !Self.breaksARule(wider) { throw DecodingError.dataCorrupted(DecodingError.Context(\
+     codingPath: decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: \
+     wider)) } } catch let refused where !(refused is DecodingError) && \
+     !Self.breaksARule(refused) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
      if let integer = value as? any FixedWidthInteger, Self.fractional(decoder, integer) || \
      Self.floated(decoder) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.floating(try single.decode(Double.self)))) } }; \
+     private static func breaksARule(_ refused: Error) -> Bool { Mirror(reflecting: \
+     refused).children.contains { $0.label == \"issues\" } }; \
      fileprivate static func fractional(_ decoder: Decoder, _ integer: any FixedWidthInteger) \
      -> Bool { guard let written = written(decoder) else { return false }; return \
      written.exponent || written.count != \"\\(integer)\".utf8.count }; \
@@ -89,18 +94,6 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      return \"invalid value: integer `\\(text)`, expected \\(expected)\" }; guard let number = \
      Double(text), number.isFinite else { return \"number out of range\" }; return \
      floating(number) } }";
-
-/// The read every caller makes: the type's own, then `validate()` on the value read.
-pub(super) const JUDGED: &str = "public init(from decoder: Decoder) throws { \
-     try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); \
-     if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
-     codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }";
-
-/// The read of a draft: its own, then `validationIssues()` on the value read.
-const JUDGED_DRAFT: &str = "public init(from decoder: Decoder) throws { \
-     try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); \
-     if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(\
-     codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }";
 
 /// What names, in the statements of a read, the keys the types around the type took: handed to
 /// what is read beside the type, or skipped by the read of a map's entries ([`read_entries`]).
@@ -391,6 +384,17 @@ impl Source {
             Self::Listed(listed) => format!("{listed}.nestedUnkeyedContainer()"),
         }
     }
+}
+
+/// The read every caller makes: the type's own, then `listed`, `validate()` or a draft's
+/// `validationIssues()`, on the value read, refused with `refused` where it lists a broken rule,
+/// each issue placed under the coding path the value was read at.
+pub(super) fn judged(listed: &str, refused: &str) -> String {
+    format!(
+        "public init(from decoder: Decoder) throws {{ try self.init(swiftSchemaUnjudged: decoder); \
+         let violations = {listed}(); if !violations.isEmpty {{ throw {refused}(issues: {}) }} }}",
+        super::placed("decoder.codingPath", "violations")
+    )
 }
 
 /// Records how [`fit_held`] reads a value of the alias the emitter declares as `named`, with the
@@ -917,7 +921,14 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
     } else {
         "public"
     };
-    let judged = if written.draft { JUDGED_DRAFT } else { JUDGED };
+    let judged = judged(
+        if written.draft {
+            "validationIssues"
+        } else {
+            "validate"
+        },
+        &super::refusal(),
+    );
     let parameters = validate::walked_parameters();
     if written.own.is_empty() && !parameters.is_empty() {
         let defaults = readers_by_default(&parameters);

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-use crate::swift_plain_enum::plain_enum_reads;
+use crate::swift_plain_enum::{plain_enum_reads, refusal};
 use crate::swift_valid;
 
 #[model_schema()]
@@ -622,15 +622,45 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
 fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     assert_eq!(
         swift_valid::draft_of(&reserved_members_swift::swift_definition()),
-        "public struct ReservedMembersDraft: Codable, Sendable { public var `class`: String; public var `in`: String; public var type: String; enum CodingKeys: String, CodingKey { case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try container.decode(String.self, forKey: .type) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> ReservedMembers { let found = validationIssues(); if !found.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: found.joined(separator: \"; \"))) }; return ReservedMembers(draft: self) }; public var valid: ReservedMembers { ReservedMembers(draft: self) } };"
+        "public struct ReservedMembersDraft: Codable, Sendable { public var `class`: String; \
+         public var `in`: String; public var type: String; enum CodingKeys: String, CodingKey { \
+         case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: \
+         String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct \
+         SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; \
+         init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { \
+         nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout \
+         taken: [String]) throws { let container = try decoder.container(keyedBy: \
+         CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); \
+         self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try \
+         container.decode(String.self, forKey: .type) }; fileprivate init(swiftSchemaUnjudged \
+         decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for \
+         unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+         ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+         [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
+         self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
+         decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = \
+         validationIssues(); if !violations.isEmpty { throw ReservedMembersRefusal(issues: { () \
+         -> [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? \
+         $0.stringValue }.joined(separator: \".\"); return at.isEmpty ? violations : \
+         violations.map { said in guard said.hasPrefix(\"'\"), let end = \
+         said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; return \
+         \"'\\(at).\\(said[said.index(after: said.startIndex)..<end])'\\(said[said.index(after: \
+         end)...])\" } }()) } }; public func validationIssues() -> [String] { [] }; public func \
+         swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> \
+         ReservedMembers { let found = validationIssues(); if !found.isEmpty { throw \
+         ReservedMembersRefusal(issues: found) }; return ReservedMembers(draft: self) }; public \
+         var valid: ReservedMembers { ReservedMembers(draft: self) } };"
     );
     assert_eq!(
         reserved_member_swift::swift_definition(),
         format!(
-            "public enum ReservedMember: String, Codable, Sendable {{ case `default` = \
+            "{} public enum ReservedMember: String, Codable, Sendable {{ case `default` = \
              \"Default\"; case `in` = \"In\"; case other = \"Other\"; {} public func \
              validate() -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> \
              [String] {{ [] }} }}",
+            refusal("ReservedMember"),
             plain_enum_reads("ReservedMember"),
         )
     );

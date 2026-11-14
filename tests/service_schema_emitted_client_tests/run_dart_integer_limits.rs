@@ -10,7 +10,7 @@ use super::integer_limit_models::{
     REPORT, ROWS, limit_ceiling_dart, limit_ends_dart, limit_floor_dart, limit_forms_dart,
     limit_mixed_dart, limit_wide_dart,
 };
-use super::run_dart_validate::{analyzed, dart, module};
+use super::run_dart_validate::{ISSUES_OF, analyzed, dart, module};
 
 /// What prints a row: `passes` or each message of `validate()`, and a line more where the read
 /// does not answer what `validate()` answered.
@@ -27,8 +27,9 @@ void report(String name, List<String> answered, Object? Function() read) {
   try {
     read();
     if (answered.isNotEmpty) print('    the read passed it');
-  } on FormatException catch (refused) {
-    if (refused.message != answered.join('; ')) print('    the read said ${refused.message}');
+  } on Exception catch (refused) {
+    final said = issuesOf(refused);
+    if (said.join('; ') != answered.join('; ')) print('    the read said $said');
   }
 }
 ";
@@ -55,7 +56,7 @@ fn each_limit_holds_in_dart_as_it_is_written() {
         );
     }
     main.push_str("}\n");
-    let source = module(&definitions(), &[REPORTER], &main);
+    let source = module(&definitions(), &[REPORTER, ISSUES_OF], &main);
     let Some((ran, printed)) = dart("integer-limits", &[], &source) else {
         return;
     };
@@ -67,7 +68,7 @@ fn each_limit_holds_in_dart_as_it_is_written() {
 fn the_emitted_integer_limits_have_no_issue() {
     let source = module(
         &definitions(),
-        &[REPORTER],
+        &[REPORTER, ISSUES_OF],
         "void main() => report('none', const [], () => jsonDecode('[]'));\n",
     );
     analyzed("integer-limits-analyze", &source);

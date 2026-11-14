@@ -237,13 +237,15 @@ fun <T : Any> variant(serializer: KSerializer<T>, payload: String) {
 "#;
 
 /// What prints a row of a holder of a flattened `Option` of an enum: the holder read and written
-/// back, or the class and the first line of what its read throws.
+/// back, or the class and the first line of what its read throws, or each issue of a type's
+/// refusal, read by reflection.
 const TOLD_OR_REFUSED: &str = r#"
 fun <T> told(name: String, serializer: KSerializer<T>, payload: String) {
     val told = try {
         Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
     } catch (refused: Exception) {
-        "refused: ${refused::class.simpleName}: ${(refused.message ?: "").lines().first()}"
+        val said = if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).joinToString("; ") else (refused.message ?: "").lines().first()
+        "refused: ${refused::class.simpleName}: $said"
     }
     println("$name: $told")
 }
@@ -1555,7 +1557,7 @@ fn an_optional_type_declared_below_that_breaks_a_rule_is_refused_in_kotlin_as_se
         let in_kotlin = if serde.starts_with('{') {
             serde.to_owned()
         } else {
-            format!("refused: SerializationException: {serde}")
+            format!("refused: GrommetingRefusal: {serde}")
         };
         let _ = writeln!(expected, "{at}: {in_kotlin}");
         let _ = writeln!(

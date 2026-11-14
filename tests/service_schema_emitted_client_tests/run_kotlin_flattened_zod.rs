@@ -38,6 +38,9 @@ fun notBlank(value: String): List<String> =
 /// What prints a row: the value read and written back with its keys sorted, or `refused`, and what
 /// prints a checked row.
 const HARNESS: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 val everyMember = Json { encodeDefaults = true }
 
 fun sorted(value: JsonElement): JsonElement = when (value) {
@@ -61,7 +64,7 @@ fun <T> checked(at: String, serializer: KSerializer<T>, payload: String) {
         println("$at: passes")
     } catch (refused: SerializationException) {
         println("$at: refused")
-        for (violation in (refused.message ?: "").split("; ")) println("    $violation")
+        for (violation in issuesOf(refused)) println("    $violation")
     }
 }
 "#;

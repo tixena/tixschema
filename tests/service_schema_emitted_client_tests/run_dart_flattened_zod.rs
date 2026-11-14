@@ -12,7 +12,7 @@ use super::flattened_zod_models::{
     paragraph_dart, pause_dart, quote_dart, serde_report, slip_dart, span_dart, tally_dart,
     tenancy_dart, tethered_dart, wharf_dart, wharfage_dart,
 };
-use super::run_dart_validate::{analyzed, dart, module};
+use super::run_dart_validate::{ISSUES_OF, analyzed, dart, module};
 
 /// The functions the models name, as a consumer writes them in Dart.
 const FUNCTIONS: &str = r#"
@@ -51,9 +51,9 @@ void checked(String name, Object? Function() read) {
   try {
     read();
     print('$name: passes');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   }
@@ -86,7 +86,7 @@ fn definitions() -> Vec<String> {
 }
 
 fn source(main: &str) -> String {
-    module(&definitions(), &[FUNCTIONS, HARNESS], main)
+    module(&definitions(), &[FUNCTIONS, HARNESS, ISSUES_OF], main)
 }
 
 /// Each payload of the rows is read by Dart as serde reads it, a key beside the unit variant of an

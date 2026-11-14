@@ -34,24 +34,30 @@ fun report(name: String, violations: List<String>) {
 
 /// The messages `of` throws for a value that breaks a rule, none for one that keeps them.
 const REFUSED_BY: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun refusedBy(build: () -> Any?): List<String> =
     try {
         build()
         emptyList()
     } catch (refused: SerializationException) {
-        refused.message.orEmpty().split("; ")
+        issuesOf(refused)
     }
 "#;
 
 /// What the read of a payload prints: `passes`, or `refused` and each message the read throws.
 const READ: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 inline fun <reified T> read(name: String, payload: String) {
     try {
         Json.decodeFromString<T>(payload)
         println("$name: passes")
     } catch (thrown: SerializationException) {
         println("$name: refused")
-        thrown.message!!.split("; ").forEach { println("    $it") }
+        issuesOf(thrown).forEach { println("    $it") }
     }
 }
 "#;

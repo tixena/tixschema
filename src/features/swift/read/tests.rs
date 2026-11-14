@@ -4,7 +4,7 @@
 use syn::Item;
 
 use super::{
-    FITTED, JUDGED, Locals, Presence, Source, both, fitted, held, substituted, takes_keys,
+    FITTED, Locals, Presence, Source, both, fitted, held, judged, substituted, takes_keys,
     top_level, unjudged,
 };
 use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_attributes};
@@ -178,11 +178,12 @@ fn a_list_and_a_map_are_read_from_the_container_of_their_source() {
 #[test]
 fn a_type_that_names_no_function_has_the_two_reads_it_had() {
     let reads = both("self.held = try decoder.read()", &Written::default());
+    let read_judged = judged("validate", "");
     assert_eq!(
         reads,
         format!(
             "public init(swiftSchemaUnjudged decoder: Decoder) throws \
-             {{ self.held = try decoder.read() }}; {JUDGED}; "
+             {{ self.held = try decoder.read() }}; {read_judged}; "
         )
     );
     assert!(!takes_keys(&reads));
@@ -194,7 +195,11 @@ fn a_type_that_names_no_function_has_the_two_reads_it_had() {
 fn a_type_whose_statements_name_the_keys_taken_is_handed_them() {
     let body = "self.held = try Held(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken)";
     let reads = both(body, &Written::default());
-    assert_eq!(reads, format!("{TAKING} {{ {body} }}; {ALONE}; {JUDGED}; "));
+    let read_judged = judged("validate", "");
+    assert_eq!(
+        reads,
+        format!("{TAKING} {{ {body} }}; {ALONE}; {read_judged}; ")
+    );
     assert!(takes_keys(&reads));
     let handed = "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken).value";
     assert!(takes_keys(&both(handed, &Written::default())));
@@ -216,6 +221,7 @@ fn a_type_that_names_functions_reads_its_statements_from_what_they_answer() {
             },
         )
     };
+    let read_judged = judged("validate", "");
     let around = |corrected: &str| {
         format!(
             "{PAYLOAD}; {FITTED}; private struct SwiftSchemaRead: Decodable {{ let value: Held; \
@@ -223,7 +229,7 @@ fn a_type_that_names_functions_reads_its_statements_from_what_they_answer() {
              private init(swiftSchemaCorrected decoder: Decoder) throws {{ {corrected} }}; \
              {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
              from: withoutFragile(unwrapped(try SwiftSchemaPayload(from: decoder, without: taken).value)), \
-             at: decoder.codingPath).value }}; {ALONE}; {JUDGED}; "
+             at: decoder.codingPath).value }}; {ALONE}; {read_judged}; "
         )
     };
     assert_eq!(written("self.held = 1"), around("self.held = 1"));
@@ -303,11 +309,7 @@ fn the_readme_shows_the_reads_of_the_documents_parcel() {
         "try self.init(swiftSchemaUnjudged: decoder)",
         "let violations = validationIssues()",
         "if !violations.isEmpty {",
-        concat!(
-            "throw DecodingError.dataCorrupted(DecodingError.Context(",
-            "codingPath: decoder.codingPath, ",
-            r#"debugDescription: violations.joined(separator: "; ")))"#,
-        ),
+        "throw ParcelRefusal(issues: { () -> [String] in let at = decoder.codingPath.map {",
     ] {
         assert!(written.contains(shown), "{shown} is not in: {written}");
         assert!(

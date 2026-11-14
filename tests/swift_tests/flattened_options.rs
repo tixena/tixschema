@@ -17,6 +17,7 @@ use super::flattened_options_models::{
     lapping_swift, lowering_swift, painter_swift, pitching_swift, ratline_swift, sennit_swift,
     squaring_swift, tarring_swift, veering_swift,
 };
+use super::swift_plain_enum::PLACED;
 
 /// What closes the statements that read a flattened member, which place a refusal inside it at
 /// the holder.
@@ -261,11 +262,11 @@ fn a_struct_flattened_bare_reads_the_whole_object() {
          throws { try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; \
          public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: \
          decoder); let violations = validationIssues(); if !violations.isEmpty { throw \
-         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: violations.joined(separator: \"; \"))) } }; public func \
-         encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: \
-         CodingKeys.self); try container.encode(self.note, forKey: .note); try \
-         self.tabling.encode(to: encoder) };",
+         CrowningRefusal(issues: @PLACED@) } }; public func encode(to encoder: Encoder) throws { \
+         var container = encoder.container(keyedBy: CodingKeys.self); try \
+         container.encode(self.note, forKey: .note); try self.tabling.encode(to: encoder) };"
+            .replace("@PLACED@", PLACED)
+            .as_str(),
     );
 }
 

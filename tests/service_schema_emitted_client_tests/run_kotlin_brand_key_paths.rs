@@ -40,18 +40,28 @@ fun workday(value: KeyedDay): List<String> =
     if (value.value == "2024-01-06") listOf("2024-01-06 is a day of rest") else emptyList()
 "#;
 
-/// What prints a row: the value read and written back, or the field its refusal names, the steps
-/// of the path it states and the place its message opens with; and what prints a refusal whole.
+/// What prints a row: the value read and written back, or the field its refusal names: the place
+/// the first issue of a type's refusal opens with, or the steps of the path a refusal of shape
+/// states and the place its message opens with; and what prints a refusal whole. A type's refusal
+/// shares no class with another type's, so its `issues` is read by reflection.
 const TOLD: &str = r#"
+fun issuesOf(refused: SerializationException): List<String>? =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else null
+
 fun <T> told(at: String, serializer: KSerializer<T>, payload: String) {
     val printed = try {
         "read ${Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))}"
     } catch (refused: SerializationException) {
         val said = refused.message.orEmpty()
-        val path = Regex(""" at path: \$\.([^\n]*)""").find(said)?.groupValues?.get(1)
-        val place = Regex("""^'([^']*)': """).find(said)?.groupValues?.get(1)
-        val opening = place?.takeIf { path != it && path?.endsWith(".$it") != true }
-        val field = listOfNotNull(path, opening).joinToString(".")
+        val issues = issuesOf(refused)
+        val field = if (issues != null) {
+            Regex("""^'([^']*)': """).find(issues.first())?.groupValues?.get(1).orEmpty()
+        } else {
+            val path = Regex(""" at path: \$\.([^\n]*)""").find(said)?.groupValues?.get(1)
+            val place = Regex("""^'([^']*)': """).find(said)?.groupValues?.get(1)
+            val opening = place?.takeIf { path != it && path?.endsWith(".$it") != true }
+            listOfNotNull(path, opening).joinToString(".")
+        }
         "refused at ${field.ifEmpty { "no path" }}"
     }
     println("$at: $printed")
@@ -62,7 +72,7 @@ fun <T> said(at: String, serializer: KSerializer<T>, payload: String) {
         Json.decodeFromString(serializer, payload)
         "read"
     } catch (refused: SerializationException) {
-        refused.message.orEmpty()
+        refused.toString()
     }
     println("$at said: $printed")
 }
@@ -214,25 +224,25 @@ fn rows() -> Vec<Row> {
         refused_key::<Keyring>(
             "Keyring",
             r#"{"pitches":{"3":1},"tones":{"mute":1}}"#,
-            "'mute': mute is silent at path: $.tones",
+            "KeyedToneRefusal: ['tones.mute': mute is silent]",
         ),
         row::<Keyring>("Keyring", r#"{"pitches":{"3":1},"tones":{"ring":1}}"#),
         refused_key::<Keyring>(
             "Keyring",
             r#"{"pitches":{"13":1},"tones":{"low":2}}"#,
-            "'13': 13 is outside of the scale at path: $.pitches",
+            "KeyedPitchRefusal: ['pitches.13': 13 is outside of the scale]",
         ),
         row::<Nested>("Nested", r#"{"outer":{"ring":1}}"#),
         row::<Nested>("Nested", r#"{"outer":{"ring":-1}}"#),
         refused_key::<Nested>(
             "Nested",
             r#"{"outer":{"soft":1}}"#,
-            "'soft': soft is quiet at path: $.outer",
+            "OuterToneRefusal: ['outer.soft': soft is quiet]",
         ),
         refused_key::<Nested>(
             "Nested",
             r#"{"outer":{"mute":1}}"#,
-            "'mute': mute is silent at path: $.outer",
+            "KeyedToneRefusal: ['outer.mute': mute is silent]",
         ),
     ];
     rows.into_iter().chain(dated_rows()).collect()
@@ -246,7 +256,7 @@ fn dated_rows() -> Vec<Row> {
         refused_key::<Calendar>(
             "Calendar",
             r#"{"days":{"2024-01-06":1}}"#,
-            "'2024-01-06': 2024-01-06 is a day of rest at path: $.days",
+            "KeyedDayRefusal: ['days.2024-01-06': 2024-01-06 is a day of rest]",
         ),
     ]
 }

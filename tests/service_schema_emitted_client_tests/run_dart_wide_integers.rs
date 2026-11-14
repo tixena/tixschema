@@ -22,6 +22,8 @@ void told(String at, Object? Function() read) {
     printed = 'read ${jsonEncode(read())}';
   } on FormatException catch (refusal) {
     printed = '${refusal.runtimeType}: ${refusal.message}';
+  } on Exception catch (refusal) {
+    printed = '${refusal.runtimeType}: ${((refusal as dynamic).issues as List<String>).join('; ')}';
   } catch (refusal) {
     printed = '${refusal.runtimeType}: $refusal';
   }
@@ -33,15 +35,16 @@ void told(String at, Object? Function() read) {
 /// number beyond an `int` as a `double`, which the read refuses as serde refuses a float, and a
 /// member's read turns the cast's `TypeError` of any other value into a `FormatException` with the
 /// same words. A `double` read of the digits of an integer a `u64` holds is worded as a float, where
-/// serde words it as an integer.
+/// serde words it as an integer. A value a bound or a literal refuses is refused with its type's
+/// own refusal.
 const DART_REFUSED: [&str; 8] = [
     "FormatException: invalid type: floating point `9.223372036854776e+18`, expected i64",
     "_TypeError: type 'String' is not a subtype of type 'int' in type cast",
     "FormatException: invalid type: floating point `-9.223372036854776e+18`, expected i64",
     "FormatException: invalid type: floating point `1.5`, expected i64",
-    "FormatException: 'level': too large: maximum is 5, got 6",
+    "SixtyLevelRefusal: 'level': too large: maximum is 5, got 6",
     "FormatException: invalid type: floating point `9.223372036854776e+18`, expected i64",
-    "FormatException: 'fixed': not the literal 214, got 215",
+    "SixtyReachedRefusal: 'fixed': not the literal 214, got 215",
     "FormatException: type 'String' is not a subtype of type 'int' in type cast",
 ];
 

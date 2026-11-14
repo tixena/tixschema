@@ -30,8 +30,9 @@ try show(try DockStatic.of(label: "x"))
 do {
     _ = try DockTime.of(hour: 24, minute: 0)
     print("built")
-} catch DecodingError.dataCorrupted(let context) {
-    print(context.debugDescription)
+} catch let refused as DockTimeRefusal {
+    print(type(of: refused))
+    for issue in refused.issues { print(issue) }
 }
 "#;
 
@@ -130,6 +131,7 @@ fn of_builds_the_valid_value_and_throws_what_validate_throws() {
     }
     .validate()
     .unwrap_err();
+    assert_eq!(refused.len(), 1, "{refused:?}");
     assert_eq!(
         run.stdout.lines().collect::<Vec<_>>(),
         [
@@ -171,7 +173,8 @@ fn of_builds_the_valid_value_and_throws_what_validate_throws() {
             })
             .unwrap()
             .as_str(),
-            refused.join("; ").as_str(),
+            "DockTimeRefusal",
+            refused[0].as_str(),
         ]
     );
 }

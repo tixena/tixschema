@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::swift_key_number::integer_key_bound;
-use crate::swift_plain_enum::{plain_enum_read, plain_enum_reads};
+use crate::swift_plain_enum::{PLACED, plain_enum_read, plain_enum_reads};
 use crate::swift_valid;
 use crate::tests::{
     FlattenedExtra, FlattenedExtraDraft, adjacent_tagged_swift, all_widths_swift, by_bool_swift,
@@ -34,23 +34,9 @@ const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringV
                        intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = \
                        stringValue }; init?(intValue: Int) { nil } }";
 
-/// The read every caller makes of a draft: the type's own read, then `validationIssues()` on the
-/// value read.
-const JUDGED: &str = concat!(
-    "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
-    "let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(",
-    "DecodingError.Context(codingPath: decoder.codingPath, ",
-    r#"debugDescription: violations.joined(separator: "; "))) } }"#,
-);
-
-/// The read every caller makes of a type that is no draft: the type's own read, then `validate()`
-/// on the value read.
-const JUDGED_BY_VALIDATE: &str = concat!(
-    "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
-    "let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(",
-    "DecodingError.Context(codingPath: decoder.codingPath, ",
-    r#"debugDescription: violations.joined(separator: "; "))) } }"#,
-);
+/// What every judged read opens with, whatever it lists the broken rules with.
+const JUDGED_OPENS: &str =
+    "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ";
 
 /// What opens the read a wrapper of a map's keys makes of the values it holds unjudged.
 const UNJUDGED_IN_A_WRAPPER: &str = concat!(
@@ -188,6 +174,24 @@ pub struct Jaws {
     pub pair: [u8; 2],
 }
 
+/// The read every caller makes of a draft of the type published as `named`: the type's own read,
+/// then `validationIssues()` on the value read.
+fn judged(named: &str) -> String {
+    format!(
+        "{JUDGED_OPENS}let violations = validationIssues(); if !violations.isEmpty {{ throw \
+         {named}Refusal(issues: {PLACED}) }} }}"
+    )
+}
+
+/// The read every caller makes of the type published as `named`, which is no draft: the type's own
+/// read, then `validate()` on the value read.
+fn judged_by_validate(named: &str) -> String {
+    format!(
+        "{JUDGED_OPENS}let violations = validate(); if !violations.isEmpty {{ throw \
+         {named}Refusal(issues: {PLACED}) }} }}"
+    )
+}
+
 fn with_a_rating(value: &RatingDraft) -> Result<(), Vec<String>> {
     if matches!(value, RatingDraft::Low) {
         return Err(vec!["a low rating is not carried".to_owned()]);
@@ -232,7 +236,7 @@ fn closed(keys: &[&str], block: &str) -> String {
 fn a_struct_reads_its_members_then_judges_the_value_it_read() {
     let swift = parcel_swift::swift_definition();
     let written = format!(
-        "{}{}; {JUDGED}; public func validationIssues() -> [String] {{ ",
+        "{}{}; {}; public func validationIssues() -> [String] {{ ",
         concat!(
             "public init(fragileItemCodes: [String], itemCodeList: [String], label: String) ",
             "{ self.fragileItemCodes = fragileItemCodes; self.itemCodeList = itemCodeList; ",
@@ -247,6 +251,7 @@ fn a_struct_reads_its_members_then_judges_the_value_it_read() {
                 "self.label = try container.decode(String.self, forKey: .label) }",
             )
         ),
+        judged("Parcel"),
     );
     assert!(swift.contains(&written), "{written} is not in: {swift}");
     assert!(
@@ -317,7 +322,7 @@ fn a_holder_reads_each_model_it_names_unjudged() {
                 "init?(stringValue: String) { self.stringValue = stringValue }; ",
                 "init?(intValue: Int) { nil } }; ",
             ),
-            JUDGED,
+            judged("Manifest").as_str(),
         ],
     );
     assert!(
@@ -369,7 +374,8 @@ fn every_emitted_type_has_both_reads() {
     ] {
         let declared = swift.matches("public struct ").count()
             + swift.matches("public enum ").count()
-            - swift.matches("KeyedMap: Codable").count();
+            - swift.matches("KeyedMap: Codable").count()
+            - swift.matches(": Error, CustomStringConvertible").count();
         let reads = swift.matches(UNJUDGED).count()
             + swift
                 .matches(&UNJUDGED.replacen("fileprivate", "public", 1))
@@ -377,7 +383,7 @@ fn every_emitted_type_has_both_reads() {
         let valid = swift.matches("@dynamicMemberLookup public struct ").count();
         assert_eq!(reads, declared, "got: {swift}");
         assert_eq!(
-            swift.matches(JUDGED).count() + swift.matches(JUDGED_BY_VALIDATE).count(),
+            swift.matches(JUDGED_OPENS).count(),
             declared - valid,
             "got: {swift}"
         );
@@ -624,8 +630,9 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
     let swift = slug_swift::swift_definition();
     let unjudged = format!(
         "{} {{ let container = try decoder.singleValueContainer(); \
-         self.value = try container.decode(String.self) }}; {JUDGED_BY_VALIDATE}; ",
-        UNJUDGED.replacen("public", "fileprivate", 1)
+         self.value = try container.decode(String.self) }}; {}; ",
+        UNJUDGED.replacen("public", "fileprivate", 1),
+        judged_by_validate("Slug")
     );
     assert!(swift.contains(&unjudged), "{unjudged} is not in: {swift}");
     holds(
@@ -641,7 +648,10 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
         )],
     );
     let unbounded = correlation_id_swift::swift_definition();
-    assert!(unbounded.contains(&unjudged), "got: {unbounded}");
+    assert!(
+        unbounded.contains(&unjudged.replace("SlugRefusal", "CorrelationIdRefusal")),
+        "got: {unbounded}"
+    );
     assert!(
         unbounded.contains("public func swiftSchemaValidateBound() -> [String] { [] }"),
         "got: {unbounded}"
@@ -699,7 +709,11 @@ fn a_tuple_struct_reads_its_slots_unjudged() {
 #[test]
 fn a_unit_struct_has_both_reads() {
     let swift = idle_swift::swift_definition();
-    let written = format!("public init() {{  }}; {}; {JUDGED}; ", closed(&[], "{  }"));
+    let written = format!(
+        "public init() {{  }}; {}; {}; ",
+        closed(&[], "{  }"),
+        judged("Idle")
+    );
     assert!(swift.contains(&written), "{written} is not in: {swift}");
 }
 
@@ -729,7 +743,7 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
                 "container.superDecoder(forKey: key))); ",
             ),
             r#"case "Unladen": self = .unladen; return; "#,
-            JUDGED,
+            judged("Carried").as_str(),
         ],
     );
     holds(
@@ -738,7 +752,7 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
             r#"case "Boxed": self = .boxed(try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])); "#,
             r#"case "Loose": do { self = .loose(try LiftedLoosePayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + ["kind"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; "#,
             r#"case "Unladen": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != "kind" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: "unknown field `\(unknown.stringValue)`")) } }; self = .unladen; "#,
-            JUDGED,
+            judged("Lifted").as_str(),
         ],
     );
     holds(
@@ -759,7 +773,7 @@ fn an_enum_reads_the_payload_of_its_variant_unjudged() {
                 "self = .split(try HauledSplitTuple(swiftSchemaUnjudged: ",
                 "container.superDecoder(forKey: .swiftSchemaContent))); ",
             ),
-            JUDGED,
+            judged("Hauled").as_str(),
         ],
     );
     holds(
@@ -853,7 +867,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
                 "listed.superDecoder())) }; return items }; ",
             ),
             r#"debugDescription: "no untagged member matched")) }; "#,
-            JUDGED,
+            judged("Sorted").as_str(),
         ],
     );
     for unwritten in ["swiftSchemaBoundWhole", "swiftSchemaBoundWordy"] {
@@ -886,8 +900,9 @@ fn a_plain_enum_reads_a_string_or_an_object_of_one_key_and_one_with_a_check_judg
     holds(&plain, &[&plain_enum_reads("Status")]);
     let checked = rating_swift::swift_definition();
     let written = format!(
-        "{UNJUDGED} {{ {} }}; {JUDGED}; ",
-        plain_enum_read("RatingDraft")
+        "{UNJUDGED} {{ {} }}; {}; ",
+        plain_enum_read("RatingDraft"),
+        judged("Rating")
     );
     assert!(checked.contains(&written), "{written} is not in: {checked}");
 }

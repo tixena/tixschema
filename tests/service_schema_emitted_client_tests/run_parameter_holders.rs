@@ -340,7 +340,7 @@ fn the_dart_read_of_a_holder_answers_what_the_rust_read_answers() {
         bin_shelf_dart::dart_definition(),
     ];
     let entry = format!(
-        "void row(String name, String payload) {{\n  try {{\n    BinShelf.fromJson(jsonDecode(payload) as Map<String, dynamic>);\n    print('$name: read');\n  }} on FormatException catch (refused) {{\n    for (final message in refused.message.split('; ')) {{\n      print('$name: refused: $message');\n    }}\n  }}\n}}\n\nvoid main() {{\n{}\n}}\n",
+        "void row(String name, String payload) {{\n  try {{\n    BinShelf.fromJson(jsonDecode(payload) as Map<String, dynamic>);\n    print('$name: read');\n  }} on BinShelfRefusal catch (refused) {{\n    for (final message in refused.issues) {{\n      print('$name: refused: $message');\n    }}\n  }} on FormatException catch (refused) {{\n    for (final message in refused.message.split('; ')) {{\n      print('$name: refused: $message');\n    }}\n  }}\n}}\n\nvoid main() {{\n{}\n}}\n",
         calls(&|name, payload| format!("  row('{name}', r'{payload}');"))
     );
     let source = module(&definitions, &[DART_CHECKS], &entry);
@@ -369,7 +369,7 @@ fn the_kotlin_read_of_a_holder_answers_what_the_rust_read_answers() {
         KOTLIN_CHECKS.to_owned(),
     ];
     parts.push(format!(
-        "fun row(name: String, payload: String) {{\n    try {{\n        Json.decodeFromString<BinShelf>(payload)\n        println(\"$name: read\")\n    }} catch (refused: SerializationException) {{\n        (refused.message ?: \"\").split(\"; \").forEach {{ println(\"$name: refused: $it\") }}\n    }}\n}}\n\nfun main() {{\n{}\n}}\n",
+        "fun row(name: String, payload: String) {{\n    try {{\n        Json.decodeFromString<BinShelf>(payload)\n        println(\"$name: read\")\n    }} catch (refused: BinShelfRefusal) {{\n        refused.issues.forEach {{ println(\"$name: refused: $it\") }}\n    }} catch (refused: SerializationException) {{\n        (refused.message ?: \"\").split(\"; \").forEach {{ println(\"$name: refused: $it\") }}\n    }}\n}}\n\nfun main() {{\n{}\n}}\n",
         calls(&|name, payload| format!("    row(\"{name}\", \"\"\"{payload}\"\"\")"))
     ));
     let Some(printed) = ran_kotlin(&parts.join("\n\n")) else {
@@ -393,7 +393,7 @@ fn the_swift_read_of_a_holder_answers_what_the_rust_read_answers() {
         bin_shelf_swift::swift_definition(),
     ];
     let source = format!(
-        "import Foundation\n\n{}\n{SWIFT_CHECKS}\nfunc row(_ name: String, _ payload: String) {{\n  do {{\n    _ = try JSONDecoder().decode(BinShelf.self, from: Data(payload.utf8))\n    print(\"\\(name): read\")\n  }} catch DecodingError.dataCorrupted(let context) {{\n    for message in context.debugDescription.components(separatedBy: \"; \") {{\n      print(\"\\(name): refused: \\(message)\")\n    }}\n  }} catch {{\n    print(\"\\(name): refused: \\(error)\")\n  }}\n}}\n\n{}\n",
+        "import Foundation\n\n{}\n{SWIFT_CHECKS}\nfunc row(_ name: String, _ payload: String) {{\n  do {{\n    _ = try JSONDecoder().decode(BinShelf.self, from: Data(payload.utf8))\n    print(\"\\(name): read\")\n  }} catch let refused as BinShelfRefusal {{\n    for message in refused.issues {{\n      print(\"\\(name): refused: \\(message)\")\n    }}\n  }} catch DecodingError.dataCorrupted(let context) {{\n    for message in context.debugDescription.components(separatedBy: \"; \") {{\n      print(\"\\(name): refused: \\(message)\")\n    }}\n  }} catch {{\n    print(\"\\(name): refused: \\(error)\")\n  }}\n}}\n\n{}\n",
         definitions.join("\n\n"),
         calls(&|name, payload| format!("row(\"{name}\", #\"{payload}\"#)"))
     );

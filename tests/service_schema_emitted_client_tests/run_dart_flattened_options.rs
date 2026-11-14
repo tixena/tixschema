@@ -28,7 +28,7 @@ use super::corrected_options_models::{
     CORRECTED, OPEN_CORRECTED, frapped_dart, marled_dart, moused_dart, parcelled_dart, reeved_dart,
     seized_dart, served_dart, snaked_dart, tholepin_dart, wormed_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 use super::swift_flattened_options_models::{
     Crowning, EASING, Easing, FLAKING, FLAKING_ABSENT, FLAKING_MISTYPED, Fidding, Flaking,
     Gasketing, HEELING, Heeling, KINKING_SHORT, Kinking, LAPPING, LAPPING_ABSENT, LAPPING_MISTYPED,
@@ -56,8 +56,8 @@ void row(String name, String Function() read) {
   String told;
   try {
     told = read();
-  } on FormatException catch (refused) {
-    told = 'refused: ${refused.message}';
+  } on Exception catch (refused) {
+    told = 'refused: ${issuesOf(refused).join('; ')}';
   } catch (refused) {
     told = 'refused: $refused';
   }
@@ -677,7 +677,7 @@ fn assert_read_in_dart(rows: &[Row], run: &str) {
         );
     }
     main.push_str("}\n");
-    let source = module(&definitions(), &[AS_GIVEN, TOLD], &main);
+    let source = module(&definitions(), &[AS_GIVEN, TOLD, ISSUES_OF], &main);
     let Some((ran, printed)) = dart(run, &[], &source) else {
         return;
     };

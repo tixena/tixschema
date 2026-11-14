@@ -5,7 +5,7 @@
 //! Neither text names a tool list or whether a message sits under `value`: the accessors in
 //! [`seam`] write those over the markers below when they run in the consuming program.
 
-use super::dart_http_client::{dart_call, dart_parameter, fault_said, message_type};
+use super::dart_http_client::{dart_call, dart_parameter, fault_said};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, guarded_call, has_one_way, header_call_args,
     header_out_push_stmt, header_refused_fault, message_dart_typename, message_decode,
@@ -13,9 +13,7 @@ use super::dart_ws_client::{
 };
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
-use crate::features::dart::{
-    dart_json_decode, dart_json_decode_unjudged, dart_json_encode, quoted,
-};
+use crate::features::dart::{dart_json_decode, dart_json_encode, quoted};
 use crate::field_type::{EXPECTED_VALUE, NOT_A_DOCUMENT_KEY};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
@@ -2218,16 +2216,6 @@ fn source_expr(prefix: &str, operation: &OperationDef, shape: &HttpShape) -> Str
     }
 }
 
-/// The message read by its `fromJsonUnjudged`: what throws here does not read, and a read that
-/// answers where the judged one threw was refused by `validate()`.
-fn unjudged_decode(operation: &OperationDef, payload: &str) -> String {
-    let req_ty = message_dart_typename(operation);
-    message_type(operation).map_or_else(
-        || format!("{req_ty}.fromJsonUnjudged({payload} as Map<String, dynamic>)"),
-        |ty| dart_json_decode_unjudged(&ty, payload),
-    )
-}
-
 /// The Dart expression telling whether the message of a tool sits under the `value` key, and the
 /// statement refusing a call that holds none where it must.
 fn wrapped_check(
@@ -2276,7 +2264,6 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
     let source = source_expr(prefix, operation, &shape);
     let (wrapped, missing_value) = wrapped_check(named, prefix, operation, &shape);
     let decode = message_decode(operation, "source");
-    let unjudged = unjudged_decode(operation, "source");
     let kind = format!("{named}FaultKind");
     let mut text = format!(
         "Future<{named}McpAnswer> _{prefix}McpCall{op}<Ctx>(\n  \
@@ -2301,16 +2288,13 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          final {req_ty} decoded;\n  \
          try {{\n    \
          decoded = {decode};\n  \
-         }} on FormatException catch (rejected) {{\n    \
-         try {{\n      \
-         {unjudged};\n    \
-         }} catch (unread) {{\n      \
-         return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, unread, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n    \
-         }}\n    \
-         return _{prefix}McpFaultResult(\n      \
-         _{prefix}McpFailedValidation({tool}, _{prefix}WsIssues(rejected.message)),\n    \
-         );\n  \
          }} catch (rejected) {{\n    \
+         final listed = _{prefix}WsRefusal(rejected);\n    \
+         if (listed != null) {{\n      \
+         return _{prefix}McpFaultResult(\n        \
+         _{prefix}McpFailedValidation({tool}, [for (final line in listed) _{prefix}WsIssue(line)]),\n      \
+         );\n    \
+         }}\n    \
          return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, rejected, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n  \
          }}\n",
         op = pascal(operation),
@@ -3013,7 +2997,6 @@ fn resource_body(
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let decode = message_decode(operation, "source");
-    let unjudged = unjudged_decode(operation, "source");
     let error_ty = dart_type_of(error);
     let awaited = guarded_call(&call, error, &[], "ctx, decoded");
     let declared = dart_json_encode(error, "declared", true);
@@ -3024,16 +3007,13 @@ fn resource_body(
          final {req_ty} decoded;\n  \
          try {{\n    \
          decoded = {decode};\n  \
-         }} on FormatException catch (rejected) {{\n    \
-         try {{\n      \
-         {unjudged};\n    \
-         }} catch (unread) {{\n      \
-         return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, unread, {schema}));\n    \
-         }}\n    \
-         return _{prefix}McpUnread(\n      \
-         _{prefix}McpFailedValidation({wire}, _{prefix}WsIssues(rejected.message)),\n    \
-         );\n  \
          }} catch (rejected) {{\n    \
+         final listed = _{prefix}WsRefusal(rejected);\n    \
+         if (listed != null) {{\n      \
+         return _{prefix}McpUnread(\n        \
+         _{prefix}McpFailedValidation({wire}, [for (final line in listed) _{prefix}WsIssue(line)]),\n      \
+         );\n    \
+         }}\n    \
          return _{prefix}McpUnread(_{prefix}McpUnreadFault({wire}, rejected, {schema}));\n  \
          }}\n  \
          try {{\n    \

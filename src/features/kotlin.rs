@@ -42,6 +42,7 @@ use self::validate::{Member, Rules};
 #[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
+use crate::features::refusals;
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
@@ -315,6 +316,11 @@ impl JsonKind {
 thread_local! {
     /// The Kotlin class/enum name each Rust ident publishes, read back by a sibling reference.
     static KOTLIN_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    /// The refusal class the reads and `validate()` of the item being emitted throw.
+    static KOTLIN_REFUSAL: RefCell<String> = const { RefCell::new(String::new()) };
+    /// The refusal classes a judged read of each type emitted so far throws, by Rust ident: its
+    /// own, or for an alias those of the type it names.
+    static KOTLIN_REFUSALS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
     /// The auxiliary top-level declarations a Tuple-shaped field earns — a wrapper `data class` and
     /// its `KSerializer` (see [`tuple_wrapper_typename`]). Drained by [`kotlin_module_tokens`].
     static KOTLIN_TUPLE_AUX: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -368,7 +374,11 @@ thread_local! {
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
 /// the item's own shape; an item this module has nothing to say about earns nothing.
 pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream {
-    if let Item::Struct(item_struct) = item {
+    let ident = refusals::item_ident(item);
+    if let Some(named) = &ident {
+        forget_refusals(named);
+    }
+    let tokens = if let Item::Struct(item_struct) = item {
         struct_kotlin_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
         enum_kotlin_tokens(item_enum, args)
@@ -376,7 +386,73 @@ pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream
         alias_kotlin_tokens(item_type, args.name_override)
     } else {
         TokenStream::new()
+    };
+    if let Some(named) = &ident {
+        record_refusals(named, refusals::held_by(item, &own_refusals));
     }
+    KOTLIN_REFUSAL.with(|held| held.borrow_mut().clear());
+    tokens
+}
+
+/// Makes the refusal of the type published as `export_name` the one the item being emitted throws.
+fn enter_refusal(export_name: &str) {
+    KOTLIN_REFUSAL.with(|held| *held.borrow_mut() = refusals::refusal_name(export_name));
+}
+
+/// Starts the expansion of the struct or enum `ident` that `args` describes.
+fn entered(ident: &Ident, args: &KotlinArgs<'_>) {
+    valid::enter(args);
+    enter_refusal(&compute_item_export_name(
+        &ident.to_string(),
+        args.name_override,
+    ));
+}
+
+/// The refusal class the item being emitted throws.
+pub fn refusal() -> String {
+    KOTLIN_REFUSAL.with(|held| held.borrow().clone())
+}
+
+/// The refusal classes a judged read of `def` throws where the value it reads, or one it holds,
+/// breaks a rule, as far as the types it names were emitted before.
+pub fn kotlin_refusals_of(def: &FieldDef) -> Vec<String> {
+    refusals::reached(def, &own_refusals)
+}
+
+/// The refusal classes recorded for the type written `name`.
+fn own_refusals(name: &str) -> Vec<String> {
+    KOTLIN_REFUSALS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Drops what was recorded for a type written `rust_ident`: of two types of one ident in a crate,
+/// a holder names the refusals of the one expanded last.
+fn forget_refusals(rust_ident: &str) {
+    KOTLIN_REFUSALS.with(|recorded| {
+        recorded.borrow_mut().remove(rust_ident);
+    });
+}
+
+/// Records that a judged read of `rust_ident` throws `refused` as well.
+fn record_refusals(rust_ident: &str, refused: Vec<String>) {
+    KOTLIN_REFUSALS.with(|recorded| {
+        let mut held = recorded.borrow_mut();
+        let listed = held.entry(rust_ident.to_owned()).or_default();
+        for refusal in refused {
+            if !listed.contains(&refusal) {
+                listed.push(refusal);
+            }
+        }
+    });
+}
+
+/// The class the item being emitted throws as `refused`, holding the list of broken rules: a
+/// `SerializationException`, so kotlinx hands it on as a refused read, whose cause marks it as a
+/// judgement, which no read rebases onto a path.
+fn refusal_class(refused: &str) -> String {
+    format!(
+        "class {refused}(val issues: List<String>) : SerializationException(\"$issues\", \
+         IllegalArgumentException(\"validate()\"))"
+    )
 }
 
 /// The `u64` width `field` is, or at any depth reaches, or `None`. Kotlin has a `ULong` that could
@@ -1278,8 +1354,8 @@ fn map_serializer(key: &FieldDef, keys: &str, values: &str) -> String {
 
 /// The `object` that reads the brand `export_name` as a map key: its value read from the text
 /// serde writes, then built and checked as the brand's own read builds and checks it. A key
-/// `validate()` refuses is refused at the path of its map, each message under the key's text. The
-/// object that builds the value is nested in the brand, which only it constructs; the one a holder
+/// `validate()` refuses is refused with the brand's refusal, which the map places. The object that
+/// builds the value is nested in the brand, which only it constructs; the one a holder
 /// names delegates to it.
 fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> (String, String) {
     let (held, read) = match leaf {
@@ -1295,11 +1371,8 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> (String, String) {
     let deserialize = format!(
         "override fun deserialize(decoder: Decoder): {export_name} {{ val held = \
          leaf.deserialize(decoder); val read = {export_name}(held); val violations = \
-         read.validate(); if (violations.isNotEmpty()) {{ val key = (decoder as? \
-         JsonDecoder)?.json?.encodeToJsonElement(leaf, held)?.jsonPrimitive?.content ?: \
-         held.toString(); kotlinSchemaAt<Unit>(decoder) {{ throw \
-         SerializationException(violations.joinToString(\"; \") {{ \"'\" + key + \"': \" + it }}) \
-         }} }}; return read }}"
+         read.validate(); if (violations.isNotEmpty()) throw {}(violations); return read }}",
+        refusals::refusal_name(export_name)
     );
     let nested = format!(
         "object KeyRead : KSerializer<{export_name}> {{ private val leaf: KSerializer<{held}> = \
@@ -1314,12 +1387,27 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> (String, String) {
     (nested, delegating)
 }
 
+/// The class that reads a map keyed by the brand `export_name` over `value_field`, through its key
+/// serializer where it is `keyed`, and the refusals that read throws, each placed at the map.
+fn brand_map_object(export_name: &str, value_field: &FieldDef, keyed: bool) -> String {
+    let mut thrown = kotlin_refusals_of(value_field);
+    let key_read = if keyed {
+        thrown.insert(0, refusals::refusal_name(export_name));
+        KeyRead::Keyed
+    } else if texts::mapped_by(value_field).is_some() {
+        KeyRead::OverABrand
+    } else {
+        KeyRead::Unjudged
+    };
+    map_object(export_name, key_read, &thrown)
+}
+
 /// The class that reads a map keyed by the brand `export_name` entry by entry: the key from its
 /// text at the map's path, as serde names a key that does not read, and the value under the key's
 /// text, which kotlinx would state as the brand's `toString()`. It writes the map as kotlinx
-/// writes it. A key read unjudged is judged here, each message under the key's text at the map's
-/// path, and a refusal the brand it holds throws, told by its `validate()` cause, is thrown there.
-fn map_object(export_name: &str, key_read: KeyRead) -> String {
+/// writes it. A key read unjudged is judged here, and a refusal of `thrown`, what the key's read
+/// throws, is thrown again: each message under the key's text at the map's path.
+fn map_object(export_name: &str, key_read: KeyRead, thrown: &[String]) -> String {
     let own = format!("Map<{export_name}, KotlinSchemaValue>");
     let value = read::decoded(
         "input.json",
@@ -1335,27 +1423,38 @@ fn map_object(export_name: &str, key_read: KeyRead) -> String {
         "entry.key",
         "\"\"",
     );
-    let judged = "val violations = key.validate(); if (violations.isNotEmpty()) throw \
-                  SerializationException(violations.joinToString(\"; \") { \"'\" + entry.key + \
-                  \"': \" + it })";
+    let judged = format!(
+        "val violations = key.validate(); if (violations.isNotEmpty()) {{ val at = \
+         kotlinSchemaPlace(input, entry.key); throw {}(violations.map {{ \"'\" + at + \"': \" + \
+         it }}) }}",
+        refusals::refusal_name(export_name)
+    );
+    let placed = |read: &str| {
+        if thrown.is_empty() {
+            return read.to_owned();
+        }
+        thrown
+            .iter()
+            .fold(format!("try {{ {read} }}"), |written, held| {
+                format!(
+                    "{written} catch (refused: {held}) {{ val at = kotlinSchemaPlace(input, \
+                 entry.key); throw {held}(refused.issues.map {{ \"'\" + at + \"': \" + it }}) }}"
+                )
+            })
+    };
     let entry = match key_read {
-        KeyRead::Keyed => format!(
-            "{} to {value}",
-            read::decoded(
+        KeyRead::Keyed => {
+            let keyed = read::decoded(
                 "input.json",
                 "keySerializer",
                 "JsonPrimitive(entry.key)",
                 "entry.key",
-                "\"\""
-            )
-        ),
+                "\"\"",
+            );
+            format!("val key = {}; key to {value}", placed(&keyed))
+        }
         KeyRead::Unjudged => format!("val key = {unjudged}; {judged}; key to {value}"),
-        KeyRead::OverABrand => format!(
-            "val key = try {{ {unjudged} }} catch (refused: SerializationException) {{ if \
-             (refused.cause?.message != \"validate()\") throw refused; throw \
-             SerializationException(\"'\" + entry.key + \"': \" + refused.message.orEmpty()) }}; \
-             {judged}; key to {value}"
-        ),
+        KeyRead::OverABrand => format!("val key = {}; {judged}; key to {value}", placed(&unjudged)),
     };
     let read = format!(
         "(element as? JsonObject ?: throw SerializationException(\"expected an object, found \" + \
@@ -1991,8 +2090,16 @@ fn kotlin_module_tokens(
     kotlin_source: &str,
     defaults: &SerdeDefaults,
 ) -> TokenStream {
-    let full_source = kotlin_declarations_asking()
+    let refused = refusal();
+    let declared = kotlin_source
+        .contains(&format!("throw {refused}("))
+        .then(|| {
+            record_refusals(rust_ident, vec![refused.clone()]);
+            refusal_class(&refused)
+        });
+    let full_source = declared
         .into_iter()
+        .chain(kotlin_declarations_asking())
         .chain(once(kotlin_source.to_owned()))
         .chain(preprocess::serializers())
         .collect::<Vec<_>>()
@@ -3151,7 +3258,7 @@ fn struct_statics(
 /// one or more `#[serde(flatten)]` fields, or a member serde never writes and the plugin would,
 /// earns [a merging one](flatten_merging_serializer) in its place.
 fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> TokenStream {
-    valid::enter(args);
+    entered(&item_struct.ident, args);
     let type_parameters = type_parameters_in_scope(&item_struct.generics);
     if let Some(held) = brand_field(item_struct) {
         return value_class_tokens(item_struct, held, args);
@@ -3296,7 +3403,7 @@ fn brand_factory(
         "companion object {{ fun {declared}of(value: {value_type}): {export_name}{generic_params} \
          {{ val read = {export_name}{generic_params}(value); val violations = read.validate(); \
          if (violations.isNotEmpty()) throw {}; return read }}; {} }}",
-        read::JUDGED,
+        read::refused(),
         read::unjudged_member(export_name, generic_params, type_parameters, false)
     )
 }
@@ -3372,14 +3479,7 @@ fn value_class_tokens(
         });
         let mapped = texts::keys_a_map(&value_field).then(|| {
             texts::note_mapped(&rust_ident);
-            let key_read = if keyed.is_some() {
-                KeyRead::Keyed
-            } else if texts::mapped_by(&value_field).is_some() {
-                KeyRead::OverABrand
-            } else {
-                KeyRead::Unjudged
-            };
-            map_object(&export_name, key_read)
+            brand_map_object(&export_name, &value_field, keyed.is_some())
         });
         (keyed, mapped)
     } else {
@@ -3628,6 +3728,7 @@ fn tuple_struct_wire(
 fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> TokenStream {
     let rust_ident = item_type.ident.to_string();
     let export_name = compute_alias_export_name(&rust_ident, name_override);
+    enter_refusal(&export_name);
     register_kotlin_name(&rust_ident, &export_name);
 
     let type_parameters = type_parameters_in_scope(&item_type.generics);
@@ -3642,6 +3743,8 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     }
     let mut target = kotlin_field_def(&export_name, &item_type.ty);
     target.erase_type_parameters(&type_parameters);
+    // An alias is its target in Kotlin, so a read of it throws what a read of the target throws.
+    record_refusals(&rust_ident, kotlin_refusals_of(&target));
     validate::note_alias(&rust_ident, &target);
     if type_parameters.is_empty() {
         texts::note_alias(&rust_ident, &target);
@@ -3664,7 +3767,7 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
 /// declaration; a `sealed interface` for every tagged or untagged shape otherwise — mirroring
 /// exactly the shape `process_enum` itself dispatches a declaration to.
 fn enum_kotlin_tokens(declared: &ItemEnum, args: &KotlinArgs<'_>) -> TokenStream {
-    valid::enter(args);
+    entered(&declared.ident, args);
     // Plain or not as every variant declared reads, as `process_enum` dispatches it.
     let plain = is_plain_enum(declared);
     let item_enum = &variants_on_the_wire(declared);

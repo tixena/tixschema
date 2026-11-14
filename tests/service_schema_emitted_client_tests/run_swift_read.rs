@@ -55,10 +55,10 @@ const UNLABELLED: &str = r#"{"fragileItemCodes":["x"],"itemCodeList":["x"],"labe
 /// A parcel with a fragile code outside of its codes.
 const OUTSIDE: &str = r#"{"fragileItemCodes":["x","y"],"itemCodeList":["x"],"label":"A"}"#;
 
-/// The messages of the reply that breaks two rules, as the read joins them.
+/// The messages of the reply that breaks two rules, as the description of its refusal lists them.
 const TWO_MESSAGES: &str = concat!(
-    "'label': too short: minimum length is 1, got 0; ",
-    "'fragileItemCodes.0': y is outside of itemCodeList",
+    "ParcelRefusal: ['label': too short: minimum length is 1, got 0, ",
+    "'fragileItemCodes.0': y is outside of itemCodeList]",
 );
 
 /// The functions the checks of the read's own models name, written by hand in Swift.
@@ -75,6 +75,10 @@ func withAnUrgency(_ value: UrgencyDraft) -> [String] {
 
 /// What a run reads a payload with through `Decodable`, and prints the answer with.
 const JUDGING: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func place(_ path: [CodingKey]) -> String {
   path.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ", ")
 }
@@ -89,6 +93,9 @@ func attempt<Read>(_ name: String, _ read: () throws -> Read, _ shown: (Read) ->
   do {
     let held = try read()
     print("\(name): \(shown(held))")
+  } catch let refused where issuesOf(refused) != nil {
+    print("\(name): refused (\(type(of: refused)))")
+    for line in issuesOf(refused)! { print("    \(line)") }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused at [\(place(context.codingPath))]")
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }
@@ -335,7 +342,8 @@ fn rust_report(rows: &[Row]) -> String {
         if violations.is_empty() {
             writeln!(printed, "{}: read", held.name).unwrap();
         } else {
-            writeln!(printed, "{}: refused at []", held.name).unwrap();
+            let named = held.swift_type.split('<').next().unwrap();
+            writeln!(printed, "{}: refused ({named}Refusal)", held.name).unwrap();
         }
         for violation in &violations {
             writeln!(printed, "    {violation}").unwrap();
@@ -368,7 +376,7 @@ fn driver_of(rows: &[Row]) -> String {
 /// this file in place of theirs, then this file's own.
 fn declared() -> Vec<String> {
     let mut written = definitions();
-    written.retain(|definition| !definition.starts_with("public struct ManifestDraft:"));
+    written.retain(|definition| !definition.contains("public struct ManifestDraft:"));
     written.extend([
         manifest_swift::swift_definition(),
         mooring_swift::swift_definition(),
@@ -508,20 +516,20 @@ fn a_read_refuses_with_every_message_of_the_value_at_its_place() {
     assert_eq!(
         swift,
         "\
-Parcel alone: refused at []
+Parcel alone: refused (ParcelRefusal)
     'fragileItemCodes.1': y is outside of itemCodeList
-Manifest, four broken parcels: refused at []
+Manifest, four broken parcels: refused (ManifestRefusal)
     'firstParcel.label': too short: minimum length is 1, got 0
     'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
     'parcelsByDock.north.label': too short: minimum length is 1, got 0
     'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-[Manifest], the second broken: refused at [1]
-    'firstParcel.label': too short: minimum length is 1, got 0
-    'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
-    'parcelsByDock.north.label': too short: minimum length is 1, got 0
-    'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-Crate<Parcel>, the second code broken: refused at [codes, 1]
-    'fragileItemCodes.1': y is outside of itemCodeList
+[Manifest], the second broken: refused (ManifestRefusal)
+    '1.firstParcel.label': too short: minimum length is 1, got 0
+    '1.parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
+    '1.parcelsByDock.north.label': too short: minimum length is 1, got 0
+    '1.spareParcel.fragileItemCodes.1': y is outside of itemCodeList
+Crate<Parcel>, the second code broken: refused (ParcelRefusal)
+    'codes.1.fragileItemCodes.1': y is outside of itemCodeList
 Manifest with no spareParcel key, all good: read
 "
     );
@@ -838,9 +846,9 @@ fn a_model_its_holder_does_not_walk_judges_itself() {
     assert_eq!(
         swift,
         "\
-Waybill: refused at []
+Waybill: refused (WaybillRefusal)
     'shortCode': too short: minimum length is 2, got 1
-SealedCode: refused at []
+SealedCode: refused (CodeRefusal)
     too short: minimum length is 2, got 1
 "
     );
@@ -980,9 +988,9 @@ Depot, a key that is no number: refused at [byNumber]
 }
 
 /// What the Rust read of `payload` as `Read` answers, in the words the Swift side prints: the
-/// variant taken, by the name its `Debug` opens with, the messages of a refusal, or that no
-/// variant took the payload.
-fn rust_choice<Read>(payload: &str) -> String
+/// variant taken, by the name its `Debug` opens with, the messages of a refusal, which the Swift
+/// read refuses with `refusal`, or that no variant took the payload.
+fn rust_choice<Read>(payload: &str, refusal: &str) -> String
 where
     Read: DeserializeOwned + Debug,
 {
@@ -997,7 +1005,7 @@ where
             if told.contains("did not match any variant") {
                 return "mismatch at []: no untagged member matched".to_owned();
             }
-            let mut lines = "refused at []".to_owned();
+            let mut lines = format!("refused ({refusal})");
             for violation in told.split("; ") {
                 write!(lines, "\n    {violation}").unwrap();
             }
@@ -1046,13 +1054,23 @@ fn an_untagged_enum_takes_the_variant_serde_takes() {
     let mut expected = String::new();
     let mut lines = Vec::new();
     for (name, payload) in sorted {
-        writeln!(expected, "{name}: {}", rust_choice::<Sorted>(payload)).unwrap();
+        writeln!(
+            expected,
+            "{name}: {}",
+            rust_choice::<Sorted>(payload, "SortedRefusal")
+        )
+        .unwrap();
         lines.push(format!(
             "chosen(\"{name}\", Sorted.self, #\"{payload}\"#) {{ variant($0) }}"
         ));
     }
     for (name, payload) in vetted {
-        writeln!(expected, "{name}: {}", rust_choice::<Vetted>(payload)).unwrap();
+        writeln!(
+            expected,
+            "{name}: {}",
+            rust_choice::<Vetted>(payload, "VettedRefusal")
+        )
+        .unwrap();
         lines.push(format!(
             "chosen(\"{name}\", Vetted.self, #\"{payload}\"#) {{ variant($0) }}"
         ));
@@ -1066,16 +1084,16 @@ a slot and a brand past their bounds: Wordy
 a member within its bound: Counted
 a member past its bound: mismatch at []: no untagged member matched
 a model: Whole
-a model that breaks a rule: refused at []
+a model that breaks a rule: refused (SortedRefusal)
     'itemLabel': too short: minimum length is 1, got 0
-a list with a model that breaks a rule: refused at []
+a list with a model that breaks a rule: refused (SortedRefusal)
     '1.itemLabel': too short: minimum length is 1, got 0
 an empty list: Listed
 a map of models: Mapped
-a map with a model that breaks a rule: refused at []
+a map with a model that breaks a rule: refused (SortedRefusal)
     'north.itemLabel': too short: minimum length is 1, got 0
 a brand whose check holds: Signed
-a brand whose check refuses: refused at []
+a brand whose check refuses: refused (VettedRefusal)
     a signet is pressed in upper case
 ",
         "what the Rust read answers for each payload"

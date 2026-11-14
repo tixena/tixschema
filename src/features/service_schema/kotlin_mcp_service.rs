@@ -804,12 +804,10 @@ private fun @P@McpSource(tool: String, arguments: MutableMap<String, JsonElement
     JsonObject(arguments)
   }"#;
 
-const RECEIVE: &str = r#"private fun @P@McpIssues(said: String): List<Pair<String?, String>> =
-  said.split("; '").mapIndexed { at, piece ->
-    val line = if (at == 0) piece else "'$piece"
-    val closing = if (line.startsWith("'")) line.indexOf('\'', 1) else -1
-    if (closing < 0) null to line else line.substring(1, closing) to line.substring(closing + 1).removePrefix(": ")
-  }
+const RECEIVE: &str = r#"private fun @P@McpIssue(line: String): Pair<String?, String> {
+  val closing = if (line.startsWith("'")) line.indexOf('\'', 1) else -1
+  return if (closing < 0) null to line else line.substring(1, closing) to line.substring(closing + 1).removePrefix(": ")
+}
 
 private fun <T> @P@McpReceive(
   tool: String,
@@ -825,15 +823,15 @@ private fun <T> @P@McpReceive(
   try {
     return Json.decodeFromJsonElement(serializer, source)
   } catch (refused: IllegalArgumentException) {
+    val listed = @P@WsRefusal(refused)
+    if (listed != null) refuse("failed-validation", null, listed.map(::@P@McpIssue))
     val twin = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: unjudged
-    val readable = runCatching { Json.decodeFromJsonElement(twin, source) }.isSuccess
     val detail = refused.message ?: refused.toString()
     if (detail.startsWith("invalid type: floating point")) {
       // Read from its text, the refusal states the path of the number, which the element states none of.
       val at = runCatching { Json.decodeFromString(serializer, source.toString()) }.exceptionOrNull()?.let(::@P@WsRefusedAt)
       if (at != null) refuse("failed-validation", null, listOf(at to detail))
     }
-    if (readable) refuse("failed-validation", null, @P@McpIssues(detail))
     val said = detail.substringBefore(" at path: ")
     if (said in setOf(@NOT_A_DOCUMENT_KEY@)) refuse("undeserializable-payload", said, null)
     val found = mutableListOf<Pair<String, String>>()

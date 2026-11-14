@@ -169,7 +169,11 @@ fn the_dart_text_of_a_member_named_after_a_core_type_has_no_issue() {
 fn a_core_type_a_member_takes_the_name_of_is_named_through_a_typedef() {
     let tally = tally_dart::dart_definition();
     assert!(
-        tally.starts_with("typedef _Tally$int = int; class Tally"),
+        tally.starts_with(
+            "class TallyRefusal implements Exception { const TallyRefusal(this.issues); final \
+             List<String> issues; @override String toString() => 'TallyRefusal: $issues'; } \
+             typedef _Tally$int = int; class Tally"
+        ),
         "{tally}"
     );
     assert!(tally.contains("final _Tally$int count;"), "{tally}");

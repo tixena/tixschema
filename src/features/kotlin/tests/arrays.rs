@@ -31,12 +31,13 @@ fn each_level_of_one_length_names_the_class_of_its_length_where_the_plugin_reads
     let kotlin = plain(&item);
     assert!(
         kotlin.starts_with(&format!(
-            "{} {} {} {} data class ClaspingDraft(val grid: @Serializable(with = KotlinArray2::class) \
+            "{} {} {} {} {} data class ClaspingDraft(val grid: @Serializable(with = KotlinArray2::class) \
              List<@Serializable(with = KotlinArray1::class) List<@Serializable(with = \
              KotlinNumber1::class) UByte>>, val pairs: List<@Serializable(with = \
              KotlinArray1::class) List<@Serializable(with = KotlinNumber1::class) UByte>>, val \
              maybe: @Serializable(with = KotlinArray1::class) List<@Serializable(with = \
              KotlinNumber1::class) UByte>? = null) {{",
+            refusal("Clasping"),
             number("KotlinNumber1", "UByte", "u8"),
             array("KotlinArray1", 2),
             array("KotlinArray2", 3),
@@ -56,7 +57,8 @@ fn where_the_emitter_writes_the_read_it_composes_the_class_of_the_length() {
     let kotlin = plain(&item);
     assert!(
         kotlin.starts_with(&format!(
-            "{} {}",
+            "{} {} {}",
+            refusal("Slots"),
             number("KotlinNumber1", "UByte", "u8"),
             array("KotlinArray1", 2)
         )),

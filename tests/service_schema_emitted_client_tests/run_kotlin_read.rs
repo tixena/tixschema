@@ -57,13 +57,16 @@ fun rated(value: RatingDraft): List<String> =
 /// What the driver prints a row with: the class of the value a read handed back, or each message
 /// of what it threw.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun told(name: String, read: () -> Any) {
     try {
         val read = read()
         println("$name: read ${(read.javaClass.methods.firstOrNull { it.name == "getDraft" }?.invoke(read) ?: read)::class.simpleName?.removeSuffix("Draft")}")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 "#;
@@ -1132,8 +1135,8 @@ fn each_client_answers_its_fault_for_a_reply_that_breaks_a_rule() {
         return;
     };
     let told: serde_json::Value = serde_json::from_str(printed.trim()).unwrap();
-    let thrown = "kotlinx.serialization.SerializationException: 'label': too short: minimum \
-                  length is 1, got 0; 'fragileItemCodes.1': y is outside of itemCodeList";
+    let thrown = "ParcelRefusal: ['label': too short: minimum length is 1, got 0, \
+                  'fragileItemCodes.1': y is outside of itemCodeList]";
     assert_eq!(
         told,
         serde_json::json!({
@@ -1193,8 +1196,8 @@ fn the_readme_shows_what_the_runs_answer() {
         );
     }
     for shown in [
-        "// SerializationException: 'label': too short: minimum length is 1, got 0; \
-         'fragileItemCodes.1': y is outside of itemCodeList\n",
+        "} catch (refusal: ParcelRefusal) {\n    println(refusal.issues)\n}\n// ['label': too short: \
+         minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]\n",
         "| `\"ab\"` | `MarkBrief` |",
         "| `\"ABCD\"` | `MarkCoded`: ",
         "| `\"abcd\"` | `MarkPlain`: ",

@@ -47,14 +47,14 @@ fun main() {
     println(LabelText.of("Shipping").value)
     try {
         LabelText.of("")
-    } catch (refused: SerializationException) {
-        println("refused: " + refused.message)
+    } catch (refused: LabelTextRefusal) {
+        println("refused: " + refused.issues)
     }
     println(Json.encodeToString(LabelDraft(text = LabelText.of("Shipping")).validate()))
     try {
         Json.decodeFromString<Label>("""{"text":""}""")
-    } catch (refused: SerializationException) {
-        println("read refused: " + refused.message)
+    } catch (refused: LabelRefusal) {
+        println("read refused: " + refused.issues)
     }
     println(PointDraft(1u, 2u).validate())
 }
@@ -73,9 +73,9 @@ fun main() {
     assert_eq!(
         printed,
         "Shipping\n\
-         refused: too short: minimum length is 1, got 0\n\
+         refused: [too short: minimum length is 1, got 0]\n\
          {\"text\":\"Shipping\"}\n\
-         read refused: 'text': too short: minimum length is 1, got 0\n\
+         read refused: ['text': too short: minimum length is 1, got 0]\n\
          Point(draft=PointDraft(slot0=1, slot1=2))\n"
     );
 }

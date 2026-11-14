@@ -264,8 +264,8 @@ fun main() {{
     try {{
         Json.decodeFromString<Holder{suffix}>("""{payload}""")
         println("read")
-    }} catch (refused: SerializationException) {{
-        (refused.message ?: "").split("; ").forEach {{ println("refused: $it") }}
+    }} catch (refused: Holder{suffix}Refusal) {{
+        refused.issues.forEach {{ println("refused: $it") }}
     }}
 }}
 "#

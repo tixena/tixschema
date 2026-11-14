@@ -19,10 +19,6 @@ use super::validate::{
 const HELD_BOUND: &str = "static List<String> _heldBound(Object held) { try { return (held as \
      dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const []; } }";
 
-/// What a judged read does with the value its unjudged read answered.
-const JUDGED: &str = "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
-     FormatException(violations.join('; ')); return read; }";
-
 /// A model with a bound.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -102,13 +98,23 @@ pub struct Vise {
     pub pair: [u8; 2],
 }
 
+/// What a judged read of the type published as `named` does with the value its unjudged read
+/// answered.
+fn judged(named: &str) -> String {
+    format!(
+        "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
+         {named}Refusal(violations); return read; }}"
+    )
+}
+
 /// The pair every class type writes: `named`'s judged read over its unjudged one, which takes
 /// `parameters` and is handed `arguments`.
 fn pair(named: &str, parameters: &str, arguments: &str) -> String {
     format!(
         "factory {named}.fromJson({parameters}) {{ final read = \
-         {named}.fromJsonUnjudged({arguments}); {JUDGED} factory \
-         {named}.fromJsonUnjudged({parameters}) "
+         {named}.fromJsonUnjudged({arguments}); {judged} factory \
+         {named}.fromJsonUnjudged({parameters}) ",
+        judged = judged(named)
     )
 }
 
@@ -121,8 +127,9 @@ fn draft(named: &str, parameters: &str) -> String {
 fn sealed_pair(named: &str, parameters: &str, arguments: &str) -> String {
     format!(
         "factory {named}.fromJson({parameters}) {{ final read = \
-         {named}.fromJsonUnjudged({arguments}); {JUDGED} factory \
-         {named}.fromJsonUnjudged({parameters}) "
+         {named}.fromJsonUnjudged({arguments}); {judged} factory \
+         {named}.fromJsonUnjudged({parameters}) ",
+        judged = judged(named)
     )
 }
 
@@ -524,7 +531,7 @@ fn a_plain_enum_judges_where_it_names_a_check() {
              {} factory Rating.fromJsonUnjudged(dynamic json) => \
              Rating._(RatingDraft.fromJson(json));",
             "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
-             FormatException(violations.join('; ')); return Rating._(read); }"
+             RatingRefusal(violations); return Rating._(read); }"
         ),
     );
 }

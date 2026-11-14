@@ -9,7 +9,7 @@ use core::fmt::Write as _;
 use super::plain_enum_check_rows::{
     appeal_dart, bench_dart, expected, hearing_dart, rows, ruling_dart, verdict_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 
 const UPHELD: &str = "
 dynamic tidied(dynamic payload) => payload is String ? payload.trim() : payload;
@@ -25,10 +25,10 @@ const HARNESS: &str = "
 void row(String name, Object? Function() read, bool detail) {
   try {
     print('$name: read ${jsonEncode(read())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
     if (detail) {
-      for (final line in refused.message.split('; ')) {
+      for (final line in issuesOf(refused)) {
         print('    $line');
       }
     }
@@ -58,7 +58,7 @@ fn a_plain_enum_with_a_check_reads_in_dart_as_serde_reads_it() {
         );
     }
     main.push_str("}\n");
-    let source = module(&definitions(), &[UPHELD, HARNESS], &main);
+    let source = module(&definitions(), &[UPHELD, HARNESS, ISSUES_OF], &main);
     let Some((ran, printed)) = dart("plain-enum-reads", &[], &source) else {
         return;
     };

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use crate::swift_plain_enum::plain_enum_read;
+use crate::swift_plain_enum::{PLACED, plain_enum_read};
 use crate::swift_valid;
 
 /// What opens the payload type, written into each type that names a function.
@@ -687,9 +687,9 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
     let read = format!(
         "{} {{ self.value = try Carton(swiftSchemaUnjudged: decoder, \
          swiftSchemaWithout: taken); let held = value.validate(); if !held.isEmpty {{ \
-         throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: held.joined(separator: \"; \"))) }} }}; {}",
+         throw CartonRefusal(issues: {}) }} }}; {}",
         BESIDE.replacen("public", "fileprivate", 1),
+        PLACED.replace("violations", "held"),
         ALONE.replacen("public", "fileprivate", 1)
     );
     assert!(wrap.contains(&read), "{read} is not in: {wrap}");

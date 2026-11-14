@@ -12,15 +12,15 @@ use super::bytes_models::{
     bytes_box_dart, bytes_counted_dart, bytes_either_dart, bytes_holder_dart, bytes_image_dart,
     bytes_lookalikes_dart, bytes_optional_dart, bytes_payload_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 
 /// What prints a read: the message of its refusal, or the JSON it writes back.
 const ROW: &str = "
 void row(String name, Object? Function() read) {
   try {
     print('$name: ${jsonEncode(read())}');
-  } on FormatException catch (refused) {
-    print('$name: refused ${refused.message}');
+  } on Exception catch (refused) {
+    print('$name: refused ${issuesOf(refused).join('; ')}');
   }
 }
 ";
@@ -88,7 +88,7 @@ fn main_source(holder_json: &str) -> String {
 #[test]
 fn a_vec_of_u8_is_read_into_a_uint8list_and_written_as_the_json_array() {
     let written = serde_json::to_string(&holder()).unwrap();
-    let source = module(&definitions(), &[ROW], &main_source(&written));
+    let source = module(&definitions(), &[ROW, ISSUES_OF], &main_source(&written));
     let Some((ran, printed)) = dart("bytes", &[], &source) else {
         return;
     };
@@ -153,7 +153,7 @@ fn a_vec_of_u8_is_read_into_a_uint8list_and_written_as_the_json_array() {
 fn the_emitted_bytes_have_no_issue() {
     let analyzed = module(
         &definitions(),
-        &[ROW],
+        &[ROW, ISSUES_OF],
         "void main() => row('a list', () => jsonDecode('[]'));\n",
     );
     let Some((clean, said)) = dart("bytes-analyze", &["analyze"], &analyzed) else {

@@ -15,7 +15,7 @@ use super::named_by_rust_models::{
 use super::named_by_rust_rows::{
     BELOW_ROWS, CARRIAGE_ROWS, Row, SELF_ROWS, TIP_ROWS, declares_a_parameter, expected, normalized,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 
 /// What prints a row: the value read and written back, or `refused`, with each message of what
 /// the read refused where the row compares them.
@@ -23,10 +23,10 @@ const ROW: &str = "
 void row(String name, bool judged, Object? Function() written) {
   try {
     print('$name: read ${jsonEncode(written())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
     if (!judged) return;
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   } catch (_) {
@@ -81,7 +81,11 @@ fn source(rows: &[Row], definitions: &[String]) -> String {
         );
         written
     });
-    module(definitions, &[ROW], &format!("void main() {{\n{calls}}}\n"))
+    module(
+        definitions,
+        &[ROW, ISSUES_OF],
+        &format!("void main() {{\n{calls}}}\n"),
+    )
 }
 
 /// Runs `rows` and compares what the VM prints with what the serde read prints.
@@ -133,7 +137,7 @@ fn the_emitted_types_named_by_rust_have_no_issue() {
     ] {
         let analyzed = module(
             &definitions,
-            &[ROW],
+            &[ROW, ISSUES_OF],
             "void main() => row('a list', false, () => jsonDecode('[]'));\n",
         );
         let Some((clean, said)) = dart(named, &["analyze"], &analyzed) else {

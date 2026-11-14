@@ -75,8 +75,7 @@ fn factory(named: &str, declared: &str, value: &str) -> String {
     format!(
         "companion object {{ fun {parameters}of(value: {value}): {named}{arguments} {{ val read = \
          {named}{arguments}(value); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }}; {} }}",
+         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }}; {} }}",
         unjudged_member(named, &arguments)
     )
 }
@@ -126,8 +125,7 @@ fn judged(named: &str) -> String {
          serialize(encoder: Encoder, value: {named}) = {named}Unjudged.serialize(encoder, \
          value); override fun deserialize(decoder: Decoder): {named} {{ val read = \
          {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }} }}"
+         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }} }}"
     )
 }
 
@@ -143,8 +141,7 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
          Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, \
          value); override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read \
          = kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }} }}"
+         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }} }}"
     )
 }
 
@@ -157,24 +154,32 @@ fn mapped_reading(named: &str, entry: &str) -> String {
          KSerializer<Map<{named}, KotlinSchemaValue>> {{ private val whole = \
          MapSerializer(keySerializer, valueSerializer); override val descriptor: SerialDescriptor \
          = whole.descriptor; override fun serialize(encoder: Encoder, value: Map<{named}, \
-         KotlinSchemaValue>) = whole.serialize(encoder, value); {DECODED}{PATHED}override fun \
+         KotlinSchemaValue>) = whole.serialize(encoder, value); {DECODED}{PATHED}{placed}override fun \
          deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = decoder \
          as JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) \
          {{ (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
          \" + element)).entries.associate {{ entry -> {entry} }} }} }} }}",
-        PATHED = read::PATHED
+        PATHED = read::PATHED,
+        placed = if entry.contains("kotlinSchemaPlace(") {
+            read::PLACE
+        } else {
+            ""
+        },
     )
 }
 
 /// The serializer of a map keyed by the brand `named`, which has a key serializer of its own: each
-/// key read by it from its text at the map's path, which judges it.
+/// key read by it from its text at the map's path, which judges it, its refusal thrown again under
+/// the key's text at the map's path.
 #[cfg(feature = "serde")]
 fn mapped(named: &str) -> String {
     mapped_reading(
         named,
         &format!(
-            "kotlinSchemaDecoded(input.json, keySerializer, JsonPrimitive(entry.key), entry.key, \
-             \"\") to {MAPPED_VALUE}"
+            "val key = try {{ kotlinSchemaDecoded(input.json, keySerializer, \
+             JsonPrimitive(entry.key), entry.key, \"\") }} catch (refused: {named}Refusal) {{ val \
+             at = kotlinSchemaPlace(input, entry.key); throw {named}Refusal(refused.issues.map {{ \
+             \"'\" + at + \"': \" + it }}) }}; key to {MAPPED_VALUE}"
         ),
     )
 }
@@ -187,29 +192,37 @@ fn mapped_judging(named: &str) -> String {
         named,
         &format!(
             "val key = kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
-             entry.key, \"\"); val violations = key.validate(); if (violations.isNotEmpty()) \
-             throw SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \
-             \"': \" + it }}); key to {MAPPED_VALUE}"
+             entry.key, \"\"); val violations = key.validate(); if (violations.isNotEmpty()) {{ \
+             val at = kotlinSchemaPlace(input, entry.key); throw {named}Refusal(violations.map {{ \
+             \"'\" + at + \"': \" + it }}) }}; key to {MAPPED_VALUE}"
         ),
     )
 }
 
-/// The serializer of a map keyed by the brand `named`, which holds a brand over a text: each key
-/// read as [`mapped_judging`] reads it, where the refusal of the brand it holds is thrown under the
-/// key's text as well.
+/// The serializer of a map keyed by the brand `named`, which holds the brand `inner` over a text:
+/// each key read as [`mapped_judging`] reads it, where the refusal of the brand it holds is thrown
+/// under the key's text as well.
 #[cfg(feature = "serde")]
-fn mapped_over_a_brand(named: &str) -> String {
+fn mapped_over_a_brand(named: &str, inner: &str) -> String {
     mapped_reading(
         named,
         &format!(
             "val key = try {{ kotlinSchemaDecoded(input.json, {named}Unjudged, \
-             JsonPrimitive(entry.key), entry.key, \"\") }} catch (refused: SerializationException) \
-             {{ if (refused.cause?.message != \"validate()\") throw refused; throw \
-             SerializationException(\"'\" + entry.key + \"': \" + refused.message.orEmpty()) }}; \
-             val violations = key.validate(); if (violations.isNotEmpty()) throw \
-             SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \"': \" \
-             + it }}); key to {MAPPED_VALUE}"
+             JsonPrimitive(entry.key), entry.key, \"\") }} catch (refused: {inner}Refusal) {{ val \
+             at = kotlinSchemaPlace(input, entry.key); throw {inner}Refusal(refused.issues.map {{ \
+             \"'\" + at + \"': \" + it }}) }}; val violations = key.validate(); if \
+             (violations.isNotEmpty()) {{ val at = kotlinSchemaPlace(input, entry.key); throw \
+             {named}Refusal(violations.map {{ \"'\" + at + \"': \" + it }}) }}; key to \
+             {MAPPED_VALUE}"
         ),
+    )
+}
+
+/// The refusal class the text of the type published as `named` opens with.
+fn refusal(named: &str) -> String {
+    format!(
+        "class {named}Refusal(val issues: List<String>) : SerializationException(\"$issues\", \
+         IllegalArgumentException(\"validate()\"))"
     )
 }
 
@@ -225,8 +238,8 @@ fn kept_draft(named: &str) -> String {
 fn to_valid(named: &str, generic: &str) -> String {
     format!(
         "fun validate(): {named}{generic} {{ val violations = validationIssues(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return {named}.checked(this) }}"
+         (violations.isNotEmpty()) throw {named}Refusal(violations); return {named}.checked(this) \
+         }}"
     )
 }
 
@@ -653,7 +666,7 @@ fn a_map_keyed_by_a_brand_over_a_text_brand_places_the_inner_refusal_under_the_k
     assert!(toned.ends_with(&mapped_judging("Tone")), "got: {toned}");
     let nested = plain(&outer);
     assert!(
-        nested.ends_with(&mapped_over_a_brand("Outer")),
+        nested.ends_with(&mapped_over_a_brand("Outer", "Tone")),
         "got: {nested}"
     );
     let item: ItemStruct = syn::parse_quote! {
@@ -773,7 +786,8 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     assert_eq!(
         definition(enum_kotlin_tokens(&graded, &args)),
         format!(
-            "{} enum class GradeDraft {{ Express, Unrated; {issues_of_a_grade} {} }} {} {} {} {}",
+            "{} {} enum class GradeDraft {{ Express, Unrated; {issues_of_a_grade} {} }} {} {} {} {}",
+            refusal("Grade"),
             kept_plain_draft("Grade"),
             to_valid("Grade", ""),
             plain_enum_unjudged("GradeDraft", &["Express", "Unrated"], "element"),
@@ -789,7 +803,8 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     assert_eq!(
         definition(struct_kotlin_tokens(&closed, &args)),
         format!(
-            "{} object ClosedDockDraft {{ {issues} {} }} {} {} {} {}",
+            "{} {} object ClosedDockDraft {{ {issues} {} }} {} {} {} {}",
+            refusal("ClosedDock"),
             kept_draft("ClosedDock"),
             to_valid("ClosedDock", ""),
             generated("ClosedDockDraft"),
@@ -836,8 +851,7 @@ fn the_readme_shows_what_the_parcel_of_the_documents_emits() {
         plain(&manifest),
     ];
     let readme = include_str!("../../../docs/guide/kotlin.md");
-    let opens = "```kotlin\n@OptIn(ExperimentalSerializationApi::class) \
-                 @Serializable(with = ParcelDraftUnjudged::class)";
+    let opens = "```kotlin\nclass ParcelRefusal(val issues: List<String>)";
     let block = readme
         .find(opens)
         .and_then(|start| readme.get(start + "```kotlin\n".len()..))
@@ -871,7 +885,7 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     assert_eq!(
         plain(&item),
         format!(
-            "{} data class CrateDraft<CodeType>(val codes: List<CodeType>, val label: String) {{ \
+            "{} {} data class CrateDraft<CodeType>(val codes: List<CodeType>, val label: String) {{ \
              fun validationIssues(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
              validationIssuesWith(issuesOfCodeType: (CodeType) -> List<String>): List<String> {{ \
              val violations = mutableListOf<String>(); codes.forEachIndexed {{ index, held -> \
@@ -882,6 +896,7 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
              CrateDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<CrateDraft<CodeType>> by CrateDraft.generatedSerializer(codeTypeSerializer) \
              {} {} {}",
+            refusal("Crate"),
             kept_draft("Crate"),
             to_valid("Crate", "<CodeType>"),
             with_of(
@@ -988,7 +1003,7 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
     assert_eq!(
         definition(struct_kotlin_tokens(&item, &args)),
         format!(
-            "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
+            "{} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
              CodeSerializer::class) @KeepGeneratedSerializer value class Code private \
              constructor(val value: String) {{ fun kotlinSchemaText(): String = value; fun \
              kotlinSchemaLength(): Int = value.codePointCount(0, value.length); fun validate(): \
@@ -997,6 +1012,7 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
              List<String> = validate(); fun kotlinSchemaBound(): \
              List<String> {{ val violations = mutableListOf<String>(); {bound}; return \
              violations }}; {} }} {} {} {}",
+            refusal("Code"),
             factory("Code", "", "String"),
             generated("Code").replacen("object", "private object", 1),
             judged("Code"),
@@ -1019,7 +1035,7 @@ fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
     assert_eq!(
         kotlin,
         format!(
-            "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
+            "{} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
              UserIdSerializer::class) @KeepGeneratedSerializer value class UserId<IdType> \
              private constructor(val value: IdType) {{ fun validate(): List<String> = \
              validationIssuesWith({{ emptyList() }}); fun validationIssuesWith(issuesOfIdType: \
@@ -1029,6 +1045,7 @@ fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
              @OptIn(ExperimentalSerializationApi::class) private class \
              UserIdUnjudged<IdType>(idTypeSerializer: KSerializer<IdType>) : \
              KSerializer<UserId<IdType>> by UserId.generatedSerializer(idTypeSerializer) {}",
+            refusal("UserId"),
             factory("UserId", "IdType", "IdType"),
             judged_over("UserId", "IdType", "", "idTypeSerializer")
         )
@@ -1048,7 +1065,7 @@ fn a_tuple_struct_reads_its_slots_unjudged_and_judges_the_whole() {
     assert_eq!(
         plain(&item),
         format!(
-            "{held_parcel} @Serializable(with = ConsignmentDraftUnjudged::class) data class \
+            "{} {held_parcel} @Serializable(with = ConsignmentDraftUnjudged::class) data class \
              ConsignmentDraft(val slot0: List<String>, val slot1: Parcel) {{ fun \
              validationIssues(): List<String> {{ val violations = mutableListOf<String>(); \
              violations.addAll(slot1.validationIssues().map {{ kotlinSchemaUnder(\"1\", it) \
@@ -1067,6 +1084,7 @@ fn a_tuple_struct_reads_its_slots_unjudged_and_judges_the_whole() {
              ConsignmentDraft(kotlinSchemaDecoded(input.json, serializer<List<String>>(), \
              array[0], \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, KotlinHeld1, array[1], \
              \"1\", \"[1]\")) }} }} }} {} {} {}",
+            refusal("Consignment"),
             to_valid("Consignment", ""),
             with_of(
                 valid_class(
@@ -1486,7 +1504,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
     assert_eq!(
         definition(enum_kotlin_tokens(&item, &plain_args())),
         format!(
-            "{held_parcel} @Serializable(with = LiftDraftUnjudged::class) sealed interface LiftDraft {{ fun \
+            "{} {held_parcel} @Serializable(with = LiftDraftUnjudged::class) sealed interface LiftDraft {{ fun \
              validationIssues(): List<String>; {} }} @SerialName(\"Boxed\") @Serializable data \
              class LiftBoxed(@Serializable(with = KotlinHeld1::class) val value: Parcel) : \
              LiftDraft {{ override fun validationIssues(): List<String> {{ val violations = \
@@ -1512,6 +1530,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
              - \"kind\").keys.firstOrNull()?.let {{ throw SerializationException(\"Encountered an \
              unknown key '\" + it + \"'\") }}; LiftHeld }}; {} else -> throw \
              SerializationException(\"unknown tag \" + tag) }} }} }} }} {} {} {}",
+            refusal("Lift"),
             to_valid("Lift", ""),
             "is LiftBoxed -> buildJsonObject { put(\"kind\", \"Boxed\"); \
              output.json.encodeToJsonElement(KotlinHeld1, value.value).jsonObject.forEach { \

@@ -88,13 +88,16 @@ fun report(name: String, violations: List<String>) {
 /// What the driver of the reads prints a row with: whether the type's own serializer handed the
 /// value back, and each message of what it threw.
 const JUDGED: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun judged(name: String, read: () -> Any?) {
     try {
         read()
         println("$name: read")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 "#;

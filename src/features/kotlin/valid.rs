@@ -158,7 +158,7 @@ pub fn validate_method(export_name: &str, generic_params: &str, rule_less: bool)
     format!(
         "fun validate(): {export_name}{generic_params} {{ val violations = validationIssues(); \
          if (violations.isNotEmpty()) throw {}; return {export_name}.checked(this) }}{converts}",
-        read::JUDGED
+        read::refused()
     )
 }
 

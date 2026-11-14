@@ -142,6 +142,18 @@ mod run_dart_valid_types;
 #[path = "service_schema_emitted_client_tests/run_dart_of.rs"]
 mod run_dart_of;
 
+/// The models the refusal class of each Dart, Swift and Kotlin type is held to.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/refusal_class_models.rs"]
+mod refusal_class_models;
+
+/// The refusal class each Dart type declares in its own text.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_refusal_classes.rs"]
+mod run_dart_refusal_classes;
+
 /// The constants of a valid Dart enum and the `toValid()` of a draft with no rule.
 #[cfg(test)]
 #[cfg(feature = "dart")]
@@ -356,6 +368,12 @@ mod run_swift_valid_types;
 #[cfg(feature = "swift")]
 #[path = "service_schema_emitted_client_tests/run_swift_of.rs"]
 mod run_swift_of;
+
+/// The refusal struct each Swift type declares in its own text.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_refusal_classes.rs"]
+mod run_swift_refusal_classes;
 
 /// The constants of a valid Swift enum and the `valid` of a draft with no rule.
 #[cfg(test)]
@@ -900,6 +918,12 @@ mod run_kotlin_valid_types;
 #[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_of.rs"]
 mod run_kotlin_of;
+
+/// The refusal class each Kotlin type declares in its own text.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_refusal_classes.rs"]
+mod run_kotlin_refusal_classes;
 
 /// The constants of a valid Kotlin enum and the `toValid()` of a draft with no rule.
 #[cfg(test)]

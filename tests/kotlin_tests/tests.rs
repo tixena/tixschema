@@ -44,7 +44,7 @@ use super::flattened_models::{
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::read::plain_enum;
-use super::read::{NO_ISSUES, drafted_serializers, kept_draft, to_valid_free};
+use super::read::{NO_ISSUES, drafted_serializers, kept_draft, refusal, to_valid_free};
 use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
@@ -2337,8 +2337,9 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
     assert_eq!(
         renumbered(&reserved_members_kotlin::kotlin_definition()),
         format!(
-            "{} data class ReservedMembersDraft(val `class`: String, val `in`: String, val type: \
+            "{} {} data class ReservedMembersDraft(val `class`: String, val `in`: String, val type: \
              String) {{ {NO_ISSUES} {} }} {}",
+            refusal("ReservedMembers"),
             kept_draft("ReservedMembers"),
             to_valid_free("ReservedMembers", ""),
             drafted_serializers(

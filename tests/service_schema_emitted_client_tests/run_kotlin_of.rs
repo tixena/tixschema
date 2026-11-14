@@ -108,8 +108,8 @@ fun main() {
     try {
         DockTime.of(24u, 0u)
         println("built")
-    } catch (error: SerializationException) {
-        println(error.message)
+    } catch (error: DockTimeRefusal) {
+        error.issues.forEach { println(it) }
     }
 }
 "#;
@@ -125,7 +125,7 @@ fun main() {
     assert_eq!(
         printed,
         format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             serde_json::to_string(&DockTimeDraft {
                 hour: 12,
                 minute: 0
@@ -156,7 +156,9 @@ fun main() {
                 text: "dock",
             })
             .unwrap(),
-            refused.join("; "),
+            refused
+                .iter()
+                .fold(String::new(), |told, issue| format!("{told}{issue}\n")),
         )
     );
 }

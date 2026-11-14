@@ -5,7 +5,7 @@
 
 use core::fmt::Write as _;
 
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 #[cfg(feature = "indexmap")]
 use super::set_level_models::indexed_dart;
 use super::set_level_models::{BROKEN, BROKEN_MESSAGE, ROUND_TRIPS, assert_rust_writes_back};
@@ -17,9 +17,9 @@ const ROW: &str = "
 void row(String name, Object? Function() read) {
   try {
     print('$name: ${jsonEncode(read())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
-    for (final violation in refused.message.split('; ')) {
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   }
@@ -55,7 +55,7 @@ fn source() -> String {
         "  print(ShelfDraft(entries: [Entry.fromJsonUnjudged({'name': 'a'})], keyed: {}, maybe: null, nullable: [], \
          slot: ([], 1)).validationIssues());\n}\n",
     );
-    module(&definitions(), &[ROW], &main)
+    module(&definitions(), &[ROW, ISSUES_OF], &main)
 }
 
 #[test]

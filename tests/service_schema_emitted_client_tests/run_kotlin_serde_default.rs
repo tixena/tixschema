@@ -35,6 +35,9 @@ const TRIMMED_DOCK: &str = "fun trimmedDock(payload: JsonElement): JsonElement =
 /// What prints a row: the value read, written back with every member, or each message of what
 /// the read threw.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 val everyMember = Json { encodeDefaults = true }
 
 fun told(name: String, read: () -> String) {
@@ -42,7 +45,7 @@ fun told(name: String, read: () -> String) {
         println("$name: read ${read()}")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 "#;

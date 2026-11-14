@@ -10,6 +10,7 @@ use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
 use super::read::DECODED;
 use super::read::plain_enum;
+use super::read::refusal;
 #[cfg(feature = "serde")]
 use super::read::{judged_valid, valid_class, valid_unjudged, walked_issues, with_of};
 use super::read::{
@@ -123,7 +124,7 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
     assert_eq!(
         packet_kotlin::kotlin_definition(),
         format!(
-            "{} data class PacketDraft(val fragileItemCodes: List<String>, val itemCodeList: \
+            "{} {} data class PacketDraft(val fragileItemCodes: List<String>, val itemCodeList: \
              List<String>, @Serializable(with = PacketLabelPreprocess::class) val label: String) \
              {{ fun validationIssues(): List<String> {{ val violations = mutableListOf<String>(); \
              if (label.codePointCount(0, label.length) < 1) violations.add(\"'label': too short: \
@@ -139,6 +140,7 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
              transformDeserialize(element).toString()) }} }}; private fun \
              transformDeserialize(element: JsonElement): JsonElement = \
              kotlinSchemaKinded(serializer<String>(), trimmed(element), \"label\") }}",
+            refusal("Packet"),
             kept_draft("Packet"),
             to_valid("Packet", ""),
             transform(
@@ -201,10 +203,11 @@ fn a_type_with_a_parameter_corrects_the_whole_payload_and_then_the_member() {
     assert_eq!(
         hamper_kotlin::kotlin_definition(),
         format!(
-            "{} data class HamperDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
+            "{} {} data class HamperDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
              @OptIn(ExperimentalSerializationApi::class) class \
              HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<HamperDraft<CodeType>> {} {} {} {}",
+            refusal("Hamper"),
             kept_draft("Hamper"),
             walked_issues(
                 "CodeType",
