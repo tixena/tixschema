@@ -1222,6 +1222,11 @@ mod run_dart_integer_limits;
 #[path = "service_schema_emitted_client_tests/run_swift_integer_limits.rs"]
 mod run_swift_integer_limits;
 
+/// A float quoted back by the Swift `validate()`, written as Rust writes it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_float_text.rs"]
+mod run_swift_float_text;
+
 /// The limits, held by the emitted Kotlin types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_integer_limits.rs"]

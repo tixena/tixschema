@@ -66,8 +66,8 @@ section is the consumer's view; this is what a change to the emitter has to keep
   literal for a bound outside the range of the field's integer type: `x < 0` on an unsigned
   integer is a warning in Swift. A float field's limit is a float literal (`float_literal`),
   `3000000000.0`: an integer literal a `Float` or a `Double` does not hold exactly, `1e30`'s
-  digits, is a warning too. A float is quoted back through `swiftSchemaPlain`, which drops the
-  `.0` Rust does not write.
+  digits, is a warning too. A float is quoted back through `swiftSchemaPlain`, which writes the
+  digits Rust's `Display` writes: no exponent (`4000000000`, not `4e+09`) and no `.0`.
 - **A pattern is respelled for Foundation.** `swift_pattern` writes `$` as `\z` and `\v` as
   `\u000B`, which is what makes the engine read the portable pattern as the `regex` crate does. The
   message quotes the pattern as written.

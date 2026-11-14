@@ -33,11 +33,21 @@ const HELPERS: [(&str, &str); 3] = [
     ("swiftSchemaRepeats(", REPEATS_HELPER),
 ];
 
-/// What a float is quoted back with, written into each type that measures one: a whole float
-/// without `.0`, as Rust writes it.
+/// What a float is quoted back with, written into each type that measures one: the digits Rust's
+/// `Display` writes, with no exponent and no `.0` on a whole float.
 const PLAIN_HELPER: &str = "private static func swiftSchemaPlain<Number: BinaryFloatingPoint>(_ value: Number) -> String { \
      let written = \"\\(value)\"; \
-     return written.hasSuffix(\".0\") ? String(written.dropLast(2)) : written }";
+     guard let marker = written.firstIndex(of: \"e\"), let exponent = Int(written[written.index(after: marker)...]) else { \
+     return written.hasSuffix(\".0\") ? String(written.dropLast(2)) : written }; \
+     var mantissa = written[..<marker]; let sign = mantissa.hasPrefix(\"-\") ? \"-\" : \"\"; \
+     if !sign.isEmpty { mantissa = mantissa.dropFirst() }; \
+     let parts = mantissa.split(separator: \".\", omittingEmptySubsequences: false); \
+     let whole = String(parts[0]); let digits = whole + (parts.count > 1 ? String(parts[1]) : \"\"); \
+     let point = whole.count + exponent; \
+     if point <= 0 { return sign + \"0.\" + String(repeating: \"0\", count: -point) + digits }; \
+     if point >= digits.count { return sign + digits + String(repeating: \"0\", count: point - digits.count) }; \
+     let cut = digits.index(digits.startIndex, offsetBy: point); \
+     return sign + String(digits[..<cut]) + \".\" + String(digits[cut...]) }";
 
 /// What asks whether a set repeats an item, written into each type that holds a set: two items
 /// are one where they write one JSON text, their keys sorted.
