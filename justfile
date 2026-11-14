@@ -311,9 +311,8 @@ all:
     cargo test --all-features
     @echo "All checks completed successfully!"
 
-# What a pull request passes before it merges, on its branch merged with master: the gate, every
-# feature by itself and the feature mix, and the emitted clients under their own toolchains. It
-# runs what CI runs, so a merge does not wait for CI.
+# What CI runs: the gate, every feature by itself and the feature mix, and the emitted clients
+# under their own toolchains. It runs on master after a merge and blocks no merge.
 premerge: all check-mix test-emitted
 
 # The longer run over both packages: default and all-features lints, the format check and the
