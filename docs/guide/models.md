@@ -95,6 +95,67 @@ let rule: RuleResult = RuleResultDraft { passed: true, label: "sealed".to_owned(
 
 A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that names no `check` and takes no parameter: `SessionRole.DntiTechnician` (TypeScript), `SessionRole.dntiTechnician` (Dart and Swift) and `SessionRole.DntiTechnician` (Kotlin), for each unit variant whatever the other variants hold. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `ShipmentDraft$valid(draft)`, `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule.
 
+#### `new`: a Valid Value From Its Fields
+
+A struct's valid type has `new`, which takes the fields and answers what `validate()` answers: `Result<Self, Vec<String>>`, with the same messages. A struct with no rule answers a `Result` too, so every type is built the same way, and `new` is never `const`.
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeOfDay {
+    #[model_schema_prop(maximum = 23)]
+    pub hour: u8,
+    #[model_schema_prop(maximum = 59)]
+    pub minute: u8,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CalculatedFlag {
+    pub advanced: bool,
+    #[model_schema_prop(literal = true)]
+    pub is_calculated: bool,
+}
+
+fn schedule() -> Result<TimeOfDay, Vec<String>> {
+    let flag = CalculatedFlag::new(false)?; // is_calculated is written as true
+    assert!(flag.is_calculated);
+    assert!(TimeOfDay::new(24, 0).is_err());
+    TimeOfDay::new(12, 0)
+}
+```
+
+The parameters are the fields in declaration order, each named like its field and typed as written; a field serde skips is a parameter too, because the draft needs its value. A tuple struct takes `value` for one slot and `value0`, `value1`, .. for more, and a unit struct's `new()` takes nothing. A field a `literal` fixes is no parameter when its type holds the literal directly (`bool`, a number type, `String` or `PathBuf`): `new` writes the value. A literal on an `Option`, a reference, a smart pointer or a list stays a parameter. A generic struct's `new` takes the struct's generics and where-clause. A struct that declares a `cfg` on a named field has the parameter under the same `cfg`; a tuple struct with a `cfg` on a slot has no `new`. An enum has no `new` (a unit variant is a [constant](#a-constant-for-a-unit-variant-and-from-for-a-draft-with-no-rule), and a variant that holds data is built on the draft), and neither has a brand, which has its own [`new(value)`](generics-and-brands.md#a-brand-is-sealed).
+
+The draft stays available: `TimeOfDayDraft { hour: 12, minute: 0 }.validate()` builds the same value, and is the way to build one a function changes field by field.
+
+Whether a struct has `new` depends on how many parameters it would take, filled literals not counted:
+
+- 7 or fewer: `new` is written.
+- 8 or more: no `new` is written, so the struct is built through its draft or through a `new` the author writes, and clippy's `too_many_arguments` has nothing to flag.
+- `new = true` on the declaration writes it at any width, with `#[allow(clippy::too_many_arguments)]` on it when it takes 8 or more.
+- `new = false` writes none at any width.
+
+A struct that declares its own `fn new` in an `impl` stops the build with `error[E0592]: duplicate definitions with name `new`` unless it says `#[model_schema(new = false)]`, because the macro cannot see the author's `impl` blocks. Rename the hand-written `new`, or write `new = false` and keep it:
+
+```rust
+#[model_schema(new = false)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Shipment {
+    pub label: String,
+}
+
+impl Shipment {
+    pub fn new(label: &str) -> Result<Self, Vec<String>> {
+        ShipmentDraft { label: label.to_owned() }.validate()
+    }
+}
+```
+
+Any value of `new` but `true` and `false` stops the build with a message that names `new = false`. `new` is the Rust constructor alone: Dart, Swift and Kotlin write `of` for every struct whatever `new` says (see [Dart](dart.md#a-draft-and-a-valid-type), [Swift](swift.md#a-swift-model-type-is-a-draft-and-a-valid-type) and [Kotlin](kotlin.md)).
+
 #### The Draft and the Valid Type in TypeScript and Zod
 
 TypeScript publishes the same pair. `ShipmentDraft` is the plain object type that was published as `Shipment`, and `Shipment` is the valid type: read-only, and branded with the `$brand` marker a [brand](generics-and-brands.md#a-brand-is-sealed) already carries, so the bundle imports `$brand` from `zod` as it does for a brand. Nothing but a `parse` returns one. A member that holds a model names the valid type, as in Rust (`label: LabelText`), so a draft is made of values that already passed:
@@ -111,6 +172,8 @@ export type Shipment = Readonly<ShipmentDraft> & $brand<"Shipment">;
 `Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, over an alias of one, over `()` or over a model whose valid type admits `null`, and an untagged enum with a variant over any of these) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
 
 Zod publishes a schema for each. `ShipmentDraft$Schema` parses to a `ShipmentDraft`, and `Shipment$Schema` is the draft's schema frozen and branded, so `Shipment$Schema.parse(json)` has the type `Shipment`. The refusals of the two are the same ones, word for word, and so is the JSON Schema, which is not split: the wire is the same for both types.
+
+TypeScript writes no constructor beside the type: `Shipment$Schema.parse({ label: "Shipping", parcelCount: 3 })` is the one call that builds a `Shipment` from its fields, or throws what `validate()` refuses, the counterpart of Rust's `Shipment::new(..)` and of `of` in Dart, Swift and Kotlin.
 
 ```typescript
 import { Shipment$Schema, ShipmentDraft$Schema, type Shipment, type ShipmentDraft } from "./models";

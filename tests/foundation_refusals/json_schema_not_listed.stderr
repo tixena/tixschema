@@ -9,6 +9,7 @@ error[E0599]: no associated function or constant named `json_schema` found for s
    |
 note: if you're trying to build a new `__tixschema_valid_signup_schema::Signup<SignupDraft>` consider using one of the following associated functions:
       __tixschema_valid_signup_schema::Signup::<ModelSchemaDraft>::model_schema_wrap_unjudged
+      <impl __tixschema_valid_signup_schemaSignup<SignupDraft>>::new
       _::<impl __tixschema_valid_signup_schema::Signup<SignupDraft>>::model_schema_read_unjudged
   --> tests/foundation_refusals/json_schema_not_listed.rs:6:1
    |

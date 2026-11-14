@@ -39,6 +39,7 @@ use crate::field_type::{
 };
 #[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::flattened_keys;
+use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 #[cfg(feature = "serde")]
@@ -169,6 +170,8 @@ struct SwiftField {
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
     field_def: FieldDef,
+    /// The Swift value a `literal` fixes the member to, which `of` writes for it.
+    fixed: Option<String>,
     flatten: bool,
     /// How the member is stored: an `Option` of the type that holds it cannot be a stored
     /// property of that type, so it is held behind a box.
@@ -1759,6 +1762,7 @@ fn range_shape(
                 aliases: Vec::new(),
                 default_at: None,
                 field_def,
+                fixed: None,
                 flatten: false,
                 hint: hint.clone(),
                 held: Storage::Direct,
@@ -2749,6 +2753,7 @@ fn flattened_under_option(field: &SwiftField) -> SwiftField {
         aliases: Vec::new(),
         default_at: None,
         field_def: validate::under_option(&field.field_def),
+        fixed: None,
         flatten: true,
         hint: field.hint.clone(),
         held: Storage::Direct,
@@ -3298,6 +3303,11 @@ fn collect_swift_fields(
             },
             default_at: defaulted,
             field_def,
+            fixed: fixed_value(field).map(|fixed| match fixed {
+                Fixed::Bool(value) => value.to_string(),
+                Fixed::Number(digits, _) => digits,
+                Fixed::Text(text) => swift_quoted(&text),
+            }),
             flatten,
             hint: field_hint,
             held,
@@ -3949,7 +3959,7 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         },
     );
     preprocess::note(&rust_ident, read::takes_keys(&declaration));
-    let statics = if matches!(item_struct.fields, Fields::Unit)
+    let instance = if matches!(item_struct.fields, Fields::Unit)
         && generic_params.is_empty()
         && is_rule_less()
     {
@@ -3957,6 +3967,10 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
     } else {
         String::new()
     };
+    let statics = format!(
+        "{instance}{}",
+        of_function(&export_name, &generic_params, &fields)
+    );
     let body = if drafted {
         with_valid_struct(
             &declaration,
@@ -3982,6 +3996,33 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         item_struct.ident.span(),
         &swift_source,
         &defaults,
+    )
+}
+
+/// The `of` function of a struct's valid type: it builds the draft from its initializer's own
+/// parameters, writes the member a `literal` fixes, and throws what `validate()` throws.
+fn of_function(export_name: &str, generic_params: &str, fields: &[SwiftField]) -> String {
+    let parameters = fields
+        .iter()
+        .filter(|field| field.fixed.is_none())
+        .map(|field| format!("{}: {}", field.swift_name, field.real_type))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arguments = fields
+        .iter()
+        .map(|field| {
+            let value = field.fixed.as_deref().unwrap_or(&field.swift_name);
+            format!("{}: {value}", field.swift_name)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (valid, draft) = (
+        held_at(export_name, generic_params),
+        held_at(&format!("{export_name}Draft"), generic_params),
+    );
+    format!(
+        "public static func of({parameters}) throws -> {valid} {{ \
+         try {draft}({arguments}).validate() }}; "
     )
 }
 
@@ -4258,7 +4299,15 @@ fn value_wrapper_tokens(
          public func encode(to encoder: Encoder) throws {{ {encode} }}; {validate} }}; {helpers}"
     );
     let body = if drafted {
-        let form = wrapper_form(wrapped, hashable, &real_type);
+        let of = format!(
+            "public static func of(value: {real_type}) throws -> {valid_at} {{ \
+             try {}(value: value).validate() }}; ",
+            held_at(&format!("{export_name}Draft"), &generic_params)
+        );
+        let form = ValidForm {
+            statics: &of,
+            ..wrapper_form(wrapped, hashable, &real_type)
+        };
         with_valid_struct(&declaration, &export_name, &generic_params, &form)
     } else {
         declaration

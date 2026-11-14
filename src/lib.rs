@@ -943,6 +943,11 @@ use service_schema::exec_service_schema;
 ///   them. Written beside a `#[serde(deny_unknown_fields)]` of yours it is refused.
 /// - `no_display`, or `no_display = true` or `no_display = false`: drops the `Display` impl a
 ///   branded newtype gets, for a brand whose inner type has no `Display`.
+/// - `new = true` or `new = false`: whether the macro writes `new` on the valid type of a struct,
+///   which takes the fields and answers what `validate()` answers. Left out, it is written for a
+///   struct of at most seven parameters (a field a `literal` fixes is none); `new = true` writes it
+///   at any width, under `#[allow(clippy::too_many_arguments)]` past seven; `new = false` writes
+///   none, for a struct whose own `impl` declares `new`.
 /// - `check = ["withinBudget"]`: functions of yours that judge the whole value, each named once.
 ///   Rust's `validate()` calls `within_budget`, which takes `&T` and returns
 ///   `Result<(), Vec<String>>`, and Zod, Dart, Swift and Kotlin call `withinBudget`. A type that
@@ -2393,7 +2398,7 @@ fn run<F: std::future::Future>(call: F) -> F::Output {
 fn main() -> Result<(), Vec<String>> {
     let client = orders_client::OrdersClient::new(InMemory);
 
-    let lookup = |order_id: &str| OrderLookupDraft { order_id: order_id.to_owned() }.validate();
+    let lookup = |order_id: &str| OrderLookup::new(order_id.to_owned());
 
     let found = run(client.get_order(lookup("A-1")?));
     assert!(matches!(&found, Ok(summary) if summary.total_cents == 4250));

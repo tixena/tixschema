@@ -58,6 +58,7 @@ use crate::field_type::{
 use crate::model_schema::flatten_order::{
     flattened_keys, reads_past_the_keys_left, refuses_the_keys_left,
 };
+use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 use crate::utils::{
@@ -153,6 +154,8 @@ struct KotlinField {
     /// collection, the one default `SerdeDefaults` keeps for such a member.
     empty_default: bool,
     field_def: FieldDef,
+    /// The Kotlin value a `literal` fixes the member to, which `of` writes for it.
+    fixed: Option<String>,
     flatten: bool,
     /// Whether serde never writes the member: it is under `skip_serializing`.
     never_written: bool,
@@ -947,6 +950,11 @@ fn collect_kotlin_fields(
                 && field_reaches_type_parameter(&field_def, type_parameters),
             default_at: defaulted,
             field_def,
+            fixed: fixed_value(field).map(|fixed| match fixed {
+                Fixed::Bool(value) => value.to_string(),
+                Fixed::Number(digits, rust) => kotlin_number(&digits, rust),
+                Fixed::Text(text) => kotlin_quoted(&text),
+            }),
             flatten,
             never_written: has_serde_skip_serializing(&field.attrs),
             rust_name,
@@ -2155,7 +2163,10 @@ fn kotlin_nothing_generic_args(generics: &syn::Generics) -> String {
 /// serializer the property names for it: a model's unjudged one, or the one that calls the
 /// member's own `preprocess`. Without it, the member is declared as the emitter's own serializer
 /// reads it ([`read::declared_typename`]).
-fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> (String, String) {
+fn property_declaration(
+    field: &KotlinField,
+    plugin: Option<&Plugin<'_>>,
+) -> (String, String, String) {
     let prop_name = kotlin_property_name(&field.rust_name);
     let annotation = if kotlin_bare(&prop_name) == field.wire_name {
         String::new()
@@ -2205,7 +2216,59 @@ fn property_declaration(field: &KotlinField, plugin: Option<&Plugin<'_>>) -> (St
     (
         format!("{annotation}{written}{unjudged}val {prop_name}: {ty}{default}"),
         ty,
+        default,
     )
+}
+
+/// The Kotlin literal for `digits`, a number of the Rust type `rust`: an unsigned type takes the
+/// `u` suffix, and a float is written with a fraction.
+fn kotlin_number(digits: &str, rust: &str) -> String {
+    match rust {
+        "f32" | "f64" => {
+            let fraction = if digits.contains(['.', 'e', 'E']) {
+                digits.to_owned()
+            } else {
+                format!("{digits}.0")
+            };
+            if rust == "f32" {
+                format!("{fraction}f")
+            } else {
+                fraction
+            }
+        }
+        "u8" | "u16" | "u32" | "u64" | "usize" => format!("{digits}u"),
+        _ => digits.to_owned(),
+    }
+}
+
+/// The `of` function of a struct's valid type: it builds the draft from the draft's own
+/// parameters, writes the member a `literal` fixes, and answers what `validate()` answers.
+fn of_function(
+    draft: &str,
+    fields: &[KotlinField],
+    (export_name, generic_params, type_parameters): (&str, &str, &[String]),
+    parameters: &str,
+) -> String {
+    let declared = if type_parameters.is_empty() {
+        String::new()
+    } else {
+        format!("<{}> ", type_parameters.join(", "))
+    };
+    let arguments = fields
+        .iter()
+        .map(|field| {
+            let property = kotlin_property_name(&field.rust_name);
+            let value = field.fixed.clone().unwrap_or_else(|| property.clone());
+            format!("{property} = {value}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let built = if fields.is_empty() {
+        format!("{draft}{generic_params}()")
+    } else {
+        format!("{draft}{generic_params}({arguments})")
+    };
+    format!("fun {declared}of({parameters}): {export_name}{generic_params} = {built}.validate()")
 }
 
 /// The constructor parameter list a set of [`KotlinField`]s earns, joined by `, `.
@@ -2213,10 +2276,14 @@ fn data_class_params(fields: &[KotlinField], plugin: Option<&Plugin<'_>>) -> Str
     data_class_members(fields, plugin).0
 }
 
-/// [`data_class_params`], and the members of the valid type that forward each property to the
-/// draft.
-fn data_class_members(fields: &[KotlinField], plugin: Option<&Plugin<'_>>) -> (String, String) {
-    let declared: Vec<(String, String)> = fields
+/// [`data_class_params`], the members of the valid type that forward each property to the draft,
+/// and the parameters of `of`, which repeat the draft's own less the properties a `literal`
+/// fixes. A property is declared once, because the declaration may write a serializer.
+fn data_class_members(
+    fields: &[KotlinField],
+    plugin: Option<&Plugin<'_>>,
+) -> (String, String, String) {
+    let declared: Vec<(String, String, String)> = fields
         .iter()
         .map(|field| property_declaration(field, plugin))
         .collect();
@@ -2224,15 +2291,24 @@ fn data_class_members(fields: &[KotlinField], plugin: Option<&Plugin<'_>>) -> (S
         &fields
             .iter()
             .zip(&declared)
-            .map(|(field, (_, ty))| (field.rust_name.as_str(), ty.clone()))
+            .map(|(field, (_, ty, _))| (field.rust_name.as_str(), ty.clone()))
             .collect::<Vec<_>>(),
     );
-    let params = declared
-        .into_iter()
-        .map(|(declaration, _)| declaration)
+    let of_parameters = fields
+        .iter()
+        .zip(&declared)
+        .filter(|(field, _)| field.fixed.is_none())
+        .map(|(field, (_, ty, default))| {
+            format!("{}: {ty}{default}", kotlin_property_name(&field.rust_name))
+        })
         .collect::<Vec<_>>()
         .join(", ");
-    (params, forwards)
+    let params = declared
+        .into_iter()
+        .map(|(declaration, _, _)| declaration)
+        .collect::<Vec<_>>()
+        .join(", ");
+    (params, forwards, of_parameters)
 }
 
 /// `field`'s own type with any outer `Option` stripped — the inner type a flatten field's plain
@@ -3025,6 +3101,33 @@ fn unit_statics(item_struct: &ItemStruct, draft: &str) -> String {
     }
 }
 
+/// What the companion of a struct's valid type holds: the constant of a unit struct that declares
+/// no rule, and `of`.
+fn struct_statics(
+    item_struct: &ItemStruct,
+    draft: &str,
+    fields: &[KotlinField],
+    (export_name, generic_params, type_parameters): (&str, &str, &[String]),
+    of_parameters: &str,
+) -> String {
+    let of = if matches!(item_struct.fields, Fields::Unit) {
+        format!("fun of(): {export_name}{generic_params} = {draft}.validate()")
+    } else {
+        of_function(
+            draft,
+            fields,
+            (export_name, generic_params, type_parameters),
+            of_parameters,
+        )
+    };
+    [unit_statics(item_struct, draft), of]
+        .iter()
+        .filter(|part| !part.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 /// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()` and its two
 /// serializers, plus a `typealias` under its own Rust ident when `name = "..."` moved its
 /// published name elsewhere. The plugin's serializer is the unjudged one, and a struct carrying
@@ -3060,7 +3163,8 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         type_parameters: &type_parameters,
     };
     let draft = valid::draft_name(&export_name);
-    let (params, forwards) = data_class_members(&fields, (!written_by_hand).then_some(&plugin));
+    let held_by = (!written_by_hand).then_some(&plugin);
+    let (params, forwards, of_parameters) = data_class_members(&fields, held_by);
     let body = struct_body(item_struct, &fields, &draft, &params);
     let serializable = serialized_parameters(&item_struct.generics);
     let (rules, validated) = struct_rules(
@@ -3070,7 +3174,8 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         (&export_name, &generic_params),
     );
     validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
-    let statics = unit_statics(item_struct, &draft);
+    let names = (&*export_name, &*generic_params, &*type_parameters);
+    let statics = struct_statics(item_struct, &draft, &fields, names, &of_parameters);
     let serializers = |composed: bool| {
         struct_serializers(
             &rules,
@@ -3361,7 +3466,11 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
             &format!("{forwards}{}", valid::forwarded_issues(&keyed)),
             true,
         ),
-        "",
+        &tuple_of_function(
+            &draft,
+            &slots,
+            (&export_name, &generic_params, &type_parameters),
+        ),
     );
     let kotlin_source = format!(
         "{} {class} {draft}{generic_params}({params}) {{ {validated} }} \
@@ -3381,6 +3490,33 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         item_struct.ident.span(),
         &kotlin_source,
         &SerdeDefaults::none(),
+    )
+}
+
+/// The `of` function of a tuple struct's valid type, which takes each slot as the draft does.
+fn tuple_of_function(
+    draft: &str,
+    slots: &[FieldDef],
+    (export_name, generic_params, type_parameters): (&str, &str, &[String]),
+) -> String {
+    let declared = if type_parameters.is_empty() {
+        String::new()
+    } else {
+        format!("<{}> ", type_parameters.join(", "))
+    };
+    let parameters = slots
+        .iter()
+        .enumerate()
+        .map(|(slot, element)| format!("slot{slot}: {}", read::declared_typename(element)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arguments = (0..slots.len())
+        .map(|slot| format!("slot{slot}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "fun {declared}of({parameters}): {export_name}{generic_params} = \
+         {draft}{generic_params}({arguments}).validate()"
     )
 }
 

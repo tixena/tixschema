@@ -15,7 +15,7 @@ use super::read::{
     valid_unjudged_over,
 };
 #[cfg(feature = "serde")]
-use super::read::{judged_valid, valid_class, valid_unjudged};
+use super::read::{judged_valid, valid_class, valid_unjudged, with_of};
 
 /// The parcel of the documents' sample, under a name of this file's own.
 #[model_schema(preprocess = ["withoutFragile"])]
@@ -147,11 +147,16 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
                 "PacketDraft.generatedSerializer()",
                 "withoutFragile(element)"
             ),
-            valid_class(
-                "Packet",
-                "val fragileItemCodes: List<String> get() = draft.fragileItemCodes; val \
-                 itemCodeList: List<String> get() = draft.itemCodeList; val label: String get() = \
-                 draft.label; "
+            with_of(
+                valid_class(
+                    "Packet",
+                    "val fragileItemCodes: List<String> get() = draft.fragileItemCodes; val \
+                     itemCodeList: List<String> get() = draft.itemCodeList; val label: String \
+                     get() = draft.label; "
+                ),
+                "fun of(fragileItemCodes: List<String>, itemCodeList: List<String>, label: \
+                 String): Packet = PacketDraft(fragileItemCodes = fragileItemCodes, itemCodeList \
+                 = itemCodeList, label = label).validate()"
             ),
             valid_unjudged("Packet"),
             judged_valid("Packet")
@@ -208,10 +213,14 @@ fn a_type_with_a_parameter_corrects_the_whole_payload_and_then_the_member() {
                 "HamperDraft.generatedSerializer(codeTypeSerializer)",
                 corrected
             ),
-            valid_class_over(
-                "Hamper",
-                "<CodeType>",
-                "val codes: List<CodeType> get() = draft.codes; "
+            with_of(
+                valid_class_over(
+                    "Hamper",
+                    "<CodeType>",
+                    "val codes: List<CodeType> get() = draft.codes; "
+                ),
+                "fun <CodeType> of(codes: List<CodeType>): Hamper<CodeType> = \
+                 HamperDraft<CodeType>(codes = codes).validate()"
             ),
             valid_unjudged_over("Hamper", "CodeType", "", "codeTypeSerializer"),
             judged_valid_over("Hamper", "CodeType", "", "codeTypeSerializer")

@@ -5,14 +5,14 @@ Every model type `kotlin_definition()` writes is two classes, the draft code bui
 `validationIssues()` answers the messages Rust's [`validate()`](validation.md#the-validate-method) answers for the same value, in the same order, and an empty list for a value that keeps every rule. `validate()` throws a `SerializationException` whose message is those lines joined by `; `, the text the read throws, and answers the valid class where there are none:
 
 ```kotlin
-val shipment = ShipmentDraft(LabelText.of("Shipping"), 3u).validate()
+val shipment = Shipment.of(LabelText.of("Shipping"), 3u)
 println(shipment.parcelCount)                       // 3
 println(Json.encodeToString(shipment))              // {"label":"Shipping","parcelCount":3}
 runCatching { shipment.draft.copy(parcelCount = 200u).validate() }.onFailure { println(it.message) }
 // 'parcelCount': too large: maximum is 100, got 200
 ```
 
-The valid class has no public constructor and a private `copy()` (`@ConsistentCopyVisibility`, from Kotlin 2.0.20): from another file `Shipment(draft)` is ``cannot access 'constructor(draft: ShipmentDraft): Shipment': it is private in 'Shipment'`` and `shipment.copy(...)` is ``cannot access 'fun copy(draft: ShipmentDraft = ...): Shipment': it is private in 'Shipment'``. `Json.encodeToString(shipment)` is the encoding of its draft, and a read of `Shipment` throws what `validate()` throws. A draft is read as no rule judges it, `Json.decodeFromString<ShipmentDraft>(text)`, and is what you change: `shipment.draft.copy(parcelCount = 5u).validate()`. A unit struct that declares no rule has `SealAck.instance`. A unit variant of an enum that names no `check` and takes no parameter is a constant of the valid class, `Status.Active` over `StatusDraft.Active` and `Freight.Held` over `FreightHeld`, each a `val` of its `companion object`, and `ShipmentDraft(..).toValid()` answers the valid class with no exception to catch, on the draft of a type that declares no rule alone. A member named `draft` is declared `draft_`, on the draft and as the valid class's forwarding property, with `@SerialName("draft")`: the key on the wire is still `draft`, `holder.draft_` reads the member and `holder.draft` is the draft.
+The valid class has no public constructor and a private `copy()` (`@ConsistentCopyVisibility`, from Kotlin 2.0.20): from another file `Shipment(draft)` is ``cannot access 'constructor(draft: ShipmentDraft): Shipment': it is private in 'Shipment'`` and `shipment.copy(...)` is ``cannot access 'fun copy(draft: ShipmentDraft = ...): Shipment': it is private in 'Shipment'``. `Json.encodeToString(shipment)` is the encoding of its draft, and a read of `Shipment` throws what `validate()` throws. A draft is read as no rule judges it, `Json.decodeFromString<ShipmentDraft>(text)`, and is what you change: `shipment.draft.copy(parcelCount = 5u).validate()`. `Shipment.of(label = "Shipping", parcelCount = 3u)` builds a valid struct from the parameters of the draft's constructor, with their defaults, and answers `validate()` of the draft: the valid class, or the `SerializationException` `validate()` throws. A property a `literal` fixes is no parameter, and `of` writes its value. A tuple struct's `of` takes its slots as `slot0`, `slot1`, .., and a unit struct's `of()` takes nothing. `of` sits in the `companion object` of the valid class, beside the constants, and a struct has it whatever `new` says on the Rust declaration. A property named `of` builds as `Shipment.of(of = "x")`. A unit struct that declares no rule has `SealAck.instance`. A unit variant of an enum that names no `check` and takes no parameter is a constant of the valid class, `Status.Active` over `StatusDraft.Active` and `Freight.Held` over `FreightHeld`, each a `val` of its `companion object`, and `ShipmentDraft(..).toValid()` answers the valid class with no exception to catch, on the draft of a type that declares no rule alone. A member named `draft` is declared `draft_`, on the draft and as the valid class's forwarding property, with `@SerialName("draft")`: the key on the wire is still `draft`, `holder.draft_` reads the member and `holder.draft` is the draft.
 
 The serializer of a type calls the rules on the value it read: [the read refuses what `validate()` refuses](#the-read-in-the-kotlin-client). You call `validationIssues()` yourself on a draft you built or changed, where you want the list and no throw.
 
@@ -47,7 +47,7 @@ data class Parcel private constructor(val draft: ParcelDraft) {
   val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
   fun validationIssues(): List<String> = draft.validationIssues();
   fun kotlinSchemaChecked(): ParcelDraft = draft;
-  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft) }
+  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft); fun of(label: String, itemCodeList: List<String>, fragileItemCodes: List<String>): Parcel = ParcelDraft(label = label, itemCodeList = itemCodeList, fragileItemCodes = fragileItemCodes).validate() }
 }
 @OptIn(ExperimentalSerializationApi::class)
 private object ParcelUnjudged : KSerializer<Parcel> {
@@ -97,7 +97,7 @@ data class Manifest private constructor(val draft: ManifestDraft) {
   val parcel: Parcel get() = draft.parcel;
   fun validationIssues(): List<String> = draft.validationIssues();
   fun kotlinSchemaChecked(): ManifestDraft = draft;
-  companion object { internal fun checked(draft: ManifestDraft): Manifest = Manifest(draft) }
+  companion object { internal fun checked(draft: ManifestDraft): Manifest = Manifest(draft); fun of(parcel: Parcel): Manifest = ManifestDraft(parcel = parcel).validate() }
 }
 @OptIn(ExperimentalSerializationApi::class)
 private object ManifestUnjudged : KSerializer<Manifest> {
@@ -438,7 +438,7 @@ data class Parcel private constructor(val draft: ParcelDraft) {
   val fragileItemCodes: List<String> get() = draft.fragileItemCodes;
   fun validationIssues(): List<String> = draft.validationIssues();
   fun kotlinSchemaChecked(): ParcelDraft = draft;
-  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft) }
+  companion object { internal fun checked(draft: ParcelDraft): Parcel = Parcel(draft); fun of(label: String, itemCodeList: List<String>, fragileItemCodes: List<String>): Parcel = ParcelDraft(label = label, itemCodeList = itemCodeList, fragileItemCodes = fragileItemCodes).validate() }
 }
 @OptIn(ExperimentalSerializationApi::class)
 private object ParcelUnjudged : KSerializer<Parcel> {

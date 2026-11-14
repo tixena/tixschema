@@ -248,7 +248,38 @@ pub fn judged_valid_over(named: &str, parameter: &str, bound: &str, handed: &str
 /// What follows the draft class of `named`, a type with no parameter the plugin reads: its draft's
 /// unjudged serializer, the valid class forwarding `forwards`, and the two serializers over it.
 pub fn drafted_serializers(named: &str, forwards: &str) -> String {
-    drafted_serializers_with(named, forwards, "")
+    drafted_serializers_with(named, forwards, &format!("; {}", of_from(named, forwards)))
+}
+
+/// The `of` of a struct whose valid class forwards `forwards`: one parameter for each property, an
+/// optional one defaulting to `null`, handed to the draft by name.
+fn of_from(named: &str, forwards: &str) -> String {
+    let properties: Vec<(&str, &str)> = forwards
+        .split("; ")
+        .filter_map(|forward| forward.strip_prefix("val ")?.split_once(": "))
+        .filter_map(|(property, rest)| Some((property, rest.split_once(" get() =")?.0)))
+        .collect();
+    let parameters = properties
+        .iter()
+        .map(|(property, ty)| {
+            let default = if ty.ends_with('?') { " = null" } else { "" };
+            format!("{property}: {ty}{default}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arguments = properties
+        .iter()
+        .map(|(property, _)| format!("{property} = {property}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("fun of({parameters}): {named} = {named}Draft({arguments}).validate()")
+}
+
+/// The valid `class`, with `of` written in its companion object after the rest of it.
+pub fn with_of(valid: impl Into<String>, of: &str) -> String {
+    let class: String = valid.into();
+    let head = class.trim_end_matches(" } }");
+    format!("{head}; {of} }} }}")
 }
 
 /// [`drafted_serializers`] where the valid class holds `statics` in its companion.
@@ -463,10 +494,15 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
              KSerializer<CaskDraft<Held>> by CaskDraft.generatedSerializer(heldSerializer) {} {} {}",
             kept_draft("Cask"),
             to_valid("Cask", "<Held>"),
-            valid_class_over(
-                "Cask",
-                "<Held>",
-                "val held: List<Held> get() = draft.held; val label: String get() = draft.label; "
+            with_of(
+                valid_class_over(
+                    "Cask",
+                    "<Held>",
+                    "val held: List<Held> get() = draft.held; val label: String get() = \
+                     draft.label; "
+                ),
+                "fun <Held> of(held: List<Held>, label: String): Cask<Held> = \
+                 CaskDraft<Held>(held = held, label = label).validate()"
             ),
             valid_unjudged_over("Cask", "Held", "", "heldSerializer"),
             judged_valid_over("Cask", "Held", "", "heldSerializer")
