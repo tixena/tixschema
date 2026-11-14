@@ -361,6 +361,11 @@ pub fn refused_payloads() -> Vec<Payload> {
             r#"{"outcome":{"Ok":"seven"},"stored":{"Ok":null}}"#,
         ),
         payload(
+            "a number between quotes in an arm",
+            "Reply",
+            r#"{"outcome":{"Ok":"7"},"stored":{"Ok":null}}"#,
+        ),
+        payload(
             "no object",
             "Reply",
             r#"{"outcome":7,"stored":{"Ok":null}}"#,
