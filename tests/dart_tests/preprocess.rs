@@ -442,8 +442,7 @@ fn every_declared_variant_is_constructible() {
                 keys: Vec::new(),
                 tag: "t".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         ShipmentDraft::Ground,
     ];

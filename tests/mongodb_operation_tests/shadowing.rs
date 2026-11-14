@@ -51,8 +51,7 @@ fn the_authors_types_and_the_added_ones_of_their_names_are_two_types_each() {
             id: seeded_id(),
             last: ReadDraft { rows: 2_u32 }.validate().unwrap(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let refused: attempt_schema::OperationError =
         Attempt::mongo_read_row(doc! { "_id": seeded_id() }, &[]).unwrap_err();

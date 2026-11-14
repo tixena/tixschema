@@ -172,16 +172,14 @@ fn the_function_of_a_type_is_called_ahead_of_the_function_of_a_field() {
         LabelledDraft {
             label: "unnamed".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Labelled>(json!({ "label": " A " })).unwrap(),
         LabelledDraft {
             label: "A".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -192,8 +190,7 @@ fn a_function_named_as_a_read_names_what_it_declares_is_called() {
         NamedDraft {
             payload: "A".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -226,17 +223,16 @@ fn a_member_of_a_variant_and_a_slot_are_read_from_the_corrected_payload() {
         CarriedDraft::Boxed {
             label: "A".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Carried>(json!({ "kind": "Loose", "detail": [" A ", 2_u32] }))
             .unwrap(),
-        CarriedDraft::Loose("A".to_owned(), 2).validate().unwrap()
+        CarriedDraft::Loose("A".to_owned(), 2).into()
     );
     assert_eq!(
         serde_json::from_value::<Tagged>(json!([" A ", 2_u32])).unwrap(),
-        TaggedDraft("A".to_owned(), 2).validate().unwrap()
+        TaggedDraft("A".to_owned(), 2).into()
     );
 }
 
@@ -249,8 +245,7 @@ fn a_key_the_payload_leaves_out_is_read_as_it_is_with_no_function() {
             dock: String::new(),
             note: None
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let held = json!({ "codes": [7_u32], "dock": " north ", "note": " n " });
     assert_eq!(
@@ -260,8 +255,7 @@ fn a_key_the_payload_leaves_out_is_read_as_it_is_with_no_function() {
             dock: "north".to_owned(),
             note: Some("n".to_owned())
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -320,8 +314,7 @@ fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
         ShelvedDraft {
             label: Arc::new(Bounded::new("AB".to_owned()).unwrap())
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Shelved>(json!({ "label": { "payload": "A" } }))
@@ -358,7 +351,7 @@ fn a_date_stored_as_a_number_is_read_from_the_corrected_payload() {
     for stored in [json!(1_700_000_000_000_i64), json!("1700000000000")] {
         assert_eq!(
             serde_json::from_value::<Stamped>(json!({ "at": stored })).unwrap(),
-            StampedDraft { at }.validate().unwrap()
+            StampedDraft { at }.into()
         );
     }
     assert_eq!(

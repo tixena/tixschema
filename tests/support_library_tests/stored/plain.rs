@@ -60,7 +60,6 @@ fn a_plain_serde_type_in_a_stored_type_reads_as_serde_reads_it() {
                 text: "fragile".to_owned()
             }
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }

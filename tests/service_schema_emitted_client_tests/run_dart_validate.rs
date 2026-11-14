@@ -1079,10 +1079,7 @@ nothing held: passes
 #[test]
 fn a_nested_place_and_a_members_order_are_rusts() {
     let yard = YardDraft {
-        by_dock: BTreeMap::from([
-            (DockDraft::North.validate().unwrap(), unlabelled()),
-            (DockDraft::South.validate().unwrap(), sound()),
-        ]),
+        by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
         by_number: BTreeMap::from([(7, unlabelled())]),
         code_list: Some(texts(&["a", "b", "c"])),
         grid: vec![vec![sound(), unlabelled()]],
@@ -1200,16 +1197,14 @@ pub fn counted_name_cases() -> Vec<Case> {
             entries: texts(entries),
             owner_id: "o".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let archived_by_number = ArchiveDraft {
         casket: CasketDraft {
             entries: Vec::new(),
             owner_id: 7_u32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| PosterDraft {
         slogans: Slogans::new(texts(&vec!["w"; slogans])).unwrap(),

@@ -56,7 +56,7 @@ impl CorrectedRequestService<()> for StoringBackEnd {
     ) -> Result<CorrectedParcel, StoreParcelError> {
         ready(()).await;
         if parcel.label == "closed" {
-            return Err(StoreParcelErrorDraft::DockClosed.validate().unwrap());
+            return Err(StoreParcelError::DockClosed);
         }
         Ok(parcel)
     }

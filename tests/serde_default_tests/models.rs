@@ -589,7 +589,7 @@ where
 
 /// What `gate` is read as where the payload leaves its key out.
 pub fn main_gangway() -> Gangway {
-    GangwayDraft::default().validate().unwrap()
+    GangwayDraft::default().into()
 }
 
 pub fn north_dock() -> String {
@@ -622,12 +622,11 @@ pub fn trimmed_dock(payload: serde_json::Value) -> serde_json::Value {
 /// What serde reads of each payload of [`PREPROCESSED`], in its order.
 pub fn preprocessed_values() -> [Bollard; 2] {
     [
-        BollardDraft { dock: spare_dock() }.validate().unwrap(),
+        BollardDraft { dock: spare_dock() }.into(),
         BollardDraft {
             dock: "east".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     ]
 }
 
@@ -641,8 +640,7 @@ pub fn read_values() -> (Wharf, Pontoon) {
             gate: north_dock(),
             label: "w".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         PontoonDraft {
             dock: "d".to_owned(),
             label: "p".to_owned(),
@@ -662,30 +660,26 @@ pub fn unwritten_defaults() -> (Marina, [Harbour<String>; 3]) {
             dock: String::new(),
             label: "m".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         [
             HarbourDraft {
                 berths: held("b"),
                 flagship: String::new(),
                 slips: held("s"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             HarbourDraft {
                 berths: two_berths(),
                 flagship: "f".to_owned(),
                 slips: held("s"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             HarbourDraft {
                 berths: held("b"),
                 flagship: "f".to_owned(),
                 slips: Vec::new(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ],
     )
 }

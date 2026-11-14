@@ -142,7 +142,7 @@ pub mod refusals {
         async fn admit(&self, _ctx: &Ctx, req: AdmitRequest) -> Result<Admitted, String> {
             ready(()).await;
             self.reached.lock().unwrap().push(format!("{req:?}"));
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
     }
 

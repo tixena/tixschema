@@ -255,8 +255,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
             dock: None,
             pier: 3
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<SkippedBerth>(r#"{"kind":"Docked","line":"l","pier":3}"#).unwrap(),
@@ -265,8 +264,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
             line: String::new(),
             pier: 3
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<ReadThrough>(r#"{"kind":"Docked","pier":3}"#).unwrap(),
@@ -274,8 +272,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
             dock: String::new(),
             pier: 3
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<TriedThrough>(r#"{"kind":"Adrift"}"#)
@@ -316,8 +313,7 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
             .unwrap(),
             label: "q".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -529,6 +525,14 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
         "",
         "export type Tide = Readonly<TideDraft> & $brand<\"Tide\">;",
         "",
+        "export const Tide = {",
+        "  Slack: Object.freeze({ kind: \"Slack\" }) as Tide,",
+        "} as const;",
+        "",
+        "export function TideDraft$valid(draft: TideDraft): Tide {",
+        "  return draft as unknown as Tide;",
+        "}",
+        "",
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */",
         "export function Tide$Variant(value: unknown): string {",
         "  if (typeof value !== \"object\" || value === null) return \"\";",
@@ -601,13 +605,13 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          FormatException(message, <Object>[if (message.startsWith('missing field ') || \
          message.startsWith('Unknown key of a ')) at.last]); } } dynamic toJson(); List<String> \
          validationIssues(); Tide validate() { final found = validationIssues(); if \
-         (found.isNotEmpty) throw FormatException(found.join('; ')); return Tide._(this); } } \
+         (found.isNotEmpty) throw FormatException(found.join('; ')); return Tide._(this); } Tide toValid() => Tide._(this); } \
          class Tide { const Tide._(this._draft); final TideDraft _draft; TideDraft toDraft() => \
          _draft; factory Tide.fromJson(Map<String, dynamic> json) { final read = \
          TideDraft.fromJson(json); final violations = read.validationIssues(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
          Tide._(read); } factory Tide.fromJsonUnjudged(Map<String, dynamic> json) => \
-         Tide._(TideDraft.fromJson(json)); dynamic toJson() => _draft.toJson(); List<String> \
+         Tide._(TideDraft.fromJson(json)); static const slack = Tide._(TideSlack()); dynamic toJson() => _draft.toJson(); List<String> \
          validationIssues() => _draft.validationIssues(); static Object $thrown(Object thrown) => \
          thrown is TideDraft ? thrown.validate() : thrown; } class TideEbbing extends TideDraft \
          { const TideEbbing({required this.height,}); final int height; factory \
@@ -650,7 +654,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
             "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
              throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.height \
              = try container.decode(SwiftSchemaFit<UInt32>.self, forKey: .height).value }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"height\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } };  public enum TideDraft: Codable, Sendable { case ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; private static func swiftSchemaFlattened(_ refused: DecodingError, at path: [CodingKey]) -> DecodingError { func placed(_ context: DecodingError.Context, keeping kept: [CodingKey] = []) -> DecodingError.Context { DecodingError.Context(codingPath: path + kept, debugDescription: context.debugDescription == \"expected value\" ? \"invalid type: expected string or map\" : context.debugDescription, underlyingError: context.underlyingError) }; if case .keyNotFound(let key, let context) = refused { return .keyNotFound(key, placed(context)) }; if case .typeMismatch(let type, let context) = refused { return .typeMismatch(type, placed(context)) }; if case .valueNotFound(let type, let context) = refused { return .valueNotFound(type, placed(context)) }; if case .dataCorrupted(let context) = refused { return .dataCorrupted(placed(context, keeping: context.debugDescription.hasPrefix(\"unknown field `\") ? Array(context.codingPath.suffix(1)) : [])) }; return refused }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); let tag = try container.decode(String.self, forKey: .swiftSchemaTag); switch tag { case \"Ebbing\": do { self = .ebbing(try TideEbbingPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; case \"Slack\": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != \"kind\" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; self = .slack;  default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"kind\", \"height\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: encoder); case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; ",
-            swift_valid::validating("Tide")
+            swift_valid::validating_free("Tide")
         )
     );
 }
@@ -664,7 +668,7 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          validationIssues(): List<String>; fun validate(): Tide { val violations = \
          validationIssues(); if (violations.isNotEmpty()) throw \
          SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return Tide.checked(this) } } \
+         IllegalArgumentException(\"validate()\")); return Tide.checked(this) } fun toValid(): Tide = Tide.checked(this) } \
          @SerialName(\"Ebbing\") @Serializable data class TideEbbing(val height: UInt) : TideDraft \
          { override fun validationIssues(): List<String> = emptyList() } @SerialName(\"Slack\") \
          @Serializable data object TideSlack : TideDraft { override fun validationIssues(): \
@@ -711,7 +715,7 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          \" + tag) } } } } @ConsistentCopyVisibility @Serializable(with = TideSerializer::class) \
          data class Tide private constructor(val draft: TideDraft) { fun validationIssues(): \
          List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): TideDraft = draft; \
-         companion object { internal fun checked(draft: TideDraft): Tide = Tide(draft) } } @OptIn(ExperimentalSerializationApi::class) private \
+         companion object { internal fun checked(draft: TideDraft): Tide = Tide(draft); val Slack = checked(TideSlack) } } @OptIn(ExperimentalSerializationApi::class) private \
          object TideUnjudged : KSerializer<Tide> { override val descriptor: SerialDescriptor = \
          TideDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Tide) = \
          TideDraftUnjudged.serialize(encoder, value.draft); override fun deserialize(decoder: \
@@ -746,8 +750,7 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
         Ok(AnchorageDraft::Named {
             harbour: "h".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         read(r#"{"harbour":"h","line":""}"#),
@@ -763,7 +766,6 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
             .validate()
             .unwrap()
         )
-        .validate()
-        .unwrap())
+        .into())
     );
 }

@@ -118,8 +118,7 @@ fn listing() -> Listing {
         ],
         wrapped: Wrapped::new("w".to_owned()).unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -154,13 +153,11 @@ fn a_model_type_filling_a_parameter_needs_no_flag() {
             PlainDraft {
                 label: "a".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ],
         total: 1,
     }
-    .validate()
-    .unwrap();
+    .into();
     let mut calls = 0_u32;
     let read =
         Page::<Plain>::from_value_with(serde_json::to_value(&page).unwrap(), |_raw, _found| {
@@ -193,11 +190,10 @@ fn a_value_of_a_parameters_type_is_never_mistyped_in_a_json_value() {
     assert_eq!(
         read,
         Ok(PairingDraft {
-            left: VersionDraft { number: 3 }.validate().unwrap(),
-            right: vec![VersionDraft { number: 4 }.validate().unwrap()],
+            left: VersionDraft { number: 3 }.into(),
+            right: vec![VersionDraft { number: 4 }.into()],
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -215,8 +211,7 @@ fn a_generic_type_held_in_another_shape_is_listed_only_where_serde_refuses_it() 
             items: vec!["a".to_owned()],
             total: 1,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 
@@ -269,8 +264,7 @@ fn a_struct_with_two_parameters_reads_each_under_its_own_name() {
             left: "one".to_owned(),
             right: 2_i32,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -287,8 +281,7 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
             extra: String::new(),
             total: 1,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 
@@ -439,8 +432,7 @@ fn a_type_whose_parameters_are_named_as_the_methods_own_builds_and_reads() {
             format: "csv".to_owned(),
             id: 7,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let refused =
         Keyed::<u32, String>::from_value_with(json!({ "id": "seven" }), |_raw, _found| {
@@ -470,8 +462,7 @@ fn an_untagged_member_bounded_over_the_parameter_reads_at_a_filling_with_no_defa
                 PlainDraft {
                     label: "a".to_owned()
                 }
-                .validate()
-                .unwrap()
+                .into()
             ]),
             tag: 1,
         }

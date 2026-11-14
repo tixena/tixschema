@@ -524,8 +524,7 @@ fn a_brands_bound_and_its_check_are_listed_in_one_read_of_the_type_that_holds_it
             seal: CheckedSeal::new("ABC".to_owned()).unwrap(),
             seals: Vec::new(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let upper =
         CheckedSeal::from_value_with(json!("AB"), |_, _| checked_seal_schema::Verdict::Reject);
@@ -623,7 +622,7 @@ fn a_members_check_is_listed_where_serde_writes_the_member_under_each_tagging() 
     let unheld = CheckedInternal::from_value_with(json!({ "kind": "Held" }), |_, _| {
         checked_internal_schema::Verdict::Reject
     });
-    assert_eq!(unheld, Ok(CheckedInternalDraft::Held.validate().unwrap()));
+    assert_eq!(unheld, Ok(CheckedInternal::Held));
 
     let adjacent = |stored: Value| {
         let read = CheckedAdjacent::from_value_with(stored, |_, _| {

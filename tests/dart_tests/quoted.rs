@@ -44,7 +44,7 @@ fn serde_writes_each_name_the_rows_state() {
         }),
         serde_json::to_string(&MulctedDraft {
             note: "n".to_owned(),
-            tolled: TolledDraft::Held("p".to_owned()).validate().unwrap(),
+            tolled: TolledDraft::Held("p".to_owned()).into(),
         }),
         serde_json::to_string(&ExcisedDraft::High),
         serde_json::to_string(&ExcisedDraft::Low),

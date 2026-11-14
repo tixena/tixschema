@@ -237,8 +237,7 @@ fn test_serde_types_constructible() {
         body: BodyDraft::Reply {
             reply_to: String::new(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         id: String::new(),
     };
     assert!(matches!(
@@ -494,8 +493,7 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
         generation_token: None,
         template_id: None,
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(
         serde_json::to_string(&entry).unwrap(),
         r#"{"name":"invoice.pdf","templateId":null}"#

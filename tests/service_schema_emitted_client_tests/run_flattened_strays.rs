@@ -73,8 +73,7 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                     phone: "555".to_owned(),
                     address: address().validate().unwrap(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         written(
@@ -83,8 +82,7 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                 ConsignmentLabelDraft {
                     code: "f1".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         written(
@@ -94,8 +92,7 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                 wrap: GiftWrapDraft {
                     paper: "red".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         written(
@@ -106,8 +103,7 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                     GiftWrapDraft {
                         paper: "blue".to_owned(),
                     }
-                    .validate()
-                    .unwrap(),
+                    .into(),
                 ),
             },
         ),
@@ -126,8 +122,7 @@ fn struct_payloads() -> Vec<(&'static str, String)> {
                     phone: "556".to_owned(),
                     address: address().validate().unwrap(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
     ]
@@ -147,8 +142,7 @@ fn delivery_payloads() -> Vec<(&'static str, String)> {
                 payment: CheckoutPaymentDraft::Card {
                     last4: "4242".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         written(
@@ -165,8 +159,7 @@ fn delivery_payloads() -> Vec<(&'static str, String)> {
                 delivery: CourierDeliveryDraft::Courier {
                     courier: "DHL".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         written(
@@ -176,8 +169,7 @@ fn delivery_payloads() -> Vec<(&'static str, String)> {
                 delivery: CourierDeliveryDraft::Pickup {
                     store: "Centro".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         written(
@@ -185,8 +177,7 @@ fn delivery_payloads() -> Vec<(&'static str, String)> {
             &WeighedParcelDraft {
                 label: "p1".to_owned(),
                 weight: WeighedPackageDraft(PackageWeightDraft { grams: 500 }.validate().unwrap())
-                    .validate()
-                    .unwrap(),
+                    .into(),
             },
         ),
     ]
@@ -202,23 +193,21 @@ fn enum_payloads() -> Vec<(&'static str, String)> {
             "SizedCarton",
             &SizedCartonDraft {
                 label: "c1".to_owned(),
-                size: BoxSizeDraft::Small { width: 3 }.validate().unwrap(),
+                size: BoxSizeDraft::Small { width: 3 }.into(),
             },
         ),
         written(
             "SizedCarton",
             &SizedCartonDraft {
                 label: "c2".to_owned(),
-                size: BoxSizeDraft::Large(PackageWeightDraft { grams: 2 }.validate().unwrap())
-                    .validate()
-                    .unwrap(),
+                size: BoxSizeDraft::Large(PackageWeightDraft { grams: 2 }.into()).into(),
             },
         ),
         written(
             "SizedPallet",
             &SizedPalletDraft {
                 label: "l1".to_owned(),
-                size: Some(BoxSizeDraft::Small { width: 3 }.validate().unwrap()),
+                size: Some(BoxSizeDraft::Small { width: 3 }.into()),
             },
         ),
         written(
@@ -239,7 +228,7 @@ fn enum_payloads() -> Vec<(&'static str, String)> {
         written(
             "PaintedDoor",
             &PaintedDoorDraft {
-                finish: DoorFinishDraft::Bare { gloss: Some(2) }.validate().unwrap(),
+                finish: DoorFinishDraft::Bare { gloss: Some(2) }.into(),
                 label: "f1".to_owned(),
             },
         ),
@@ -249,8 +238,7 @@ fn enum_payloads() -> Vec<(&'static str, String)> {
                 finish: DoorFinishDraft::Painted {
                     colour: "red".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 label: "f2".to_owned(),
             },
         ),

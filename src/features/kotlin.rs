@@ -20,6 +20,7 @@ mod validate;
 
 extern crate alloc;
 
+use crate::utils::is_rule_less;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
@@ -2938,6 +2939,7 @@ fn struct_serializers(
     (export_name, draft, generic_params): (&str, &str, &str),
     type_parameters: &[String],
     (members, composed): (&str, bool),
+    statics: &str,
 ) -> String {
     [
         valid::pair(
@@ -2946,6 +2948,7 @@ fn struct_serializers(
             (generic_params, generic_params),
             type_parameters,
             (members, composed),
+            statics,
         ),
         rules.judged(
             export_name,
@@ -3010,6 +3013,18 @@ fn struct_body(
     }
 }
 
+/// The constant of a unit struct that declares no rule: its one value.
+fn unit_statics(item_struct: &ItemStruct, draft: &str) -> String {
+    if matches!(item_struct.fields, Fields::Unit)
+        && item_struct.generics.params.is_empty()
+        && is_rule_less()
+    {
+        format!("val instance = checked({draft})")
+    } else {
+        String::new()
+    }
+}
+
 /// The Kotlin tokens a named-field struct earns: a `data class` with its `validate()` and its two
 /// serializers, plus a `typealias` under its own Rust ident when `name = "..."` moved its
 /// published name elsewhere. The plugin's serializer is the unjudged one, and a struct carrying
@@ -3055,6 +3070,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
         (&export_name, &generic_params),
     );
     validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
+    let statics = unit_statics(item_struct, &draft);
     let serializers = |composed: bool| {
         struct_serializers(
             &rules,
@@ -3067,6 +3083,7 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
                 ),
                 composed,
             ),
+            &statics,
         )
     };
     let kotlin_source = if written_by_hand {
@@ -3344,6 +3361,7 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
             &format!("{forwards}{}", valid::forwarded_issues(&keyed)),
             true,
         ),
+        "",
     );
     let kotlin_source = format!(
         "{} {class} {draft}{generic_params}({params}) {{ {validated} }} \
@@ -4118,7 +4136,8 @@ fn dispatched_tagged_enum_kotlin_source(
     let deserialize_body =
         format!("val element = {whole}; return kotlinSchemaAt(input) {{ {read} }}");
 
-    let base = enum_base(item_enum, export_name, &draft);
+    let rule_less = is_rule_less();
+    let base = enum_base(item_enum, export_name, &draft, rule_less);
     let serializer_head = read::written_head(&draft, &type_parameters);
     let serializer_object = format!(
         "{serializer_head} : KSerializer<{draft}{generic_params}> {{ \
@@ -4135,7 +4154,13 @@ fn dispatched_tagged_enum_kotlin_source(
     format!(
         "{base} {} {serializer_object} {} {}",
         subclasses.join(" "),
-        enum_valid_class(item_enum, export_name, &draft, (&keyed, &taking)),
+        enum_valid_class(
+            item_enum,
+            export_name,
+            &draft,
+            (&keyed, &taking),
+            &enum_constants(item_enum, export_name, args)
+        ),
         enum_judged(
             export_name,
             &generic_params,
@@ -4143,6 +4168,28 @@ fn dispatched_tagged_enum_kotlin_source(
             (&keyed, &taking)
         )
     )
+}
+
+/// The constants of the valid enum of `item_enum`: one for each unit variant, where the enum names
+/// no check and takes no parameter.
+fn enum_constants(item_enum: &ItemEnum, export_name: &str, args: &KotlinArgs<'_>) -> String {
+    if !args.check.is_empty() || !item_enum.generics.params.is_empty() {
+        return String::new();
+    }
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_wire_kind(variant) == VariantKind::Unit)
+        .fold(String::new(), |mut acc, variant| {
+            let name = variant.ident.to_string();
+            write!(
+                acc,
+                "val {} = checked({export_name}{name}); ",
+                kotlin_name(&name)
+            )
+            .unwrap();
+            acc
+        })
 }
 
 /// The Kotlin tokens a `#[serde(untagged)]` enum earns: a plain `sealed interface`, the unjudged
@@ -4224,7 +4271,8 @@ fn untagged_enum_kotlin_source(
         );
     }
 
-    let base = enum_base(item_enum, export_name, &draft);
+    let rule_less = is_rule_less();
+    let base = enum_base(item_enum, export_name, &draft, rule_less);
     let serializer_head = read::written_head(&draft, &type_parameters);
     let serializer_object = format!(
         "{serializer_head} : KSerializer<{draft}{generic_params}> {{ \
@@ -4243,7 +4291,13 @@ fn untagged_enum_kotlin_source(
     format!(
         "{base} {} {serializer_object} {} {}",
         subclasses.join(" "),
-        enum_valid_class(item_enum, export_name, &draft, (&keyed, &taking)),
+        enum_valid_class(
+            item_enum,
+            export_name,
+            &draft,
+            (&keyed, &taking),
+            &enum_constants(item_enum, export_name, args)
+        ),
         enum_judged(
             export_name,
             &generic_params,
@@ -4254,14 +4308,14 @@ fn untagged_enum_kotlin_source(
 }
 
 /// The sealed interface the subclasses of `item_enum` implement: its draft.
-fn enum_base(item_enum: &ItemEnum, export_name: &str, draft: &str) -> String {
+fn enum_base(item_enum: &ItemEnum, export_name: &str, draft: &str, rule_less: bool) -> String {
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let out_params = kotlin_out_generic_params(&item_enum.generics);
     if valid::drafted() {
         format!(
             "@Serializable(with = {draft}Unjudged::class) sealed interface {draft}{out_params} \
              {{ fun validationIssues(): List<String>; {} }}",
-            valid::validate_method(export_name, &generic_params)
+            valid::validate_method(export_name, &generic_params, rule_less)
         )
     } else {
         format!(
@@ -4291,6 +4345,7 @@ fn enum_valid_class(
     export_name: &str,
     draft: &str,
     (keyed, taking): (&[String], &[String]),
+    statics: &str,
 ) -> String {
     let generic_params = kotlin_generic_params(&item_enum.generics);
     let type_parameters = type_parameters_in_scope(&item_enum.generics);
@@ -4303,6 +4358,7 @@ fn enum_valid_class(
         ),
         &type_parameters,
         (&valid::enum_forwarded_issues(), true),
+        statics,
     );
     format!(
         "{pair}{}",
@@ -4352,6 +4408,16 @@ fn plain_enum_kotlin_source(
     let mut rules = Rules::of(&[]);
     rules.own(args.check);
     let draft = valid::draft_name(export_name);
+    let statics = if args.check.is_empty() {
+        variants
+            .iter()
+            .fold(String::new(), |mut acc, (name, _, _)| {
+                write!(acc, "val {} = checked({draft}.{name}); ", kotlin_name(name)).unwrap();
+                acc
+            })
+    } else {
+        String::new()
+    };
     let body = format!(
         "enum class {draft} {{ {members}; {} }}",
         valid::body(&mut rules, export_name, "")
@@ -4367,7 +4433,8 @@ fn plain_enum_kotlin_source(
                 &draft,
                 ("", ""),
                 &[],
-                (&valid::enum_forwarded_issues(), false)
+                (&valid::enum_forwarded_issues(), false),
+                &statics
             ),
             read::judged_valid(export_name, "", &[], false, (&[], &[]))
         )

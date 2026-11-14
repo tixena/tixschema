@@ -167,10 +167,7 @@ fn every_declared_type_is_constructible() {
     let cargo = draft(3).validate().unwrap();
     assert_eq!(cargo.parcel_count, 3);
     assert_eq!(CargoPairDraft("a".to_owned(), 1).validate().unwrap().1, 1);
-    assert!(matches!(
-        &*CargoMoveDraft::Held.validate().unwrap(),
-        CargoMoveDraft::Held
-    ));
+    assert!(matches!(&*CargoMove::Held, CargoMoveDraft::Held));
     let shelf = CargoShelfDraft { cargo }.validate().unwrap();
     assert_eq!(shelf.cargo.parcel_count, 3);
 }
@@ -309,10 +306,7 @@ fn a_second_library_cannot_build_a_valid_plain_enum() {
 fn a_plain_enum_validates_through_its_draft_and_keeps_its_wire() {
     let refused = CargoTierDraft::Retired.validation_issues().join("; ");
     let rust = serde_json::to_string(&CargoTiersDraft {
-        by_speed: BTreeMap::from([
-            (CargoSpeedDraft::Fast.validate().unwrap(), 2),
-            (CargoSpeedDraft::Slow.validate().unwrap(), 1),
-        ]),
+        by_speed: BTreeMap::from([(CargoSpeed::Fast, 2), (CargoSpeed::Slow, 1)]),
         tier: CargoTierDraft::Standard.validate().unwrap(),
     })
     .unwrap();

@@ -7,9 +7,10 @@
 //! fills it with the draft. It holds no name the author's module declares, so a type declared in
 //! a function body is wrapped as one declared beside it.
 
+use crate::utils::is_rule_less;
 use core::cell::RefCell;
 
-use proc_macro2::{Group, Ident, TokenStream, TokenTree};
+use proc_macro2::{Group, Ident, Literal, TokenStream, TokenTree};
 use quote::{ToTokens as _, format_ident, quote};
 use syn::ext::IdentExt as _;
 use syn::parse::ParseStream;
@@ -19,6 +20,7 @@ use syn::{Attribute, Generics, Path, Token, Visibility};
 use super::judged_read::unclaimed_parameter;
 use super::refusal_from_violations;
 use super::unbounded;
+use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 #[cfg(all(feature = "zod", feature = "serde"))]
 use crate::features::serde::parse_serde_type_attributes;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
@@ -28,6 +30,10 @@ use crate::field_type::get_field_def;
 use crate::utils::record_drafted_type;
 use crate::utils::written_names;
 
+/// Opens, and closes, the text of a surface that a type with no rule alone has.
+pub const SETTLE_OPEN: char = '\u{e000}';
+pub const SETTLE_CLOSE: char = '\u{e001}';
+
 thread_local! {
     static DECLARED: RefCell<Declared> = RefCell::new(Declared::default());
 }
@@ -36,6 +42,8 @@ thread_local! {
 /// expansion strips what it writes itself.
 #[derive(Clone, Default)]
 pub struct Declared {
+    /// Whether the type names a check of its own, on itself.
+    pub checked: bool,
     pub conditional: Vec<(TokenStream, Vec<Path>)>,
     pub debugs: Gate,
     pub derives: Vec<Path>,
@@ -46,6 +54,9 @@ pub struct Declared {
     pub name: Option<Ident>,
     pub origin: Origin,
     pub serializes: Gate,
+    /// Whether the item is a struct with no braces and no parameter.
+    #[cfg(feature = "typescript")]
+    pub unit: bool,
 }
 
 /// Whether, and under which `cfg`, an item derives a trait the valid type writes itself.
@@ -85,6 +96,17 @@ pub enum Origin {
     Service,
 }
 
+/// The values of a type that no rule can refuse, which the valid type holds as constants.
+#[derive(Clone, Default)]
+pub enum UnitValues {
+    #[default]
+    None,
+    /// The one value of a unit struct.
+    Struct,
+    /// The unit variants of an enum, each with the `cfg` attributes it is declared under.
+    Variants(Vec<(Vec<Attribute>, Ident)>),
+}
+
 /// What the valid type of one declaration is written from.
 pub struct ValidType<'parts> {
     pub conditional: Vec<(TokenStream, Vec<Path>)>,
@@ -97,11 +119,111 @@ pub struct ValidType<'parts> {
     pub module_ident: &'parts Ident,
     pub name: &'parts Ident,
     pub reads: &'parts TokenStream,
+    /// Whether the type declares no rule of its own, so a draft becomes valid with no judgement.
+    pub rule_less: bool,
     pub serializes: Gate,
+    pub units: UnitValues,
     pub vis: &'parts Visibility,
 }
 
+/// A declaration that may hold values no rule can refuse.
+pub trait UnitShaped {
+    fn unit_values(&self) -> UnitValues;
+}
+
+impl UnitShaped for syn::ItemStruct {
+    fn unit_values(&self) -> UnitValues {
+        if matches!(self.fields, syn::Fields::Unit) && self.generics.params.is_empty() {
+            UnitValues::Struct
+        } else {
+            UnitValues::None
+        }
+    }
+}
+
+impl UnitShaped for syn::ItemEnum {
+    fn unit_values(&self) -> UnitValues {
+        if !self.generics.params.is_empty() {
+            return UnitValues::None;
+        }
+        let units: Vec<(Vec<Attribute>, Ident)> = self
+            .variants
+            .iter()
+            .filter(|variant| matches!(variant.fields, syn::Fields::Unit))
+            .map(|variant| {
+                let cfgs = variant
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("cfg"))
+                    .cloned()
+                    .collect();
+                (cfgs, variant.ident.clone())
+            })
+            .collect();
+        if units.is_empty() {
+            UnitValues::None
+        } else {
+            UnitValues::Variants(units)
+        }
+    }
+}
+
 impl ValidType<'_> {
+    /// The valid value of each unit variant, and of a unit struct, as a constant named like it.
+    fn constants(&self) -> Option<TokenStream> {
+        let (name, draft, vis) = (self.name, &self.draft, self.vis);
+        let reason = "named like its variant, so it reads and matches as the variant";
+        match &self.units {
+            UnitValues::None => None,
+            UnitValues::Struct => {
+                let doc = format!("The one value of `{name}`.");
+                let expected = (!is_upper_case(name)).then(|| {
+                    quote! { #[expect(non_upper_case_globals, reason = #reason)] }
+                });
+                Some(quote! {
+                    #[doc = #doc]
+                    #expected
+                    #vis const #name: #name = <#name>::model_schema_wrap_unjudged(#draft);
+                })
+            }
+            UnitValues::Variants(variants) => {
+                let constants = variants.iter().map(|(cfgs, variant)| {
+                    let doc = format!("The `{variant}` value of `{name}`.");
+                    quote! {
+                        #(#cfgs)*
+                        #[doc = #doc]
+                        pub const #variant: Self = Self::model_schema_wrap_unjudged(#draft::#variant);
+                    }
+                });
+                let expected = variants
+                    .iter()
+                    .any(|(_, variant)| !is_upper_case(variant))
+                    .then(|| quote! { #[expect(non_upper_case_globals, reason = #reason)] });
+                Some(quote! {
+                    #expected
+                    impl #name {
+                        #(#constants)*
+                    }
+                })
+            }
+        }
+    }
+
+    /// The conversion from a draft that no rule judges.
+    fn conversion(&self) -> Option<TokenStream> {
+        let (name, draft) = (self.name, &self.draft);
+        let (impl_generics, type_generics, where_clause) = self.generics.split_for_impl();
+        self.rule_less.then(|| {
+            quote! {
+                impl #impl_generics ::core::convert::From<#draft #type_generics> for #name #type_generics #where_clause {
+                    fn from(draft: #draft #type_generics) -> Self {
+                        Self::model_schema_wrap_unjudged(draft)
+                    }
+                }
+            }
+        })
+    }
+
     /// The name the author's module gives the valid type, and what the draft and the valid type
     /// do beside it.
     pub fn items(&self) -> TokenStream {
@@ -117,6 +239,7 @@ impl ValidType<'_> {
         );
         let valid_generics = self.valid_generics();
         let (valid_impl_generics, _, valid_where) = valid_generics.split_for_impl();
+        let (conversion, constants) = (self.conversion(), self.constants());
         quote! {
             #vis type #name #alias_generics = #module_ident::#sealed::#name<#draft #type_generics>;
 
@@ -147,6 +270,10 @@ impl ValidType<'_> {
                     <#draft #type_generics>::validation_issues(self)
                 }
             }
+
+            #conversion
+
+            #constants
 
             #writes
 
@@ -211,7 +338,7 @@ impl ValidType<'_> {
 
                     /// Wraps a draft with no judgement of its own, for the reads that hand the
                     /// whole value to be judged once.
-                    pub fn model_schema_wrap_unjudged(draft: ModelSchemaDraft) -> Self {
+                    pub const fn model_schema_wrap_unjudged(draft: ModelSchemaDraft) -> Self {
                         Self(draft)
                     }
                 }
@@ -345,6 +472,98 @@ impl ValidType<'_> {
             };
         }
     }
+}
+
+/// Whether `item` declares no rule of its own. A rule is a constraint in a `model_schema_prop`, a
+/// check on the type or on a member, a string check on the type, or a literal; a brand has no
+/// draft. A member typed with another type is not a rule: that type judges itself.
+pub fn declares_no_rule(item: &syn::Item, checks: bool, string_check: bool) -> bool {
+    if checks {
+        return false;
+    }
+    let ruled = |fields: &syn::Fields| {
+        fields.iter().any(|field| {
+            let meta = parse_model_schema_prop_attributes(&field.attrs);
+            !meta.check.is_empty()
+                || meta.literal.is_some()
+                || meta.min_length.is_some()
+                || meta.max_length.is_some()
+                || meta.min_items.is_some()
+                || meta.max_items.is_some()
+                || meta.minimum.is_some()
+                || meta.maximum.is_some()
+                || meta.pattern.is_some()
+                || meta.enum_pattern.is_some()
+        })
+    };
+    if let syn::Item::Struct(item_struct) = item {
+        return !string_check && !ruled(&item_struct.fields);
+    }
+    if let syn::Item::Enum(item_enum) = item {
+        // A string check holds the names of an enum of unit variants, which expansion has
+        // already measured.
+        let holds_values = item_enum
+            .variants
+            .iter()
+            .any(|variant| !matches!(variant.fields, syn::Fields::Unit));
+        let is_ruled = item_enum
+            .variants
+            .iter()
+            .any(|variant| ruled(&variant.fields));
+        return !(string_check && holds_values || is_ruled);
+    }
+    true
+}
+
+/// `tokens` with the text between [`SETTLE_OPEN`] and [`SETTLE_CLOSE`] in each string literal kept
+/// where the item declares no rule, and left out where it declares one.
+pub fn settle(tokens: TokenStream) -> TokenStream {
+    let rule_less = is_rule_less();
+    settled(tokens, rule_less)
+}
+
+fn settled(tokens: TokenStream, rule_less: bool) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Group(group) => {
+                let mut rebuilt = Group::new(group.delimiter(), settled(group.stream(), rule_less));
+                rebuilt.set_span(group.span());
+                TokenTree::Group(rebuilt)
+            }
+            TokenTree::Literal(literal) => settled_literal(literal, rule_less),
+            kept @ (TokenTree::Ident(_) | TokenTree::Punct(_)) => kept,
+        })
+        .collect()
+}
+
+fn settled_literal(literal: Literal, rule_less: bool) -> TokenTree {
+    let span = literal.span();
+    let Ok(text) = syn::parse2::<syn::LitStr>(TokenTree::Literal(literal.clone()).into()) else {
+        return TokenTree::Literal(literal);
+    };
+    let value = text.value();
+    if !value.contains(SETTLE_OPEN) {
+        return TokenTree::Literal(literal);
+    }
+    let mut written = String::new();
+    let mut inside = false;
+    for character in value.chars() {
+        match character {
+            SETTLE_OPEN => inside = true,
+            SETTLE_CLOSE => inside = false,
+            other if !inside || rule_less => written.push(other),
+            _ => {}
+        }
+    }
+    let mut rebuilt = Literal::string(&written);
+    rebuilt.set_span(span);
+    TokenTree::Literal(rebuilt)
+}
+
+/// Whether rustc takes `name` as an upper case name for a constant: it holds no lower case letter.
+fn is_upper_case(name: &Ident) -> bool {
+    !name.unraw().to_string().chars().any(char::is_lowercase)
 }
 
 /// The ident the declared item is emitted under.
@@ -499,7 +718,7 @@ fn gate_of(attrs: &[Attribute], named: &str) -> Gate {
 }
 
 /// Records what `item` declares, for the expansion of its shape.
-pub fn record(item: &syn::Item, undrafted: bool) {
+pub fn record(item: &syn::Item, undrafted: bool, checked: bool) {
     let origin = if undrafted {
         Origin::Service
     } else if matches!(item, syn::Item::Struct(item_struct) if super::is_branded_newtype(item_struct))
@@ -526,6 +745,9 @@ pub fn record(item: &syn::Item, undrafted: bool) {
         name,
         origin,
         serializes: gate_of(attrs, "Serialize"),
+        checked,
+        #[cfg(feature = "typescript")]
+        unit: matches!(item, syn::Item::Struct(item_struct) if item_struct.generics.params.is_empty() && matches!(item_struct.fields, syn::Fields::Unit)),
     };
     #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
     if let Some(declared_name) = &declared.name {

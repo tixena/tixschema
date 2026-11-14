@@ -57,15 +57,14 @@ fn every_fixture_is_written_as_serde_writes_it() {
     );
     assert_eq!(
         serde_json::from_str::<Strapping>("{}").unwrap(),
-        StrappingDraft { pair: (0, 0) }.validate().unwrap()
+        StrappingDraft { pair: (0, 0) }.into()
     );
     assert_eq!(
         serde_json::to_string(&BundlingDraft {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             pair: (1, 2)
         })
         .unwrap(),
@@ -88,8 +87,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             pair: (north(), 2)
         })
         .unwrap(),
@@ -126,8 +124,7 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             maybe: Some((north(), 3)),
             pairs: vec![(north(), 2)]
         })

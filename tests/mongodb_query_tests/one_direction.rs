@@ -148,8 +148,7 @@ fn a_variant_is_under_the_key_it_is_written_as() {
         relay: RelayDraft::Courier {
             badge_number: 7_u32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
     });
     assert_eq!(
         [
@@ -167,7 +166,7 @@ fn a_variant_is_under_the_key_it_is_written_as() {
         ])
     );
     let drop_box = stored(&DispatchDraft {
-        relay: RelayDraft::DropBox(12_u32).validate().unwrap(),
+        relay: RelayDraft::DropBox(12_u32).into(),
     });
     assert_eq!(
         [
@@ -183,7 +182,7 @@ fn a_variant_is_under_the_key_it_is_written_as() {
         ])
     );
     let not_sent = stored(&DispatchDraft {
-        relay: RelayDraft::NotSent.validate().unwrap(),
+        relay: Relay::NotSent,
     });
     assert_eq!(
         shown(dispatch.relay().nest(relay.is_not_sent())),

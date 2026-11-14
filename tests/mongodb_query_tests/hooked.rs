@@ -119,8 +119,7 @@ fn leaf(name: &str) -> Node {
         children: Vec::new(),
         name: name.to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The instant every case writes: `2026-10-07T17:40:00Z`.

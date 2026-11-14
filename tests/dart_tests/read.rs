@@ -142,15 +142,11 @@ fn every_declared_type_is_constructible() {
     .validate()
     .unwrap();
     let hold = HoldDraft {
-        by_dock: HashMap::from([
-            (DockDraft::North.validate().unwrap(), item.clone()),
-            (DockDraft::South.validate().unwrap(), item.clone()),
-        ]),
+        by_dock: HashMap::from([(Dock::North, item.clone()), (Dock::South, item.clone())]),
         filled: BinDraft {
             held: vec![item.clone()],
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(hold.by_dock.len(), 2);
     assert_eq!(hold.filled.held.len(), 1);

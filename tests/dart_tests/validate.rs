@@ -663,7 +663,8 @@ fn an_enum_with_no_data_answers_its_checks() {
         grade.contains(
             "String toJson() => wireValue; List<String> validationIssues() => const []; Grade \
              validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
-             FormatException(found.join('; ')); return Grade._(this); } }"
+             FormatException(found.join('; ')); return Grade._(this); } Grade toValid() => \
+             Grade._(this); }"
         ) && grade.ends_with(
             "List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
              ==(Object other) => other is Grade && other._draft == _draft; @override int get \
@@ -725,7 +726,8 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
              {READ_AT} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
              List<String> validationIssues() => const []; Audit validate() {{ final found = \
              validationIssues(); if (found.isNotEmpty) throw FormatException(found.join('; ')); \
-             return Audit._(this); }} }} class Audit {{ const Audit._(this._draft); final \
+             return Audit._(this); }} Audit toValid() => Audit._(this); }} class Audit {{ const \
+             Audit._(this._draft); final \
              AuditDraft _draft; bool get validate_ => _draft.validate_; AuditDraft toDraft() => \
              _draft; factory Audit.fromJson(Map<String, dynamic> json) {{ final read = \
              AuditDraft.fromJson(json); final violations = read.validationIssues(); if \

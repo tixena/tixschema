@@ -170,6 +170,13 @@ declares a model type named `Vec` or `String` needs a test binary of its own
 (`tests/shadowed_vec_tests.rs`): the registry is keyed by ident for the whole crate, so a field
 written `Vec` in any later expansion would be read as that type.
 
+### 10. Docs, Examples and Tests Name the Valid Type
+
+Every doc, guide example, rustdoc example and test names the valid type wherever a value is held,
+passed or returned: fields, parameters, return types, constants, statics and impls. A draft appears
+only on the expression that builds or changes a value, and is validated there. A value that cannot
+fail is the generated constant or `From`, never `.validate().unwrap()` outside a test.
+
 ## Common Pitfalls
 
 1. **Type name ambiguity** → Ensure Rust type names and TypeScript output names don't collide with built-in types

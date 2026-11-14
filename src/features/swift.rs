@@ -8,6 +8,7 @@ mod preprocess;
 mod read;
 mod validate;
 
+use crate::utils::is_rule_less;
 use core::cell::RefCell;
 use core::fmt::Write as _;
 use core::iter;
@@ -146,6 +147,8 @@ struct ValidForm<'form> {
     keyed: Option<&'form str>,
     /// Whether the draft is a plain enum, whose raw value a map keyed by the type builds it from.
     raw: bool,
+    /// The constants of the valid type: one for each unit case, where nothing can refuse one.
+    statics: &'form str,
 }
 
 /// Whether a member is a stored property of its struct or sits in a box.
@@ -596,7 +599,12 @@ fn note_unit_entries(rust_ident: &str, entries: Vec<UnitEntry>) {
 /// enum's `rule`.
 fn variant_names(variant: &Variant, rule: RenameRule) -> (String, String) {
     let rust_name = variant.ident.to_string();
-    let case_name = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
+    let named = swift_member(&RenameRule::CamelCase.apply_to_variant(&rust_name));
+    let case_name = if named == "valid" {
+        "valid_".to_owned()
+    } else {
+        named
+    };
     let wire_name =
         rename_override(&variant.attrs).unwrap_or_else(|| rule.apply_to_variant(&rust_name));
     (case_name, wire_name)
@@ -920,7 +928,7 @@ pub fn swift_quoted(name: &str) -> String {
 /// valid type's own property. The key on the wire stays the one
 /// serde writes.
 fn swift_property(name: &str) -> String {
-    if matches!(name, "validate" | "validationIssues" | "draft") {
+    if matches!(name, "validate" | "validationIssues" | "draft" | "valid") {
         format!("{name}_")
     } else {
         swift_member(name)
@@ -3941,12 +3949,23 @@ fn struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>) -> To
         },
     );
     preprocess::note(&rust_ident, read::takes_keys(&declaration));
+    let statics = if matches!(item_struct.fields, Fields::Unit)
+        && generic_params.is_empty()
+        && is_rule_less()
+    {
+        format!("public static let instance = {export_name}(draft: {export_name}Draft()); ")
+    } else {
+        String::new()
+    };
     let body = if drafted {
         with_valid_struct(
             &declaration,
             &export_name,
             &generic_params,
-            &ValidForm::default(),
+            &ValidForm {
+                statics: &statics,
+                ..ValidForm::default()
+            },
         )
     } else {
         declaration
@@ -3976,7 +3995,7 @@ fn with_valid_struct(
     form: &ValidForm<'_>,
 ) -> String {
     let draft = held_at(&format!("{export_name}Draft"), generic_params);
-    let conformances = form.conformances;
+    let (conformances, statics) = (form.conformances, form.statics);
     let built_from = if form.raw {
         format!(
             "fileprivate init?(rawValue: String) {{ guard let draft = {draft}(rawValue: rawValue) \
@@ -3999,7 +4018,7 @@ fn with_valid_struct(
     format!(
         "{body}\n\n@dynamicMemberLookup public struct {export_name}{generic_params}: Codable, Sendable{conformances} {{ \
          public let draft: {draft}; \
-         fileprivate init(draft: {draft}) {{ self.draft = draft }}; {built_from}\
+         fileprivate init(draft: {draft}) {{ self.draft = draft }}; {built_from}{statics}\
          public subscript<SwiftSchemaHeld>(dynamicMember path: KeyPath<{draft}, SwiftSchemaHeld>) -> SwiftSchemaHeld {{ \
          draft[keyPath: path] }}; \
          public init(from decoder: Decoder) throws {{ draft = try {draft}(from: decoder) }}; \
@@ -4023,6 +4042,7 @@ fn wrapper_form<'form>(
         conformances: if hashable { ", Hashable" } else { "" },
         keyed: matches!(wrapped, Wrapped::Slot).then_some(real_type),
         raw: false,
+        statics: "",
     }
 }
 
@@ -5483,6 +5503,24 @@ fn enum_validate(shape: &EnumShape<'_>, variants: &[(String, Vec<String>)]) -> S
     )
 }
 
+/// The constants of the valid type `export_name` of `item_enum`, one for each unit case of its
+/// draft `declared`.
+fn unit_constants(item_enum: &ItemEnum, export_name: &str, declared: &str) -> String {
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_wire_kind(variant) == VariantKind::Unit)
+        .fold(String::new(), |mut acc, variant| {
+            let (case_name, _) = variant_names(variant, RenameRule::CamelCase);
+            write!(
+                acc,
+                "public static let {case_name} = {export_name}(draft: {declared}.{case_name}); "
+            )
+            .unwrap();
+            acc
+        })
+}
+
 /// The Swift tokens an enum earns: a `String`-backed enum for an all-unit, untagged-by-default
 /// declaration; otherwise the tagging shape `process_enum` itself dispatches the declaration to.
 fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStream {
@@ -5528,6 +5566,11 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
     };
     preprocess::note(&rust_ident, read::takes_keys(&declaration));
     let typealias = ident_typealias(&rust_ident, &export_name, &generic_params);
+    let statics = if generic_params.is_empty() && args.check.is_empty() {
+        unit_constants(item_enum, &export_name, &declared_as)
+    } else {
+        String::new()
+    };
     let body = if drafted {
         let form = ValidForm {
             conformances: if plain && writes_bare_variant_names && generic_params.is_empty() {
@@ -5537,6 +5580,7 @@ fn enum_swift_tokens(declared: &ItemEnum, args: &SwiftTypeArgs<'_>) -> TokenStre
             },
             keyed: None,
             raw: plain && writes_bare_variant_names,
+            statics: &statics,
         };
         let unpaired = declaration
             .strip_suffix(typealias.as_str())

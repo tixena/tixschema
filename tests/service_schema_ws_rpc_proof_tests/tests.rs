@@ -174,7 +174,7 @@ impl DocumentSession<Session> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("check_range {document_id}"));
         if document_id == "missing" {
-            return Err((CheckRangeErrorDraft::NotFound.validate().unwrap(), None));
+            return Err((CheckRangeError::NotFound, None));
         }
         if document_id == "toolarge" {
             return Err((
@@ -187,8 +187,7 @@ impl DocumentSession<Session> for DocumentBackEnd {
         Ok(RangeResultDraft {
             content: format!("range-of-{document_id}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn read_range(
@@ -200,15 +199,14 @@ impl DocumentSession<Session> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("read_range {document_id} {byte_range:?}"));
         if document_id == "missing" {
-            return Err(RangeErrorDraft::NotFound.validate().unwrap());
+            return Err(RangeError::NotFound);
         }
         if document_id == "quiet" {
             return Ok((
                 RangeResultDraft {
                     content: format!("range-of-{document_id}"),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 None,
             ));
         }
@@ -216,8 +214,7 @@ impl DocumentSession<Session> for DocumentBackEnd {
             RangeResultDraft {
                 content: format!("range-of-{document_id}"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             Some("etag-1".to_owned()),
         ))
     }
@@ -231,7 +228,7 @@ impl DocumentSession<Session> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("unwatch {}", req.document_id));
         if req.document_id == "missing" {
-            return Err(UnwatchErrorDraft::NotFound.validate().unwrap());
+            return Err(UnwatchError::NotFound);
         }
         Ok(())
     }
@@ -240,9 +237,9 @@ impl DocumentSession<Session> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("watch {}", req.document_id));
         if req.document_id == "missing" {
-            return Err(WatchErrorDraft::NotFound.validate().unwrap());
+            return Err(WatchError::NotFound);
         }
-        Ok(WatchResultDraft { accepted: true }.validate().unwrap())
+        Ok(WatchResultDraft { accepted: true }.into())
     }
 }
 
@@ -422,15 +419,11 @@ fn a_successful_call_round_trips_through_the_wire() {
             WatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let answered = drive(&harness, call.as_mut());
-    assert_eq!(
-        answered,
-        Ok(WatchResultDraft { accepted: true }.validate().unwrap())
-    );
+    assert_eq!(answered, Ok(WatchResultDraft { accepted: true }.into()));
     assert_eq!(harness.back_end.reached(), vec!["watch doc-1".to_owned()]);
     assert_eq!(
         crossed_frames(&harness),
@@ -461,17 +454,11 @@ fn a_declared_error_round_trips_through_the_wire() {
             WatchRequestDraft {
                 document_id: "missing".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let answered = drive(&harness, call.as_mut());
-    assert_eq!(
-        answered,
-        Err(CallError::Operation(
-            WatchErrorDraft::NotFound.validate().unwrap()
-        ))
-    );
+    assert_eq!(answered, Err(CallError::Operation(WatchError::NotFound)));
 }
 
 #[test]
@@ -489,8 +476,7 @@ fn header_in_and_header_out_round_trip_through_the_wire() {
             RangeResultDraft {
                 content: "range-of-doc-1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             Some("etag-1".to_owned()),
         )),
     );
@@ -536,8 +522,7 @@ fn a_none_header_out_value_omits_the_key_from_the_reply_frame_s_own_headers_obje
             RangeResultDraft {
                 content: "range-of-quiet".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             None,
         )),
     );
@@ -594,10 +579,7 @@ fn a_declared_error_with_no_error_header_out_value_carries_none() {
     let answered = drive(&harness, call.as_mut());
     assert_eq!(
         answered,
-        Err(CallError::Operation((
-            CheckRangeErrorDraft::NotFound.validate().unwrap(),
-            None
-        ))),
+        Err(CallError::Operation((CheckRangeError::NotFound, None))),
     );
 }
 
@@ -668,8 +650,7 @@ fn a_one_way_operation_is_dispatched_and_answers_nothing_through_the_wire() {
                 TouchRequestDraft {
                     document_id: "doc-1".to_owned(),
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
         )
         .as_mut(),
@@ -710,8 +691,7 @@ fn a_unit_success_round_trips_through_the_wire() {
             UnwatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let answered = drive(&harness, call.as_mut());
@@ -729,8 +709,7 @@ fn a_push_from_the_servers_events_client_reaches_screen() {
                     document_id: "doc-1".to_owned(),
                     version: 4,
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
         )
         .as_mut(),
@@ -744,8 +723,7 @@ fn a_push_from_the_servers_events_client_reaches_screen() {
                 document_id: "doc-1".to_owned(),
                 version: 4,
             }
-            .validate()
-            .unwrap()
+            .into()
         ],
     );
 }
@@ -788,13 +766,12 @@ fn a_stray_reply_is_ignored_and_state_stays_usable() {
             WatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(
         drive(&harness, call.as_mut()),
-        Ok(WatchResultDraft { accepted: true }.validate().unwrap())
+        Ok(WatchResultDraft { accepted: true }.into())
     );
 }
 
@@ -806,8 +783,7 @@ fn close_settles_a_waiting_call_with_a_transport_failure_fault() {
             WatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);

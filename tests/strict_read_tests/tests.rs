@@ -472,7 +472,7 @@ fn a_generic_struct_with_no_member_serde_reads_refuses_a_key_under_the_bounds_se
 fn the_unit_variant_of_a_strict_enum_under_a_tag_alone_refuses_a_key_beside_the_tag() {
     assert_eq!(
         serde_json::from_str::<Tide>(r#"{"kind":"Slack"}"#).unwrap(),
-        TideDraft::Slack.validate().unwrap()
+        Tide::Slack
     );
     let refused = serde_json::from_str::<Tide>(r#"{"kind":"Slack","stray":1}"#)
         .unwrap_err()
@@ -483,7 +483,7 @@ fn the_unit_variant_of_a_strict_enum_under_a_tag_alone_refuses_a_key_beside_the_
     );
     assert_eq!(
         serde_json::from_str::<LenientTide>(r#"{"kind":"Slack","stray":1}"#).unwrap(),
-        LenientTideDraft::Slack.validate().unwrap()
+        LenientTide::Slack
     );
 }
 
@@ -491,7 +491,7 @@ fn the_unit_variant_of_a_strict_enum_under_a_tag_alone_refuses_a_key_beside_the_
 fn the_unit_variant_flattened_last_refuses_a_key_its_holder_leaves_and_reads_its_own_back() {
     let moored = MooringDraft {
         berth: "north".to_owned(),
-        tide: TideDraft::Slack.validate().unwrap(),
+        tide: Tide::Slack,
     };
     let written = serde_json::to_string(&moored).unwrap();
     assert_eq!(written, r#"{"berth":"north","kind":"Slack"}"#);
@@ -510,7 +510,7 @@ fn a_nonstrict_enum_whose_variant_flattens_a_tagged_enum_reads_back_and_past_a_k
     for reading in [
         ReadingDraft::Gauged {
             station: "pier".to_owned(),
-            gauge: GaugeDraft::Sounded { depth: 4 }.validate().unwrap(),
+            gauge: GaugeDraft::Sounded { depth: 4 }.into(),
         },
         ReadingDraft::Missing,
     ] {
@@ -522,6 +522,6 @@ fn a_nonstrict_enum_whose_variant_flattens_a_tagged_enum_reads_back_and_past_a_k
     }
     assert_eq!(
         serde_json::from_str::<Reading>(r#"{"form":"Missing","stray":1}"#).unwrap(),
-        ReadingDraft::Missing.validate().unwrap()
+        Reading::Missing
     );
 }

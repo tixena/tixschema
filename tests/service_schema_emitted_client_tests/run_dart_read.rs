@@ -314,8 +314,7 @@ fn sound_terminal() -> Terminal {
         parcels_by_dock: BTreeMap::from([("north".to_owned(), sound())]),
         spare_parcel: None,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The four messages a read of [`broken_terminal`] is refused with, in the order the terminal

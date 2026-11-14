@@ -277,12 +277,9 @@ fn rows() -> Vec<Row> {
             kotlin: "ShelfDraft<Slot>(mapOf(SlotDraft.NorthDock.validate() to Item.checked(ItemDraft(\"\")), SlotDraft.SouthDock.validate() to Item.checked(ItemDraft(\"a\")))).validationIssues()",
             swift: "ShelfDraft<Slot>(bySlot: [\"north-dock\": Item(draft: ItemDraft(label: \"\")), \"south-dock\": Item(draft: ItemDraft(label: \"a\"))]).validationIssues()",
             name: "a map keyed by a plain enum",
-            rust: shelf(vec![
-                (SlotDraft::NorthDock.validate().unwrap(), ""),
-                (SlotDraft::SouthDock.validate().unwrap(), "a"),
-            ])
-            .validate()
-            .map(|_valid| ()),
+            rust: shelf(vec![(Slot::NorthDock, ""), (Slot::SouthDock, "a")])
+                .validate()
+                .map(|_valid| ()),
         },
         Row {
             dart: "ShelfDraft<Berth>(by_slot: {'b1': Item.fromJsonUnjudged({'label': ''})}).validationIssues()",

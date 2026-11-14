@@ -669,8 +669,7 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             pair: broken()
         }
         .validation_issues(),
@@ -702,8 +701,7 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             maybe: Some(broken()),
             pairs: vec![broken()]
         }

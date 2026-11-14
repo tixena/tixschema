@@ -48,7 +48,7 @@ pub struct NoteBackEnd;
 impl PlainService<()> for NoteBackEnd {
     async fn read(&self, _ctx: &(), id: String) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
+        Ok(HeaderProbeDocumentDraft { title: id }.into())
     }
 }
 
@@ -60,7 +60,7 @@ impl InboundService<()> for NoteBackEnd {
         _tenant: String,
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
+        Ok(HeaderProbeDocumentDraft { title: id }.into())
     }
 }
 
@@ -71,19 +71,14 @@ impl OutboundService<()> for NoteBackEnd {
         id: String,
     ) -> Result<(HeaderProbeDocument, String), HeaderProbeError> {
         ready(()).await;
-        Ok((
-            HeaderProbeDocumentDraft { title: id.clone() }
-                .validate()
-                .unwrap(),
-            id,
-        ))
+        Ok((HeaderProbeDocumentDraft { title: id.clone() }.into(), id))
     }
 }
 
 impl BodilessService<()> for NoteBackEnd {
     async fn read(&self, _ctx: &(), id: String) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
-        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
+        Ok(HeaderProbeDocumentDraft { title: id }.into())
     }
 }
 

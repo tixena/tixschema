@@ -164,8 +164,7 @@ fn taskforce() -> Taskforce {
         burgee: under(Burgee::new(5_u32).unwrap(), Burgee::new(6_u32).unwrap(), &6),
         signal: under(Signal::new(true).unwrap(), Signal::new(false).unwrap(), &7),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// [`Taskforce`] with every map empty.
@@ -180,8 +179,7 @@ fn empty_taskforce() -> Taskforce {
         burgee: HashMap::new(),
         signal: HashMap::new(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The payloads of each struct, brand and list or optional of maps.

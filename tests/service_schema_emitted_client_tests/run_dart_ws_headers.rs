@@ -417,8 +417,7 @@ fn the_dart_attachment_answers_the_rust_client_the_way_the_rust_dispatcher_does(
             label: label.to_owned(),
             tenant: "acme".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     };
     assert_eq!(
         poll_by_hand(first.as_mut()),

@@ -20,8 +20,7 @@ fn dropped_after_one_poll(session: &FrameSession) {
             WatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert!(

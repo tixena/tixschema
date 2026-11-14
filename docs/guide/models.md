@@ -33,13 +33,15 @@ let draft = UserProfileDraft {
 assert!(draft.validation_issues().is_empty());
 
 // `validate()` takes the draft and answers the valid value, or every rule it breaks.
-let profile: UserProfile = draft.validate().unwrap();
+let profile: UserProfile = draft.validate()?;
 assert_eq!(profile.age, 36);
 
 // A valid value turns back into its draft, which is open again.
 let mut again: UserProfileDraft = profile.into();
 again.age = 37;
 ```
+
+Work with the valid type as much as possible. A field, a parameter, a return type, a constant, a static and an impl name `UserProfile`; a draft appears only on the expression that builds or changes a value, and is validated there. A function that answers a value that cannot fail answers the valid type through a constant or `.into()`, which the next two sections show, and `.validate().unwrap()` is for a test alone.
 
 The valid type reads like the draft: `profile.age` and `&*profile` (a `match &*payment { PaymentDraft::Card { .. } => .. }` over an enum) work through `Deref`. It has no `DerefMut`, so `profile.age = 1` and `&mut profile.age` do not compile, and its tuple constructor is closed, so `UserProfile(draft)` does not compile in the declaring module or outside it. `#[derive(Default)]` stays on the draft only, because a default would build a valid value no check saw.
 
@@ -50,6 +52,48 @@ A declaration whose `{Name}Draft` is the name of another type in the module stop
 A plain enum, whose variants hold no data, is the pair in Rust, TypeScript, Swift and Dart, with a rule or without. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
 
 A plain enum's draft also has `wire_name()`, the text serde writes for the value; see [Plain Enums](enums.md#plain-enums).
+
+#### A Constant for a Unit Variant, and `From` for a Draft With No Rule
+
+Two valid values cannot fail, and the macro hands them over without a `Result`. A unit variant of an enum that names no `check` is a constant of the valid type, named like the variant:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionRole {
+    Auditor,
+    DntiTechnician,
+}
+
+impl SessionRole {
+    pub fn can_sign(&self) -> bool {
+        matches!(*self, SessionRole::DntiTechnician)
+    }
+}
+
+fn default_role() -> SessionRole {
+    SessionRole::DntiTechnician
+}
+
+fn clearance(role: SessionRole) -> u8 {
+    match role {
+        SessionRole::Auditor => 1,
+        SessionRole::DntiTechnician => 2,
+    }
+}
+```
+
+A constant is a value of the valid type in an expression and, where the enum derives `PartialEq` and `Eq`, in a pattern: rustc counts the constants toward exhaustiveness, so a `match` on every unit variant takes no `_` arm, and an arm `_` after them draws `warning: unreachable pattern`. Without `PartialEq` and `Eq` a `match` on a constant stops the build with `error: constant of non-structural type .. in a pattern`, and the constant still works in an expression. An enum with data-carrying variants has a constant for each unit variant alone. An enum that names a `check` has none, because a check could refuse a unit variant, and its unit variant is `SessionRoleDraft::DntiTechnician.validate()?`. A generic enum has none.
+
+Each constant is named like its variant, which is no upper case name, so the macro writes one `#[expect(non_upper_case_globals, reason = "..")]` on the `impl` that holds them, and none where every unit variant is upper case. A unit struct is a constant too, in the module that declares it: `Ok(SealAck)` and `serde_json::to_string(&SealAck)` take the valid value of `#[model_schema()] pub struct SealAck;`.
+
+A draft that declares no rule becomes its valid type with `From`, which cannot fail:
+
+```rust
+let rule: RuleResult = RuleResultDraft { passed: true, label: "sealed".to_owned() }.into();
+```
+
+A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that names no `check` and takes no parameter: `SessionRole.DntiTechnician` (TypeScript), `SessionRole.dntiTechnician` (Dart and Swift) and `SessionRole.DntiTechnician` (Kotlin), for each unit variant whatever the other variants hold. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `ShipmentDraft$valid(draft)`, `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule.
 
 #### The Draft and the Valid Type in TypeScript and Zod
 
@@ -84,6 +128,18 @@ A value written by hand is not a `Shipment`, and a member of one cannot be assig
 
 TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out of anything, and no schema has seen it. That is the one way round the check, and it is a way a reader of the code can see. The same goes for a `Shipment` written in a `declare const`.
 
+An enum that names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Status.Active`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), a unit struct that declares no rule has a `const` of its own name, and a type that declares no rule has `ShipmentDraft$valid(draft)`, which answers its valid type with no parse (the value is the draft itself, neither copied nor frozen):
+
+```typescript
+import { Status, StatusDraft$valid, type StatusDraft } from "./models";
+
+const open: Status = Status.Active;
+const draft: StatusDraft = "inactive";
+const closed: Status = StatusDraft$valid(draft);
+```
+
+A type that declares a rule has neither, and a draft becomes its valid type through `Shipment$Schema.parse(draft)`.
+
 Every client and dispatcher types each message and result as the valid type, so `client.ship(...)` takes a `Shipment` and a handler is handed one. Make the argument with `Shipment$Schema.parse(draft)`. A function a `check` names takes the draft, the type the rules run on: `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>)`, where a `Crate<CodeType>` stops the build of the consumer with ``error TS2345: Argument of type 'CrateDraft<unknown>' is not assignable to parameter of type 'Crate<unknown>'.`` A struct that flattens a model holds its keys among its own, so it holds the model's draft: `{ label: string } & MoorageDraft`.
 
 A type that declares a parameter publishes `WrapDraft<T>` and `Wrap<T>` of the same form, and two factories: `WrapDraft$SchemaFactory` answers the draft's schema as it always answered the type's, and `Wrap$SchemaFactory` answers a `ZodType<Wrap<...>>`, which names what the schema parses to, so `.shape` is not on it. `Wrap$SchemaDefault` and `WrapDraft$SchemaDefault` are each the factory at the declared defaults. A build with `typescript` and no `zod` writes the marker a brand writes there, `{ readonly [__brand_Shipment]: true }` after a `declare const __brand_Shipment: unique symbol;`.
@@ -97,9 +153,9 @@ A unit struct -- `pub struct Ping;`, no braces, no fields -- crosses the wire as
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ping;
 
-assert_eq!(serde_json::to_string(&PingDraft).unwrap(), "{}");
-serde_json::from_str::<Ping>("{}").unwrap();
-serde_json::from_str::<Ping>("null").unwrap_err();
+assert_eq!(serde_json::to_string(&Ping)?, "{}");
+serde_json::from_str::<Ping>("{}")?;
+assert!(serde_json::from_str::<Ping>("null").is_err());
 ```
 
 TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin a serializable `object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
@@ -729,6 +785,10 @@ export type HistogramDraft = {
 };
 
 export type Histogram = Readonly<HistogramDraft> & $brand<"Histogram">;
+
+export function HistogramDraft$valid(draft: HistogramDraft): Histogram {
+  return draft as unknown as Histogram;
+}
 ```
 
 - **Where the note is written.** On a member whose type writes such a map at any depth, or names an alias, a brand or a tuple struct declared above it that carries the note. On the key a variant's slots are written under, its name or its content key. On a tuple struct, an alias and a brand whose value writes such a map, and on the name each republishes itself under. In the service code, on each method of a client and of an implementation whose message, header or part writes one, and on the `value` or the `error` of a result and of an outcome whose arm writes one. A type declared below the member that names it, or in another crate, is not looked into.
@@ -819,6 +879,10 @@ export type SpannedDraft = {
 };
 
 export type Spanned = Readonly<SpannedDraft> & $brand<"Spanned">;
+
+export function SpannedDraft$valid(draft: SpannedDraft): Spanned {
+  return draft as unknown as Spanned;
+}
 ```
 
 ```typescript
@@ -858,6 +922,10 @@ export type ReplyDraft = {
 };
 
 export type Reply = Readonly<ReplyDraft> & $brand<"Reply">;
+
+export function ReplyDraft$valid(draft: ReplyDraft): Reply {
+  return draft as unknown as Reply;
+}
 ```
 
 ```typescript

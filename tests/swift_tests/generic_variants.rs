@@ -89,8 +89,7 @@ fn each_variant_is_written_as_its_tagging_writes_it() {
             KegDraft {
                 contents: "x".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )]),
     };
     for (held, written) in [

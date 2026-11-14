@@ -145,8 +145,7 @@ fn named() -> Named {
     NamedDraft {
         id: "doc-1".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -218,7 +217,7 @@ fn an_untagged_enum_is_an_object_where_every_member_is() {
     assert!(!writes_an_object(&TextsDraft::Label("a".to_owned())));
     assert!(Nested::needs_wrapper());
     assert!(!writes_an_object(&NestedDraft::Inner(
-        BrandDraft("a".to_owned()).validate().unwrap()
+        BrandDraft("a".to_owned()).into()
     )));
 }
 
@@ -231,7 +230,7 @@ fn a_generic_type_answers_with_its_type_filled_in() {
     assert!(!writes_an_object(&HolderDraft::<String>("a".to_owned())));
     assert!(!Paged::<String>::needs_wrapper());
     assert!(writes_an_object(&PagedDraft::<String>(
-        PageDraft { items: vec![] }.validate().unwrap()
+        PageDraft { items: vec![] }.into()
     )));
     assert!(Filled::needs_wrapper());
 }

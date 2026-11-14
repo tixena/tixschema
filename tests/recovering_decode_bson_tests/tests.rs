@@ -937,8 +937,7 @@ fn drawing() -> Drawing {
         outline: OutlineDraft::Circle { radius: 1.5_f64 }.validate().unwrap(),
         stroke: StrokeDraft::Dashed { gap: 2 }.validate().unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn route() -> Route {
@@ -950,10 +949,9 @@ fn route() -> Route {
         .validate()
         .unwrap(),
         next: MoveDraft::To(1_i32, 2_i32).validate().unwrap(),
-        status: StatusDraft::Draft.validate().unwrap(),
+        status: Status::Draft,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn record(numbers: &[i32]) -> Record {
@@ -967,8 +965,7 @@ fn record(numbers: &[i32]) -> Record {
             .map(|&number| VersionDraft { number }.validate().unwrap())
             .collect(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A row as `Record` writes it, holding one version.
@@ -1005,8 +1002,7 @@ fn bound() -> Bound {
         path: "g".to_owned(),
         stored: "h".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Repairs what older writers left in a `Record` row, inner versions included, and rejects
@@ -1207,8 +1203,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
             id: "i".to_owned(),
             note: None,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let text_row = written(&KeptTextDraft {
@@ -1226,8 +1221,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
             id: "i".to_owned(),
             note: String::new(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -1283,8 +1277,7 @@ fn a_decider_that_drops_an_undeclared_key_of_a_strict_type_reads_the_row() {
         Ok(ApplicantDraft {
             national_id: "1".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 1);
 }
@@ -1591,8 +1584,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 oid("6a7cc592ca0574e6efdfe218")
             ],
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -1684,8 +1676,7 @@ fn a_read_hook_named_like_the_value_a_key_holds_is_the_authors_function() {
         Ok(NamedDraft {
             name: "x".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -1769,8 +1760,7 @@ fn a_hook_named_like_a_value_an_enum_walker_binds_reads_a_variants_field() {
             inner: "b".to_owned(),
             tag: "c".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -1807,8 +1797,7 @@ fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias(
                 latest: None,
                 name: "Ada".to_owned()
             }
-            .validate()
-            .unwrap())
+            .into())
         );
         assert_eq!(calls, 0);
     }
@@ -1848,8 +1837,7 @@ fn a_key_stored_under_an_alias_is_its_field_and_an_issue_is_listed_at_the_alias(
             latest: Some(VersionDraft { number: 1 }.validate().unwrap()),
             name: "Ada".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -1937,8 +1925,7 @@ fn a_plain_value_in_a_nested_or_optional_list_or_a_map_is_listed_at_its_own_path
             marks: None,
             scores: HashMap::new(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -1948,7 +1935,7 @@ fn a_struct_with_no_field_to_read_still_lists_an_undeclared_key() {
     let read = Derived::from_bson_with(written(&DerivedDraft { total: 7 }), |_raw, _found| {
         derived_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(DerivedDraft { total: 0 }.validate().unwrap()));
+    assert_eq!(read, Ok(DerivedDraft { total: 0 }.into()));
     let keyed = Derived::from_bson_with(doc! { "extra": true }, |_raw, _found| {
         derived_schema::Verdict::Reject
     });
@@ -2053,7 +2040,7 @@ fn unrecovered_is_an_error_a_caller_can_propagate() {
 #[test]
 fn a_tuple_struct_and_a_tuple_are_walked_by_position() {
     let placement = PlacementDraft {
-        pair: PairDraft("p".to_owned(), 3).validate().unwrap(),
+        pair: PairDraft("p".to_owned(), 3).into(),
         spot: ("s".to_owned(), 4),
         spots: vec![("t".to_owned(), 5)],
     };
@@ -2126,8 +2113,7 @@ fn a_position_the_type_does_not_declare_is_unknown_and_serde_reads_past_it() {
             spot: ("b".to_owned(), 2),
             spots: Vec::new(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -2157,7 +2143,7 @@ fn a_brand_a_single_slot_struct_and_a_unit_struct_are_walked_as_serde_writes_the
         owner: OwnerId::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
         ping: PingDraft.validate().unwrap(),
         pinned: Pinned::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
-        wrapper: WrapperDraft("w".to_owned()).validate().unwrap(),
+        wrapper: WrapperDraft("w".to_owned()).into(),
     };
     assert_eq!(
         written(&labelled),
@@ -2291,10 +2277,9 @@ fn a_brand_over_a_brand_a_tuple_struct_and_a_plain_enum_walks_as_the_type_it_hol
     let referenced = ReferencedDraft {
         owner: OwnerRef::new(RecordId::new("abc".to_owned()).unwrap()).unwrap(),
         pair: PairRef::new(PairDraft("a".to_owned(), 1).validate().unwrap()).unwrap(),
-        status: StatusRef::new(StatusDraft::Draft.validate().unwrap()).unwrap(),
+        status: StatusRef::new(Status::Draft).unwrap(),
     }
-    .validate()
-    .unwrap();
+    .into();
     let stored_row = written(&referenced);
     assert_eq!(
         stored_row,
@@ -2346,8 +2331,7 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_the_value_its_field_hold
         current: Current::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         owner: Owner::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(
         written(&assigned),
         doc! {
@@ -2466,8 +2450,7 @@ fn a_transparent_tuple_struct_is_walked_as_the_value_of_the_slot_serde_reads() {
         stamped: Stamped::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]).unwrap(),
     }
-    .validate()
-    .unwrap();
+    .into();
     let stored = written(&FilingDraft {
         keeper: Keeper::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
         stamped: Stamped::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
@@ -2622,8 +2605,7 @@ fn a_constrained_brand_is_refused_with_its_own_message() {
         Ok(CodedDraft {
             code: Code::new("abc".to_owned()).unwrap()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -2649,13 +2631,11 @@ fn a_value_of_a_parameters_type_is_read_whole_at_its_field() {
             PlainDraft {
                 label: "a".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ],
         total: 1,
     }
-    .validate()
-    .unwrap();
+    .into();
     let mut calls = 0_u32;
     let unflagged = Page::<Plain>::from_bson_with(written(&page), |_raw, _found| {
         calls += 1;
@@ -2699,8 +2679,7 @@ fn a_value_of_a_parameters_type_stored_as_another_type_is_mistyped() {
             left: oid("6a7cc592ca0574e6efdfe217"),
             right: 2_i32,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -2717,8 +2696,7 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
             extra: String::new(),
             total: 1,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 
@@ -2736,11 +2714,10 @@ fn a_generic_struct_with_a_defaulted_field_of_the_parameters_type_builds_and_rea
 fn a_generic_type_reached_through_a_field_is_walked_at_the_fields_path() {
     let listing = ListingDraft {
         page: PageDraft {
-            items: vec![VersionDraft { number: 1 }.validate().unwrap()],
+            items: vec![VersionDraft { number: 1 }.into()],
             total: 1,
         }
-        .validate()
-        .unwrap(),
+        .into(),
         tagged: Tagged::new(oid("6a7cc592ca0574e6efdfe217")).unwrap(),
     };
     let mut calls = 0_u32;
@@ -2826,8 +2803,7 @@ fn a_field_typed_as_the_walkers_own_parameter_is_called_reads_as_the_authors_typ
         Ok(HolderDraft {
             inner: IDraft { number: 1 }.validate().unwrap()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 
@@ -2869,24 +2845,20 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
     assert_eq!(
         unit_read,
         Ok(DrawingDraft {
-            fill: FillDraft::Clear.validate().unwrap(),
-            outline: OutlineDraft::Empty.validate().unwrap(),
-            stroke: StrokeDraft::Hairline.validate().unwrap(),
+            fill: Fill::Clear,
+            outline: Outline::Empty,
+            stroke: Stroke::Hairline,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let single = DrawingDraft {
         fill: FillDraft::Solid {
             color: "red".to_owned(),
         }
-        .validate()
-        .unwrap(),
-        outline: OutlineDraft::Owned(oid("6a7cc592ca0574e6efdfe217"))
-            .validate()
-            .unwrap(),
-        stroke: StrokeDraft::Span(1, 2).validate().unwrap(),
+        .into(),
+        outline: OutlineDraft::Owned(oid("6a7cc592ca0574e6efdfe217")).into(),
+        stroke: StrokeDraft::Span(1, 2).into(),
     };
     let single_read = Drawing::from_bson_with(written(&single), |_raw, _found| {
         calls += 1;
@@ -3078,8 +3050,7 @@ fn an_issue_inside_a_variant_is_listed_and_fixed_at_its_full_path() {
                 .unwrap(),
             stroke: StrokeDraft::Dashed { gap: 2 }.validate().unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let circle = doc! { "Circle": { "extra": 1_i32, "radius": "wide" } };
@@ -3215,7 +3186,7 @@ fn a_tagged_enum_is_a_document_whose_other_keys_are_the_variants() {
             calls += 1;
             stroke_schema::Verdict::Reject
         });
-        assert_eq!(level, Ok(StrokeDraft::Level(None).validate().unwrap()));
+        assert_eq!(level, Ok(StrokeDraft::Level(None).into()));
     }
     assert_eq!(calls, 0);
 }
@@ -3489,11 +3460,7 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
         });
     assert_eq!(
         kept,
-        Ok(
-            AnswerDraft::Value(VersionDraft { number: 3_i32 }.validate().unwrap())
-                .validate()
-                .unwrap()
-        )
+        Ok(AnswerDraft::Value(VersionDraft { number: 3_i32 }.into()).into())
     );
     assert_eq!(calls, 0);
 
@@ -3523,11 +3490,10 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     assert_eq!(
         read,
         Ok(SketchDraft {
-            coating: CoatingDraft::Clear.validate().unwrap(),
-            contour: ContourDraft::Empty.validate().unwrap(),
+            coating: Coating::Clear,
+            contour: Contour::Empty,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let keyed_row = doc! {
         "coating": { "color": "red", "kind": "Solid" },
@@ -3547,8 +3513,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             .unwrap(),
             contour: ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     for stored_dash in [
         doc! { "data": { "gap": 2_i32 }, "kind": "Dotted" },
@@ -3558,16 +3523,13 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             calls += 1;
             dash_schema::Verdict::Reject
         });
-        assert_eq!(
-            dash,
-            Ok(DashDraft::Dashed { gap: 2_i32 }.validate().unwrap())
-        );
+        assert_eq!(dash, Ok(DashDraft::Dashed { gap: 2_i32 }.into()));
     }
     let hairline = Dash::from_bson_with(doc! { "kind": "Hairline" }, |_raw, _found| {
         calls += 1;
         dash_schema::Verdict::Reject
     });
-    assert_eq!(hairline, Ok(DashDraft::Hairline.validate().unwrap()));
+    assert_eq!(hairline, Ok(Dash::Hairline));
     assert_eq!(calls, 0);
 }
 
@@ -3603,14 +3565,11 @@ fn an_issue_inside_a_variant_stored_under_an_alias_is_listed_and_fixed_under_the
         contour_schema::Verdict::Fixed
     });
     assert_eq!(seen, [invalid("Round.radius", "F64", string("wide"))]);
-    assert_eq!(
-        fixed,
-        Ok(ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap())
-    );
+    assert_eq!(fixed, Ok(ContourDraft::Circle { radius: 1.5_f64 }.into()));
 
     let mut held = written(&SketchDraft {
-        coating: CoatingDraft::Clear.validate().unwrap(),
-        contour: ContourDraft::Empty.validate().unwrap(),
+        coating: Coating::Clear,
+        contour: Contour::Empty,
     });
     held.insert("contour", doc! { "Round": {} });
     assert!(!serde_reads::<Sketch>(&held));

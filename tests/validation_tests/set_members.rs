@@ -80,13 +80,11 @@ mod a_set_of_values_no_declared_type_describes {
             names: TallyNamesDraft {
                 dock_names: HashSet::from(["north".to_owned()]),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             fleet: TallyFleetDraft {
                 lines: BTreeSet::new(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         };
         assert_eq!(holder.validation_issues(), Vec::<String>::new());
     }

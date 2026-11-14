@@ -605,8 +605,7 @@ fn a_brand_and_the_names_over_it_write_the_bare_value_serde_writes() {
 
 #[test]
 fn every_branded_inner_writes_the_value_its_target_writes() {
-    let slotted: SlotBrandRef =
-        SlotBrand::new(MetricSlotDraft::Weekly.validate().unwrap()).unwrap();
+    let slotted: SlotBrandRef = SlotBrand::new(MetricSlot::Weekly).unwrap();
     assert_eq!(serde_json::to_string(&slotted).unwrap(), "\"Weekly\"");
     let flagged: BoolBrandRef = BoolBrand::new(true).unwrap();
     assert_eq!(serde_json::to_string(&flagged).unwrap(), "true");
@@ -635,8 +634,7 @@ fn every_branded_inner_writes_the_value_its_target_writes() {
     let aliased_plain: PlainStructRef = PlainStructDraft {
         label: "l".to_owned(),
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(
         serde_json::to_string(&aliased_plain).unwrap(),
         "{\"label\":\"l\"}"
@@ -718,8 +716,7 @@ fn a_brand_in_a_composite_is_written_as_the_bare_value_in_every_position() {
             base: PlainStructDraft {
                 label: "f".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         })
         .unwrap(),
         "{\"label\":\"f\"}"

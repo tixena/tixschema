@@ -9,8 +9,7 @@ use super::stamp_client_service_schema::{CallError, ServiceFaultKind};
 use super::stamp_ws_rpc_client::{FrameSession, FrameWriter, StampClientServiceClient, ping_frame};
 use super::stamp_ws_rpc_transport;
 use super::tests::{
-    StampBackEnd, StampClientServiceSchema, StampError, StampErrorDraft, StampReceipt,
-    StampReceiptDraft,
+    StampBackEnd, StampClientServiceSchema, StampError, StampReceipt, StampReceiptDraft,
 };
 use alloc::sync::Arc;
 use core::future::{Future, Ready, ready};
@@ -437,8 +436,7 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
             label: label.to_owned(),
             tenant: "acme".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     };
     assert_eq!(
         poll_by_hand(first.as_mut()),
@@ -451,16 +449,13 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
     assert_eq!(
         poll_by_hand(third.as_mut()),
         Poll::Ready(Err(CallError::Operation((
-            StampErrorDraft::Refused.validate().unwrap(),
+            StampError::Refused,
             Some("refused at 3".to_owned())
         ))))
     );
     assert_eq!(
         poll_by_hand(fourth.as_mut()),
-        Poll::Ready(Err(CallError::Operation((
-            StampErrorDraft::Refused.validate().unwrap(),
-            None
-        ))))
+        Poll::Ready(Err(CallError::Operation((StampError::Refused, None))))
     );
 }
 

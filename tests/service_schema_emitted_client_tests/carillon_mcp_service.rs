@@ -6,8 +6,8 @@
 use super::carillon_mcp_client::{CarillonMcpServiceClient, McpMessage, Transport};
 use super::carillon_mcp_dispatcher;
 use super::carillon_service::{
-    CASES, CarillonBell, CarillonBellDraft, CarillonChime, CarillonError, CarillonErrorDraft,
-    STRUCK, carillon_bell_schema, carillon_chime_schema, payload,
+    CASES, CarillonBell, CarillonBellDraft, CarillonChime, CarillonError, STRUCK,
+    carillon_bell_schema, carillon_chime_schema, payload,
 };
 use super::mcp_writer_rows::ready_output;
 use super::tests::poll_once;
@@ -202,7 +202,7 @@ impl CarillonMcpService<()> for McpCarillon {
     ) -> impl Future<Output = Result<(CarillonBell, u32), (CarillonError, u32)>> {
         let weight = req.weight;
         ready(if weight > CRACKS_ABOVE {
-            Err((CarillonErrorDraft::Cracked.validate().unwrap(), weight))
+            Err((CarillonError::Cracked, weight))
         } else {
             Ok((req, weight))
         })
@@ -663,7 +663,7 @@ fn the_rust_client_reads_the_verse_the_rust_dispatcher_chants() {
         sent: Mutex::new(Vec::new()),
     });
     let verse = CarillonVerseDraft {
-        refrain: CarillonRefrainDraft::Beats { beats: 3 }.validate().unwrap(),
+        refrain: CarillonRefrainDraft::Beats { beats: 3 }.into(),
     };
     assert_eq!(
         poll_once(client.chant(verse.clone().validate().unwrap()))

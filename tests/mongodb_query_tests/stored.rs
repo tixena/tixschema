@@ -60,8 +60,7 @@ fn address() -> Address {
         city: "Santo Domingo".to_owned(),
         postal_code: "10101".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn invoice() -> Invoice {
@@ -136,8 +135,7 @@ fn invoice() -> Invoice {
         tags: vec!["export".to_owned(), "priority".to_owned()],
         total: 1250.5_f64,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The paths of the row's own values, of the models it holds bare, and of the list of plain

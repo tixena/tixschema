@@ -10,8 +10,7 @@ use tixschema::model_schema;
 
 use super::shapes::{Audit, Payment};
 use super::{
-    Address, Customer, Invoice, InvoiceStatus, InvoiceStatusDraft, Order, customer_schema,
-    invoice_schema, shown,
+    Address, Customer, Invoice, InvoiceStatus, Order, customer_schema, invoice_schema, shown,
 };
 
 /// The element of the list of models a [`Hamper`] holds.
@@ -252,11 +251,9 @@ fn nest_joins_two_keys_by_a_dot_and_leaves_an_empty_one_out() {
     );
     assert_eq!(
         shown(
-            invoice.status().nest(
-                InvoiceStatus::MONGO_FIELDS
-                    .eq(InvoiceStatusDraft::Paid.validate().unwrap())
-                    .unwrap()
-            )
+            invoice
+                .status()
+                .nest(InvoiceStatus::MONGO_FIELDS.eq(InvoiceStatus::Paid).unwrap())
         ),
         r#"{ "status": { "$eq": "paid" } }"#
     );

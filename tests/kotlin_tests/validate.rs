@@ -15,15 +15,15 @@ use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
 use super::read::paired_plain_enum;
 #[cfg(feature = "serde")]
-use super::read::valid_class;
-#[cfg(feature = "serde")]
 use super::read::{
     DECODED, brand_companion, brand_serializers, kept_inline, mapped, mapped_over_a_brand,
 };
 use super::read::{
-    NO_ISSUES, drafted_serializers, judged_valid, judged_valid_over, kept_draft, to_valid,
-    valid_class_over, valid_unjudged, valid_unjudged_over,
+    NO_ISSUES, drafted_serializers, drafted_serializers_with, judged_valid, judged_valid_over,
+    kept_draft, to_valid, to_valid_free, valid_class_over, valid_unjudged, valid_unjudged_over,
 };
+#[cfg(feature = "serde")]
+use super::read::{valid_class, valid_class_with};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -225,8 +225,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
             later: LaterDraft {
                 label: "a".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         })
         .unwrap(),
         serde_json::json!({ "later": { "label": "a" } })
@@ -354,7 +353,7 @@ fn a_class_runs_each_members_rules_and_then_its_own_check() {
              violations.addAll(parcel.validationIssues().map {{ kotlinSchemaUnder(\"parcel\", \
              it) }}); return violations }}; {UNDER} {} }} {}",
             kept_draft("Manifest"),
-            to_valid("Manifest", ""),
+            to_valid_free("Manifest", ""),
             drafted_serializers("Manifest", "val parcel: Parcel get() = draft.parcel; ")
         )
     );
@@ -370,7 +369,7 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
              {{ kotlinSchemaUnder(\"later\", it) }}); return violations }}; {FALLBACK}; {UNDER} \
              {} }} {}",
             kept_draft("Shelf"),
-            to_valid("Shelf", ""),
+            to_valid_free("Shelf", ""),
             drafted_serializers("Shelf", "val later: Later get() = draft.later; ")
         )
     );
@@ -379,7 +378,7 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
         format!(
             "{} data class LaterDraft(val label: String) {{ {NO_ISSUES} {} }} {}",
             kept_draft("Later"),
-            to_valid("Later", ""),
+            to_valid_free("Later", ""),
             drafted_serializers("Later", "val label: String get() = draft.label; ")
         )
     );
@@ -476,8 +475,8 @@ fn every_shape_carries_validate() {
             format!(
                 "{} object PingDraft {{ {NO_ISSUES} {} }} {}",
                 kept_draft("Ping"),
-                to_valid("Ping", ""),
-                drafted_serializers("Ping", "")
+                to_valid_free("Ping", ""),
+                drafted_serializers_with("Ping", "", "; val instance = checked(PingDraft)")
             ),
         ),
         #[cfg(feature = "serde")]
@@ -501,7 +500,7 @@ fn every_shape_carries_validate() {
                  WrapperDraftUnjudged<T>(tSerializer: KSerializer<T>) : KSerializer<WrapperDraft<T>> \
                  by WrapperDraft.generatedSerializer(tSerializer) {} {} {}",
                 kept_draft("Wrapper"),
-                to_valid("Wrapper", "<T>"),
+                to_valid_free("Wrapper", "<T>"),
                 valid_class_over("Wrapper", "<T>", "val value: T get() = draft.value; "),
                 valid_unjudged_over("Wrapper", "T", "", "tSerializer"),
                 judged_valid_over("Wrapper", "T", "", "tSerializer")
@@ -513,7 +512,7 @@ fn every_shape_carries_validate() {
                 "{} data class RenamedWidgetDraft(val label: String) {{ {NO_ISSUES} {} }} {} typealias \
                  Widget = RenamedWidget;",
                 kept_draft("RenamedWidget"),
-                to_valid("RenamedWidget", ""),
+                to_valid_free("RenamedWidget", ""),
                 drafted_serializers("RenamedWidget", "val label: String get() = draft.label; ")
             ),
         ),
@@ -525,7 +524,7 @@ fn every_shape_carries_validate() {
         pair.contains(&format!(
             "data class GenericPairDraft<T>(val slot0: T, val slot1: UInt) {{ {NO_ISSUES} {} }} \
              class GenericPairDraftUnjudged<T: Any>(",
-            to_valid("GenericPair", "<T>")
+            to_valid_free("GenericPair", "<T>")
         )),
         "got: {pair}"
     );
@@ -544,7 +543,7 @@ fn every_shape_carries_validate() {
             kept_draft("HoldsTuple")
         )) && holder.contains(&format!(
             ") {{ {NO_ISSUES} {} }} ",
-            to_valid("HoldsTuple", "")
+            to_valid_free("HoldsTuple", "")
         )) && holder.ends_with(&format!(
             "{} {}",
             valid_unjudged("HoldsTuple"),
@@ -619,7 +618,7 @@ fn a_sealed_interface_declares_validate_and_each_variant_overrides_it() {
         assert!(
             types.contains(&format!(
                 "sealed interface {interface}Draft {{ fun validationIssues(): List<String>; {} }} ",
-                to_valid(interface, "")
+                to_valid_free(interface, "")
             )),
             "got: {definition}"
         );
@@ -643,7 +642,7 @@ fn a_flattened_member_is_reported_under_no_name() {
                  validationIssues(): List<String> {{ val violations = mutableListOf<String>(); \
                  violations.addAll(stamp.validationIssues()); return violations }} {} }} \
                  object AuditDraftUnjudged",
-            to_valid("Audit", "")
+            to_valid_free("Audit", "")
         )),
         "got: {audit}"
     );
@@ -775,7 +774,7 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              } }",
             format!(
                 "{} {} {}",
-                valid_class("SimpleChoice", ""),
+                valid_class_with("SimpleChoice", "", "; val None = checked(SimpleChoiceNone)"),
                 valid_unjudged("SimpleChoice"),
                 judged_valid("SimpleChoice")
             ),
@@ -810,7 +809,11 @@ fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
              throw SerializationException(\"unknown tag \" + tag) } } } }",
             format!(
                 "{} {} {}",
-                valid_class("DynamicValue", ""),
+                valid_class_with(
+                    "DynamicValue",
+                    "",
+                    "; val Nothing = checked(DynamicValueNothing)"
+                ),
                 valid_unjudged("DynamicValue"),
                 judged_valid("DynamicValue")
             ),

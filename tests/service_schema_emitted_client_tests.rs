@@ -136,6 +136,12 @@ mod run_dart_sealed_brands;
 #[path = "service_schema_emitted_client_tests/run_dart_valid_types.rs"]
 mod run_dart_valid_types;
 
+/// The constants of a valid Dart enum and the `toValid()` of a draft with no rule.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_valid_constants.rs"]
+mod run_dart_valid_constants;
+
 /// The read of each emitted Dart type, which refuses what its `validate()` refuses.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_read.rs"]
@@ -338,6 +344,11 @@ mod run_swift_sealed_brands;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_valid_types.rs"]
 mod run_swift_valid_types;
+
+/// The constants of a valid Swift enum and the `valid` of a draft with no rule.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_valid_constants.rs"]
+mod run_swift_valid_constants;
 
 /// The models a map under a key Swift holds as its text is written on.
 #[cfg(all(test, feature = "swift", feature = "chrono"))]
@@ -847,6 +858,12 @@ mod run_kotlin_sealed_brands;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_valid_types.rs"]
 mod run_kotlin_valid_types;
+
+/// The constants of a valid Kotlin enum and the `toValid()` of a draft with no rule.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_valid_constants.rs"]
+mod run_kotlin_valid_constants;
 
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one with its

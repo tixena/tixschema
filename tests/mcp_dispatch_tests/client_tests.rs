@@ -7,7 +7,7 @@ use crate::document_service_schema::{CallError, ServiceFault, ServiceFaultKind};
 use crate::support::{Lines, assert_valid, block_on};
 use crate::tests::{
     Archive, DocumentId, DraftBatchDraft, DraftDraft, GetVersionRequest, GetVersionRequestDraft,
-    VersionError, VersionErrorDraft, VersionResponse, VersionResponseDraft,
+    VersionError, VersionResponse, VersionResponseDraft,
 };
 use core::fmt::Debug;
 use core::future::Future;
@@ -149,7 +149,7 @@ fn a_success_is_read_from_the_structured_content() {
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
     assert_eq!(
         ask(&client, "doc-1"),
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     );
 }
 
@@ -159,9 +159,7 @@ fn a_declared_error_is_the_error_the_operation_declared() {
     let client = DocumentServiceClient::new(Dispatching::over(&archive));
     assert_eq!(
         ask(&client, "missing"),
-        Err(CallError::Operation(
-            VersionErrorDraft::NotFound.validate().unwrap()
-        ))
+        Err(CallError::Operation(VersionError::NotFound))
     );
 }
 
@@ -199,10 +197,7 @@ fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_b
     let read = block_on(client.check_many(vec![GetVersionRequestDraft {
         document_id: "doc-1".to_owned(),
     }.validate().unwrap()]));
-    assert_eq!(
-        read,
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
-    );
+    assert_eq!(read, Ok(VersionResponseDraft { version: 7 }.into()));
 }
 
 #[test]
@@ -227,7 +222,7 @@ fn a_pair_is_refused_for_the_member_whose_request_breaks_a_bound() {
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
     assert_eq!(
         block_on(client.check_pair(whole(), whole())),
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     );
 }
 
@@ -247,14 +242,10 @@ fn a_list_of_drafts_is_read_by_the_server_and_counted() {
                     .unwrap(),
                 ],
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
-    assert_eq!(
-        counted,
-        Ok(VersionResponseDraft { version: 1 }.validate().unwrap())
-    );
+    assert_eq!(counted, Ok(VersionResponseDraft { version: 1 }.into()));
 }
 
 #[test]
@@ -287,7 +278,7 @@ fn a_unit_success_a_wrapped_message_and_a_one_way_call_are_answered() {
     );
     assert_eq!(
         block_on(client.lookup(DocumentId::new("doc-1".to_owned()).unwrap())),
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     );
     assert_eq!(
         block_on(client.touch_document("doc-1".to_owned(), "reviewer-7".to_owned())),
@@ -319,14 +310,14 @@ fn a_header_goes_beside_the_wrapped_message_and_comes_back_beside_the_value() {
     assert_eq!(
         block_on(client.get_tagged("doc-1".to_owned(), Some("\"v6\"".to_owned()))),
         Ok((
-            VersionResponseDraft { version: 7 }.validate().unwrap(),
+            VersionResponseDraft { version: 7 }.into(),
             "\"v7\"".to_owned()
         ))
     );
     assert_eq!(
         block_on(client.get_tagged("doc-1".to_owned(), None)),
         Ok((
-            VersionResponseDraft { version: 7 }.validate().unwrap(),
+            VersionResponseDraft { version: 7 }.into(),
             "\"v7\"".to_owned()
         ))
     );

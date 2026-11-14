@@ -39,7 +39,7 @@ fn serde_writes_a_vec_of_u8_as_the_json_array_in_every_place_a_member_holds_one(
     let holder = BytesHolderDraft {
         aliased: vec![9],
         data: vec![137, 80, 78, 71],
-        filled: BytesBoxDraft { held: vec![0, 255] }.validate().unwrap(),
+        filled: BytesBoxDraft { held: vec![0, 255] }.into(),
         keyed: HashMap::from([("k".to_owned(), vec![1, 2])]),
         outcome: Ok(vec![4, 5]),
         paired: (vec![6], "x".to_owned()),

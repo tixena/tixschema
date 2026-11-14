@@ -447,8 +447,7 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
                 .validate()
                 .unwrap()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let many = BoundedChooser::from_value_with(json!({ "choice": ["a", "b", "c"] }), |_, _| {
         Verdict::Reject
@@ -632,8 +631,7 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
             lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
             pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 

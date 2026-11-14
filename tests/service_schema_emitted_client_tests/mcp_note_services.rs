@@ -80,7 +80,7 @@ impl NoteReviewService<()> for NoteShelf {
         _title: String,
     ) -> Result<Vec<note_review_service_schema::McpPromptMessage>, NoteMissing> {
         ready(()).await;
-        Err(NoteMissingDraft::NotFound.validate().unwrap())
+        Err(NoteMissing::NotFound)
     }
 }
 
@@ -115,8 +115,7 @@ impl NoteCountService<()> for NoteShelf {
         Ok(NoteCountDraft {
             notes: u32::try_from(label.len()).unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -140,7 +139,7 @@ fn the_five_services_are_implementable_and_callable() {
     let title = || "first".to_owned();
     assert_eq!(
         poll_once(NoteReviewService::review_note(&NoteShelf, &(), title())).unwrap(),
-        Err(NoteMissingDraft::NotFound.validate().unwrap())
+        Err(NoteMissing::NotFound)
     );
     assert_eq!(
         poll_once(NoteGreetingService::greet(&NoteShelf, &(), title())).unwrap(),
@@ -159,6 +158,6 @@ fn the_five_services_are_implementable_and_callable() {
     );
     assert_eq!(
         poll_once(NoteCountService::count(&NoteShelf, &(), title())).unwrap(),
-        Ok(NoteCountDraft { notes: 5 }.validate().unwrap())
+        Ok(NoteCountDraft { notes: 5 }.into())
     );
 }

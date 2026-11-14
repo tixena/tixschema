@@ -150,16 +150,16 @@ fn serde_writes_a_date_in_one_slot_as_the_slots_value() {
 
 #[test]
 fn a_holder_writes_a_struct_of_one_slot_as_the_slots_value() {
-    let baled = || BaledDraft(bale()).validate().unwrap();
+    let baled = || BaledDraft(bale()).into();
     let moniker = || MonikerDraft("a".to_owned()).validate().unwrap();
-    let sacked = || SackedDraft(sack()).validate().unwrap();
+    let sacked = || SackedDraft(sack()).into();
     let counted = |count| CountDraft(count).validate().unwrap();
     let tote = ToteDraft {
         baled: baled(),
         counts: vec![counted(1)],
         moniker: moniker(),
         sacked: sacked(),
-        single: SingleDraft(9).validate().unwrap(),
+        single: SingleDraft(9).into(),
     };
     for (written, expected) in [
         (
@@ -233,7 +233,7 @@ fn a_holder_writes_a_struct_of_one_slot_as_the_slots_value() {
 fn a_flattened_struct_of_one_slot_and_brand_join_their_keys_to_the_holder() {
     let bales = || BalesDraft(vec![bale()]);
     let laden = LadenDraft {
-        baled: BaledDraft(bale()).validate().unwrap(),
+        baled: BaledDraft(bale()).into(),
         bales: bales().validate().unwrap(),
         carried_bales: SackDraft {
             label: "c".to_owned(),
@@ -299,9 +299,7 @@ fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
     assert_eq!(
         read_back(&StropDraft {
             count: 1,
-            slung: SlungDraft(SlingDraft::Slack.validate().unwrap())
-                .validate()
-                .unwrap(),
+            slung: SlungDraft(SlingDraft::Slack.validate().unwrap()).into(),
         }),
         r#"{"count":1,"Slack":null}"#
     );
@@ -314,9 +312,7 @@ fn a_struct_of_one_slot_over_an_enum_writes_a_unit_variant_as_an_entry() {
     );
     assert_eq!(
         read_back(&RiggerDraft::Slung(
-            SlungDraft(SlingDraft::Slack.validate().unwrap())
-                .validate()
-                .unwrap()
+            SlungDraft(SlingDraft::Slack.validate().unwrap()).into()
         )),
         r#"{"kind":"Slung","Slack":null}"#
     );

@@ -1620,8 +1620,7 @@ fn the_archive_answers_every_operation_of_every_service() {
             McpInvoiceRequestDraft {
                 organization: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();

@@ -154,18 +154,18 @@ pub struct Deep {
 ///
 /// ```rust example
 /// PositionsDraft {
-///     adjacent: AdjacentDraft::Held(9).validate().unwrap(),
+///     adjacent: AdjacentDraft::Held(9).into(),
 ///     boxed: Box::new(10),
 ///     counted: Rc::new(14),
-///     deep: DeepDraft { deep: 13 }.validate().unwrap(),
+///     deep: DeepDraft { deep: 13 }.into(),
 ///     keyed: BTreeMap::from([("a".to_owned(), 1)]),
 ///     maybe: Some(5),
-///     named: WrapperDraft::Named { n: 5 }.validate().unwrap(),
-///     pair: WrapperDraft::Pair(3, 4).validate().unwrap(),
+///     named: WrapperDraft::Named { n: 5 }.into(),
+///     pair: WrapperDraft::Pair(3, 4).into(),
 ///     plain: Plain::new(8).unwrap(),
 ///     shared: Arc::new(15),
-///     tag: TagDraft(6).validate().unwrap(),
-///     wrapped: WrapperDraft::Wrapped(2).validate().unwrap(),
+///     tag: TagDraft(6).into(),
+///     wrapped: WrapperDraft::Wrapped(2).into(),
 /// }
 /// ```
 #[model_schema()]

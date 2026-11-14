@@ -291,10 +291,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     fn keyed_yard() -> Yard {
         Yard::model_schema_wrap_unjudged(YardDraft {
             by_brand: BTreeMap::from([(Bay::new("b2".to_owned()).unwrap(), unlabelled())]),
-            by_dock: BTreeMap::from([
-                (DockDraft::North.validate().unwrap(), unlabelled()),
-                (DockDraft::South.validate().unwrap(), sound()),
-            ]),
+            by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
             by_flag: BTreeMap::from([(true, unlabelled())]),
             by_letter: BTreeMap::from([('q', unlabelled())]),
             by_number: BTreeMap::from([(7, unlabelled())]),
@@ -325,8 +322,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             rows_by_dock: BTreeMap::new(),
             spares_by_dock: None,
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     #[test]

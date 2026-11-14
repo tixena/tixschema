@@ -653,8 +653,7 @@ fn a_client_reads_the_blocks_back_into_the_pair_and_the_list() {
             ReportRequestDraft {
                 title: "Q3".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -695,16 +694,10 @@ fn a_client_declares_no_capabilities_so_it_receives_the_arm_and_calls_again_with
         first,
         Err(CallError::Operation(error)) if matches!(&*error, DeleteErrorDraft::NeedsConfirmation { message } if !message.is_empty())
     ));
-    block_on(
-        client.delete_document(
-            "doc-1".to_owned(),
-            Some(
-                DeleteConfirmationDraft { confirm: true }
-                    .validate()
-                    .unwrap(),
-            ),
-        ),
-    )
+    block_on(client.delete_document(
+        "doc-1".to_owned(),
+        Some(DeleteConfirmationDraft { confirm: true }.into()),
+    ))
     .unwrap();
     block_on(client.ship_document("doc-1".to_owned(), None)).unwrap_err();
     let link = block_on(client.import_from_drive("1A2b3C".to_owned()));
@@ -718,7 +711,6 @@ fn a_client_declares_no_capabilities_so_it_receives_the_arm_and_calls_again_with
         ImportedDocumentDraft {
             document_id: "doc-1A2b3C".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }

@@ -77,8 +77,7 @@ fn element_null_fields() -> ElementNullFields {
         set_items: BTreeSet::from([None]),
         vec_items: vec![None],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn slot_null_fields() -> SlotNullFields {
@@ -86,8 +85,7 @@ fn slot_null_fields() -> SlotNullFields {
         set_items: None,
         vec_items: None,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn null_nesting_slots() -> NullNestingSlots {
@@ -104,8 +102,7 @@ fn null_nesting_slots() -> NullNestingSlots {
         tuple_vec_element: ("t".to_owned(), vec![None]),
         tuple_vec_slot: ("t".to_owned(), None),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A `None` the wrapper holds is a `null` inside the array, and the array is written either way.

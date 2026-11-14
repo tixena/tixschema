@@ -858,16 +858,14 @@ fn counted_name_cases() -> Vec<Case> {
             entries: entries.iter().map(|&entry| entry.to_owned()).collect(),
             owner_id: "o".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let archived_by_number = ArchiveDraft {
         casket: CasketDraft {
             entries: Vec::new(),
             owner_id: 7_u32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let (unfilled, filled) = (archived(&[]), archived(&["a"]));
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| PosterDraft {

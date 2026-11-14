@@ -234,8 +234,7 @@ mod a_model_behind_any_reference {
             stamp: &KEPT,
             stamps: &[],
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     #[test]

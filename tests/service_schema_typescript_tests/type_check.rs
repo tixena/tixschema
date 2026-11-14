@@ -704,6 +704,65 @@ pub struct Parcel {
     pub parcel_count: u32,
 }
 
+/// A plain enum that declares no rule.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+pub enum ParcelLane {
+    Bulk,
+    Express,
+}
+
+/// An internally tagged enum with a unit variant and a variant that holds a value.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind")]
+pub enum ParcelMove {
+    Busy { count: u32 },
+    Idle,
+}
+
+/// An adjacently tagged enum, and an externally tagged one, of the same variants.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "t", content = "c")]
+pub enum ParcelAdjacent {
+    Busy(u32),
+    Idle,
+}
+
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub enum ParcelExternal {
+    Busy(u32),
+    Idle,
+}
+
+/// A unit struct, and a struct that holds a model of no rule.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct ParcelStamp;
+
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct ParcelRecord {
+    pub lane: ParcelLane,
+    pub note: ParcelNote,
+}
+
+/// A struct that declares no rule.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[model_schema()]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct ParcelNote {
+    pub text: String,
+}
+
 /// The implementation fixture, with every named operation but the ones listed as left out.
 #[cfg(feature = "zod")]
 fn implementation(without: &[&str]) -> String {
@@ -1823,6 +1882,85 @@ fn a_member_of_the_valid_type_cannot_be_assigned() {
         said.contains(
             "error TS2540: Cannot assign to 'parcelCount' because it is a read-only property."
         ),
+        "got:\n{said}"
+    );
+}
+
+/// The models of a rule-less draft and a draft under a rule, beside the real `zod`.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+fn valid_constants_bundle() -> String {
+    [
+        "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
+        ParcelLabel::ts_definition(),
+        ParcelLabel::zod_schema(),
+        Parcel::ts_definition(),
+        Parcel::zod_schema(),
+        ParcelLane::ts_definition(),
+        ParcelLane::zod_schema(),
+        ParcelNote::ts_definition(),
+        ParcelNote::zod_schema(),
+        ParcelMove::ts_definition(),
+        ParcelMove::zod_schema(),
+        ParcelAdjacent::ts_definition(),
+        ParcelAdjacent::zod_schema(),
+        ParcelExternal::ts_definition(),
+        ParcelExternal::zod_schema(),
+        ParcelStamp::ts_definition(),
+        ParcelStamp::zod_schema(),
+        ParcelRecord::ts_definition(),
+        ParcelRecord::zod_schema(),
+    ]
+    .join("\n\n")
+}
+
+/// Compiles `caller` beside [`valid_constants_bundle`].
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
+    let head = "import { Parcel$Schema, ParcelDraft$Schema, ParcelLane, \
+                ParcelLane$Schema, ParcelLaneDraft$valid, ParcelNoteDraft$valid, type Parcel, \
+                type ParcelDraft, type ParcelLane as Lane, type ParcelNote, \
+                type ParcelNoteDraft, ParcelMove, ParcelAdjacent, ParcelExternal, ParcelStamp, ParcelRecordDraft$valid, type ParcelRecord } from \"./bundle.js\";\n";
+    let files = [
+        ("bundle.ts", valid_constants_bundle()),
+        ("caller.ts", format!("{head}{caller}")),
+    ];
+    compiled_beside_zod(named, &files)
+}
+
+/// A unit variant is a constant of the valid type, and a draft with no rule is made valid with no
+/// parse.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[test]
+fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
+    let caller = "export const lane: Lane = ParcelLane.Express;\n\
+                  export const other: Lane = ParcelLane.Bulk;\n\
+                  export const parsed: Lane = ParcelLane$Schema.parse(\"Express\");\n\
+                  export const valid: Lane = ParcelLaneDraft$valid(\"Bulk\");\n\
+                  export const note: ParcelNote = ParcelNoteDraft$valid({ text: \"a\" });\n\
+                  export const moved: ParcelMove = ParcelMove.Idle;\n\
+                  export const adjacent: ParcelAdjacent = ParcelAdjacent.Idle;\n\
+                  export const external: ParcelExternal = ParcelExternal.Idle;\n\
+                  export const stamp: ParcelStamp = ParcelStamp;\n\
+                  export const record: ParcelRecord = ParcelRecordDraft$valid({ lane: ParcelLane.Express, note });\n";
+    let Some((accepted, said)) = valid_constants_caller("valid-constants-ok", caller) else {
+        return;
+    };
+    assert!(accepted, "the constants do not compile as used:\n{said}");
+}
+
+/// A draft under a rule has no conversion that skips `validate()`.
+#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[test]
+fn a_draft_that_declares_a_rule_has_no_conversion() {
+    let caller = "import { ParcelDraft$valid } from \"./bundle.js\";\n\
+                  declare const draft: ParcelDraft;\n\
+                  export const parcel: Parcel = ParcelDraft$valid(draft);\n";
+    let Some((accepted, said)) = valid_constants_caller("valid-constants-ruled", caller) else {
+        return;
+    };
+    assert!(!accepted, "a draft under a rule was converted");
+    assert!(
+        said.contains("has no exported member named 'ParcelDraft$valid'"),
         "got:\n{said}"
     );
 }

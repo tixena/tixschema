@@ -266,9 +266,9 @@ impl TollingClientService<()> for Tollbooth {
     ) -> Result<TollingReceipt, TollingError> {
         ready(()).await;
         if note.is_empty() {
-            return Err(TollingErrorDraft::Refused.validate().unwrap());
+            return Err(TollingError::Refused);
         }
-        Ok(TollingReceiptDraft { label }.validate().unwrap())
+        Ok(TollingReceiptDraft { label }.into())
     }
 
     async fn note(&self, _ctx: &(), label: String) {
@@ -285,7 +285,7 @@ impl TollingClientService<()> for Tollbooth {
     ) -> Result<(TollingReceipt, String), (TollingError, Option<String>)> {
         ready(()).await;
         Ok((
-            TollingReceiptDraft { label }.validate().unwrap(),
+            TollingReceiptDraft { label }.into(),
             format!("{tenant}{}", trace.unwrap_or_default()),
         ))
     }
@@ -305,8 +305,7 @@ impl TollingUploadClientService<()> for Tollbooth {
         Ok(TollingReceiptDraft {
             label: format!("{title}{note}{pulled}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -458,8 +457,7 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
             TollingReceiptDraft {
                 label: "l".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "t7".to_owned()
         ))),
         "toll answers otherwise"
@@ -467,7 +465,7 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
     let levied = poll_once(Tollbooth::default().levy(&(), "l".to_owned(), String::new()));
     assert_eq!(
         levied,
-        Some(Err(TollingErrorDraft::Refused.validate().unwrap())),
+        Some(Err(TollingError::Refused)),
         "levy answers otherwise"
     );
     let tollbooth = Tollbooth::default();
@@ -492,8 +490,7 @@ fn the_back_end_answers_each_operation_from_what_it_is_handed() {
         Some(Ok(TollingReceiptDraft {
             label: "tn1".to_owned()
         }
-        .validate()
-        .unwrap())),
+        .into())),
         "deposit answers otherwise"
     );
 }

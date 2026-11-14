@@ -161,14 +161,13 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("archive_document {document_id}"));
         if document_id == "already" {
-            return Err(ArchiveErrorDraft::AlreadyArchived.validate().unwrap());
+            return Err(ArchiveError::AlreadyArchived);
         }
         if document_id == "locked" {
             return Err(ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
-            .validate()
-            .unwrap());
+            .into());
         }
         Ok(())
     }
@@ -181,43 +180,33 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("check_range {document_id}"));
         if document_id == "missing" {
-            return Err((RangeErrorDraft::NotFound.validate().unwrap(), None));
+            return Err((RangeError::NotFound, None));
         }
         if document_id == "toolarge" {
             return Err((
-                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+                RangeError::RangeNotSatisfiable,
                 Some("bytes */2097152".to_owned()),
             ));
         }
         if document_id == "inject" {
             return Err((
-                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+                RangeError::RangeNotSatisfiable,
                 Some("bytes */2097152\r\nSet-Cookie: injected=yes".to_owned()),
             ));
         }
         if document_id == "space" {
-            return Err((
-                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
-                Some("a b".to_owned()),
-            ));
+            return Err((RangeError::RangeNotSatisfiable, Some("a b".to_owned())));
         }
         if document_id == "tab" {
-            return Err((
-                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
-                Some("a\tb".to_owned()),
-            ));
+            return Err((RangeError::RangeNotSatisfiable, Some("a\tb".to_owned())));
         }
         if document_id == "quoted" {
-            return Err((
-                RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
-                Some("\"abc\"".to_owned()),
-            ));
+            return Err((RangeError::RangeNotSatisfiable, Some("\"abc\"".to_owned())));
         }
         Ok(VersionResponseDraft {
             content: format!("{document_id}@ok"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn get_thumbnail(
@@ -229,7 +218,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("get_thumbnail {document_id} {download:?}"));
         if document_id == "missing" {
-            return Err(ThumbnailErrorDraft::NotFound.validate().unwrap());
+            return Err(ThumbnailError::NotFound);
         }
         Ok((vec![0x89, 0x50, 0x4e, 0x47], "image/png".to_owned()))
     }
@@ -246,18 +235,17 @@ impl DocumentService<()> for DocumentBackEnd {
             "get_version {document_id} {version_id} {byte_range:?}"
         ));
         if document_id == "missing" {
-            return Err(GetVersionErrorDraft::NotFound.validate().unwrap());
+            return Err(GetVersionError::NotFound);
         }
         if document_id == "gone" {
-            return Err(GetVersionErrorDraft::VersionGone.validate().unwrap());
+            return Err(GetVersionError::VersionGone);
         }
         if document_id == "quiet" {
             return Ok((
                 VersionResponseDraft {
                     content: format!("{document_id}@{version_id}"),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 None,
             ));
         }
@@ -265,8 +253,7 @@ impl DocumentService<()> for DocumentBackEnd {
             VersionResponseDraft {
                 content: format!("{document_id}@{version_id}"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             Some("v7".to_owned()),
         ))
     }
@@ -286,9 +273,9 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach("sweep_documents".to_owned());
         if *self.sweep_fails.lock().unwrap() {
-            return Err(SweepErrorDraft::DbError.validate().unwrap());
+            return Err(SweepError::DbError);
         }
-        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
+        Ok(SweepReportDraft { swept: 3 }.into())
     }
 }
 
@@ -563,8 +550,7 @@ fn the_http_loop_round_trips_the_header_bound_operation() {
             VersionResponseDraft {
                 content: "doc-1@v1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             Some("v7".to_owned()),
         )),
         "the response rides in the body and the header_out value is rejoined from the reply's own \
@@ -593,8 +579,7 @@ fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
             VersionResponseDraft {
                 content: "quiet@v1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             None,
         )),
         "a `None` `header_out` element must omit the header rather than send it empty, and \
@@ -605,14 +590,8 @@ fn the_http_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
 #[test]
 fn the_http_loop_answers_the_header_bound_operations_complete_error_mapping() {
     for (document_id, declared) in [
-        (
-            "missing",
-            GetVersionErrorDraft::NotFound.validate().unwrap(),
-        ),
-        (
-            "gone",
-            GetVersionErrorDraft::VersionGone.validate().unwrap(),
-        ),
+        ("missing", GetVersionError::NotFound),
+        ("gone", GetVersionError::VersionGone),
     ] {
         let service = DocumentBackEnd::new();
         let client = http_rest_client::DocumentServiceClient::new(HttpLoop::new(
@@ -640,7 +619,7 @@ fn the_http_loop_round_trips_the_declared_error_s_own_header() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+            RangeError::RangeNotSatisfiable,
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head rides the body and its `error_header_out` element is \
@@ -659,7 +638,7 @@ fn a_declared_error_with_no_header_value_carries_none_rather_than_an_empty_heade
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::NotFound.validate().unwrap(),
+            RangeError::NotFound,
             None,
         ))),
     );
@@ -802,7 +781,7 @@ fn the_http_loop_round_trips_the_no_payload_operation_at_its_overridden_ok_statu
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation(
-            ArchiveErrorDraft::AlreadyArchived.validate().unwrap()
+            ArchiveError::AlreadyArchived
         )),
         "the mapped error still answers even though the operation carries no payload of its own"
     );
@@ -843,7 +822,7 @@ fn the_http_loop_round_trips_the_bytes_operation_and_its_content_type() {
     assert_eq!(
         missing,
         Err(document_service_schema::CallError::Operation(
-            ThumbnailErrorDraft::NotFound.validate().unwrap()
+            ThumbnailError::NotFound
         )),
         "a bytes operation's declared error still answers JSON, exactly like any other operation's"
     );
@@ -857,10 +836,7 @@ fn the_http_loop_round_trips_the_defaulted_operation_at_its_default_path() {
         http_rest_transport::DefaultFaultHandler,
     ));
     let answered = poll_once(client.sweep_documents()).unwrap();
-    assert_eq!(
-        answered,
-        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
-    );
+    assert_eq!(answered, Ok(SweepReportDraft { swept: 3 }.into()));
     assert_eq!(service.reached(), vec!["sweep_documents".to_owned()]);
 
     service.fail_next_sweep();
@@ -868,7 +844,7 @@ fn the_http_loop_round_trips_the_defaulted_operation_at_its_default_path() {
     assert_eq!(
         refused,
         Err(document_service_schema::CallError::Operation(
-            SweepErrorDraft::DbError.validate().unwrap()
+            SweepError::DbError
         )),
         "an operation naming no http(...) group still answers its declared error, at the fixed \
          default-binding status"
@@ -973,8 +949,7 @@ fn the_amqp_loop_round_trips_the_header_bound_operation_through_the_headers_chan
             VersionResponseDraft {
                 content: "doc-1@v1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             Some("v7".to_owned()),
         ),
         "the header_in value rode the message headers table into the implementation, and the \
@@ -999,8 +974,7 @@ fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
             VersionResponseDraft {
                 content: "quiet@v1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             None,
         ),
         "a `None` `header_out` element must omit the header, on the AMQP headers table too"
@@ -1010,14 +984,8 @@ fn the_amqp_loop_carries_none_rather_than_an_empty_header_for_an_absent_header_o
 #[test]
 fn the_amqp_loop_answers_the_header_bound_operations_complete_error_mapping() {
     for (document_id, declared) in [
-        (
-            "missing",
-            GetVersionErrorDraft::NotFound.validate().unwrap(),
-        ),
-        (
-            "gone",
-            GetVersionErrorDraft::VersionGone.validate().unwrap(),
-        ),
+        ("missing", GetVersionError::NotFound),
+        ("gone", GetVersionError::VersionGone),
     ] {
         let service = DocumentBackEnd::new();
         let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
@@ -1041,8 +1009,7 @@ fn a_declared_error_crosses_the_amqp_loop_with_every_field_it_carries() {
             ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )),
     );
 }
@@ -1060,8 +1027,7 @@ fn a_declared_error_crosses_the_http_loop_with_every_field_it_carries() {
             ArchiveErrorDraft::Locked {
                 reason: "held for review".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )),
     );
 }
@@ -1074,7 +1040,7 @@ fn the_amqp_loop_round_trips_the_declared_error_s_own_header() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::RangeNotSatisfiable.validate().unwrap(),
+            RangeError::RangeNotSatisfiable,
             Some("bytes */2097152".to_owned()),
         ))),
         "the declared error's own head rides the envelope's `error` and its `error_header_out` \
@@ -1091,7 +1057,7 @@ fn an_amqp_declared_error_with_no_header_value_carries_none() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation((
-            RangeErrorDraft::NotFound.validate().unwrap(),
+            RangeError::NotFound,
             None,
         ))),
     );
@@ -1105,7 +1071,7 @@ fn the_amqp_loop_answers_the_no_payload_operations_mapped_error() {
     assert_eq!(
         answered,
         Err(document_service_schema::CallError::Operation(
-            ArchiveErrorDraft::AlreadyArchived.validate().unwrap()
+            ArchiveError::AlreadyArchived
         ))
     );
     assert_eq!(
@@ -1220,17 +1186,14 @@ fn the_amqp_loop_round_trips_the_defaulted_operation() {
     let service = DocumentBackEnd::new();
     let client = amqp_client::DocumentServiceClient::new(AmqpLoop::new(&service));
     let answered = poll_once(client.sweep_documents()).unwrap();
-    assert_eq!(
-        answered,
-        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
-    );
+    assert_eq!(answered, Ok(SweepReportDraft { swept: 3 }.into()));
 
     service.fail_next_sweep();
     let refused = poll_once(client.sweep_documents()).unwrap();
     assert_eq!(
         refused,
         Err(document_service_schema::CallError::Operation(
-            SweepErrorDraft::DbError.validate().unwrap()
+            SweepError::DbError
         ))
     );
 }

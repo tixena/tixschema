@@ -48,7 +48,7 @@ fn within_parcel(value: &ParcelDraft) -> Result<(), Vec<String>> {
     if outside.is_empty() { Ok(()) } else { Err(outside) }
 }
 
-fn main() {
+fn main() -> Result<(), Vec<String>> {
     let parcel = |label: &str, codes: &[&str], fragile: &[&str]| ParcelDraft {
         label: label.to_string(),
         item_code_list: codes.iter().map(|code| code.to_string()).collect(),
@@ -57,7 +57,7 @@ fn main() {
     let lines = |answered: Vec<String>| answered;
 
     // The draft is what is built, and `validate()` makes the valid `Parcel` of it.
-    let valid: Parcel = parcel("A", &["x"], &["x"]).validate().unwrap();
+    let valid: Parcel = parcel("A", &["x"], &["x"]).validate()?;
     assert_eq!(valid.label, "A");
     assert!(parcel("A", &["x"], &["x"]).validation_issues().is_empty());
     assert_eq!(
@@ -105,5 +105,6 @@ fn main() {
         },
     );
     assert!(read.is_err());
+    Ok(())
 }
 ```

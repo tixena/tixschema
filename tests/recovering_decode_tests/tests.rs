@@ -354,8 +354,7 @@ fn ledger() -> Ledger {
             VersionDraft { number: 2_i32 }.validate().unwrap(),
         ],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Reads `stored` as a `Ledger` with a decider that answers `verdict` and changes nothing, and
@@ -610,7 +609,7 @@ fn a_read_that_calls_no_callback_runs_a_fields_reader_twice() {
         calls += 1;
         counted_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(CountedDraft { number: 7 }.validate().unwrap()));
+    assert_eq!(read, Ok(CountedDraft { number: 7 }.into()));
     assert_eq!(calls, 0);
     assert_eq!(NUMBER_READS.load(Ordering::Relaxed), 2);
 }
@@ -674,8 +673,7 @@ fn a_key_stored_under_an_alias_is_its_field() {
             Ok(AliasedDraft {
                 name: "Ada".to_owned()
             }
-            .validate()
-            .unwrap())
+            .into())
         );
         assert_eq!(calls, 0);
     }
@@ -705,8 +703,7 @@ fn an_issue_under_an_alias_is_listed_at_the_alias() {
         Ok(AliasedDraft {
             name: "Ada".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let absent =
         Aliased::from_value_with(json!({}), |_raw, _found| aliased_schema::Verdict::Reject);
@@ -754,8 +751,7 @@ fn a_key_serde_reads_the_absence_of_is_not_missing() {
             maybe: None,
             required: "here".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 
@@ -815,8 +811,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
         id: "i".to_owned(),
         note: None,
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(read.as_ref(), Ok(&unread));
     let held_back = Kept::from_value_with(json!({ "id": "i" }), |_raw, _found| {
         calls += 1;
@@ -840,8 +835,7 @@ fn a_key_the_type_writes_under_a_predicate_and_does_not_read_is_declared() {
             id: "i".to_owned(),
             note: String::new(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -866,8 +860,7 @@ fn a_key_a_variant_writes_under_a_predicate_and_does_not_read_is_declared() {
             id: "i".to_owned(),
             note: None,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -910,10 +903,7 @@ fn a_slot_the_type_writes_under_a_predicate_and_does_not_read_is_refused_as_serd
         calls += 1;
         duo_schema::Verdict::Reject
     });
-    assert_eq!(
-        short,
-        Ok(DuoDraft("a".to_owned(), String::new()).validate().unwrap())
-    );
+    assert_eq!(short, Ok(DuoDraft("a".to_owned(), String::new()).into()));
     assert_eq!(calls, 0);
 }
 
@@ -924,7 +914,7 @@ fn a_container_default_reads_every_missing_key() {
         calls += 1;
         defaulted_schema::Verdict::Reject
     });
-    assert_eq!(read, Ok(DefaultedDraft::default().validate().unwrap()));
+    assert_eq!(read, Ok(DefaultedDraft::default().into()));
     assert_eq!(calls, 0);
 }
 
@@ -1048,8 +1038,7 @@ fn a_plain_value_in_a_list_or_a_map_is_listed_at_its_own_path() {
             marks: Some(vec![2_i32]),
             scores: HashMap::from([("ada".to_owned(), 2_i32)]),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -1082,7 +1071,7 @@ fn a_type_that_holds_itself_is_walked_to_any_depth() {
 fn a_struct_with_no_field_to_read_still_lists_an_undeclared_key() {
     let written = serde_json::to_value(DerivedDraft { total: 7 }).unwrap();
     let read = Derived::from_value_with(written, |_raw, _found| derived_schema::Verdict::Reject);
-    assert_eq!(read, Ok(DerivedDraft { total: 0 }.validate().unwrap()));
+    assert_eq!(read, Ok(DerivedDraft { total: 0 }.into()));
     let keyed = Derived::from_value_with(json!({ "extra": true }), |_raw, _found| {
         derived_schema::Verdict::Reject
     });
@@ -1105,8 +1094,7 @@ fn a_field_that_names_a_lifetime_and_borrows_nothing_is_read() {
             label: Cow::Borrowed("x"),
             origin: "",
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }

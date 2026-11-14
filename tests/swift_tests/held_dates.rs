@@ -118,8 +118,7 @@ fn plain_chart() -> PlainChart {
         .validate()
         .unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -137,8 +136,7 @@ fn each_model_is_written_as_serde_writes_it() {
                 first: first(),
                 second: "c".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             held: "h".to_owned(),
             pair: (first(), "p".to_owned()),
         }),

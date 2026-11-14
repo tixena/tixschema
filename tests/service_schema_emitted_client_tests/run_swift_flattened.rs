@@ -367,8 +367,7 @@ fn after_a_struct() -> String {
         flag: PennantDraft {
             label: "n".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         notch: Notch::model_schema_wrap_unjudged(NotchDraft {
             mark: String::new(),
         }),

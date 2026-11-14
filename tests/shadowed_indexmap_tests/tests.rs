@@ -56,13 +56,11 @@ fn serde_writes_the_types_declared_here() {
             key: "k".to_owned(),
             value: 7_u32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
         listed: IndexSetDraft {
             only: "x".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(serde_json::to_string(&holder).unwrap(), WRITTEN);
     assert_eq!(

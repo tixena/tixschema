@@ -67,7 +67,7 @@ fn serde_reads_a_key_left_out_as_its_default_in_every_build() {
     );
     assert_eq!(
         serde_json::from_str::<Jetty>("{}").unwrap(),
-        JettyDraft::default().validate().unwrap()
+        JettyDraft::default().into()
     );
 }
 
@@ -486,6 +486,10 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
         "};",
         "",
         "export type Gangway = Readonly<GangwayDraft> & $brand<\"Gangway\">;",
+        "",
+        "export function GangwayDraft$valid(draft: GangwayDraft): Gangway {",
+        "  return draft as unknown as Gangway;",
+        "}",
     ];
     assert_eq!(Gangway::ts_definition(), lines.join("\n"));
 }
@@ -521,7 +525,7 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
              rethrow; }} }} Map<String, dynamic> toJson() => {{ 'label': label,'width': \
              {WIDTH_WRITTEN}, }}; List<String> validationIssues() => const []; Gangway \
              validate() {{ final found = validationIssues(); if (found.isNotEmpty) throw \
-             FormatException(found.join('; ')); return Gangway._(this); }} }} class Gangway {{ \
+             FormatException(found.join('; ')); return Gangway._(this); }} Gangway toValid() => Gangway._(this); }} class Gangway {{ \
              const Gangway._(this._draft); final GangwayDraft _draft; String get label => \
              _draft.label; int get width => _draft.width; GangwayDraft toDraft() => _draft; \
              factory Gangway.fromJson(Map<String, dynamic> json) {{ final read = \
@@ -555,7 +559,7 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
              throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.label \
              = try container.decode(String.self, forKey: .label); self.width = try \
              container.decode(SwiftSchemaFit<UInt32>.self, forKey: .width).value }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"label\", \"width\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; ",
-            swift_valid::validating("Gangway")
+            swift_valid::validating_free("Gangway")
         )
     );
 }
@@ -570,7 +574,7 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          String, val width: UInt) { fun validationIssues(): List<String> = emptyList() fun \
          validate(): Gangway { val violations = validationIssues(); if (violations.isNotEmpty()) \
          throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return Gangway.checked(this) } } \
+         IllegalArgumentException(\"validate()\")); return Gangway.checked(this) } fun toValid(): Gangway = Gangway.checked(this) } \
          @OptIn(ExperimentalSerializationApi::class) object GangwayDraftUnjudged : \
          KSerializer<GangwayDraft> by GangwayDraft.generatedSerializer() @ConsistentCopyVisibility \
          @Serializable(with = GangwaySerializer::class) data class Gangway private constructor(val \
@@ -665,8 +669,7 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
             id: "1".to_owned(),
             roles: roles(&[])
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<Muster>(r#"{"id":"1"}"#).unwrap(),
@@ -674,8 +677,7 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
             id: "1".to_owned(),
             roles: roles(&[])
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<Squad>(r#"{"id":"1"}"#).unwrap(),
@@ -683,8 +685,7 @@ fn serde_reads_an_omitted_key_with_a_default_as_its_default() {
             id: "1".to_owned(),
             roles: roles(&["guest"])
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let reports = [
         OMITTED_REPORT,

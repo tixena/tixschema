@@ -596,19 +596,15 @@ mod a_brand_is_read_as_a_model_is {
     fn the_bound_of_a_brand_chooses_the_variant_of_an_untagged_enum_and_its_check_none() {
         assert_eq!(
             serde_json::from_str::<Marked>(r#""AB""#).ok(),
-            Some(MarkedDraft::Labelled(label("AB")).validate().unwrap())
+            Some(MarkedDraft::Labelled(label("AB")).into())
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#""a""#).ok(),
-            Some(MarkedDraft::Loose("a".to_owned()).validate().unwrap())
+            Some(MarkedDraft::Loose("a".to_owned()).into())
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#"["AB","CD"]"#).ok(),
-            Some(
-                MarkedDraft::Listed(vec![label("AB"), label("CD")])
-                    .validate()
-                    .unwrap()
-            )
+            Some(MarkedDraft::Listed(vec![label("AB"), label("CD")]).into())
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#"["AB","c"]"#)

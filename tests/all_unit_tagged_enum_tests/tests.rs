@@ -123,6 +123,11 @@ fn the_typescript_union_carries_the_tag_serde_writes() {
         format!(
             "export type BalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
              export type BalanceError = Readonly<BalanceErrorDraft> & $brand<\"BalanceError\">;\n\
+             export const BalanceError = {{\n  \
+             DbError: Object.freeze({{ {tag}: \"{db}\" }}) as BalanceError,\n  \
+             InsufficientBalance: Object.freeze({{ {tag}: \"{insufficient}\" }}) as BalanceError,\n}} as const;\n\
+             export function BalanceErrorDraft$valid(draft: BalanceErrorDraft): BalanceError {{\n  \
+             return draft as unknown as BalanceError;\n}}\n\
              export function BalanceError$Variant(value: unknown): string {{\n  \
              if (typeof value !== \"object\" || value === null) return \"\";\n  \
              switch ((value as {{ {tag}?: unknown }}).{tag}) {{\n    \
@@ -144,6 +149,11 @@ fn the_typescript_union_carries_an_adjacent_tag_too() {
         format!(
             "export type AdjacentBalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
              export type AdjacentBalanceError = Readonly<AdjacentBalanceErrorDraft> & $brand<\"AdjacentBalanceError\">;\n\
+             export const AdjacentBalanceError = {{\n  \
+             DbError: Object.freeze({{ {tag}: \"{db}\" }}) as AdjacentBalanceError,\n  \
+             InsufficientBalance: Object.freeze({{ {tag}: \"{insufficient}\" }}) as AdjacentBalanceError,\n}} as const;\n\
+             export function AdjacentBalanceErrorDraft$valid(draft: AdjacentBalanceErrorDraft): AdjacentBalanceError {{\n  \
+             return draft as unknown as AdjacentBalanceError;\n}}\n\
              export function AdjacentBalanceError$Variant(value: unknown): string {{\n  \
              if (typeof value !== \"object\" || value === null) return \"\";\n  \
              switch ((value as {{ {tag}?: unknown }}).{tag}) {{\n    \
@@ -161,6 +171,10 @@ fn an_all_unit_enum_naming_no_tag_still_publishes_the_string_union() {
         ts_shape(&ExternalBalanceError::ts_definition()),
         "export type ExternalBalanceErrorDraft =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
          export type ExternalBalanceError = Readonly<ExternalBalanceErrorDraft> & $brand<\"ExternalBalanceError\">;\n\
+         export const ExternalBalanceError = {\n  DbError: \"db-error\" as ExternalBalanceError,\n  \
+         InsufficientBalance: \"insufficient-balance\" as ExternalBalanceError,\n} as const;\n\
+         export function ExternalBalanceErrorDraft$valid(draft: ExternalBalanceErrorDraft): ExternalBalanceError {\n  \
+         return draft as unknown as ExternalBalanceError;\n}\n\
          export function ExternalBalanceError$Variant(value: unknown): string {\n  \
          switch (value) {\n    \
          case \"db-error\": return \"DbError\";\n    \

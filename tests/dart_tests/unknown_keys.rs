@@ -1,6 +1,8 @@
 //! The statements the Dart read of a strict class opens with, and the helper it reads each member
 //! with.
 
+use core::fmt::Write as _;
+
 /// The helper a class reads each member under its key with, which puts the key ahead of the path
 /// a refusal carries.
 pub const READ_AT: &str = "static Read _readAt<Read>(Map<String, dynamic>? object, Object key, \
@@ -56,19 +58,29 @@ pub fn plain_enum_read(named: &str, json: &str, arms: &str) -> String {
 pub fn plain_enum_validate(named: &str) -> String {
     format!(
         "{named} validate() {{ final found = validationIssues(); if (found.isNotEmpty) throw \
-         FormatException(found.join('; ')); return {named}._(this); }} }}"
+         FormatException(found.join('; ')); return {named}._(this); }} {named} toValid() => \
+         {named}._(this); }}"
     )
 }
 
-/// The valid class over the draft of a plain enum `named` whose read judges nothing.
-pub fn plain_enum_valid(named: &str) -> String {
+/// The valid class over the draft of a plain enum `named` whose read judges nothing, holding a
+/// constant for each of `members`.
+pub fn plain_enum_valid(named: &str, members: &[&str]) -> String {
+    let statics = members.iter().fold(String::new(), |mut acc, member| {
+        write!(
+            acc,
+            "static const {member} = {named}._({named}Draft.{member}); "
+        )
+        .unwrap();
+        acc
+    });
     format!(
         "class {named} {{ const {named}._(this._draft); final {named}Draft _draft; {named}Draft \
          toDraft() => _draft; factory {named}.fromJson(dynamic json) {{ final read = \
          {named}Draft.fromJson(json); final violations = read.validationIssues(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
          {named}._(read); }} factory {named}.fromJsonUnjudged(dynamic json) => \
-         {named}._({named}Draft.fromJson(json)); String toJson() => _draft.toJson(); \
+         {named}._({named}Draft.fromJson(json)); {statics}String toJson() => _draft.toJson(); \
          List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
          ==(Object other) => other is {named} && other._draft == _draft; @override int get \
          hashCode => _draft.hashCode; static Object $thrown(Object thrown) => thrown is \

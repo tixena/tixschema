@@ -10361,6 +10361,7 @@ fn plain_enum_ts_definition_carries_no_cfg_attribute() {
         "",
         "  'a'",
         "export function Status$Variant(value: unknown): string { return \"\"; }",
+        &[],
     );
     assert_no_cfg_attribute(&tokens, "generate_plain_enum_ts_definition_method");
 }
@@ -10375,7 +10376,7 @@ fn discriminated_enum_ts_definition_carries_no_cfg_attribute() {
         "",
         "  'a'",
         "export function Shape$Variant(value: unknown): string { return \"\"; }",
-        false,
+        (false, &[]),
     );
     assert_no_cfg_attribute(&tokens, "generate_discriminated_enum_ts_definition_method");
 }
@@ -14851,11 +14852,12 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     }
 }
 
-/// The two exceptions are the `clippy::pub_use` each re-export of a support library expects, and
-/// the `doc(hidden)` on each library's module.
+/// The exceptions are the `clippy::pub_use` each re-export of a support library expects, the
+/// `doc(hidden)` on each library's module, and the `non_upper_case_globals` a constant named like
+/// its variant or unit struct expects.
 #[cfg(feature = "serde")]
 #[test]
-fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
+fn nothing_decode_with_emits_suppresses_a_lint_but_the_three_exceptions() {
     let named_fields = (
         "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeQuiet { pub name: String, pub spot: (String, u32), pub tags: Vec<String> }",
@@ -14888,13 +14890,21 @@ fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
         );
         let reexports = flagged.matches("pub use crate :: __tixschema_").count();
         assert!(reexports > 0, "for {source}, got: {flagged}");
-        for expectation in ["# [expect", "# [expect (clippy :: pub_use , reason = \""] {
-            assert_eq!(
-                flagged.matches(expectation).count(),
-                reexports,
-                "for {source}, got: {flagged}"
-            );
-        }
+        let constants = flagged
+            .matches("# [expect (non_upper_case_globals , reason = \"")
+            .count();
+        assert_eq!(
+            flagged.matches("# [expect").count(),
+            reexports.saturating_add(constants),
+            "for {source}, got: {flagged}"
+        );
+        assert_eq!(
+            flagged
+                .matches("# [expect (clippy :: pub_use , reason = \"")
+                .count(),
+            reexports,
+            "for {source}, got: {flagged}"
+        );
     }
     let library = both_libraries();
     let hidden_modules = library.matches("# [doc (hidden)] mod __tixschema_").count();

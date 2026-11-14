@@ -111,9 +111,7 @@ where
 fn a_variant_whose_every_member_serde_skips_builds_each_from_its_default_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Counted>(r#"{"Reset":{}}"#).unwrap(),
-        CountedDraft::Reset { start: 7, total: 0 }
-            .validate()
-            .unwrap()
+        CountedDraft::Reset { start: 7, total: 0 }.into()
     );
     assert_eq!(
         serde_json::to_string(&CountedDraft::Reset { start: 1, total: 2 }).unwrap(),
@@ -141,8 +139,7 @@ fn a_generic_enum_reads_its_variant_of_no_member_under_the_bounds_serde_asks() {
         KeptDraft::Cleared {
             held: String::new()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let shelved = serde_json::from_str::<Shelved<Unmade>>(r#"{"Cleared":{}}"#).unwrap();
     assert!(matches!(&*shelved, ShelvedDraft::Cleared { items } if items.is_empty()));
@@ -159,11 +156,11 @@ fn a_generic_enum_reads_its_variant_of_no_member_under_the_bounds_serde_asks() {
 fn an_enum_that_borrows_reads_its_variant_of_no_member_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Labelled<'_>>(r#"{"Blank":{}}"#).unwrap(),
-        LabelledDraft::Blank { note: None }.validate().unwrap()
+        LabelledDraft::Blank { note: None }.into()
     );
     assert_eq!(
         serde_json::from_str::<Labelled<'_>>(r#"{"Named":{"label":"dock"}}"#).unwrap(),
-        LabelledDraft::Named { label: "dock" }.validate().unwrap()
+        LabelledDraft::Named { label: "dock" }.into()
     );
     for json in [
         r#"{"Blank":{"stray":1}}"#,
@@ -200,7 +197,7 @@ fn an_enum_that_publishes_validate_reads_its_variant_of_no_member_and_refuses_a_
 fn an_enum_its_author_closed_reads_its_variant_of_no_member_and_refuses_a_key() {
     assert_eq!(
         serde_json::from_str::<Switch>(r#"{"kind":"Off","body":{}}"#).unwrap(),
-        SwitchDraft::Off { since: 0 }.validate().unwrap()
+        SwitchDraft::Off { since: 0 }.into()
     );
     for (json, named) in [
         (

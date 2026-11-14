@@ -330,10 +330,7 @@ fn test_chrono_types_constructible() {
     };
     assert!(date_map.events.is_empty());
     let slot_schedule = SlotScheduleDraft {
-        dates: HashMap::from([
-            (ScheduleSlotDraft::Opening.validate().unwrap(), date),
-            (ScheduleSlotDraft::Closing.validate().unwrap(), date),
-        ]),
+        dates: HashMap::from([(ScheduleSlot::Opening, date), (ScheduleSlot::Closing, date)]),
         timestamps: HashMap::new(),
     };
     assert_eq!(slot_schedule.dates.len(), 2);
@@ -1180,7 +1177,7 @@ fn an_untagged_member_under_as_number_keeps_its_own_hook_and_its_check() {
     );
     assert_eq!(
         serde_json::from_str::<SecondsOrFlag>(&written).unwrap(),
-        SecondsOrFlagDraft::Seconds(at).validate().unwrap()
+        SecondsOrFlagDraft::Seconds(at).into()
     );
 
     let checked =
@@ -1249,8 +1246,7 @@ fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
             later: Some(at),
             settled: None,
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 

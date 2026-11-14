@@ -2,6 +2,7 @@
 
 mod forms;
 
+use crate::utils::is_rule_less;
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
@@ -271,6 +272,26 @@ struct Pair<'names> {
     /// What `toJson` answers.
     json_type: &'names str,
     kind: &'names str,
+    /// The constants of the valid type: one for each unit variant, where nothing can refuse one.
+    statics: &'names str,
+}
+
+/// How the sealed base of an enum is written: the form of its classes, whether any rule judges a
+/// value of it, and the constants of its unit variants.
+struct EnumDraft<'names> {
+    form: ReadForm,
+    rule_less: bool,
+    statics: &'names str,
+}
+
+/// What the dispatch of a tagged enum's read is written from.
+struct TaggedDispatch<'text> {
+    corrects: &'text Corrects<'text>,
+    export_name: &'text str,
+    is_external: bool,
+    item_enum: &'text ItemEnum,
+    shape: &'text TagShape<'text>,
+    variant_rule: RenameRule,
 }
 
 /// What the classes of a struct are written from.
@@ -281,6 +302,8 @@ struct StructText<'text> {
     fields: &'text [DartField],
     generic_params: &'text str,
     own_tag: Option<&'text (String, String)>,
+    /// Whether the struct is a unit struct, which has one value.
+    unit: bool,
 }
 
 /// The text of the `validationIssues()` of a value wrapper, and whether the wrapper is a draft.
@@ -4174,6 +4197,7 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
         json_type,
         kind,
         by_draft,
+        statics,
     } = *pair;
     let draft = draft_name(export_name);
     let forwarded = if getters.is_empty() {
@@ -4199,7 +4223,7 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
         "class {export_name}{generic_params} {{ const {export_name}._(this._draft); final \
          {draft}{generic_params} _draft; {forwarded}{draft}{generic_params} toDraft() => _draft; \
          factory {export_name}.fromJson({kind} json{parameters}) {} factory \
-         {export_name}.fromJsonUnjudged({kind} json{parameters}) => {built}({read}); \
+         {export_name}.fromJsonUnjudged({kind} json{parameters}) => {built}({read}); {statics}\
          {json_type} toJson({tp}) => _draft.toJson({args}); List<String> validationIssues() => \
          _draft.validationIssues(); {identity}static Object $thrown{generic_params}(Object thrown) => \
          thrown is {draft}{generic_params} ? thrown.validate() : thrown; }}",
@@ -4211,11 +4235,18 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
 
 /// `validate()` of a draft of the type published as `export_name`: its valid type where
 /// `validationIssues()` is empty, else a refusal with those issues joined as a read joins them.
-fn validate_method(export_name: &str, generic_params: &str) -> String {
+fn validate_method(export_name: &str, generic_params: &str, rule_less: bool) -> String {
+    let converts = if rule_less {
+        format!(
+            " {export_name}{generic_params} toValid() => {export_name}{generic_params}._(this);"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "{export_name}{generic_params} validate() {{ final found = validationIssues(); if \
          (found.isNotEmpty) throw FormatException(found.join('; ')); return \
-         {export_name}{generic_params}._(this); }}"
+         {export_name}{generic_params}._(this); }}{converts}"
     )
 }
 
@@ -4683,6 +4714,7 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         fields,
         generic_params,
         own_tag,
+        unit,
     } = *text;
     let tag_written: Vec<String> = own_tag
         .iter()
@@ -4692,7 +4724,10 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         (
             draft_name(export_name),
             ReadForm::Draft,
-            format!("{issues} {}", validate_method(export_name, generic_params)),
+            format!(
+                "{issues} {}",
+                validate_method(export_name, generic_params, is_rule_less())
+            ),
         )
     } else {
         (
@@ -4723,6 +4758,14 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         &declared,
     );
     if drafted {
+        let statics = if unit && is_rule_less() {
+            format!(
+                "static const instance = {export_name}._({}()); ",
+                draft_name(export_name)
+            )
+        } else {
+            String::new()
+        };
         let getters = forwarding_getters(
             fields
                 .iter()
@@ -4737,6 +4780,7 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
                 json_type: "Map<String, dynamic>",
                 kind: payload_kind(corrects, "Map<String, dynamic>"),
                 by_draft: false,
+                statics: &statics,
             },
             codec,
         ));
@@ -4832,6 +4876,8 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
             fields: &fields,
             generic_params: &generic_params,
             own_tag: own_tag.as_ref(),
+            unit: matches!(item_struct.fields, Fields::Unit)
+                && item_struct.generics.params.is_empty(),
         },
         &validate_members(&rules, &helpers, false),
         !args.undrafted,
@@ -4923,7 +4969,7 @@ fn value_wrapper_tokens(
         Validation::Drafted(issues) => (
             format!(
                 "{issues} {}",
-                validate_method(&export_name, &generic_params)
+                validate_method(&export_name, &generic_params, is_rule_less())
             ),
             true,
         ),
@@ -4978,6 +5024,7 @@ fn value_wrapper_tokens(
             json_type: "dynamic",
             kind: "dynamic",
             by_draft: false,
+            statics: "",
         };
         body.push(' ');
         body.push_str(&valid_class(&pair, &codec));
@@ -5596,10 +5643,14 @@ fn enum_classes(
     kind: &str,
     codec: &GenericCodec,
     reads: &str,
-    form: ReadForm,
+    drafted: &EnumDraft<'_>,
 ) -> String {
+    let form = drafted.form;
     let validate = match form {
-        ReadForm::Draft => format!(" {}", validate_method(export_name, generic_params)),
+        ReadForm::Draft => format!(
+            " {}",
+            validate_method(export_name, generic_params, drafted.rule_less)
+        ),
         ReadForm::Whole => format!(" {}", thrown_as_is(generic_params)),
     };
     let base = format!(
@@ -5617,12 +5668,79 @@ fn enum_classes(
                     json_type: "dynamic",
                     kind,
                     by_draft: false,
+                    statics: drafted.statics,
                 },
                 codec,
             );
             format!("{base} {valid}")
         }
         ReadForm::Whole => base,
+    }
+}
+
+/// The constants of the valid type of a tagged enum: one for each unit variant, where the enum
+/// names no check and takes no parameter.
+fn tagged_statics(item_enum: &ItemEnum, export_name: &str, no_check: bool) -> String {
+    if !no_check || !item_enum.generics.params.is_empty() {
+        return String::new();
+    }
+    let written: Vec<String> = item_enum
+        .variants
+        .iter()
+        .map(|variant| dart_lower_camel(&variant.ident.to_string()))
+        .collect();
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_wire_kind(variant) == VariantKind::Unit)
+        .fold(String::new(), |mut acc, variant| {
+            let name = variant.ident.to_string();
+            let member = dart_member(&dart_lower_camel(&name), &DART_ENUM_NAMES_TAKEN, &written);
+            write!(
+                acc,
+                "static const {member} = {export_name}._({export_name}{name}()); "
+            )
+            .unwrap();
+            acc
+        })
+}
+
+/// The kind of payload a tagged enum's read takes, what it casts it as, and the dispatch over it.
+fn tagged_dispatch(
+    text: &TaggedDispatch<'_>,
+    is_string_dispatch_arms: Vec<String>,
+    map_dispatch_arms: &[String],
+) -> (&'static str, &'static str, String) {
+    let TaggedDispatch {
+        corrects,
+        export_name,
+        is_external,
+        item_enum,
+        shape,
+        variant_rule,
+    } = *text;
+    if is_external {
+        // serde and Zod read the variant from an object of one key, and refuse any other.
+        (
+            "dynamic",
+            "",
+            external_dispatch(
+                export_name,
+                corrects,
+                &[
+                    is_string_dispatch_arms,
+                    carried_string_arms(item_enum, variant_rule, &corrects.json),
+                ]
+                .concat(),
+                map_dispatch_arms,
+            ),
+        )
+    } else {
+        (
+            payload_kind(corrects, "Map<String, dynamic>"),
+            " as Map<String, dynamic>",
+            keyed_dispatch(export_name, shape, corrects, map_dispatch_arms),
+        )
     }
 }
 
@@ -5698,29 +5816,18 @@ fn tagged_enum_dart_source(
         record_writes_a_name(rust_ident);
     }
 
-    let (payload_ty, held_as, dispatch) = if is_external {
-        // serde and Zod read the variant from an object of one key, and refuse any other.
-        (
-            "dynamic",
-            "",
-            external_dispatch(
-                export_name,
-                &corrects,
-                &[
-                    is_string_dispatch_arms,
-                    carried_string_arms(item_enum, variant_rule, &corrects.json),
-                ]
-                .concat(),
-                &map_dispatch_arms,
-            ),
-        )
-    } else {
-        (
-            payload_kind(&corrects, "Map<String, dynamic>"),
-            " as Map<String, dynamic>",
-            keyed_dispatch(export_name, &shape, &corrects, &map_dispatch_arms),
-        )
-    };
+    let (payload_ty, held_as, dispatch) = tagged_dispatch(
+        &TaggedDispatch {
+            corrects: &corrects,
+            export_name,
+            is_external,
+            item_enum,
+            shape: &shape,
+            variant_rule,
+        },
+        is_string_dispatch_arms,
+        &map_dispatch_arms,
+    );
     record_closed_keys(
         rust_ident,
         closed_by_tagging(&shape, &variant_payloads, &corrects),
@@ -5738,7 +5845,11 @@ fn tagged_enum_dart_source(
         payload_ty,
         &codec,
         &format!("{reads}{helper}"),
-        form,
+        &EnumDraft {
+            form,
+            rule_less: is_rule_less(),
+            statics: &tagged_statics(item_enum, export_name, args.check.is_empty()),
+        },
     );
     let typedef = ident_typedef(rust_ident, export_name, &generic_params);
     format!("{base} {}{typedef}", subclasses.join(" "))
@@ -5893,7 +6004,11 @@ fn untagged_enum_dart_source(
         "dynamic",
         &codec,
         &reads,
-        form,
+        &EnumDraft {
+            form,
+            rule_less: is_rule_less(),
+            statics: "",
+        },
     );
     let typedef = ident_typedef(rust_ident, export_name, &generic_params);
     format!("{base} {}{typedef}", subclasses.join(" "))
@@ -5983,8 +6098,20 @@ fn plain_enum_dart_source(
         "enum {draft} {{ {member_list}; const {draft}(this.wireValue); final String wireValue; \
          static {draft} fromJson({payload_ty} {taken_as}) {matched} String toJson() => wireValue; \
          {validate} {} }}",
-        validate_method(export_name, "")
+        validate_method(export_name, "", is_rule_less())
     );
+    let statics = if checks.is_empty() {
+        members.iter().fold(String::new(), |mut acc, (name, _)| {
+            write!(
+                acc,
+                "static const {name} = {export_name}._({draft}.{name}); "
+            )
+            .unwrap();
+            acc
+        })
+    } else {
+        String::new()
+    };
     let valid = valid_class(
         &Pair {
             export_name,
@@ -5993,6 +6120,7 @@ fn plain_enum_dart_source(
             json_type: "String",
             kind: "dynamic",
             by_draft: true,
+            statics: &statics,
         },
         &generic_codec(&[]),
     );

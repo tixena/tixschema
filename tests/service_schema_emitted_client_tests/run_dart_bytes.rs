@@ -52,8 +52,7 @@ fn holder() -> BytesHolder {
         paired: (vec![6], "x".to_owned()),
         rows: vec![vec![7], vec![]],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The Dart `main`: each payload is read with the `fromJson` of its type.
@@ -132,11 +131,11 @@ fn a_vec_of_u8_is_read_into_a_uint8list_and_written_as_the_json_array() {
     );
     assert_eq!(
         serde_json::from_str::<BytesOptional>(r#"{"maybe":null}"#).unwrap(),
-        BytesOptionalDraft { maybe: None }.validate().unwrap()
+        BytesOptionalDraft { maybe: None }.into()
     );
     assert_eq!(
         serde_json::from_str::<BytesEither>("[1,2]").unwrap(),
-        BytesEitherDraft::Bytes(vec![1, 2]).validate().unwrap()
+        BytesEitherDraft::Bytes(vec![1, 2]).into()
     );
     assert_eq!(
         serde_json::to_string(&BytesExampleDraft { data: vec![1] }).unwrap(),

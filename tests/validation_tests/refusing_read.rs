@@ -392,8 +392,7 @@ mod a_read_refuses_what_validate_refuses {
             note: NoteDraft {
                 text: "n".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             parcel_list: vec![sound(), held.clone()],
             parcels_by_dock: BTreeMap::from([("north".to_owned(), held.clone())]),
             spare_parcel: Some(held.clone()),

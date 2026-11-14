@@ -69,11 +69,10 @@ fn invoice() -> Invoice {
         id: seeded_id(),
         number: "INV-0042".to_owned(),
         paid_at: None,
-        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
+        status: InvoiceStatus::PastDue,
         total: 1_250_u32,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Whether `refused` is the row [`unreadable`] stores, told by its `_id` and its one issue.
@@ -104,8 +103,7 @@ fn numbered(at: u32) -> Invoice {
         total: at * 100_u32,
         ..invoice().into()
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Where the seeded row holds its customer's open invoices.

@@ -1,5 +1,6 @@
 //! Unit tests of the Dart emitter: what it writes for a shape no integration test can declare.
 
+use crate::utils::note_rule_less;
 use proc_macro2::TokenTree;
 
 use super::*;
@@ -142,6 +143,7 @@ fn a_u64_and_an_i64_are_ints_read_and_written_as_numbers() {
 /// takes a field and a constructor under one name, so the member keeps its own.
 #[test]
 fn a_field_named_after_the_unjudged_read_keeps_its_name_and_its_key() {
+    note_rule_less(true);
     let item: ItemStruct = syn::parse_quote! {
         pub struct Ledger {
             pub fromJsonUnjudged: bool,

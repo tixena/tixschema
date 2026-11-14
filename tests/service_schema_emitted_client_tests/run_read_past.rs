@@ -75,25 +75,21 @@ fn contacts() -> [(Contact, SupplierContact); 2] {
             ContactDraft::Email {
                 email: "cy@example.com".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             SupplierContactDraft::Email {
                 email: "orders@example.com".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         (
             ContactDraft::Phone {
                 phone: "557".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             SupplierContactDraft::Phone {
                 phone: "556".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     ]
 }
@@ -156,8 +152,7 @@ fn contact_payloads() -> Vec<Payload> {
                         contact,
                         name: "Eve".to_owned(),
                     }
-                    .validate()
-                    .unwrap(),
+                    .into(),
                 ),
                 Some("Signed"),
                 true,

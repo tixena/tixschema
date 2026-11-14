@@ -155,8 +155,7 @@ fn a_value_holding_a_type_of_another_crate_reads_where_nothing_is_wrong() {
                 .unwrap(),
                 number: "INV-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
 }
@@ -200,8 +199,7 @@ fn a_stored_type_reads_a_type_of_a_crate_whose_types_list_decode_with_alone_from
                 .unwrap(),
                 number: "L-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let mut handed: Vec<lookup_log_schema::Issue<Bson>> = Vec::new();
@@ -243,8 +241,7 @@ fn a_type_of_a_crate_that_names_no_bson_is_read_through_that_crates_library() {
                     .unwrap()
                 ],
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
 }
@@ -327,13 +324,11 @@ fn generic_members_of_another_crate_flattened_at_the_holders_parameter_read_back
         recipient: ParcelRecipientDraft {
             recipient_id: "rcp-7".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         sender: ParcelSenderDraft {
             sender_id: "snd-2".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let written = serde_json::to_value(&parties).map_err(|error| error.to_string());
     assert_eq!(

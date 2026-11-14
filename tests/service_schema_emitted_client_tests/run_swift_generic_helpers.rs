@@ -251,7 +251,7 @@ fn struct_rows() -> Vec<Row> {
 /// The payloads of each variant that holds a tuple or a map of the parameter, under each tagging.
 fn variant_rows() -> Vec<Row> {
     let by_number = HashMap::from([(1, "a".to_owned())]);
-    let by_hatch = HashMap::from([(HatchDraft::Fore.validate().unwrap(), "a".to_owned())]);
+    let by_hatch = HashMap::from([(Hatch::Fore, "a".to_owned())]);
     let pair = ("b".to_owned(), 2);
     vec![
         read_row(

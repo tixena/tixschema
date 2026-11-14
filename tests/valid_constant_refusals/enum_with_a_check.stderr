@@ -1,0 +1,8 @@
+error[E0599]: no associated function or constant named `DntiTechnician` found for struct `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>` in the current scope
+  --> tests/valid_constant_refusals/enum_with_a_check.rs:18:43
+   |
+ 6 | #[model_schema(check = ["with_a_technician"])]
+   | ---------------------------------------------- associated function or constant `DntiTechnician` not found for this struct
+...
+18 |     let _role: SessionRole = SessionRole::DntiTechnician;
+   |                                           ^^^^^^^^^^^^^^ associated function or constant not found in `__tixschema_valid_session_role_schema::SessionRole<SessionRoleDraft>`

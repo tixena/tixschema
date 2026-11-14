@@ -228,8 +228,7 @@ fn a_one_way_client_reports_a_transport_that_could_not_put_the_message_out() {
             AnnotationRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();

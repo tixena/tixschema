@@ -677,7 +677,7 @@ pub struct Dispenser;
 impl StickerClientService<()> for Dispenser {
     async fn stick(&self, _ctx: &(), text: String) -> Result<Sticker, ShelfError> {
         ready(()).await;
-        Ok(StickerDraft { label: text }.validate().unwrap())
+        Ok(StickerDraft { label: text }.into())
     }
 }
 

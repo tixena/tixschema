@@ -142,7 +142,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
                 "'Ebb' || 'Low' || 'Neap' => SwellDraft.ebb,'Flood' => SwellDraft.flood,"
             ),
             plain_enum_validate("Swell"),
-            plain_enum_valid("Swell"),
+            plain_enum_valid("Swell", &["ebb", "flood"]),
         )
     );
     assert_eq!(
@@ -158,7 +158,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
                 "'Ebb' || 'Low' => LullingDraft.ebb,'Flood' => LullingDraft.flood,"
             ),
             plain_enum_validate("Lulling"),
-            plain_enum_valid("Lulling"),
+            plain_enum_valid("Lulling", &["ebb", "flood"]),
         )
     );
 }

@@ -168,8 +168,7 @@ impl RouteService<()> for Archive {
             .validate()
             .unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -181,7 +180,7 @@ impl DocumentService<()> for Archive {
         _known_tag: Option<String>,
     ) -> Result<(VersionResponse, String), VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 
     async fn get_version(
@@ -190,12 +189,12 @@ impl DocumentService<()> for Archive {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 
     async fn lookup(&self, _ctx: &(), _id: DocumentId) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 
     async fn rename_document(
@@ -205,7 +204,7 @@ impl DocumentService<()> for Archive {
         _title: String,
     ) -> Result<(), VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 
     async fn touch_document(&self, _ctx: &(), _document_id: String, _reader: String) {
@@ -220,7 +219,7 @@ impl AnnotatedService<()> for Archive {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 
     async fn retitle_document(
@@ -241,7 +240,7 @@ impl TwoTransportService<()> for Archive {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 }
 
@@ -582,14 +581,12 @@ fn a_struct_an_input_repeats_is_defined_once_under_the_input_s_own_defs() {
                 latitude: 38.0,
                 longitude: -9.0,
             }
-            .validate()
-            .unwrap(),
+            .into(),
             WaypointDraft {
                 latitude: 40.0,
                 longitude: -8.0,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
     let written = serde_json::to_value(planned.ok().unwrap()).unwrap();

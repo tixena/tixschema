@@ -142,7 +142,7 @@ impl WriterService<Reporting> for Stand {
         _req: WriterVersionRequest,
     ) -> Result<WriterVersion, WriterRefusal> {
         ready(()).await;
-        Ok(WriterVersionDraft { version: 7 }.validate().unwrap())
+        Ok(WriterVersionDraft { version: 7 }.into())
     }
 }
 
@@ -158,7 +158,7 @@ impl WriterService<()> for Stand {
         _req: WriterVersionRequest,
     ) -> Result<WriterVersion, WriterRefusal> {
         ready(()).await;
-        Ok(WriterVersionDraft { version: 7 }.validate().unwrap())
+        Ok(WriterVersionDraft { version: 7 }.into())
     }
 }
 

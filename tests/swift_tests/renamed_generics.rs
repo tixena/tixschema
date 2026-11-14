@@ -84,8 +84,7 @@ fn folio(leaf: &str) -> Folio<String> {
         leaf: leaf.to_owned(),
         page: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -103,23 +102,18 @@ fn each_model_is_written_as_serde_writes_it() {
     let quire: Quire<String> = HashMap::from([(1, "a".to_owned())]);
     assert_eq!(read_back(&quire), r#"{"1":"a"}"#);
     let lectern = LecternDraft {
-        adjacent_scroll: AdjacentScrollDraft::Sealed("a".to_owned())
-            .validate()
-            .unwrap(),
-        diptych: DiptychDraft("b".to_owned(), 1).validate().unwrap(),
-        scroll: ScrollDraft::Paired("c".to_owned(), 2).validate().unwrap(),
+        adjacent_scroll: AdjacentScrollDraft::Sealed("a".to_owned()).into(),
+        diptych: DiptychDraft("b".to_owned(), 1).into(),
+        scroll: ScrollDraft::Paired("c".to_owned(), 2).into(),
         shelfmark: Shelfmark::new("d".to_owned()).unwrap(),
         spread: ("e".to_owned(), 3),
-        tagged_scroll: TaggedScrollDraft::Bound(folio("f")).validate().unwrap(),
+        tagged_scroll: TaggedScrollDraft::Bound(folio("f")).into(),
         tome: TomeDraft {
             folio: folio("g"),
             leaf: "h".to_owned(),
         }
-        .validate()
-        .unwrap(),
-        untagged_scroll: UntaggedScrollDraft::Sealed("i".to_owned())
-            .validate()
-            .unwrap(),
+        .into(),
+        untagged_scroll: UntaggedScrollDraft::Sealed("i".to_owned()).into(),
         volume: folio("j"),
     };
     assert_eq!(
@@ -131,28 +125,25 @@ fn each_model_is_written_as_serde_writes_it() {
             folio: folio("a"),
             leaf: "b".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         catalog,
         diptych: lectern.diptych,
         leaves,
         margin: None,
-        scroll: ScrollDraft::Sealed("c".to_owned()).validate().unwrap(),
+        scroll: ScrollDraft::Sealed("c".to_owned()).into(),
         shelfmark: lectern.shelfmark,
         spread: lectern.spread,
         tagged_scroll: TaggedScrollDraft::Unrolled {
             folio: folio("d"),
             leaf: "e".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         tome: lectern.tome,
         untagged_scroll: UntaggedScrollDraft::Unrolled {
             folio: folio("f"),
             leaf: "g".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         volume: lectern.volume,
     };
     assert_eq!(

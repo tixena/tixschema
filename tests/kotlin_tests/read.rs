@@ -2,6 +2,7 @@
 //! and `{Type}Serializer`, the type's own, which reads through the first and judges the value
 //! with `validate()`. The text is the same in a build with a schema surface and in one with none.
 
+use core::fmt::Write as _;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -159,9 +160,25 @@ pub fn to_valid(named: &str, generic: &str) -> String {
     )
 }
 
+/// [`to_valid`], and the conversion a draft that declares no rule has.
+pub fn to_valid_free(named: &str, generic: &str) -> String {
+    format!(
+        "{} fun toValid(): {named}{generic} = {named}.checked(this)",
+        to_valid(named, generic)
+    )
+}
+
 /// The valid class of `named`, over its draft, which forwards each property in `forwards`.
 pub fn valid_class(named: &str, forwards: &str) -> String {
     valid_class_over(named, "", forwards)
+}
+
+/// [`valid_class`] with `statics`, the constants its companion holds, after a semicolon.
+pub fn valid_class_with(named: &str, forwards: &str, statics: &str) -> String {
+    valid_class(named, forwards).replace(
+        &format!("= {named}(draft) }}"),
+        &format!("= {named}(draft){statics} }}"),
+    )
 }
 
 /// [`valid_class`] of a type over the type parameters `generic`, written `<A, B>`.
@@ -231,10 +248,15 @@ pub fn judged_valid_over(named: &str, parameter: &str, bound: &str, handed: &str
 /// What follows the draft class of `named`, a type with no parameter the plugin reads: its draft's
 /// unjudged serializer, the valid class forwarding `forwards`, and the two serializers over it.
 pub fn drafted_serializers(named: &str, forwards: &str) -> String {
+    drafted_serializers_with(named, forwards, "")
+}
+
+/// [`drafted_serializers`] where the valid class holds `statics` in its companion.
+pub fn drafted_serializers_with(named: &str, forwards: &str, statics: &str) -> String {
     format!(
         "{} {} {} {}",
         generated(&format!("{named}Draft")),
-        valid_class(named, forwards),
+        valid_class_with(named, forwards, statics),
         valid_unjudged(named),
         judged_valid(named)
     )
@@ -339,8 +361,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
         trailer: TrailerDraft {
             plate: "p".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(
         serde_json::to_value(bay).unwrap(),
@@ -423,7 +444,7 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
         format!(
             "{} data class TrailerDraft(val plate: String) {{ {NO_ISSUES} {} }} {}",
             kept_draft("Trailer"),
-            to_valid("Trailer", ""),
+            to_valid_free("Trailer", ""),
             drafted_serializers("Trailer", "val plate: String get() = draft.plate; ")
         )
     );
@@ -488,7 +509,7 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
             "@Serializable(with = LoadDraftUnjudged::class) sealed interface LoadDraft {{ fun \
              validationIssues(): List<String>; {} }} @Serializable data class \
              LoadBoxed({UNJUDGED} val value: Pallet) : LoadDraft {{",
-            to_valid("Load", "")
+            to_valid_free("Load", "")
         ),
         "} object LoadDraftUnjudged : KSerializer<LoadDraft> { override val descriptor: \
          SerialDescriptor = buildClassSerialDescriptor(\"Load\");"
@@ -505,7 +526,7 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
     assert!(
         load.ends_with(&format!(
             "{} {} {}",
-            valid_class("Load", ""),
+            valid_class_with("Load", "", "; val Empty = checked(LoadEmpty)"),
             valid_unjudged("Load"),
             judged_valid("Load")
         )),
@@ -647,7 +668,7 @@ fn seal(text: &str) -> Seal {
 
 #[cfg(not(feature = "serde"))]
 fn seal(text: &str) -> Seal {
-    SealDraft(text.to_owned()).validate().unwrap()
+    SealDraft(text.to_owned()).into()
 }
 
 /// The plain enum `named`: its draft, declared with `members` and read by `{Type}DraftUnjudged`
@@ -661,13 +682,22 @@ pub fn paired_plain_enum(
     format!(
         "{} enum class {named}Draft {{ {members}; {NO_ISSUES} {} }} {} {} {} {}",
         kept_draft(named),
-        to_valid(named, ""),
+        to_valid_free(named, ""),
         super::kotlin_plain_enum::plain_enum_unjudged(
             &format!("{named}Draft"),
             variants,
             correction
         ),
-        valid_class(named, ""),
+        valid_class_with(
+            named,
+            "",
+            &variants
+                .iter()
+                .fold(String::new(), |mut acc, (variant, _, _)| {
+                    write!(acc, "; val {variant} = checked({named}Draft.{variant})").unwrap();
+                    acc
+                })
+        ),
         valid_unjudged(named),
         judged_valid(named)
     )

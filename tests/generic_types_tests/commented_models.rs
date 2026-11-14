@@ -118,8 +118,7 @@ pub fn written() -> Vec<(&'static str, String)> {
                 &RemarkedDraft {
                     note: "a".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
     ]

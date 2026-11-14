@@ -15,7 +15,7 @@ use serde::de::DeserializeOwned;
 
 use super::listed_maps_models::{
     AdjacentGalleyDraft, AdjacentStowedGalleyDraft, AtticDraft, CaddyDraft, CellarDraft, Creel,
-    CupboardDraft, DresserDraft, GalleyDraft, Hopper, LarderDraft, PantryDraft, Rung, RungDraft,
+    CupboardDraft, DresserDraft, GalleyDraft, Hopper, LarderDraft, PantryDraft, Rung,
     SideboardDraft, StowedAtticDraft, StowedCaddyDraft, StowedCellarDraft, StowedCreel,
     StowedCupboardDraft, StowedDresserDraft, StowedGalleyDraft, StowedLarderDraft,
     StowedPantryDraft, StowedSideboardDraft, TaggedGalleyDraft, TaggedStowedGalleyDraft, Trug,
@@ -97,7 +97,7 @@ fn at_true<Held>(held: Held) -> HashMap<bool, Held> {
 
 /// A map of `held` under [`Rung::Low`].
 fn at_low<Held>(held: Held) -> HashMap<Rung, Held> {
-    HashMap::from([(RungDraft::Low.validate().unwrap(), held)])
+    HashMap::from([(Rung::Low, held)])
 }
 
 /// The text `a`.

@@ -325,9 +325,9 @@ impl BillingService<()> for Archive {
     ) -> impl Future<Output = Result<BalanceResponse, BalanceError>> {
         self.reach(format!("get-balance {account_id} {ledger}"));
         ready(if account_id == "acct-1" {
-            Ok(BalanceResponseDraft { cents: 1250 }.validate().unwrap())
+            Ok(BalanceResponseDraft { cents: 1250 }.into())
         } else {
-            Err(BalanceErrorDraft::UnknownAccount.validate().unwrap())
+            Err(BalanceError::UnknownAccount)
         })
     }
 
@@ -340,7 +340,7 @@ impl BillingService<()> for Archive {
         ready(if invoice_id == "inv-1" {
             Ok("{\"total\":120}".to_owned())
         } else {
-            Err(BalanceErrorDraft::UnknownAccount.validate().unwrap())
+            Err(BalanceError::UnknownAccount)
         })
     }
 
@@ -383,8 +383,7 @@ impl<Ctx> DocumentService<Ctx> for Archive {
         ready(Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 
     fn check_many(
@@ -624,9 +623,9 @@ fn came_apart() -> ! {
 }
 
 fn not_found() -> VersionError {
-    VersionErrorDraft::NotFound.validate().unwrap()
+    VersionError::NotFound
 }
 
 fn version_seven() -> VersionResponse {
-    VersionResponseDraft { version: 7 }.validate().unwrap()
+    VersionResponseDraft { version: 7 }.into()
 }

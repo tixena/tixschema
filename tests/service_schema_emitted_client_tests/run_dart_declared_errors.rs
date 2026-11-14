@@ -94,7 +94,7 @@ impl SpoolService<()> for Jammer {
 
     async fn spool(&self, _ctx: &(), _label: String) -> Result<String, SpoolFault> {
         ready(()).await;
-        Err(SpoolFaultDraft::Jammed.validate().unwrap())
+        Err(SpoolFault::Jammed)
     }
 }
 

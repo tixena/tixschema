@@ -22,7 +22,7 @@ macro_rules! reads {
             _req: $message,
         ) -> impl Future<Output = Result<Tally, TallyError>> {
             self.reached.lock().unwrap().push(stringify!($method).to_owned());
-            ready(Ok(TallyDraft { drafts: 0 }.validate().unwrap()))
+            ready(Ok(TallyDraft { drafts: 0 }.into()))
         }
     )*};
 }
@@ -189,8 +189,7 @@ impl DocumentService<()> for Back {
         ready(Ok(TallyDraft {
             drafts: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 
     reads!(
@@ -206,7 +205,7 @@ impl DocumentService<()> for Back {
 
     fn stamp_drafts(&self, _ctx: &()) -> impl Future<Output = Result<Tally, TallyError>> {
         self.reached.lock().unwrap().push("stamp_drafts".to_owned());
-        ready(Ok(TallyDraft { drafts: 0 }.validate().unwrap()))
+        ready(Ok(TallyDraft { drafts: 0 }.into()))
     }
 
     fn tag_draft(
@@ -219,8 +218,7 @@ impl DocumentService<()> for Back {
         ready(Ok(TallyDraft {
             drafts: count + u32::try_from(title.len()).unwrap_or(u32::MAX),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 }
 

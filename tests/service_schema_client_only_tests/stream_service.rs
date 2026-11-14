@@ -197,7 +197,7 @@ impl ContentClientService<()> for ContentClientBackEnd {
     ) -> Result<content_client_service_schema::StreamedAnswer, ContentError> {
         ready(()).await;
         if document_id == "missing" {
-            return Err(ContentErrorDraft::NotFound.validate().unwrap());
+            return Err(ContentError::NotFound);
         }
         Ok(content_client_service_schema::StreamedAnswer::Full {
             source: Box::new(ChunkedSlice::new(CONTENT)),

@@ -66,9 +66,9 @@ impl Orders<()> for Shop {
         _include_lines: Option<bool>,
     ) -> Result<Order, OrderError> {
         if order_id == "A-1" {
-            Ok(OrderDraft { order_id, total_cents: 4250 }.validate().unwrap())
+            Ok(OrderDraft { order_id, total_cents: 4250 }.into())
         } else {
-            Err(OrderErrorDraft::NotFound.validate().unwrap())
+            Err(OrderError::NotFound)
         }
     }
 
@@ -78,7 +78,7 @@ impl Orders<()> for Shop {
         _order_id: String,
         _reason: String,
     ) -> Result<Order, OrderError> {
-        Err(OrderErrorDraft::AlreadyShipped.validate().unwrap())
+        Err(OrderError::AlreadyShipped)
     }
 
     async fn archive_order(&self, _ctx: &(), _order_id: String, _archived_by: String) {}

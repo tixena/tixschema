@@ -93,15 +93,14 @@ impl BodiedFieldsService<()> for BodiedBackEnd {
     ) -> Result<BodiedDocument, BodiedDocumentError> {
         ready(()).await;
         if title == "taken" {
-            return Err(BodiedDocumentErrorDraft::TitleTaken.validate().unwrap());
+            return Err(BodiedDocumentError::TitleTaken);
         }
         Ok(BodiedDocumentDraft {
             id: "doc-1".to_owned(),
             tags,
             title,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn rename_document(
@@ -116,8 +115,7 @@ impl BodiedFieldsService<()> for BodiedBackEnd {
             tags: Vec::new(),
             title,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn replace_document(
@@ -131,8 +129,7 @@ impl BodiedFieldsService<()> for BodiedBackEnd {
             tags: Vec::new(),
             title: req.title.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 

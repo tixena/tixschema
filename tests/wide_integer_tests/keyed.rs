@@ -143,7 +143,9 @@ fn a_type_whose_value_writes_such_a_map_carries_the_note() {
         format!(
             "/**\n * A map keyed by an `i64` as the value of a struct of one slot.\n * \n\
              {type_noted}\n */\nexport type WideKeyedSlotDraft = Partial<Record<number, boolean>>;\n\n\
-             {NOTE_BLOCK}\nexport type WideKeyedSlot = Readonly<WideKeyedSlotDraft> & $brand<\"WideKeyedSlot\">;"
+             {NOTE_BLOCK}\nexport type WideKeyedSlot = Readonly<WideKeyedSlotDraft> & $brand<\"WideKeyedSlot\">;\n\n\
+             export function WideKeyedSlotDraft$valid(draft: WideKeyedSlotDraft): WideKeyedSlot {{\n  \
+             return draft as unknown as WideKeyedSlot;\n}}"
         )
     );
     assert_eq!(
@@ -151,7 +153,9 @@ fn a_type_whose_value_writes_such_a_map_carries_the_note() {
         format!(
             "/**\n * A map keyed by an `i64` in a struct of two slots.\n * \n{type_noted}\n \
              */\nexport type WideKeyedSlotsDraft = [Partial<Record<number, boolean>>, number];\n\n\
-             {NOTE_BLOCK}\nexport type WideKeyedSlots = Readonly<WideKeyedSlotsDraft> & $brand<\"WideKeyedSlots\">;"
+             {NOTE_BLOCK}\nexport type WideKeyedSlots = Readonly<WideKeyedSlotsDraft> & $brand<\"WideKeyedSlots\">;\n\n\
+             export function WideKeyedSlotsDraft$valid(draft: WideKeyedSlotsDraft): WideKeyedSlots {{\n  \
+             return draft as unknown as WideKeyedSlots;\n}}"
         )
     );
     assert_eq!(

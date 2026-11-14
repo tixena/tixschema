@@ -54,7 +54,7 @@ macro_rules! stow_rows {
             read_row(
                 concat!("a list of models, ", $tagging),
                 $read_as,
-                &Held::Listed(vec![BaledDraft(bale("l")).validate().unwrap()])
+                &Held::Listed(vec![BaledDraft(bale("l")).into()])
                     .validate()
                     .unwrap(),
             ),
@@ -68,14 +68,14 @@ macro_rules! stow_rows {
             read_row(
                 concat!("a model, ", $tagging),
                 $read_as,
-                &Held::Packed(BaledDraft(bale("l")).validate().unwrap())
+                &Held::Packed(BaledDraft(bale("l")).into())
                     .validate()
                     .unwrap(),
             ),
             read_row(
                 concat!("a model with a parameter, ", $tagging),
                 $read_as,
-                &Held::Sacked(SackedDraft(sack("l")).validate().unwrap())
+                &Held::Sacked(SackedDraft(sack("l")).into())
                     .validate()
                     .unwrap(),
             ),
@@ -432,9 +432,7 @@ fn entry_rows() -> Vec<Row> {
             "Strop",
             &StropDraft {
                 count: 1,
-                slung: SlungDraft(SlingDraft::Slack.validate().unwrap())
-                    .validate()
-                    .unwrap(),
+                slung: SlungDraft(SlingDraft::Slack.validate().unwrap()).into(),
             },
         ),
         read_row(
@@ -442,9 +440,7 @@ fn entry_rows() -> Vec<Row> {
             "Strop",
             &StropDraft {
                 count: 1,
-                slung: SlungDraft(SlingDraft::Taut { tension: 2 }.validate().unwrap())
-                    .validate()
-                    .unwrap(),
+                slung: SlungDraft(SlingDraft::Taut { tension: 2 }.validate().unwrap()).into(),
             },
         ),
         read_row(
@@ -466,11 +462,7 @@ fn entry_rows() -> Vec<Row> {
         read_row(
             "over a unit variant, beside a tag",
             "Rigger",
-            &RiggerDraft::Slung(
-                SlungDraft(SlingDraft::Slack.validate().unwrap())
-                    .validate()
-                    .unwrap(),
-            ),
+            &RiggerDraft::Slung(SlungDraft(SlingDraft::Slack.validate().unwrap()).into()),
         ),
         read_row(
             "a brand over a variant that holds members, beside a tag",
@@ -546,7 +538,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "a list of models, untagged",
             "UntaggedStow",
-            &UntaggedStowDraft::Listed(vec![BaledDraft(bale("l")).validate().unwrap()]),
+            &UntaggedStowDraft::Listed(vec![BaledDraft(bale("l")).into()]),
         ),
         read_row(
             "a text, untagged",
@@ -556,7 +548,7 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "a model, untagged",
             "UntaggedStow",
-            &UntaggedStowDraft::Packed(BaledDraft(bale("l")).validate().unwrap()),
+            &UntaggedStowDraft::Packed(BaledDraft(bale("l")).into()),
         ),
         refused!(
             "a number below its bound, untagged",
@@ -571,12 +563,12 @@ fn holder_rows() -> Vec<Row> {
         read_row(
             "a model, a tag alone",
             "TaggedStow",
-            &TaggedStowDraft::Packed(BaledDraft(bale("l")).validate().unwrap()),
+            &TaggedStowDraft::Packed(BaledDraft(bale("l")).into()),
         ),
         read_row(
             "a model with a parameter, a tag alone",
             "TaggedStow",
-            &TaggedStowDraft::Sacked(SackedDraft(sack("l")).validate().unwrap()),
+            &TaggedStowDraft::Sacked(SackedDraft(sack("l")).into()),
         ),
         refused!(
             "a model, unlabelled, a tag alone",

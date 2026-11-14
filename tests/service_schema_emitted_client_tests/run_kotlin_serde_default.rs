@@ -140,7 +140,7 @@ fn the_default_json_leaves_out_a_member_whose_value_is_its_default() {
     let held = serde_json::to_value(serde_json::from_str::<Jetty>(r#"{"dock":"west"}"#).unwrap());
     assert_eq!(
         serde_json::from_str::<Jetty>("{}").unwrap(),
-        JettyDraft::default().validate().unwrap(),
+        JettyDraft::default().into(),
         "serde reads the key left out as the default"
     );
     assert_eq!(

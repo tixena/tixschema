@@ -600,7 +600,7 @@ fn a_stored_row_is_read_through_the_functions_its_type_names() {
     let id = ObjectId::parse_str("0123456789abcdef01234567").unwrap();
     assert_eq!(
         Receipt::mongo_read_row(doc! { "_id": id, "number": " R-1 " }, &[]).ok(),
-        Some(ReceiptDraft::new(id, "R-1", 0).validate().unwrap())
+        Some(ReceiptDraft::new(id, "R-1", 0).into())
     );
     let stored = ReceiptDraft::new(id, "R-2", 7).validate().unwrap();
     let written = stored.mongo_written_row().unwrap();

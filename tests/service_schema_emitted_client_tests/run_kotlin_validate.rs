@@ -958,7 +958,7 @@ fn code_point_rows() -> Vec<Row> {
 fn depot() -> Depot {
     Depot::model_schema_wrap_unjudged(DepotDraft {
         by_number: BTreeMap::from([(7, unlabelled())]),
-        by_wing: BTreeMap::from([(WingDraft::North.validate().unwrap(), unlabelled())]),
+        by_wing: BTreeMap::from([(Wing::North, unlabelled())]),
         deck_pair: ("deck".to_owned(), unlabelled()),
         first_parcel: parcel("open", &["x"], &["x", "y"]),
         lists_by_dock: BTreeMap::from([("north".to_owned(), vec![unlabelled()])]),

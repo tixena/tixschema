@@ -82,8 +82,7 @@ mod on_a_schema_surface {
         let expected = TaggedDraft {
             name: "x".to_owned(),
         }
-        .validate()
-        .unwrap();
+        .into();
         for stored in [
             serde_json::json!({ "kind": "Tagged", "name": "x" }),
             serde_json::json!({ "name": "x" }),
@@ -99,8 +98,7 @@ mod on_a_schema_surface {
             tagged: TaggedDraft {
                 name: "x".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         })
         .unwrap();
         assert_eq!(
@@ -233,7 +231,7 @@ mod on_a_mobile_surface {
                  val violations = validationIssues(); if (violations.isNotEmpty()) throw \
                  SerializationException(violations.joinToString(\"; \"), \
                  IllegalArgumentException(\"validate()\")); return TaggedMobile.checked(this) }} \
-                 }} @OptIn(ExperimentalSerializationApi::class) object TaggedMobileDraftUnjudged : \
+                 fun toValid(): TaggedMobile = TaggedMobile.checked(this) }} @OptIn(ExperimentalSerializationApi::class) object TaggedMobileDraftUnjudged : \
                  KSerializer<TaggedMobileDraft> {{ private val held = \
                  TaggedMobileDraft.generatedSerializer(); override val descriptor: \
                  SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \

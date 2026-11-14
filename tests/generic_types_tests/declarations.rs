@@ -4042,9 +4042,7 @@ fn type_check_every_schema_holds_its_examples_once_loaded() {
     let unwritten: DeclaredUnwrittenCount = 3;
     assert_eq!(unwritten, 3);
     let generic: DeclaredExampledPairAlias<String> =
-        DeclaredExampledPairDraft { id: "x".to_owned() }
-            .validate()
-            .unwrap();
+        DeclaredExampledPairDraft { id: "x".to_owned() }.into();
     assert_eq!(generic.id, "x");
 
     let Some((printed, failed)) = loaded("examples", EXAMPLES_DRIVER) else {

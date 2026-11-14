@@ -257,7 +257,7 @@ pub mod a_message_annotated_with_a_constraint {
         async fn admit(&self, _ctx: &(), req: GateRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.customer_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn dock(&self, _ctx: &(), req: DockRequest) -> Result<Admitted, GateError> {
@@ -267,7 +267,7 @@ pub mod a_message_annotated_with_a_constraint {
                 req.bay.as_inner(),
                 req.slug.as_inner()
             ));
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Admitted, GateError> {
@@ -276,13 +276,13 @@ pub mod a_message_annotated_with_a_constraint {
                 .lock()
                 .unwrap()
                 .push(req.slug.clone().into_inner());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn hold(&self, _ctx: &(), req: HoldRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.holds.name.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn label(&self, _ctx: &(), req: LabelRequest) -> Result<Admitted, GateError> {
@@ -291,13 +291,13 @@ pub mod a_message_annotated_with_a_constraint {
                 LabelDraft::Bounded(tag) => format!("tagged:{}", tag.as_inner()),
                 LabelDraft::Free(free) => format!("free:{free}"),
             });
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn open_ledger(&self, _ctx: &(), req: LedgerRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.ledger_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn place_call(&self, _ctx: &(), req: CallRequest) -> Result<Admitted, GateError> {
@@ -311,7 +311,7 @@ pub mod a_message_annotated_with_a_constraint {
                 } => format!("named:{name}"),
                 CallerDraft::Unattributed { claims: _claims } => "anonymous".to_owned(),
             });
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn read_admin_balance(
@@ -321,7 +321,7 @@ pub mod a_message_annotated_with_a_constraint {
         ) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.customer_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn read_balance(
@@ -334,7 +334,7 @@ pub mod a_message_annotated_with_a_constraint {
                 BalanceRequestDraft::Admin(admin) => admin.customer_id.clone(),
                 BalanceRequestDraft::Scoped(scoped) => scoped.customer_id.clone(),
             });
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn read_scoped_balance(
@@ -344,7 +344,7 @@ pub mod a_message_annotated_with_a_constraint {
         ) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.customer_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
     }
 
@@ -991,7 +991,7 @@ impl ProbeService<String> for ProbeBackEnd {
     async fn admit(&self, _ctx: &String, req: AdmitRequest) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("admit {}", req.customer_id));
-        Ok(BalanceResponseDraft { invoices: 3 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 3 }.into())
     }
 
     async fn apply_bundle(&self, ctx: &String, req: BalanceRequest) {
@@ -1007,7 +1007,7 @@ impl ProbeService<String> for ProbeBackEnd {
         ready(()).await;
         self.reach(format!("collapse {}", req.customer_id));
         come_apart(req.customer_id == "formatted", &req.customer_id);
-        Ok(BalanceResponseDraft { invoices: 0 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 0 }.into())
     }
 
     async fn discard(&self, _ctx: &String, req: BalanceRequest) {
@@ -1024,16 +1024,16 @@ impl ProbeService<String> for ProbeBackEnd {
         ready(()).await;
         self.reach(format!("get_balance {}", req.customer_id));
         if req.customer_id == "unlucky" {
-            Err(ProbeErrorDraft::DbError.validate().unwrap())
+            Err(ProbeError::DbError)
         } else {
-            Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
+            Ok(BalanceResponseDraft { invoices: 7 }.into())
         }
     }
 
     async fn sweep(&self, _ctx: &String) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach("sweep".to_owned());
-        Ok(BalanceResponseDraft { invoices: 0 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 0 }.into())
     }
 
     async fn void_invoice(
@@ -1044,7 +1044,7 @@ impl ProbeService<String> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("void_invoice {customer_id} {invoice_id}"));
-        Ok(BalanceResponseDraft { invoices: 1 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 1 }.into())
     }
 }
 
@@ -1448,7 +1448,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("archive_document {document_id}"));
         if document_id == "already" {
-            return Err(ArchiveErrorDraft::AlreadyArchived.validate().unwrap());
+            return Err(ArchiveError::AlreadyArchived);
         }
         Ok(())
     }
@@ -1461,18 +1461,10 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("check_vault {document_id}"));
         match document_id.as_str() {
-            "locked" => Err(VaultErrorDraft::Locked { retry_after: 30 }
-                .validate()
-                .unwrap()),
-            "gone" => Err(VaultErrorDraft::Gone(
-                RetryDetailDraft { retry_after: 0 }.validate().unwrap(),
-            )
-            .validate()
-            .unwrap()),
-            "missing" => Err(VaultErrorDraft::NotFound.validate().unwrap()),
-            _ => Ok(CreateDocumentResponseDraft { document_id }
-                .validate()
-                .unwrap()),
+            "locked" => Err(VaultErrorDraft::Locked { retry_after: 30 }.into()),
+            "gone" => Err(VaultErrorDraft::Gone(RetryDetailDraft { retry_after: 0 }.into()).into()),
+            "missing" => Err(VaultError::NotFound),
+            _ => Ok(CreateDocumentResponseDraft { document_id }.into()),
         }
     }
 
@@ -1484,13 +1476,12 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("create_document {}", req.title));
         if req.title == "taken" {
-            return Err(CreateDocumentErrorDraft::TitleTaken.validate().unwrap());
+            return Err(CreateDocumentError::TitleTaken);
         }
         Ok(CreateDocumentResponseDraft {
             document_id: format!("doc-{}", req.title),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn explode(
@@ -1501,9 +1492,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("explode {document_id}"));
         came_apart(&document_id);
-        Ok(CreateDocumentResponseDraft { document_id }
-            .validate()
-            .unwrap())
+        Ok(CreateDocumentResponseDraft { document_id }.into())
     }
 
     async fn flag_document(
@@ -1514,11 +1503,9 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("flag_document {document_id}"));
         match document_id.as_str() {
-            "missing" => Err(FlagErrorDraft::NotFound.validate().unwrap()),
-            "again" => Err(FlagErrorDraft::AlreadyFlagged.validate().unwrap()),
-            _ => Ok(CreateDocumentResponseDraft { document_id }
-                .validate()
-                .unwrap()),
+            "missing" => Err(FlagError::NotFound),
+            "again" => Err(FlagError::AlreadyFlagged),
+            _ => Ok(CreateDocumentResponseDraft { document_id }.into()),
         }
     }
 
@@ -1533,8 +1520,7 @@ impl DocumentService<()> for DocumentBackEnd {
         Ok(VersionResponseDraft {
             content: format!("{document_id}@{byte_range}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn get_thumbnail(
@@ -1545,7 +1531,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("get_thumbnail {document_id}"));
         if document_id == "missing" {
-            return Err(ThumbnailErrorDraft::NotFound.validate().unwrap());
+            return Err(ThumbnailError::NotFound);
         }
         Ok((
             vec![0x89, 0x50, 0x4e, 0x47],
@@ -1566,17 +1552,16 @@ impl DocumentService<()> for DocumentBackEnd {
             "get_version {document_id} {version_id} {byte_range:?}"
         ));
         if document_id == "missing" {
-            return Err(GetVersionErrorDraft::NotFound.validate().unwrap());
+            return Err(GetVersionError::NotFound);
         }
         if document_id == "gone" {
-            return Err(GetVersionErrorDraft::VersionGone.validate().unwrap());
+            return Err(GetVersionError::VersionGone);
         }
         Ok((
             VersionResponseDraft {
                 content: format!("{document_id}@{version_id}"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "v7".to_owned(),
         ))
     }
@@ -1597,14 +1582,13 @@ impl DocumentService<()> for DocumentBackEnd {
         Ok(SearchDocumentsResultDraft {
             matches: vec![format!("verified={verified:?}"), format!("limit={limit:?}")],
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {
         ready(()).await;
         self.reach("sweep_documents".to_owned());
-        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
+        Ok(SweepReportDraft { swept: 3 }.into())
     }
 }
 

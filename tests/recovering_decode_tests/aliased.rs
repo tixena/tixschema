@@ -208,8 +208,7 @@ fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
         Ok(BlockDraft {
             properties: HashMap::from([("a".to_owned(), 1), ("b".to_owned(), 2)]),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -271,8 +270,7 @@ fn a_type_of_another_crate_is_read_whole() {
         Ok(TimedDraft {
             timeout: Duration::from_secs(5),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
     assert_eq!(

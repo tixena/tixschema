@@ -253,8 +253,7 @@ fn placement() -> Placement {
         spot: ("s".to_owned(), 4),
         spots: vec![("t".to_owned(), 5)],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn labelled() -> Labelled {
@@ -269,8 +268,7 @@ fn labelled() -> Labelled {
         pinned: Pinned::new(VersionDraft { number: 3 }.validate().unwrap()).unwrap(),
         wrapper: WrapperDraft("w".to_owned()).validate().unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn titled() -> Titled {
@@ -281,8 +279,7 @@ fn titled() -> Titled {
         revisions: Revisions::new(vec![VersionDraft { number: 2 }.validate().unwrap()]).unwrap(),
         slug: Slug::new("s".to_owned()).unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn filed() -> Filed {
@@ -291,8 +288,7 @@ fn filed() -> Filed {
         stamped: Stamped::new(VersionDraft { number: 1 }.validate().unwrap()).unwrap(),
         tags: Tags::new(vec!["a".to_owned(), "b".to_owned()]).unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// What `from_value_with` lists for `stored`, read as a `Pair` by a decider that rejects it.
@@ -364,7 +360,7 @@ fn a_tuple_struct_is_walked_by_position() {
         Pair::from_value_with(json!(["a", 7_i32]), |_raw, _found| {
             pair_schema::Verdict::Reject
         }),
-        Ok(PairDraft("a".to_owned(), 7).validate().unwrap())
+        Ok(PairDraft("a".to_owned(), 7).into())
     );
 }
 
@@ -416,7 +412,7 @@ fn a_decider_repairs_a_tuple_struct_by_the_position_it_is_handed() {
         }
         pair_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(PairDraft("a".to_owned(), 7).validate().unwrap()));
+    assert_eq!(read, Ok(PairDraft("a".to_owned(), 7).into()));
 }
 
 #[test]
@@ -472,8 +468,7 @@ fn a_tuple_is_walked_by_position_in_a_map() {
         Ok(KeyedDraft {
             by_name: HashMap::from([("first".to_owned(), ("a".to_owned(), 1))]),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -550,7 +545,7 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
     let written = serde_json::to_value(LooseDraft(
         "a".to_owned(),
         9,
-        VersionDraft { number: 1 }.validate().unwrap(),
+        VersionDraft { number: 1 }.into(),
         vec![2],
     ))
     .unwrap();
@@ -568,8 +563,7 @@ fn a_slot_is_a_position_only_where_serde_reads_one() {
             VersionDraft { number: 1 }.validate().unwrap(),
             Vec::new()
         )
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 
@@ -612,7 +606,7 @@ fn a_brand_and_a_single_slot_struct_are_read_as_the_value_they_hold() {
         Wrapper::from_value_with(json!("w"), |_raw, _found| {
             wrapper_schema::Verdict::Reject
         }),
-        Ok(WrapperDraft("w".to_owned()).validate().unwrap())
+        Ok(WrapperDraft("w".to_owned()).into())
     );
 }
 

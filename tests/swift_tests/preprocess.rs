@@ -862,15 +862,15 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
     let written = json!({ "label": "  A  ", "itemCodeList": ["x"] });
     assert_eq!(
         serde_json::from_value::<Hoisted>(json!({ "payload": "  A  " })).unwrap(),
-        HoistedDraft("A".to_owned()).validate().unwrap()
+        HoistedDraft("A".to_owned()).into()
     );
     assert_eq!(
         serde_json::from_value::<Lugged>(json!({ "payload": written })).unwrap(),
-        LuggedDraft(carton()).validate().unwrap()
+        LuggedDraft(carton()).into()
     );
     assert_eq!(
         serde_json::from_value::<Toted>(written).unwrap(),
-        TotedDraft(carton()).validate().unwrap()
+        TotedDraft(carton()).into()
     );
 }
 
@@ -1037,8 +1037,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             first_carton: carton(),
             spare_carton: None,
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Pallet>(json!({
@@ -1059,8 +1058,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             spare_note: None,
             title: "T".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Stacked>(json!({
@@ -1077,8 +1075,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             tier: "t".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Bayed>(json!({ "dock": "north", "tag": "t" })).unwrap(),
@@ -1090,8 +1087,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             dock: "north".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -1109,8 +1105,7 @@ fn the_aliased_and_wrapped_holders_of_this_file_are_read_by_serde_through_their_
             carton: carton(),
             dock: "north".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Ahead>(json!({ "dock": "north", "tag": "t" })).unwrap(),
@@ -1122,8 +1117,7 @@ fn the_aliased_and_wrapped_holders_of_this_file_are_read_by_serde_through_their_
             .unwrap(),
             dock: "north".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Wrap>(written).unwrap(),
@@ -1141,7 +1135,7 @@ fn every_struct_shape_of_this_file_is_read_by_serde_through_its_functions() {
     );
     assert_eq!(
         serde_json::from_value::<Heap>(json!({ "payload": ["  A  ", enveloped, 2_u32] })).unwrap(),
-        HeapDraft("A".to_owned(), carton(), 2).validate().unwrap()
+        HeapDraft("A".to_owned(), carton(), 2).into()
     );
     assert_eq!(
         serde_json::from_value::<Tagline>(json!({ "payload": "  A  " })).unwrap(),
@@ -1160,12 +1154,11 @@ fn every_struct_shape_of_this_file_is_read_by_serde_through_its_functions() {
             codes: vec![7],
             label: "b".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Tier>(json!({ "payload": "Express" })).unwrap(),
-        TierDraft::Express.validate().unwrap()
+        Tier::Express
     );
 }
 
@@ -1179,13 +1172,12 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Hop>(json!({ "Road": { "plate": "  A  " } })).unwrap(),
         ],
         [
-            HopDraft::Held.validate().unwrap(),
-            HopDraft::Rail("A".to_owned()).validate().unwrap(),
+            Hop::Held,
+            HopDraft::Rail("A".to_owned()).into(),
             HopDraft::Road {
                 plate: "A".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ]
     );
     assert_eq!(
@@ -1198,17 +1190,15 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Gated>(json!({ "kind": "Named", "tag": "t" })).unwrap(),
         ],
         [
-            GatedDraft::Held(carton()).validate().unwrap(),
-            GatedDraft::Lost.validate().unwrap(),
+            GatedDraft::Held(carton()).into(),
+            Gated::Lost,
             GatedDraft::Named(
                 BayDraft {
                     keys: vec!["tag".to_owned()],
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
-            .validate()
-            .unwrap(),
+            .into(),
         ]
     );
     assert_eq!(
@@ -1219,10 +1209,7 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             serde_json::from_value::<Lane>(json!({ "kind": "Lost" })).unwrap(),
         ],
-        [
-            LaneDraft::Held(carton()).validate().unwrap(),
-            LaneDraft::Lost.validate().unwrap()
-        ]
+        [LaneDraft::Held(carton()).into(), Lane::Lost]
     );
     assert_eq!(
         [
@@ -1234,8 +1221,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
                 .unwrap(),
         ],
         [
-            LegDraft::Left("door".to_owned()).validate().unwrap(),
-            LegDraft::Signed { by: "A".to_owned() }.validate().unwrap(),
+            LegDraft::Left("door".to_owned()).into(),
+            LegDraft::Signed { by: "A".to_owned() }.into(),
         ]
     );
     assert_eq!(
@@ -1245,8 +1232,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
                 .unwrap(),
         ],
         [
-            PickDraft::Named("A".to_owned()).validate().unwrap(),
-            PickDraft::Whole(carton()).validate().unwrap()
+            PickDraft::Named("A".to_owned()).into(),
+            PickDraft::Whole(carton()).into()
         ]
     );
     assert_eq!(
@@ -1255,8 +1242,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Culled>(json!("  A  ")).unwrap(),
         ],
         [
-            CulledDraft::Maybe(None).validate().unwrap(),
-            CulledDraft::Maybe(Some("A".to_owned())).validate().unwrap()
+            CulledDraft::Maybe(None).into(),
+            CulledDraft::Maybe(Some("A".to_owned())).into()
         ]
     );
 }

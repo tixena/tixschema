@@ -560,8 +560,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn keyed_gen_labelled(
@@ -574,8 +573,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: labels.join("|"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn keyed_gen_list(
@@ -588,8 +586,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: format!("{pages:?}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn keyed_generated(
@@ -599,7 +596,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         _title: String,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswerDraft { id: document_id }.validate().unwrap())
+        Ok(KeyedAnswerDraft { id: document_id }.into())
     }
 
     async fn labelled(&self, _ctx: &(), req: KeyedLabelled) -> Result<KeyedAnswer, KeyedRefused> {
@@ -607,8 +604,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.labels.join("|"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn listed(&self, _ctx: &(), req: KeyedListed) -> Result<KeyedAnswer, KeyedRefused> {
@@ -616,8 +612,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: format!("{:?}", req.pages),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn own_key(&self, _ctx: &(), req: KeyedOwn) -> Result<KeyedAnswer, KeyedRefused> {
@@ -625,8 +620,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn paged(&self, _ctx: &(), req: KeyedPaged) -> Result<KeyedAnswer, KeyedRefused> {
@@ -634,8 +628,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.page_size.to_string(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn pinned(&self, _ctx: &(), req: KeyedPinned) -> Result<KeyedAnswer, KeyedRefused> {
@@ -643,8 +636,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.pinned.to_string(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn plain(&self, _ctx: &(), req: KeyedPlain) -> Result<KeyedAnswer, KeyedRefused> {
@@ -652,8 +644,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn quoted_key(&self, _ctx: &(), req: KeyedQuoted) -> Result<KeyedAnswer, KeyedRefused> {
@@ -661,20 +652,18 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn renamed(&self, _ctx: &(), req: KeyedRenamed) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         if req.document_id == "refused" {
-            return Err(KeyedRefusedDraft::Nope.validate().unwrap());
+            return Err(KeyedRefused::Nope);
         }
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn tallied(&self, _ctx: &(), req: KeyedTally) -> Result<KeyedAnswer, KeyedRefused> {
@@ -682,8 +671,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.tally.to_string(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn two_placeholders(
@@ -695,8 +683,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: format!("{}|{}", req.document_id, req.title),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 

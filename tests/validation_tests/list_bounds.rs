@@ -129,8 +129,7 @@ mod a_key_on_a_list {
             PartDraft {
                 value: "part".to_owned()
             }
-            .validate()
-            .unwrap();
+            .into();
             count
         ]
     }

@@ -142,7 +142,7 @@ enum UserStatus {
 fn test_ts_zod_serde_enums_constructible() {
     let actions = [
         ActionWithLiteralEnumDraft::Generate {
-            value: DocumentLiteralValueDraft::Document.validate().unwrap(),
+            value: DocumentLiteralValue::Document,
         },
         ActionWithLiteralEnumDraft::Upload {
             value: String::new(),

@@ -518,8 +518,7 @@ mod wire {
             stamp: ArchiveStampDraft {
                 archive_id: ArchiveId::new("doc-1".to_owned()).unwrap(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             created_at: 1.5_f64,
             tags: vec!["a".to_owned()],
             byte_size: None,
@@ -563,8 +562,7 @@ mod wire {
                     id: "leaf".to_owned(),
                     children: Vec::new(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ],
         };
         assert_eq!(
@@ -750,5 +748,5 @@ fn archive_id(value: String) -> ArchiveId<String> {
 
 #[cfg(not(feature = "serde"))]
 fn archive_id(value: String) -> ArchiveId<String> {
-    ArchiveIdDraft(value).validate().unwrap()
+    ArchiveIdDraft(value).into()
 }

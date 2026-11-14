@@ -7,6 +7,14 @@ pub fn draft_of(swift: &str) -> &str {
         .map_or(swift, |(draft, _)| draft.trim_end())
 }
 
+/// [`validating`], and the `valid` a draft declares where no rule judges a value of it.
+pub fn validating_free(valid: &str) -> String {
+    format!(
+        "{}; public var valid: {valid} {{ {valid}(draft: self) }}",
+        validating(valid)
+    )
+}
+
 /// The `validate()` a draft declares, which makes the valid type `valid` or throws what the draft
 /// lists.
 pub fn validating(valid: &str) -> String {

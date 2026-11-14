@@ -132,8 +132,7 @@ fn a_parcel_is_corrected_wherever_another_type_holds_it() {
         ManifestDraft {
             parcel: read.clone()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let shelf: Shelf = serde_json::from_value(json!({
         "by_dock": { "north": held },
@@ -146,15 +145,15 @@ fn a_parcel_is_corrected_wherever_another_type_holds_it() {
     assert_eq!(shelf.spare.as_ref(), Some(&read));
     assert_eq!(
         serde_json::from_value::<Slot>(json!({ "Held": held })).unwrap(),
-        SlotDraft::Held(read.clone()).validate().unwrap()
+        SlotDraft::Held(read.clone()).into()
     );
     assert_eq!(
         serde_json::from_value::<Consigned>(json!({ "kind": "Held", "detail": held })).unwrap(),
-        ConsignedDraft::Held(read.clone()).validate().unwrap()
+        ConsignedDraft::Held(read.clone()).into()
     );
     assert_eq!(
         serde_json::from_value::<Either>(held).unwrap(),
-        EitherDraft::Parcel(read.clone()).validate().unwrap()
+        EitherDraft::Parcel(read.clone()).into()
     );
     assert_eq!(
         serde_json::from_value::<Crated>(
@@ -165,15 +164,14 @@ fn a_parcel_is_corrected_wherever_another_type_holds_it() {
             dock: "north".to_owned(),
             parcel: read.clone()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Delivery>(
             json!({ "kind": "Held", "label": "  A  ", "itemCodeList": ["x"] })
         )
         .unwrap(),
-        DeliveryDraft::Held(read).validate().unwrap()
+        DeliveryDraft::Held(read).into()
     );
 }
 
@@ -202,8 +200,7 @@ fn a_type_that_reaches_itself_is_corrected_at_every_depth() {
             ],
             id: "a".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -214,7 +211,7 @@ fn label(text: &str) -> Label {
 
 #[cfg(not(feature = "serde"))]
 fn label(text: &str) -> Label {
-    LabelDraft::of(text).validate().unwrap()
+    LabelDraft::of(text).into()
 }
 
 #[test]
@@ -283,8 +280,7 @@ fn the_functions_of_a_type_run_in_the_order_written() {
             fragile_item_codes: Vec::new(),
             label: "A".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -335,8 +331,7 @@ fn the_function_of_a_flattened_type_is_handed_what_its_holder_does_not_take() {
             .validate()
             .unwrap(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -354,8 +349,7 @@ fn a_flattened_choice_is_corrected_by_its_own_function() {
             .validate()
             .unwrap(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -381,8 +375,7 @@ fn the_function_of_a_field_is_handed_a_null_the_payload_holds() {
         UnnamedDraft {
             label: "unnamed".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<Unnamed>("{}")

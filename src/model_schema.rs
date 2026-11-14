@@ -20,6 +20,7 @@ pub mod ranges;
 pub mod strict;
 pub mod valid_type;
 
+use crate::utils::{is_rule_less, note_rule_less};
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
 #[cfg(feature = "serde")]
@@ -2404,6 +2405,17 @@ fn record_pattern(result: &mut ModelSchemaArgs, lit_str: &syn::LitStr) {
     }
 }
 
+/// Records what `item` declares, and whether it declares no rule of its own, ahead of the
+/// expansions that read them.
+fn note_what_it_declares(item: &Item, args: &ModelSchemaArgs) {
+    valid_type::record(item, args.undrafted, !args.check.is_empty());
+    note_rule_less(valid_type::declares_no_rule(
+        item,
+        !args.check.is_empty(),
+        args.string_check.is_some(),
+    ));
+}
+
 pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let parsed_args = parse_model_schema_args(args);
     // Written out rather than `parse_macro_input!`, which returns from the enclosing function and
@@ -2550,6 +2562,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let registering = item_schema_ident(&item).cloned();
     // Independent of the dispatch below: it reads its own borrow of `item` ahead of the move, and
     // needs none of the machinery the other surfaces share.
+    note_what_it_declares(&item, &parsed_args);
     let dart_tokens = dart_suffix_tokens(&item, &parsed_args);
     // Same independence as the Dart tokens above; the refusal walks the item's own fields ahead
     // of the move too, since it names each one by its declared type.
@@ -2558,8 +2571,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
     let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
-    valid_type::record(&item, parsed_args.undrafted);
-    let expanded = process_item(item, &parsed_args);
+    let expanded = valid_type::settle(process_item(item, &parsed_args));
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
@@ -3398,7 +3410,7 @@ fn assemble_schema_output<T>(
     drafted: &judged_read::Drafted,
 ) -> TokenStream
 where
-    T: quote::ToTokens,
+    T: quote::ToTokens + valid_type::UnitShaped,
 {
     let (impl_generics, type_generics, where_clause) = parts.generics.split_for_impl();
     let item = parts.item;
@@ -3435,7 +3447,9 @@ where
         module_ident,
         name,
         reads: &drafted.valid,
+        rule_less: is_rule_less(),
         serializes: declared.serializes,
+        units: unit_values_of(parts.item, is_rule_less(), declared.checked),
         vis: parts.vis,
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, validate_method.is_some());
@@ -3464,6 +3478,23 @@ where
     log::trace!("{output}");
 
     output
+}
+
+/// The values of `item` no rule can refuse: a unit struct's one value where it declares no rule,
+/// and an enum's unit variants where the enum names no check of its own.
+fn unit_values_of<T>(item: &T, rule_less: bool, checked: bool) -> valid_type::UnitValues
+where
+    T: valid_type::UnitShaped,
+{
+    match item.unit_values() {
+        valid_type::UnitValues::Struct if rule_less => valid_type::UnitValues::Struct,
+        valid_type::UnitValues::Variants(units) if !checked => {
+            valid_type::UnitValues::Variants(units)
+        }
+        valid_type::UnitValues::None
+        | valid_type::UnitValues::Struct
+        | valid_type::UnitValues::Variants(_) => valid_type::UnitValues::None,
+    }
 }
 
 /// `Schema` and its `impl` of `schema_impl_items`, or `None` where none of them writes a method.
@@ -3539,7 +3570,7 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 ///     pub label: String,
 /// }
 ///
-/// impl CrateDraft<u32> {
+/// impl Crate<u32> {
 ///     pub fn validation_issues(&self) -> Vec<String> {
 ///         if self.codes.contains(&0) {
 ///             return vec!["'codes': no code is zero".to_owned()];
@@ -10046,8 +10077,8 @@ fn build_tuple_struct_ts_definition_method(
         item_name,
         rust_ident,
         ts_generics,
-        noted,
-        tuple_struct_admits_null(shape),
+        (noted, tuple_struct_admits_null(shape)),
+        &[],
     );
     let draft_name = ts_draft_name(item_name);
     let reexport =
@@ -12785,8 +12816,16 @@ fn plain_enum_ts_definition_method(
 ) -> proc_macro2::TokenStream {
     let rust_ident = item_enum.ident.to_string();
     let ts_generics = ts_generic_params(&item_enum.generics);
-    let reader =
-        plain_enum_variant_reader(item_name, &plain_enum_reader_pairs(item_enum, rename_all));
+    let pairs = plain_enum_reader_pairs(item_enum, rename_all);
+    let reader = plain_enum_variant_reader(item_name, &pairs);
+    let constants: Vec<(String, String)> = if ts_generics.is_empty() {
+        pairs
+            .iter()
+            .map(|(wire, rust)| (rust.clone(), ts_quoted(wire)))
+            .collect()
+    } else {
+        Vec::new()
+    };
     generate_plain_enum_ts_definition_method(
         docs,
         item_name,
@@ -12794,7 +12833,31 @@ fn plain_enum_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
+        &constants,
     )
+}
+
+/// The constant of each unit variant of a tagged enum, as `(variant, value)`: the value its
+/// representation writes for the variant, from the variant's written name. None for a generic enum.
+#[cfg(feature = "typescript")]
+fn ts_unit_variant_constants(
+    item_enum: &syn::ItemEnum,
+    casing: EnumCasing<'_>,
+    ts_generics: &str,
+    written: impl Fn(&str) -> String,
+) -> Vec<(String, String)> {
+    if !ts_generics.is_empty() {
+        return Vec::new();
+    }
+    discriminated_variant_reader_pairs(item_enum, casing)
+        .into_iter()
+        .filter(|(_, rust)| {
+            item_enum.variants.iter().any(|variant| {
+                variant.ident == rust.as_str() && matches!(variant.fields, syn::Fields::Unit)
+            })
+        })
+        .map(|(wire, rust)| (rust, written(&wire)))
+        .collect()
 }
 
 /// The internally- or adjacently-tagged `ts_definition()` method, its reader computed and appended
@@ -12816,6 +12879,10 @@ fn tagged_ts_definition_method(
         tag_name,
         &discriminated_variant_reader_pairs(item_enum, casing),
     );
+    let key = ts_member_key(tag_name);
+    let constants = ts_unit_variant_constants(item_enum, casing, &ts_generics, |wire| {
+        format!("Object.freeze({{ {key}: {} }})", ts_quoted(wire))
+    });
     generate_discriminated_enum_ts_definition_method(
         docs,
         item_name,
@@ -12823,7 +12890,7 @@ fn tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
-        false,
+        (false, &constants),
     )
 }
 
@@ -12843,6 +12910,7 @@ fn externally_tagged_ts_definition_method(
         item_name,
         &discriminated_variant_reader_pairs(item_enum, casing),
     );
+    let constants = ts_unit_variant_constants(item_enum, casing, &ts_generics, ts_quoted);
     generate_discriminated_enum_ts_definition_method(
         docs,
         item_name,
@@ -12850,7 +12918,7 @@ fn externally_tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
-        false,
+        (false, &constants),
     )
 }
 
@@ -12987,7 +13055,9 @@ fn plain_enum_output(
         module_ident,
         name,
         reads: &judged.valid,
+        rule_less: is_rule_less(),
         serializes: declared.serializes,
+        units: unit_values_of(item_enum, is_rule_less(), declared.checked),
         vis: &item_enum.vis,
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, added.validate.is_some());
@@ -15887,7 +15957,7 @@ fn build_untagged_schema_impl_items(
         &ts_generic_params(&item_enum.generics),
         &type_code,
         &variant_reader,
-        admits_null,
+        (admits_null, &[]),
     );
 
     #[cfg(feature = "zod")]
@@ -22775,8 +22845,8 @@ fn ts_valid_type(
     item_name: &str,
     rust_ident: &str,
     ts_generics: &str,
-    noted: bool,
-    nullable: bool,
+    (noted, nullable): (bool, bool),
+    constants: &[(String, String)],
 ) -> String {
     if !valid_type::has_draft() {
         return ts_assumed_draft(item_name, rust_ident, ts_generics);
@@ -22800,7 +22870,50 @@ fn ts_valid_type(
     } else {
         format!("Readonly<{item_name}Draft{ts_generics}> & {marker}")
     };
-    format!("{declared}\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}")
+    let converts = ts_valid_conversion(item_name, ts_generics, constants);
+    format!(
+        "{declared}\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}{converts}"
+    )
+}
+
+/// What only a type that declares no rule has beside its valid type: the constant of each unit
+/// variant of a plain enum, and `{Name}Draft$valid`, which makes the valid value of a draft no rule
+/// judges. The text is written between the marks `valid_type::settle` reads, which keeps it where
+/// the type declares no rule.
+#[cfg(feature = "typescript")]
+fn ts_valid_conversion(
+    item_name: &str,
+    ts_generics: &str,
+    constants: &[(String, String)],
+) -> String {
+    let declared = valid_type::declared();
+    let members = if constants.is_empty() || declared.checked {
+        String::new()
+    } else {
+        let members = constants
+            .iter()
+            .map(|(key, value)| {
+                format!(
+                    "  {}: {value} as {item_name},",
+                    key.trim_start_matches("r#"),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("\n\nexport const {item_name} = {{\n{members}\n}} as const;")
+    };
+    let unit = if declared.unit {
+        format!(
+            "{}\n\nexport const {item_name} = Object.freeze({{}}) as {item_name};",
+            valid_type::SETTLE_OPEN
+        )
+    } else {
+        valid_type::SETTLE_OPEN.to_string()
+    };
+    format!(
+        "{members}{unit}\n\nexport function {item_name}Draft$valid{ts_generics}(draft: {item_name}Draft{ts_generics}): {item_name}{ts_generics} {{\n  return draft as unknown as {item_name}{ts_generics};\n}}{}",
+        valid_type::SETTLE_CLOSE
+    )
 }
 
 #[cfg(feature = "typescript")]
@@ -22814,7 +22927,7 @@ fn generate_ts_definition_method(
     own_keys: &[String],
     flatten_types: &[MergedOperand],
 ) -> proc_macro2::TokenStream {
-    let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+    let valid = ts_valid_type(item_name, rust_ident, ts_generics, (false, false), &[]);
     let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
     let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
     let fields_empty = own_keys.is_empty();
@@ -23950,11 +24063,18 @@ fn generate_plain_enum_ts_definition_method(
     ts_generics: &str,
     type_code: &str,
     variant_reader: &str,
+    constants: &[(String, String)],
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+        let valid = ts_valid_type(
+            item_name,
+            rust_ident,
+            ts_generics,
+            (false, false),
+            constants,
+        );
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
         let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 
@@ -24086,12 +24206,18 @@ fn generate_discriminated_enum_ts_definition_method(
     ts_generics: &str,
     type_code: &str,
     variant_reader: &str,
-    admits_null: bool,
+    (admits_null, constants): (bool, &[(String, String)]),
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, admits_null);
+        let valid = ts_valid_type(
+            item_name,
+            rust_ident,
+            ts_generics,
+            (false, admits_null),
+            constants,
+        );
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
         let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 

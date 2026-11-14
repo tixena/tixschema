@@ -520,10 +520,9 @@ fn serde_hands_a_map_alone_every_key() {
     assert_eq!(
         read::<Toggling<u8>>(PARCELING),
         TogglingDraft {
-            rest: BTreeMap::from([(QuarterDraft::North.validate().unwrap(), 2)]),
+            rest: BTreeMap::from([(Quarter::North, 2)]),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(written(&read::<Worming>(WORMING).rest), WORMING);
     assert_eq!(written(&read::<Faking>(FAKING).rest), FAKING);
@@ -686,10 +685,7 @@ fn serde_reads_a_flattened_enum_from_the_first_entry_under_a_variants_name() {
         anchored(ANCHORING[1]).unwrap_err().to_string(),
         "'Bay.label': too short: minimum length is 1, got 0"
     );
-    assert_eq!(
-        anchored(ANCHORING[2]).unwrap(),
-        CareenDraft::Calm.validate().unwrap()
-    );
+    assert_eq!(anchored(ANCHORING[2]).unwrap(), Careen::Calm);
     assert_eq!(anchored(ANCHORING[3]).unwrap(), dock().validate().unwrap());
     assert!(
         anchored(ANCHORING[4])

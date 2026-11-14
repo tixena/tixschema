@@ -63,9 +63,9 @@ impl<Ctx: Sync> ParcelDesk<Ctx> for Shelves {
         req: ParcelQuery,
     ) -> impl Future<Output = Result<ParcelTally, TallyError>> + Send {
         ready(if req.shelf == "north" {
-            Ok(ParcelTallyDraft { parcels: 3 }.validate().unwrap())
+            Ok(ParcelTallyDraft { parcels: 3 }.into())
         } else {
-            Err(TallyErrorDraft::NoSuchShelf.validate().unwrap())
+            Err(TallyError::NoSuchShelf)
         })
     }
 }

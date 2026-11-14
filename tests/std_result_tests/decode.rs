@@ -131,8 +131,7 @@ fn a_result_that_reads_lists_nothing() {
             .unwrap())),
             outcome: Err("late".to_owned()),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 

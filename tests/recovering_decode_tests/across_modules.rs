@@ -101,8 +101,7 @@ fn one_resolver_serves_the_types_of_both_modules() {
                 .unwrap(),
                 number: "INV-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(

@@ -535,9 +535,9 @@ pub struct OrderBook;
 impl Orders<()> for OrderBook {
     async fn get_order(&self, _ctx: &(), req: OrderLookup) -> Result<OrderSummary, OrderError> {
         if req.order_id == "A-1" {
-            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.validate().unwrap())
+            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.into())
         } else {
-            Err(OrderErrorDraft::NotFound.validate().unwrap())
+            Err(OrderError::NotFound)
         }
     }
 }
@@ -649,7 +649,7 @@ fn to_chase(above: f64) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
         .status()
-        .eq(InvoiceStatusDraft::PastDue.validate().unwrap())?
+        .eq(InvoiceStatus::PastDue)?
         .or(paths.total().gt(above)?)
         .and(paths.paid_at().exists(false)))
 }
@@ -732,7 +732,7 @@ fn main() {
     });
     assert_eq!(
         read.ok(),
-        Some(OrderLineDraft { sku: "BK-101".to_owned(), quantity: 3 }.validate().unwrap())
+        Some(OrderLineDraft { sku: "BK-101".to_owned(), quantity: 3 }.into())
     );
 }
 ```
@@ -1070,6 +1070,10 @@ export type UserDraft = {
 };
 
 export type User = Readonly<UserDraft> & $brand<"User">;
+
+export function UserDraft$valid(draft: UserDraft): User {
+  return draft as unknown as User;
+}
 ```"#]
 ///
 /// `User::zod_schema()`:
@@ -1123,6 +1127,16 @@ export type StatusDraft =
   | "pending";
 
 export type Status = Readonly<StatusDraft> & $brand<"Status">;
+
+export const Status = {
+  Active: "active" as Status,
+  Inactive: "inactive" as Status,
+  Pending: "pending" as Status,
+} as const;
+
+export function StatusDraft$valid(draft: StatusDraft): Status {
+  return draft as unknown as Status;
+}
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Status$Variant(value: unknown): string {
@@ -1218,6 +1232,10 @@ export type EventDraft = {
 };
 
 export type Event = Readonly<EventDraft> & $brand<"Event">;
+
+export function EventDraft$valid(draft: EventDraft): Event {
+  return draft as unknown as Event;
+}
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Event$Variant(value: unknown): string {
@@ -1437,6 +1455,10 @@ export type DocumentDraft = {
 };
 
 export type Document = Readonly<DocumentDraft> & $brand<"Document">;
+
+export function DocumentDraft$valid(draft: DocumentDraft): Document {
+  return draft as unknown as Document;
+}
 ```
 
 `Document::zod_schema()`:
@@ -2308,9 +2330,9 @@ pub struct OrderBook;
 impl Orders<()> for OrderBook {
     async fn get_order(&self, _ctx: &(), req: OrderLookup) -> Result<OrderSummary, OrderError> {
         if req.order_id == "A-1" {
-            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.validate().unwrap())
+            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.into())
         } else {
-            Err(OrderErrorDraft::NotFound.validate().unwrap())
+            Err(OrderError::NotFound)
         }
     }
 }
@@ -2368,16 +2390,17 @@ fn run<F: std::future::Future>(call: F) -> F::Output {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Vec<String>> {
     let client = orders_client::OrdersClient::new(InMemory);
 
-    let lookup = |order_id: &str| OrderLookupDraft { order_id: order_id.to_owned() }.validate().unwrap();
+    let lookup = |order_id: &str| OrderLookupDraft { order_id: order_id.to_owned() }.validate();
 
-    let found = run(client.get_order(lookup("A-1")));
+    let found = run(client.get_order(lookup("A-1")?));
     assert!(matches!(&found, Ok(summary) if summary.total_cents == 4250));
 
-    let missing = run(client.get_order(lookup("B-7")));
+    let missing = run(client.get_order(lookup("B-7")?));
     assert!(matches!(&missing, Err(CallError::Operation(error)) if matches!(&**error, OrderErrorDraft::NotFound)));
+    Ok(())
 }
 ```
 "#

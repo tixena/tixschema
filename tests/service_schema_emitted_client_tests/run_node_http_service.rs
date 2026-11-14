@@ -806,7 +806,7 @@ impl ScaleClientService<()> for ScaleBackEnd {
         _reading_id: String,
     ) -> Result<ScaleReading, ScaleError> {
         ready(()).await;
-        Err(ScaleErrorDraft::NotFound.validate().unwrap())
+        Err(ScaleError::NotFound)
     }
 }
 
@@ -819,8 +819,7 @@ impl CatalogClientService<()> for CatalogBackEnd {
         Ok(CatalogEntryDraft {
             title: "Minutes".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 

@@ -276,8 +276,8 @@ impl TallyingClientService<()> for TallyingBackEnd {
         ready(()).await;
         req.tally
             .checked_add(1)
-            .map(|sum| TallyCountDraft { tally: sum }.validate().unwrap())
-            .ok_or_else(|| TallyErrorDraft::Refused.validate().unwrap())
+            .map(|sum| TallyCountDraft { tally: sum }.into())
+            .ok_or(TallyError::Refused)
     }
 
     async fn fetch(
@@ -291,8 +291,8 @@ impl TallyingClientService<()> for TallyingBackEnd {
         tally
             .checked_add(limit.unwrap_or(0))
             .and_then(|sum| sum.checked_add(ledger))
-            .map(|sum| TallyCountDraft { tally: sum }.validate().unwrap())
-            .ok_or_else(|| TallyErrorDraft::Refused.validate().unwrap())
+            .map(|sum| TallyCountDraft { tally: sum }.into())
+            .ok_or(TallyError::Refused)
     }
 }
 
@@ -339,7 +339,7 @@ impl TallyingBareService<()> for TallyingBareBackEnd {
         ready(()).await;
         let shifted = entry
             .checked_add(offset.unwrap_or(0))
-            .ok_or_else(|| TallyErrorDraft::Refused.validate().unwrap())?;
+            .ok_or(TallyError::Refused)?;
         Ok((shifted, shifted.checked_mul(2)))
     }
 

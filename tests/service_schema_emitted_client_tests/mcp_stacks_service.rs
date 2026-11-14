@@ -70,7 +70,7 @@ impl StacksService<()> for Shelved {
         _ctx: &(),
         _req: BookRequest,
     ) -> impl Future<Output = Result<BookInfo, BookError>> {
-        ready(Ok(BookInfoDraft { pages: 3 }.validate().unwrap()))
+        ready(Ok(BookInfoDraft { pages: 3 }.into()))
     }
 
     fn get_item(

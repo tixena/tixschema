@@ -90,8 +90,7 @@ mod tests {
             number: "INV-0042".to_owned(),
             open_lines: 3,
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     fn order() -> Order {
@@ -99,8 +98,7 @@ mod tests {
             lines: 3,
             number: "ORD-0007".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     #[test]

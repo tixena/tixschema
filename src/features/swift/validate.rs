@@ -2,6 +2,7 @@
 //! reports and the checks it names, then the type's own checks, in the order the Rust `validate()`
 //! runs them.
 
+use crate::utils::is_rule_less;
 use core::cell::RefCell;
 use core::ops::Range;
 use std::collections::HashMap;
@@ -276,11 +277,16 @@ pub(super) fn rules_method(rules: &[String]) -> String {
 /// bound is answered as any type answers it, and `validate()` makes the valid value `valid` names
 /// or throws the rules broken, joined as a read joins them.
 pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
+    let converts = if is_rule_less() {
+        format!("; public var valid: {valid} {{ {valid}(draft: self) }}")
+    } else {
+        String::new()
+    };
     format!(
         "{}; {EMPTY_BOUND}; public func validate() throws -> {valid} {{ \
          let found = validationIssues(); if !found.isEmpty {{ throw \
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: \
-         found.joined(separator: \"; \"))) }}; return {valid}(draft: self) }}",
+         found.joined(separator: \"; \"))) }}; return {valid}(draft: self) }}{converts}",
         listing("validationIssues", rules)
     )
 }

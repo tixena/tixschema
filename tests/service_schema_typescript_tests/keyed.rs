@@ -61,7 +61,7 @@ impl KeyedProbeService<()> for KeyedProbeBackEnd {
     ) -> Result<(), HeaderProbeError> {
         ready(()).await;
         if kept.is_empty() {
-            Err(HeaderProbeErrorDraft::Missing.validate().unwrap())
+            Err(HeaderProbeError::Missing)
         } else {
             Ok(())
         }

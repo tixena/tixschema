@@ -198,9 +198,25 @@ fn to_valid(named: &str, generic: &str) -> String {
     )
 }
 
+/// [`to_valid`], and the conversion a draft that declares no rule has.
+fn to_valid_free(named: &str, generic: &str) -> String {
+    format!(
+        "{} fun toValid(): {named}{generic} = {named}.checked(this)",
+        to_valid(named, generic)
+    )
+}
+
 /// The valid class of `named`, over its draft, which forwards each property in `forwards`.
 fn valid_class(named: &str, forwards: &str) -> String {
     valid_class_over(named, "", forwards)
+}
+
+/// [`valid_class`] with `statics`, the constants its companion holds, after a semicolon.
+fn valid_class_with(named: &str, forwards: &str, statics: &str) -> String {
+    valid_class(named, forwards).replace(
+        &format!("= {named}(draft) }}"),
+        &format!("= {named}(draft){statics} }}"),
+    )
 }
 
 /// [`valid_class`] of a type over the type parameters `generic`, written `<A, B>`.
@@ -1402,7 +1418,7 @@ fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
             "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, ParcelUnjudged, \
              JsonObject(obj - \"kind\"), \"Boxed\", \"\"))",
             rest("Loose"),
-            valid_class("Lift", ""),
+            valid_class_with("Lift", "", "; val Held = checked(LiftHeld)"),
             valid_unjudged("Lift"),
             judged_valid("Lift")
         )
@@ -1456,7 +1472,7 @@ fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
     assert!(
         kotlin.ends_with(&format!(
             "{} {} {}",
-            valid_class("Freight", ""),
+            valid_class_with("Freight", "", "; val Held = checked(FreightHeld)"),
             valid_unjudged("Freight"),
             judged_valid("Freight")
         )),

@@ -267,9 +267,7 @@ fn test_serde_writes_and_reads_a_dropped_slot_in_neither_direction() {
 
     assert_eq!(
         serde_json::from_value::<SkippedLeadSlot>(written).unwrap(),
-        SkippedLeadSlotDraft(None, "x".to_owned())
-            .validate()
-            .unwrap()
+        SkippedLeadSlotDraft(None, "x".to_owned()).into()
     );
     assert!(
         serde_json::from_str::<SkippedLeadSlot>(r#"["s","x"]"#).is_err(),
@@ -323,7 +321,7 @@ fn test_serde_writes_a_lone_slot_whatever_the_skip_says() {
     );
     assert_eq!(
         serde_json::from_str::<SkippedLoneSlot>(r#""s""#).unwrap(),
-        SkippedLoneSlotDraft("s".to_owned()).validate().unwrap()
+        SkippedLoneSlotDraft("s".to_owned()).into()
     );
 }
 

@@ -346,8 +346,7 @@ fn drawing() -> Drawing {
         outline: OutlineDraft::Circle { radius: 1.5_f64 }.validate().unwrap(),
         stroke: StrokeDraft::Dashed { gap: 2 }.validate().unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn route() -> Route {
@@ -360,10 +359,9 @@ fn route() -> Route {
         .unwrap(),
         gauge: GaugeDraft::Span(1, 2).validate().unwrap(),
         next: MoveDraft::To(1_i32, 2_i32).validate().unwrap(),
-        status: StatusDraft::Draft.validate().unwrap(),
+        status: Status::Draft,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -396,12 +394,11 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
     assert_eq!(
         unit_read,
         Ok(DrawingDraft {
-            fill: FillDraft::Clear.validate().unwrap(),
-            outline: OutlineDraft::Empty.validate().unwrap(),
-            stroke: StrokeDraft::Hairline.validate().unwrap(),
+            fill: Fill::Clear,
+            outline: Outline::Empty,
+            stroke: Stroke::Hairline,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let single = json!({
@@ -424,8 +421,7 @@ fn what_serde_wrote_for_each_enum_form_is_read_and_the_decider_never_runs() {
             outline: OutlineDraft::Label("x".to_owned()).validate().unwrap(),
             stroke: StrokeDraft::Width(4).validate().unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let routed = serde_json::to_value(route()).unwrap();
@@ -471,21 +467,20 @@ fn a_plain_enum_is_one_value_read_with_its_own_reader() {
 fn a_brand_over_a_plain_enum_is_read_as_the_name_the_enum_writes() {
     let mut calls = 0_u32;
     let written = serde_json::to_value(ReviewDraft {
-        status: StatusRef::new(StatusDraft::Draft.validate().unwrap()).unwrap(),
+        status: StatusRef::new(Status::Draft).unwrap(),
     })
     .unwrap();
     assert_eq!(written, json!({ "status": "Draft" }));
     assert_eq!(
         read_counting!(Review, review_schema, written, calls),
         Ok(ReviewDraft {
-            status: StatusRef::new(StatusDraft::Draft.validate().unwrap()).unwrap(),
+            status: StatusRef::new(Status::Draft).unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         read_counting!(StatusRef, status_ref_schema, json!("Published"), calls),
-        Ok(StatusRef::new(StatusDraft::Published.validate().unwrap()).unwrap())
+        Ok(StatusRef::new(Status::Published).unwrap())
     );
     assert_eq!(calls, 0);
 
@@ -671,7 +666,7 @@ fn a_tag_naming_no_variant_that_serde_reads_is_mistyped() {
     let stored = json!({ "kind": "Warp", "speed": 9_i32 });
     assert_eq!(
         serde_json::from_value::<Signal>(stored.clone()).unwrap(),
-        SignalDraft::Unrecognized.validate().unwrap()
+        Signal::Unrecognized
     );
     assert_eq!(
         listed!(Signal, signal_schema, stored),
@@ -780,7 +775,7 @@ fn an_adjacently_tagged_unit_variant_walks_nothing_under_the_content_key() {
             stroke_schema::Verdict::Reject
         },
     );
-    assert_eq!(read, Ok(StrokeDraft::Hairline.validate().unwrap()));
+    assert_eq!(read, Ok(Stroke::Hairline));
     assert_eq!(calls, 0);
     let stored = json!({ "data": 5_i32, "kind": "Hairline" });
     assert!(!serde_reads::<Stroke>(&stored));
@@ -802,7 +797,7 @@ fn an_adjacently_tagged_optional_value_reads_its_absence() {
             calls += 1;
             gauge_schema::Verdict::Reject
         });
-        assert_eq!(read, Ok(GaugeDraft::Level(None).validate().unwrap()));
+        assert_eq!(read, Ok(GaugeDraft::Level(None).into()));
     }
     assert_eq!(calls, 0);
     assert_eq!(
@@ -1093,7 +1088,7 @@ fn variants_and_their_fields_are_walked_under_their_wire_names() {
 
     assert_eq!(
         Pace::from_value_with(json!("halt"), |_raw, _found| pace_schema::Verdict::Reject),
-        Ok(PaceDraft::StandStill.validate().unwrap())
+        Ok(Pace::StandStill)
     );
     assert_eq!(
         listed!(
@@ -1209,9 +1204,7 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
         (json!("Empty"), AnswerDraft::Empty.validate().unwrap()),
         (
             json!({ "Value": { "number": 3_i32 } }),
-            AnswerDraft::Value(VersionDraft { number: 3_i32 }.validate().unwrap())
-                .validate()
-                .unwrap(),
+            AnswerDraft::Value(VersionDraft { number: 3_i32 }.into()).into(),
         ),
     ] {
         let read = Answer::<Version>::from_value_with(stored, |_raw, _found| {
@@ -1246,8 +1239,7 @@ fn a_generic_enum_reads_a_parameters_value_whole() {
         Ok(EitherDraft::Left {
             left: "l".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let neither = Either::<String>::from_value_with(json!({ "left": 7_i32 }), |_raw, _found| {
         either_schema::Verdict::Reject
@@ -1278,7 +1270,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Coating, coating_schema, json!({ "kind": "Blank" }), calls),
-        Ok(CoatingDraft::Clear.validate().unwrap())
+        Ok(Coating::Clear)
     );
     assert_eq!(
         read_counting!(
@@ -1290,12 +1282,11 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
         Ok(CoatingDraft::Solid {
             color: "red".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         read_counting!(Contour, contour_schema, json!("Blank"), calls),
-        Ok(ContourDraft::Empty.validate().unwrap())
+        Ok(Contour::Empty)
     );
     assert_eq!(
         read_counting!(
@@ -1304,12 +1295,12 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             json!({ "Round": { "radius": 1.5_f64 } }),
             calls
         ),
-        Ok(ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap())
+        Ok(ContourDraft::Circle { radius: 1.5_f64 }.into())
     );
     for key in ["Jump", "Hop", "Leap"] {
         assert_eq!(
             read_counting!(Trail, trail_schema, json!({ key: [1_i32, 2_i32] }), calls),
-            Ok(TrailDraft::Jump(1_i32, 2_i32).validate().unwrap()),
+            Ok(TrailDraft::Jump(1_i32, 2_i32).into()),
             "for {key}"
         );
     }
@@ -1320,7 +1311,7 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
             json!({ "Lane": { "len": 3_i32 } }),
             calls
         ),
-        Ok(TrailDraft::Road { length: 3 }.validate().unwrap())
+        Ok(TrailDraft::Road { length: 3 }.into())
     );
     for tag in ["Dashed", "Dotted", "Broken"] {
         assert_eq!(
@@ -1330,13 +1321,13 @@ fn a_tag_stored_as_an_alias_names_its_variant_and_the_decider_never_runs() {
                 json!({ "data": { "gap": 2_i32 }, "kind": tag }),
                 calls
             ),
-            Ok(DashDraft::Dashed { gap: 2 }.validate().unwrap()),
+            Ok(DashDraft::Dashed { gap: 2 }.into()),
             "for {tag}"
         );
     }
     assert_eq!(
         read_counting!(Dash, dash_schema, json!({ "kind": "Hairline" }), calls),
-        Ok(DashDraft::Hairline.validate().unwrap())
+        Ok(Dash::Hairline)
     );
     assert_eq!(calls, 0);
 }
@@ -1408,10 +1399,7 @@ fn a_decider_repairs_what_an_aliased_variant_holds_by_the_path_it_is_handed() {
         }
         contour_schema::Verdict::Fixed
     });
-    assert_eq!(
-        read,
-        Ok(ContourDraft::Circle { radius: 1.5_f64 }.validate().unwrap())
-    );
+    assert_eq!(read, Ok(ContourDraft::Circle { radius: 1.5_f64 }.into()));
 }
 
 #[test]
@@ -1466,9 +1454,7 @@ fn a_tag_naming_a_variant_serde_never_reads_names_no_variant() {
     );
 
     assert_eq!(
-        serde_json::to_value(TrailDraft::Lost.validate().unwrap())
-            .unwrap_err()
-            .to_string(),
+        serde_json::to_value(Trail::Lost).unwrap_err().to_string(),
         "the enum variant Trail::Lost cannot be serialized"
     );
     let named = json!("Lost");
@@ -1529,8 +1515,7 @@ fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
         ReachDraft::Email {
             address: "ann@example.org".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         listed!(Reach, reach_schema, email),
@@ -1548,8 +1533,7 @@ fn an_untagged_variant_serde_never_reads_gets_no_list_of_its_own() {
             country: 1_i32,
             digits: "555".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }
@@ -1571,7 +1555,7 @@ fn a_variant_serde_reads_and_never_writes_is_walked() {
             json!({ "Old": { "length": 3_i32 } }),
             calls
         ),
-        Ok(TrailDraft::Old { length: 3 }.validate().unwrap())
+        Ok(TrailDraft::Old { length: 3 }.into())
     );
     assert_eq!(calls, 0);
     let stored = json!({ "Old": { "extra": true, "length": "x" } });

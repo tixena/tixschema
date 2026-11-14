@@ -592,8 +592,7 @@ fn the_client_reads_the_handle_and_the_state_as_ordinary_successes() {
             ExportRequestDraft {
                 folder: "reports".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -639,8 +638,7 @@ fn the_client_reads_a_declared_error_and_a_fault() {
             ExportRequestDraft {
                 folder: "missing".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
     assert!(

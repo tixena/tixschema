@@ -1,6 +1,7 @@
 //! The valid type of each model type the emitter writes: `{Name}Draft` is the class code builds
 //! and changes, and `{Name}` wraps a draft that passed `validate()` in a private constructor.
 
+use crate::utils::is_rule_less;
 use core::cell::Cell;
 use core::fmt::Write as _;
 
@@ -95,11 +96,17 @@ pub fn draft_name(export_name: &str) -> String {
     }
 }
 
-/// The `validate()` the draft carries: its rules, then the valid type.
-pub fn validate_method(export_name: &str, generic_params: &str) -> String {
+/// The `validate()` the draft carries: its rules, then the valid type, and `toValid()` where no
+/// rule judges a value of it.
+pub fn validate_method(export_name: &str, generic_params: &str, rule_less: bool) -> String {
+    let converts = if rule_less {
+        format!(" fun toValid(): {export_name}{generic_params} = {export_name}.checked(this)")
+    } else {
+        String::new()
+    };
     format!(
         "fun validate(): {export_name}{generic_params} {{ val violations = validationIssues(); \
-         if (violations.isNotEmpty()) throw {}; return {export_name}.checked(this) }}",
+         if (violations.isNotEmpty()) throw {}; return {export_name}.checked(this) }}{converts}",
         read::JUDGED
     )
 }
@@ -123,18 +130,23 @@ pub fn valid_class(
     draft: &str,
     (declared, generic_params): (&str, &str),
     type_parameters: &[String],
-    members: &str,
+    (members, statics): (&str, &str),
 ) -> String {
     let checked_params = if type_parameters.is_empty() {
         String::new()
     } else {
         format!("<{}> ", type_parameters.join(", "))
     };
+    let held = if statics.is_empty() {
+        String::new()
+    } else {
+        format!("; {}", statics.trim_end().trim_end_matches(';'))
+    };
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {export_name}Serializer::class) data class \
          {export_name}{declared} private constructor(val draft: {draft}{generic_params}) {{ \
          {members}fun kotlinSchemaChecked(): {draft}{generic_params} = draft; companion object {{ internal fun {checked_params}checked(draft: \
-         {draft}{generic_params}): {export_name}{generic_params} = {export_name}(draft) }} }}"
+         {draft}{generic_params}): {export_name}{generic_params} = {export_name}(draft){held} }} }}"
     )
 }
 
@@ -142,10 +154,11 @@ pub fn valid_class(
 /// where it has a draft, and `validate()` alone where it has none.
 pub fn body(rules: &mut Rules<'_>, export_name: &str, generic_params: &str) -> String {
     if drafted() {
+        let issues = rules.issues("");
+        let rule_less = is_rule_less();
         format!(
-            "{} {}",
-            rules.issues(""),
-            validate_method(export_name, generic_params)
+            "{issues} {}",
+            validate_method(export_name, generic_params, rule_less)
         )
     } else {
         rules.written("")
@@ -160,13 +173,20 @@ pub fn pair(
     generics: (&str, &str),
     type_parameters: &[String],
     (members, composed): (&str, bool),
+    statics: &str,
 ) -> String {
     if !drafted() {
         return String::new();
     }
     format!(
         "{} {}",
-        valid_class(export_name, draft, generics, type_parameters, members),
+        valid_class(
+            export_name,
+            draft,
+            generics,
+            type_parameters,
+            (members, statics)
+        ),
         read::valid_unjudged(export_name, draft, generics.1, type_parameters, composed)
     )
 }

@@ -738,7 +738,7 @@ impl PacketClientService<()> for PacketBackEnd {
     async fn sent(&self, _ctx: &(), req: PacketRequest) -> Result<Packet, PacketError> {
         ready(()).await;
         if req.dock.is_empty() {
-            return Err(PacketErrorDraft::Closed.validate().unwrap());
+            return Err(PacketError::Closed);
         }
         Ok(PacketDraft {
             fragile_item_codes: Vec::new(),
@@ -1547,8 +1547,7 @@ fn the_backend_answers_the_contract() {
                 PacketRequestDraft {
                     dock: dock.to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         )
         .unwrap()

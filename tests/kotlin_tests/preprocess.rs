@@ -11,7 +11,8 @@ use super::kotlin_pathed::PATHED;
 use super::read::DECODED;
 use super::read::paired_plain_enum;
 use super::read::{
-    NO_ISSUES, judged_valid_over, kept_draft, to_valid, valid_class_over, valid_unjudged_over,
+    NO_ISSUES, judged_valid_over, kept_draft, to_valid, to_valid_free, valid_class_over,
+    valid_unjudged_over,
 };
 #[cfg(feature = "serde")]
 use super::read::{judged_valid, valid_class, valid_unjudged};
@@ -201,7 +202,7 @@ fn a_type_with_a_parameter_corrects_the_whole_payload_and_then_the_member() {
              HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<HamperDraft<CodeType>> {} {} {} {}",
             kept_draft("Hamper"),
-            to_valid("Hamper", "<CodeType>"),
+            to_valid_free("Hamper", "<CodeType>"),
             transform(
                 "HamperDraft<CodeType>",
                 "HamperDraft.generatedSerializer(codeTypeSerializer)",

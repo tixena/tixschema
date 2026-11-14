@@ -138,7 +138,7 @@ fn a_unit_struct_has_the_shape() {
 
 #[test]
 fn a_plain_enum_has_the_shape() {
-    let green = ColourDraft::Green.validate().unwrap();
+    let green = Colour::Green;
     assert!(matches!(&*green, ColourDraft::Green));
     assert_eq!(serde_json::to_string(&green).unwrap(), r#""Green""#);
     let read: Colour = serde_json::from_str(r#""Red""#).unwrap();

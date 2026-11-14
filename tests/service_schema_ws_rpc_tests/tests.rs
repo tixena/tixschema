@@ -134,14 +134,13 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<(RangeResult, String), RangeError>> {
         self.reach(format!("read_range {document_id} {byte_range:?}"));
         let outcome = if document_id == "missing" {
-            Err(RangeErrorDraft::NotFound.validate().unwrap())
+            Err(RangeError::NotFound)
         } else {
             Ok((
                 RangeResultDraft {
                     content: format!("range-of-{document_id}"),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 "etag-1".to_owned(),
             ))
         };
@@ -160,7 +159,7 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<(), UnwatchError>> {
         self.reach(format!("unwatch {}", req.document_id));
         let outcome = if req.document_id == "missing" {
-            Err(UnwatchErrorDraft::NotFound.validate().unwrap())
+            Err(UnwatchError::NotFound)
         } else {
             Ok(())
         };
@@ -174,13 +173,12 @@ impl DocumentSession<()> for DocumentBackEnd {
     ) -> impl Future<Output = Result<WatchResult, WatchError>> {
         self.reach(format!("watch {}", req.document_id));
         let outcome = match req.document_id.as_str() {
-            "missing" => Err(WatchErrorDraft::NotFound.validate().unwrap()),
+            "missing" => Err(WatchError::NotFound),
             "revoked" => Err(WatchErrorDraft::Revoked {
                 reason: "the session ended".to_owned(),
             }
-            .validate()
-            .unwrap()),
-            _ => Ok(WatchResultDraft { accepted: true }.validate().unwrap()),
+            .into()),
+            _ => Ok(WatchResultDraft { accepted: true }.into()),
         };
         ready(outcome)
     }
@@ -542,8 +540,7 @@ fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
             WatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
@@ -566,7 +563,7 @@ fn a_request_is_pending_until_delivered_then_ready_with_the_declared_value() {
     assert_eq!(delivered, Poll::Ready(()));
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Ok(WatchResultDraft { accepted: true }.validate().unwrap())),
+        Poll::Ready(Ok(WatchResultDraft { accepted: true }.into())),
     );
 }
 
@@ -579,8 +576,7 @@ fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
             WatchRequestDraft {
                 document_id: "missing".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
@@ -593,9 +589,7 @@ fn a_declared_error_reply_reads_back_as_the_operations_own_error() {
     assert_eq!(delivered, Poll::Ready(()));
     assert_eq!(
         poll_by_hand(call.as_mut()),
-        Poll::Ready(Err(CallError::Operation(
-            WatchErrorDraft::NotFound.validate().unwrap()
-        ))),
+        Poll::Ready(Err(CallError::Operation(WatchError::NotFound))),
     );
 }
 
@@ -609,8 +603,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
             WatchRequestDraft {
                 document_id: "revoked".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
@@ -632,8 +625,7 @@ fn a_declared_error_crosses_with_every_field_it_carries() {
             WatchErrorDraft::Revoked {
                 reason: "the session ended".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         ))),
     );
 }
@@ -647,8 +639,7 @@ fn close_fails_a_waiting_request_with_a_transport_failure_fault() {
             WatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
@@ -682,8 +673,7 @@ fn a_frame_writer_push_writes_a_notify_frame() {
                     document_id: "doc-1".to_owned(),
                     version: 3_u32,
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
         )
         .as_mut(),
@@ -800,8 +790,7 @@ fn touch_is_one_way_and_writes_a_notify_frame() {
                 TouchRequestDraft {
                     document_id: "doc-1".to_owned(),
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
         )
         .as_mut(),
@@ -828,8 +817,7 @@ fn unwatch_reads_the_unit_success_reply() {
             UnwatchRequestDraft {
                 document_id: "doc-1".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(poll_by_hand(call.as_mut()), Poll::Pending);
@@ -881,8 +869,7 @@ fn read_range_round_trips_header_in_and_header_out() {
             RangeResultDraft {
                 content: "range-of-doc-1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "etag-1".to_owned(),
         ))),
     );
@@ -928,8 +915,7 @@ fn the_session_events_trait_is_implementable_the_way_a_browser_would() {
                 document_id: "doc-1".to_owned(),
                 version: 1,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
 }

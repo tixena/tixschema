@@ -188,6 +188,6 @@ fn an_enum_that_is_not_copy_is_read_by_reference() {
 #[test]
 fn the_name_is_a_constant_and_a_valid_value_reaches_it_through_deref() {
     assert_eq!(MAX, "MaxIsCurrentDate");
-    let bound: Dated = DatedDraft::Custom.validate().unwrap();
+    let bound: Dated = Dated::Custom;
     assert_eq!(bound.wire_name(), "Custom");
 }

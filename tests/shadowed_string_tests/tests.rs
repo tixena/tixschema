@@ -34,7 +34,7 @@ fn a_struct_declared_beside_it_builds_reads_and_validates() {
     .unwrap();
     assert_eq!(read.validation_issues().len(), 0);
     let broken = HolderDraft {
-        inner: InnerDraft { number: 1 }.validate().unwrap(),
+        inner: InnerDraft { number: 1 }.into(),
         level: 0,
         queued: VecDeque::new(),
     };

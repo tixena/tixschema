@@ -261,13 +261,12 @@ fn invoice(number: &str, customer: &str, total: f64) -> Invoice {
         items: Vec::new(),
         number: number.to_owned(),
         paid_at: None,
-        payment: PaymentDraft::Cash.validate().unwrap(),
-        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
+        payment: Payment::Cash,
+        status: InvoiceStatus::PastDue,
         tags: Vec::new(),
         total,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn readme() -> &'static str {

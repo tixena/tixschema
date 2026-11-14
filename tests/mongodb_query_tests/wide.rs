@@ -101,8 +101,7 @@ mod tests {
             text_3: "Clerk".to_owned(),
             text_4: "e".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     /// One trunk that holds one branch under `branch_4`, which holds one leaf under `leaf_1`.
@@ -126,8 +125,7 @@ mod tests {
             ],
             last: Vec::new(),
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     /// [`trunk`] as it is stored, with `text_3` of its one leaf holding `text_3`.
@@ -212,7 +210,7 @@ mod tests {
                 doc! { "kind": "Second", "list": [stored_trunk(clerk())] },
                 &[]
             ),
-            Ok(ListedDraft::Second(vec![trunk()]).validate().unwrap())
+            Ok(ListedDraft::Second(vec![trunk()]).into())
         );
         assert_eq!(
             Keyed::from_bson_piped(
@@ -222,8 +220,7 @@ mod tests {
             Ok(KeyedDraft::Fourth {
                 trunks: vec![trunk()]
             }
-            .validate()
-            .unwrap())
+            .into())
         );
     }
 

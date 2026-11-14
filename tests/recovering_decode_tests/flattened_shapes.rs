@@ -699,7 +699,7 @@ fn no_copy_is_made_of_what_is_left_where_serde_takes_nothing() {
 /// The type an internally tagged variant holds is handed the object without the tag's key.
 #[test]
 fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
-    let filled = FilledDraft::Counted(TalliesDraft { a: 1_i32 }.validate().unwrap());
+    let filled = FilledDraft::Counted(TalliesDraft { a: 1_i32 }.into());
     let written = serde_json::to_value(&filled).unwrap();
     assert_eq!(written, json!({ "a": 1_i32, "kind": "Counted" }));
     let mut calls = 0_u32;
@@ -714,9 +714,7 @@ fn an_internally_tagged_variants_value_is_handed_the_object_without_the_tag() {
 fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     let mut calls = 0_u32;
     let bag = BagDraft {
-        extras: ExtrasDraft(HashMap::from([("a".to_owned(), 1_i32)]))
-            .validate()
-            .unwrap(),
+        extras: ExtrasDraft(HashMap::from([("a".to_owned(), 1_i32)])).into(),
     };
     let bag_written = serde_json::to_value(&bag).unwrap();
     assert_eq!(bag_written, json!({ "a": 1_i32 }));
@@ -726,9 +724,7 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     );
 
     let paper = PaperDraft {
-        newest: NewestDraft(Some(VersionDraft { number: 3_i32 }.validate().unwrap()))
-            .validate()
-            .unwrap(),
+        newest: NewestDraft(Some(VersionDraft { number: 3_i32 }.validate().unwrap())).into(),
         title: "t".to_owned(),
     };
     let paper_written = serde_json::to_value(&paper).unwrap();
@@ -739,7 +735,7 @@ fn a_flattened_single_slot_struct_claims_the_keys_serde_reads_for_it() {
     );
 
     let outer = OuterDraft {
-        body: Wrap::new(VersionDraft { number: 3_i32 }.validate().unwrap()).unwrap(),
+        body: Wrap::new(VersionDraft { number: 3_i32 }.into()).unwrap(),
         id: "i".to_owned(),
     };
     let outer_written = serde_json::to_value(&outer).unwrap();
@@ -798,8 +794,7 @@ fn an_issue_in_a_flattened_single_slot_struct_is_what_a_flattened_field_of_its_v
             newest: NewestDraft(None).validate().unwrap(),
             title: "t".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         listed!(Paper, paper_schema, number_as_text),
@@ -880,8 +875,7 @@ fn a_value_refused_inside_a_flattened_option_not_seen_is_read_as_absent() {
         id: "i".to_owned(),
         version: None,
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(DirectMaybe::deserialize(&number_as_text).unwrap(), maybe);
     assert_eq!(
         read_counting!(DirectMaybe, direct_maybe_schema, number_as_text, calls),
@@ -919,7 +913,7 @@ fn every_kind_of_flattened_field_reads_what_serde_wrote_with_no_call() {
 fn a_flattened_field_serde_never_reads_is_read_past() {
     let written = serde_json::to_value(NeverReadDraft {
         id: "i".to_owned(),
-        version: Some(VersionDraft { number: 3_i32 }.validate().unwrap()),
+        version: Some(VersionDraft { number: 3_i32 }.into()),
     })
     .unwrap();
     assert_eq!(written, json!({ "id": "i", "number": 3_i32 }));
@@ -927,8 +921,7 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
         id: "i".to_owned(),
         version: None,
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(NeverRead::deserialize(&written).unwrap(), unread);
     let mut calls = 0_u32;
     assert_eq!(
@@ -937,7 +930,7 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
     );
 
     let paged = serde_json::to_value(UnpickedDraft {
-        draft: DraftDraft { pages: 3_i32 }.validate().unwrap(),
+        draft: DraftDraft { pages: 3_i32 }.into(),
         id: "i".to_owned(),
     })
     .unwrap();
@@ -946,8 +939,7 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
         draft: DraftDraft::default().validate().unwrap(),
         id: "i".to_owned(),
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(Unpicked::deserialize(&paged).unwrap(), unpicked);
     assert_eq!(
         read_counting!(Unpicked, unpicked_schema, paged, calls),
@@ -957,5 +949,5 @@ fn a_flattened_field_serde_never_reads_is_read_past() {
 }
 
 fn pages_by_default() -> Draft {
-    DraftDraft::default().validate().unwrap()
+    DraftDraft::default().into()
 }

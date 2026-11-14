@@ -2,6 +2,7 @@
 //! name is called, shape by shape, as the emitter writes the call.
 
 use super::*;
+use crate::utils::note_rule_less;
 
 /// What the draft of a type with no rule answers.
 const NO_ISSUES: &str = "fun validationIssues(): List<String> = emptyList()";
@@ -113,6 +114,7 @@ fn the_readme_shows_what_the_parcel_of_its_preprocess_emits() {
 /// parameter, whose serializer stays a class over one serializer per parameter.
 #[test]
 fn a_types_functions_are_called_by_its_unjudged_serializer() {
+    note_rule_less(true);
     let parcel: ItemStruct = syn::parse_quote! {
         struct Parcel { label: String }
     };
@@ -123,7 +125,7 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
              @OptIn(ExperimentalSerializationApi::class) object ParcelDraftUnjudged : \
              KSerializer<ParcelDraft> {} {} {} {}",
             kept_draft("Parcel"),
-            to_valid("Parcel", ""),
+            to_valid_free("Parcel", ""),
             transform(
                 "ParcelDraft",
                 "ParcelDraft.generatedSerializer()",
@@ -144,13 +146,17 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
              @OptIn(ExperimentalSerializationApi::class) object ClosedDockDraftUnjudged : \
              KSerializer<ClosedDockDraft> {} {} {} {}",
             kept_draft("ClosedDock"),
-            to_valid("ClosedDock", ""),
+            to_valid_free("ClosedDock", ""),
             transform(
                 "ClosedDockDraft",
                 "ClosedDockDraft.generatedSerializer()",
                 "unwrapped(element)"
             ),
-            valid_class("ClosedDock", ""),
+            valid_class_with(
+                "ClosedDock",
+                "",
+                "; val instance = checked(ClosedDockDraft)"
+            ),
             valid_unjudged("ClosedDock"),
             judged_valid("ClosedDock")
         )
@@ -166,7 +172,7 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
              CrateDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<CrateDraft<CodeType>> {} {} {} {}",
             kept_draft("Crate"),
-            to_valid("Crate", "<CodeType>"),
+            to_valid_free("Crate", "<CodeType>"),
             transform(
                 "CrateDraft<CodeType>",
                 "CrateDraft.generatedSerializer(codeTypeSerializer)",
@@ -186,6 +192,7 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
 /// A type that names no function is written as it is written without the key.
 #[test]
 fn a_type_that_names_no_function_keeps_the_plugins_serializer_under_its_name() {
+    note_rule_less(true);
     let parcel: ItemStruct = syn::parse_quote! {
         struct Parcel { label: String }
     };
@@ -194,7 +201,7 @@ fn a_type_that_names_no_function_keeps_the_plugins_serializer_under_its_name() {
         format!(
             "{} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} {} {} {} {}",
             kept_draft("Parcel"),
-            to_valid("Parcel", ""),
+            to_valid_free("Parcel", ""),
             generated("ParcelDraft"),
             valid_class("Parcel", "val label: String get() = draft.label; "),
             valid_unjudged("Parcel"),
@@ -260,12 +267,13 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
 /// reads the payload the functions it names answer.
 #[test]
 fn a_plain_enum_is_read_by_its_unjudged_serializer() {
+    note_rule_less(true);
     let grade: ItemEnum = syn::parse_quote! {
         enum Grade { Express, Standard }
     };
     let members = format!(
         "enum class GradeDraft {{ Express, Standard; {NO_ISSUES} {} }}",
-        to_valid("Grade", "")
+        to_valid_free("Grade", "")
     );
     for (functions, correction) in [
         (&["unwrapped"][..], "unwrapped(element)"),
@@ -277,7 +285,11 @@ fn a_plain_enum_is_read_by_its_unjudged_serializer() {
                 "{} {members} {} {} {} {}",
                 kept_plain_draft("Grade"),
                 plain_enum_unjudged("GradeDraft", &["Express", "Standard"], correction),
-                valid_class("Grade", ""),
+                valid_class_with(
+                    "Grade",
+                    "",
+                    "; val Express = checked(GradeDraft.Express); val Standard = checked(GradeDraft.Standard)"
+                ),
                 valid_unjudged("Grade"),
                 judged_valid("Grade")
             )
@@ -477,6 +489,7 @@ fn a_tuple_member_that_names_a_function_names_one_wrapper() {
 /// the type's own. A member of the same type that reaches none keeps a serializer of its own.
 #[test]
 fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
+    note_rule_less(true);
     let hamper: ItemStruct = syn::parse_quote! {
         struct Hamper<CodeType> {
             #[model_schema_prop(preprocess = ["unwrapped"])]
@@ -501,7 +514,7 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
                  HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
                  KSerializer<HamperDraft<CodeType>> {} {} {} {} {}",
                 kept_draft("Hamper"),
-                to_valid("Hamper", "<CodeType>"),
+                to_valid_free("Hamper", "<CodeType>"),
                 transform(
                     "HamperDraft<CodeType>",
                     "HamperDraft.generatedSerializer(codeTypeSerializer)",

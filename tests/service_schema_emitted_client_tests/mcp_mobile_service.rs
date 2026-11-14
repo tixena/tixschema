@@ -261,9 +261,9 @@ impl MobileBillingService<()> for Archive {
         _ledger: String,
     ) -> impl Future<Output = Result<BalanceResponse, BalanceError>> {
         ready(if account_id == "acct-1" {
-            Ok(BalanceResponseDraft { cents: 1250 }.validate().unwrap())
+            Ok(BalanceResponseDraft { cents: 1250 }.into())
         } else {
-            Err(BalanceErrorDraft::UnknownAccount.validate().unwrap())
+            Err(BalanceError::UnknownAccount)
         })
     }
 }
@@ -287,8 +287,7 @@ impl MobileDocumentService<()> for Archive {
         ready(Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 
     fn check_many(
@@ -296,10 +295,9 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: Vec<GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(req.first().map_or_else(
-            || Err(VersionErrorDraft::NotFound.validate().unwrap()),
-            |first| Self::version_of(&first.document_id),
-        ))
+        ready(req.first().map_or(Err(VersionError::NotFound), |first| {
+            Self::version_of(&first.document_id)
+        }))
     }
 
     fn check_maybe(
@@ -307,10 +305,9 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: Option<GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(req.map_or_else(
-            || Err(VersionErrorDraft::NotFound.validate().unwrap()),
-            |found| Self::version_of(&found.document_id),
-        ))
+        ready(req.map_or(Err(VersionError::NotFound), |found| {
+            Self::version_of(&found.document_id)
+        }))
     }
 
     fn check_named(
@@ -318,10 +315,12 @@ impl MobileDocumentService<()> for Archive {
         _ctx: &(),
         req: HashMap<String, GetVersionRequest>,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(req.get("first").map_or_else(
-            || Err(VersionErrorDraft::NotFound.validate().unwrap()),
-            |first| Self::version_of(&first.document_id),
-        ))
+        ready(
+            req.get("first")
+                .map_or(Err(VersionError::NotFound), |first| {
+                    Self::version_of(&first.document_id)
+                }),
+        )
     }
 
     fn check_pair(
@@ -364,7 +363,7 @@ impl MobileDocumentService<()> for Archive {
         _mcp_source: String,
         _carried: String,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponseDraft { version: 10 }.validate().unwrap()))
+        ready(Ok(VersionResponseDraft { version: 10 }.into()))
     }
 
     fn lookup(
@@ -393,7 +392,7 @@ impl MobileDocumentService<()> for Archive {
         _outcome: String,
         _members: String,
     ) -> impl Future<Output = Result<VersionResponse, VersionError>> {
-        ready(Ok(VersionResponseDraft { version: 9 }.validate().unwrap()))
+        ready(Ok(VersionResponseDraft { version: 9 }.into()))
     }
 
     fn touch_document(
@@ -415,9 +414,9 @@ fn came_apart() -> ! {
 }
 
 fn not_found() -> VersionError {
-    VersionErrorDraft::NotFound.validate().unwrap()
+    VersionError::NotFound
 }
 
 fn version_seven() -> VersionResponse {
-    VersionResponseDraft { version: 7 }.validate().unwrap()
+    VersionResponseDraft { version: 7 }.into()
 }

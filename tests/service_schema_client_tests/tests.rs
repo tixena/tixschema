@@ -63,8 +63,7 @@ pub mod a_bound_the_fields_own_type_declares {
             Ok(EnrolledDraft {
                 invoices: u32::try_from(req.slug.as_inner().len()).unwrap(),
             }
-            .validate()
-            .unwrap())
+            .into())
         }
 
         async fn withdraw(&self, _ctx: &(), req: EnrolRequest) {
@@ -250,14 +249,13 @@ pub mod a_bound_the_fields_own_type_declares {
                 EnrolRequestDraft {
                     slug: Slug::new("abcd".to_owned()).unwrap(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         )
         .unwrap();
         assert_eq!(
             answered.unwrap(),
-            EnrolledDraft { invoices: 4 }.validate().unwrap(),
+            EnrolledDraft { invoices: 4 }.into(),
             "the implementation answered from the slug it was handed, so the message crossed whole"
         );
     }
@@ -270,8 +268,7 @@ pub mod a_bound_the_fields_own_type_declares {
                 EnrolRequestDraft {
                     slug: Slug::new("abcd".to_owned()).unwrap(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         )
         .unwrap()
@@ -404,7 +401,7 @@ impl ProbeService<String> for ProbeBackEnd {
     async fn admit(&self, _ctx: &String, req: AdmitRequest) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("admit {}", req.customer_id));
-        Ok(BalanceResponseDraft { invoices: 3 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 3 }.into())
     }
 
     async fn apply_bundle(&self, ctx: &String, req: AdmitRequest) {
@@ -420,16 +417,16 @@ impl ProbeService<String> for ProbeBackEnd {
         ready(()).await;
         self.reach(format!("get_balance {}", req.customer_id));
         if req.customer_id == "unlucky" {
-            Err(ProbeErrorDraft::DbError.validate().unwrap())
+            Err(ProbeError::DbError)
         } else {
-            Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
+            Ok(BalanceResponseDraft { invoices: 7 }.into())
         }
     }
 
     async fn sweep(&self, _ctx: &String) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach("sweep".to_owned());
-        Ok(BalanceResponseDraft { invoices: 0 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 0 }.into())
     }
 
     async fn void_invoice(
@@ -440,7 +437,7 @@ impl ProbeService<String> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("void_invoice {customer_id} {invoice_id}"));
-        Ok(BalanceResponseDraft { invoices: 1 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 1 }.into())
     }
 }
 
@@ -742,15 +739,11 @@ fn an_answer_becomes_the_success_type_the_operation_declared() {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
-    assert_eq!(
-        answered,
-        Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
-    );
+    assert_eq!(answered, Ok(BalanceResponseDraft { invoices: 7 }.into()));
 }
 
 #[test]
@@ -762,15 +755,14 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
             BalanceRequestDraft {
                 customer_id: "unlucky".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
     assert_eq!(
         answered,
         Err(probe_service_schema::CallError::Operation(
-            ProbeErrorDraft::DbError.validate().unwrap()
+            ProbeError::DbError
         )),
         "the thing the operation said it could fail at is not a defect"
     );
@@ -789,8 +781,7 @@ fn a_fault_the_remote_produced_comes_back_in_the_fault_arm() {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -814,8 +805,7 @@ fn an_envelope_that_contradicts_itself_is_a_defect_rather_than_an_answer() {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -840,8 +830,7 @@ fn the_operation_name_travels_beside_the_payload_and_never_inside_it() {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap()
@@ -963,8 +952,7 @@ fn a_call_the_transport_could_not_carry_comes_back_as_a_fault_rather_than_never_
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -1030,8 +1018,7 @@ fn a_transport_failure_reads_the_same_way_to_a_caller_as_every_other_defect() {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -1074,14 +1061,13 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
     assert_eq!(
         answered,
-        Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap()),
+        Ok(BalanceResponseDraft { invoices: 7 }.into()),
         "one envelope, written by the dispatcher and read by the client"
     );
 
@@ -1090,15 +1076,14 @@ fn what_the_dispatcher_writes_is_what_the_client_reads() {
             BalanceRequestDraft {
                 customer_id: "unlucky".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
     assert_eq!(
         failed,
         Err(probe_service_schema::CallError::Operation(
-            ProbeErrorDraft::DbError.validate().unwrap()
+            ProbeError::DbError
         )),
         "and the failure arm survives the round trip as the error the operation declared"
     );
@@ -1134,15 +1119,11 @@ fn a_second_placement_of_the_client_carries_the_whole_service_over_a_seam_of_its
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
-    assert_eq!(
-        balance,
-        Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
-    );
+    assert_eq!(balance, Ok(BalanceResponseDraft { invoices: 7 }.into()));
     poll_once(client.apply_bundle(AdmitRequest {
         customer_id: "acme".to_owned(),
     }))

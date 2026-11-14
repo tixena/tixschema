@@ -92,8 +92,7 @@ fn each_type_answers_its_callback_as_it_did_with_a_library_of_its_own() {
             Ok(InvoiceLookupDraft {
                 number: "INV-1".to_owned()
             }
-            .validate()
-            .unwrap())
+            .into())
         )
     );
     let (missing, unnamed) = rejected!(CustomerLookup, customer_lookup_schema, json!({}));
@@ -124,23 +123,20 @@ fn one_resolver_serves_the_reads_of_every_type_of_the_crate() {
         Ok(InvoiceLookupDraft {
             number: "42".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         ParcelLookup::from_value_piped(json!({ "label": 7_i32 }), settled),
         Ok(ParcelLookupDraft {
             label: "7".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         CustomerLookup::from_value_piped(json!({ "name": "Ada" }), settled),
         Ok(CustomerLookupDraft {
             name: "Ada".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }

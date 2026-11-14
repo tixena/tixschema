@@ -357,20 +357,30 @@ mod the_bundle_one_registration_line_produces {
         both.push(AuditServiceSchema::ts_definition());
         both.extend(audit_seam());
         let two = both.join("\n\n");
-        let mut declared: Vec<&str> = two
+        let mut declared: Vec<(bool, &str)> = two
             .lines()
             .filter_map(|line| {
-                line.strip_prefix("export type ")
-                    .or_else(|| line.strip_prefix("export interface "))
-                    .or_else(|| line.strip_prefix("export function "))
-                    .or_else(|| line.strip_prefix("export const "))
-                    .or_else(|| line.strip_prefix("declare const "))
-                    .or_else(|| line.strip_prefix("function "))
-                    .or_else(|| line.strip_prefix("const "))
+                let in_types = ["export type ", "export interface "]
+                    .iter()
+                    .find_map(|opening| line.strip_prefix(opening));
+                let in_values = [
+                    "export function ",
+                    "export const ",
+                    "declare const ",
+                    "function ",
+                    "const ",
+                ]
+                .iter()
+                .find_map(|opening| line.strip_prefix(opening));
+                in_types
+                    .map(|rest| (true, rest))
+                    .or_else(|| in_values.map(|rest| (false, rest)))
             })
-            .map(|rest| {
-                rest.split_once(|written: char| !written.is_alphanumeric() && written != '$')
-                    .map_or(rest, |(named, _)| named)
+            .map(|(is_type, rest)| {
+                let named = rest
+                    .split_once(|written: char| !written.is_alphanumeric() && written != '$')
+                    .map_or(rest, |(named, _)| named);
+                (is_type, named)
             })
             .collect();
         let written = declared.len();
@@ -379,23 +389,23 @@ mod the_bundle_one_registration_line_produces {
         assert_eq!(
             declared.len(),
             written,
-            "a bundle is one flat file, so a name declared twice does not compile. Got: {declared:?}"
+            "a bundle is one flat file, so a name declared twice in one namespace does not compile. Got: {declared:?}"
         );
+        let names: Vec<&str> = declared.into_iter().map(|(_, named)| named).collect();
         assert!(
-            declared.contains(&"ProbeServiceFault") && declared.contains(&"AuditServiceFault"),
-            "got: {declared:?}"
+            names.contains(&"ProbeServiceFault") && names.contains(&"AuditServiceFault"),
+            "got: {names:?}"
         );
         // The seal is a declaration in the flat file like any other, so two services carry two of
         // them and the dedup above is what says so.
         assert!(
-            declared.contains(&"probeServiceFaultSeal")
-                && declared.contains(&"auditServiceFaultSeal"),
-            "each service brands its own fault with its own symbol. Got: {declared:?}"
+            names.contains(&"probeServiceFaultSeal") && names.contains(&"auditServiceFaultSeal"),
+            "each service brands its own fault with its own symbol. Got: {names:?}"
         );
         assert!(
-            declared.contains(&"ProbeServiceGetBalanceResult")
-                && declared.contains(&"AuditServiceGetBalanceResult"),
-            "two services declaring one operation name publish two result types. Got: {declared:?}"
+            names.contains(&"ProbeServiceGetBalanceResult")
+                && names.contains(&"AuditServiceGetBalanceResult"),
+            "two services declaring one operation name publish two result types. Got: {names:?}"
         );
         // A generated message publishes under the operation's own name, with no service prefix, so
         // two services' generated messages sharing one flat file has to be seen.
@@ -404,7 +414,7 @@ mod the_bundle_one_registration_line_produces {
                 two.matches(&format!("export type {message} =")).count(),
                 1,
                 "a generated message is declared once in a bundle carrying two services. \
-                 Got: {declared:?}"
+                 Got: {names:?}"
             );
         }
     }
@@ -908,8 +918,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
                 BalanceRequestDraft {
                     customer_id: "acme".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         )
         .unwrap();
@@ -937,8 +946,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         };
         assert!(faulted(poll_once(client.get_balance(request())).unwrap()).is_some());
         assert!(faulted(poll_once(client.settle(request())).unwrap()).is_some());
@@ -1209,8 +1217,7 @@ impl AuditService<ProbeContext> for AuditBackEnd {
         Ok(BalanceResponseDraft {
             invoices: u32::try_from(seen).unwrap_or(0),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn reconcile(&self, ctx: &ProbeContext) -> Result<BalanceResponse, InvoiceWriteError> {
@@ -1218,8 +1225,7 @@ impl AuditService<ProbeContext> for AuditBackEnd {
         Ok(BalanceResponseDraft {
             invoices: u32::try_from(seen).unwrap_or(0),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -1242,8 +1248,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         Ok(BalanceResponseDraft {
             invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn probe_header(
@@ -1255,8 +1260,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         Ok(BalanceResponseDraft {
             invoices: u32::try_from(seen).unwrap_or(0),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn settle(
@@ -1266,11 +1270,9 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<ApplyBundleReceipt, ProbeError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeErrorDraft::DbError.validate().unwrap())
+            Err(ProbeError::DbError)
         } else {
-            Ok(ApplyBundleReceiptDraft { applied: seen > 0 }
-                .validate()
-                .unwrap())
+            Ok(ApplyBundleReceiptDraft { applied: seen > 0 }.into())
         }
     }
 
@@ -1279,8 +1281,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         Ok(BalanceResponseDraft {
             invoices: self.billed_invoices,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn void_invoice(
@@ -1291,13 +1292,12 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, InvoiceWriteError> {
         let seen = ready(customer_id.len() + invoice_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(InvoiceWriteErrorDraft::Conflict.validate().unwrap())
+            Err(InvoiceWriteError::Conflict)
         } else {
             Ok(BalanceResponseDraft {
                 invoices: u32::try_from(seen).unwrap_or(0),
             }
-            .validate()
-            .unwrap())
+            .into())
         }
     }
 }
@@ -1356,7 +1356,7 @@ impl RenamedPathProbeService<()> for UnitPingBackEnd {
     async fn own_key(&self, _ctx: &(), req: OwnKeyPathProbe) -> Result<(), UnitPingError> {
         ready(()).await;
         if req.document_id.is_empty() || req.title.is_empty() {
-            return Err(UnitPingErrorDraft::Unreachable.validate().unwrap());
+            return Err(UnitPingError::Unreachable);
         }
         Ok(())
     }
@@ -1364,7 +1364,7 @@ impl RenamedPathProbeService<()> for UnitPingBackEnd {
     async fn renamed(&self, _ctx: &(), req: RenamedPathProbe) -> Result<(), UnitPingError> {
         ready(()).await;
         if req.document_id.is_empty() || req.title.is_empty() {
-            return Err(UnitPingErrorDraft::Unreachable.validate().unwrap());
+            return Err(UnitPingError::Unreachable);
         }
         Ok(())
     }
@@ -1374,7 +1374,7 @@ impl UnitPingService<()> for UnitPingBackEnd {
     async fn ping(&self, _ctx: &(), req: UnitPingRequest) -> Result<(), UnitPingError> {
         ready(()).await;
         if req.probe.is_empty() {
-            Err(UnitPingErrorDraft::Unreachable.validate().unwrap())
+            Err(UnitPingError::Unreachable)
         } else {
             Ok(())
         }
@@ -1430,16 +1430,9 @@ impl HeaderProbeService<()> for HeaderProbeBackEnd {
     {
         ready(()).await;
         if id.is_empty() {
-            Err((
-                HeaderProbeErrorDraft::Missing.validate().unwrap(),
-                Some(tenant),
-            ))
+            Err((HeaderProbeError::Missing, Some(tenant)))
         } else {
-            Ok((
-                HeaderProbeDocumentDraft { title: id }.validate().unwrap(),
-                tenant,
-                trace,
-            ))
+            Ok((HeaderProbeDocumentDraft { title: id }.into(), tenant, trace))
         }
     }
 }
@@ -1494,9 +1487,9 @@ impl LapsedProbeService<()> for LapsedProbeBackEnd {
     ) -> Result<HeaderProbeDocument, (LapsedProbeError, Option<String>)> {
         ready(()).await;
         if id.is_empty() {
-            return Err((LapsedProbeErrorDraft::Gone(id).validate().unwrap(), None));
+            return Err((LapsedProbeErrorDraft::Gone(id).into(), None));
         }
-        Ok(HeaderProbeDocumentDraft { title: id }.validate().unwrap())
+        Ok(HeaderProbeDocumentDraft { title: id }.into())
     }
 
     async fn stale(
@@ -1506,14 +1499,9 @@ impl LapsedProbeService<()> for LapsedProbeBackEnd {
     ) -> Result<(HeaderProbeDocument, String), LapsedProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(LapsedProbeErrorDraft::Busy(1).validate().unwrap());
+            return Err(LapsedProbeErrorDraft::Busy(1).into());
         }
-        Ok((
-            HeaderProbeDocumentDraft { title: id.clone() }
-                .validate()
-                .unwrap(),
-            id,
-        ))
+        Ok((HeaderProbeDocumentDraft { title: id.clone() }.into(), id))
     }
 }
 
@@ -1553,7 +1541,7 @@ impl SpooledProbeService<()> for SpooledProbeBackEnd {
     ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)> {
         ready(()).await;
         if id.is_empty() {
-            return Err((HeaderProbeErrorDraft::Missing.validate().unwrap(), None));
+            return Err((HeaderProbeError::Missing, None));
         }
         Ok((id.clone().into_bytes(), "text/plain".to_owned(), id))
     }
@@ -1565,7 +1553,7 @@ impl SpooledProbeService<()> for SpooledProbeBackEnd {
     ) -> Result<spooled_probe_service_schema::StreamedAnswer, HeaderProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(HeaderProbeErrorDraft::Missing.validate().unwrap());
+            return Err(HeaderProbeError::Missing);
         }
         Ok(spooled_probe_service_schema::StreamedAnswer::Full {
             source: Box::new(io::Cursor::new(id.into_bytes())),
@@ -1597,7 +1585,7 @@ impl StreamedProbeService<()> for StreamedProbeBackEnd {
     ) -> Result<streamed_probe_service_schema::StreamedAnswer, HeaderProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(HeaderProbeErrorDraft::Missing.validate().unwrap());
+            return Err(HeaderProbeError::Missing);
         }
         Ok(streamed_probe_service_schema::StreamedAnswer::Full {
             source: Box::new(io::Cursor::new(id.into_bytes())),
@@ -1634,7 +1622,7 @@ impl BytesProbeService<()> for BytesProbeBackEnd {
     async fn dump(&self, _ctx: &(), id: String) -> Result<(Vec<u8>, String), HeaderProbeError> {
         ready(()).await;
         if id.is_empty() {
-            return Err(HeaderProbeErrorDraft::Missing.validate().unwrap());
+            return Err(HeaderProbeError::Missing);
         }
         Ok((id.into_bytes(), "text/plain".to_owned()))
     }
@@ -1646,7 +1634,7 @@ impl BytesProbeService<()> for BytesProbeBackEnd {
     ) -> Result<(Vec<u8>, String, String), (HeaderProbeError, Option<String>)> {
         ready(()).await;
         if id.is_empty() {
-            return Err((HeaderProbeErrorDraft::Missing.validate().unwrap(), None));
+            return Err((HeaderProbeError::Missing, None));
         }
         Ok((id.clone().into_bytes(), "text/plain".to_owned(), id))
     }
@@ -1699,7 +1687,7 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
         if r#in.is_empty() {
-            Err(HeaderProbeErrorDraft::Missing.validate().unwrap())
+            Err(HeaderProbeError::Missing)
         } else {
             Ok(HeaderProbeDocumentDraft {
                 title: [Some(r#in), Some(r#final), default]
@@ -1708,8 +1696,7 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
                     .collect::<Vec<_>>()
                     .join("|"),
             }
-            .validate()
-            .unwrap())
+            .into())
         }
     }
 
@@ -1723,7 +1710,7 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
     ) -> Result<HeaderProbeDocument, HeaderProbeError> {
         ready(()).await;
         if message.is_empty() {
-            Err(HeaderProbeErrorDraft::Missing.validate().unwrap())
+            Err(HeaderProbeError::Missing)
         } else {
             Ok(HeaderProbeDocumentDraft {
                 title: [Some(message), Some(sending), Some(headers), path]
@@ -1732,8 +1719,7 @@ impl ReservedProbeService<()> for ReservedProbeBackEnd {
                     .collect::<Vec<_>>()
                     .join("|"),
             }
-            .validate()
-            .unwrap())
+            .into())
         }
     }
 }
@@ -1800,17 +1786,13 @@ impl QuotedProbeService<()> for QuotedProbeBackEnd {
     ) -> Result<(HeaderProbeDocument, String), (HeaderProbeError, Option<String>)> {
         ready(()).await;
         if label.is_empty() {
-            return Err((
-                HeaderProbeErrorDraft::Missing.validate().unwrap(),
-                trace.map(|at| at.to_string()),
-            ));
+            return Err((HeaderProbeError::Missing, trace.map(|at| at.to_string())));
         }
         Ok((
             HeaderProbeDocumentDraft {
                 title: format!("{label}|{note}"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             trace.map_or_else(String::new, |at| at.to_string()),
         ))
     }
@@ -1832,8 +1814,7 @@ impl QuotedFilingProbeService<()> for QuotedProbeBackEnd {
         Ok(HeaderProbeDocumentDraft {
             title: format!("{label}|{title}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -1873,8 +1854,7 @@ fn the_unit_success_service_is_still_implementable_and_callable() {
             UnitPingRequestDraft {
                 probe: "x".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -1891,8 +1871,7 @@ fn a_service_whose_path_binds_a_renamed_member_is_still_implementable_and_callab
                 document_id: id.clone(),
                 title: title.clone(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -1904,8 +1883,7 @@ fn a_service_whose_path_binds_a_renamed_member_is_still_implementable_and_callab
                 document_id: id,
                 title,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -2040,8 +2018,7 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -2072,8 +2049,7 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -2089,8 +2065,7 @@ fn the_service_is_still_implementable_and_callable_alongside_its_published_types
             BalanceRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();

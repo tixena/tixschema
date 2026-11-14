@@ -364,7 +364,7 @@ impl LoadingClientService<()> for LoadingBackEnd {
     async fn load(&self, _ctx: &(), req: LoadRequest) -> Result<Parcel, LoadError> {
         ready(()).await;
         if req.dock.is_empty() {
-            return Err(LoadErrorDraft::Closed.validate().unwrap());
+            return Err(LoadError::Closed);
         }
         Ok(parcel(&req.dock, &["x"], &["x"]))
     }
@@ -499,10 +499,10 @@ fn two_legs_broken() -> Route {
 
 fn broken_under_each_tagging() -> Route {
     route(
-        vec![loose(""), HaulDraft::Parked.validate().unwrap()],
+        vec![loose(""), Haul::Parked],
         vec![by_air(&["a", "b", "c"])],
         vec![
-            FreightDraft::Empty.validate().unwrap(),
+            Freight::Empty,
             Freight::model_schema_wrap_unjudged(FreightDraft::Boxed(unlabelled())),
         ],
     )
@@ -510,12 +510,9 @@ fn broken_under_each_tagging() -> Route {
 
 fn route_held() -> Route {
     route(
-        vec![loose("l"), HaulDraft::Parked.validate().unwrap()],
+        vec![loose("l"), Haul::Parked],
         vec![by_air(&["a"]), by_ground()],
-        vec![
-            FreightDraft::Empty.validate().unwrap(),
-            FreightDraft::Boxed(held()).validate().unwrap(),
-        ],
+        vec![Freight::Empty, FreightDraft::Boxed(held()).into()],
     )
 }
 
@@ -1231,8 +1228,7 @@ fn the_backend_answers_the_contract() {
                 LoadRequestDraft {
                     dock: dock.to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         )
         .unwrap()

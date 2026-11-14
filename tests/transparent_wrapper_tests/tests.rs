@@ -221,8 +221,7 @@ fn tag() -> Tag {
     TagDraft {
         label: "a".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn plain_fields() -> PlainFields {
@@ -234,8 +233,7 @@ fn plain_fields() -> PlainFields {
         tag: tag(),
         text: "t".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn boxed_fields() -> BoxedFields {
@@ -247,8 +245,7 @@ fn boxed_fields() -> BoxedFields {
         tag: Box::new(tag()),
         text: "t".into(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn rc_fields() -> RcFields {
@@ -260,8 +257,7 @@ fn rc_fields() -> RcFields {
         tag: Rc::new(tag()),
         text: Rc::from("t"),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn arc_fields() -> ArcFields {
@@ -273,8 +269,7 @@ fn arc_fields() -> ArcFields {
         tag: Arc::new(tag()),
         text: Arc::from("t"),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn cow_fields() -> CowFields {
@@ -286,8 +281,7 @@ fn cow_fields() -> CowFields {
         tag: Cow::Owned(tag()),
         text: Cow::Borrowed("t"),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn ref_cell_fields() -> RefCellFields {
@@ -299,8 +293,7 @@ fn ref_cell_fields() -> RefCellFields {
         tag: RefCell::new(tag()),
         text: RefCell::new("t".to_owned()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn mutex_fields() -> MutexFields {
@@ -312,8 +305,7 @@ fn mutex_fields() -> MutexFields {
         tag: Mutex::new(tag()),
         text: Mutex::new("t".to_owned()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn rwlock_fields() -> RwLockFields {
@@ -325,8 +317,7 @@ fn rwlock_fields() -> RwLockFields {
         tag: RwLock::new(tag()),
         text: RwLock::new("t".to_owned()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn cell_fields() -> CellFields {
@@ -334,8 +325,7 @@ fn cell_fields() -> CellFields {
         count: Cell::new(7),
         maybe_count: Cell::new(Some(3)),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn plain_copy_fields() -> PlainCopyFields {
@@ -343,8 +333,7 @@ fn plain_copy_fields() -> PlainCopyFields {
         count: 7,
         maybe_count: Some(3),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The field declarations of a generated `TypeScript` definition, without the `JSDoc` around them.
@@ -352,7 +341,9 @@ fn plain_copy_fields() -> PlainCopyFields {
 fn ts_field_declarations(definition: &str) -> Vec<String> {
     definition
         .lines()
-        .filter(|line| line.starts_with("  ") && line.ends_with(';'))
+        .filter(|line| {
+            line.starts_with("  ") && line.ends_with(';') && !line.starts_with("  return ")
+        })
         .map(ToOwned::to_owned)
         .collect()
 }
@@ -480,8 +471,7 @@ fn test_transparent_wrapper_structs_constructible() {
                 label: "leaf".to_owned(),
                 next: None,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )),
     };
     assert_eq!(node.next.unwrap().label, "leaf");

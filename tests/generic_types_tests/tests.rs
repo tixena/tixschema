@@ -1790,8 +1790,7 @@ fn a_bounded_parameter_filled_at_a_type_its_bound_admits_still_expands() {
         narrow: 'y',
         wide: String::from('y'),
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(padded.narrow, 'y');
     assert_eq!(padded.wide, "y");
 }
@@ -1838,8 +1837,7 @@ fn a_generic_item_expands_to_rust_that_compiles() {
         envelope: EnvelopeDraft {
             trace: "t".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         id: "i".to_owned(),
     };
     assert_eq!(carried.envelope.trace, "t");
@@ -1875,8 +1873,7 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
         plain: EnvelopeDraft {
             trace: "t".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert!(folder.doc.created_at > 0.0_f64);
     assert_eq!(folder.doc.document_id, "d");
@@ -1889,11 +1886,9 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
             held: InnerDraft {
                 value: "v".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         root: document("r").validate().unwrap(),
     };
     assert_eq!(tree.labels.len(), 1);
@@ -1914,8 +1909,7 @@ fn a_reference_carrying_arguments_expands_to_rust_that_compiles() {
             created_at: false,
             document_id: 1_u32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
         tagged: tagged(2_u32),
     };
     assert_eq!(counted.boxed.len(), 1);
@@ -1932,14 +1926,12 @@ fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
         keyed: InnerDraft {
             value: ObjectId::new(),
         }
-        .validate()
-        .unwrap(),
-        sized: InnerDraft { value: 1_u32 }.validate().unwrap(),
+        .into(),
+        sized: InnerDraft { value: 1_u32 }.into(),
         stamped: InnerDraft {
             value: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(mixed.sized.value, 1);
     assert_eq!(mixed.stamped.value.timestamp(), 0);
@@ -1950,8 +1942,7 @@ fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
             created_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
             document_id: ObjectId::new(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(stored.doc.created_at.timestamp(), 0);
     assert_ne!(stored.doc.document_id.to_hex(), String::new());
@@ -2102,7 +2093,7 @@ fn tagged<ValueType>(value: ValueType) -> Tagged<ValueType> {
 
 #[cfg(not(feature = "serde"))]
 fn tagged<ValueType>(value: ValueType) -> Tagged<ValueType> {
-    TaggedDraft(value).validate().unwrap()
+    TaggedDraft(value).into()
 }
 
 #[cfg(feature = "serde")]

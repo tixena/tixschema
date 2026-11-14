@@ -217,8 +217,7 @@ fn test_every_declared_type_is_constructible() {
         address: AddressDraft {
             city: "Springfield".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         backup_address: None,
     };
     assert_eq!(warehouse.address.city, "Springfield");
@@ -302,10 +301,7 @@ fn test_every_declared_type_is_constructible() {
     let _barcode: Barcode = "0000".to_owned();
 
     let lookup = ProductLookupDraft {
-        by_slot: HashMap::from([(
-            StockStatusDraft::InStock.validate().unwrap(),
-            "A1".to_owned(),
-        )]),
+        by_slot: HashMap::from([(StockStatus::InStock, "A1".to_owned())]),
     };
     assert_eq!(lookup.by_slot.len(), 1);
 }
@@ -924,8 +920,8 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          is List<Object>) ...at]); } rethrow; } } Map<String, dynamic> toJson() => { 'class': \
          class_,'in': in_,'type': type, }; List<String> validationIssues() => const []; \
          ReservedMembers validate() { final found = validationIssues(); if (found.isNotEmpty) \
-         throw FormatException(found.join('; ')); return ReservedMembers._(this); } } class \
-         ReservedMembers { const ReservedMembers._(this._draft); final ReservedMembersDraft \
+         throw FormatException(found.join('; ')); return ReservedMembers._(this); } \
+         ReservedMembers toValid() => ReservedMembers._(this); } class ReservedMembers { const ReservedMembers._(this._draft); final ReservedMembersDraft \
          _draft; String get class_ => _draft.class_; String get in_ => _draft.in_; String get \
          type => _draft.type; ReservedMembersDraft toDraft() => _draft; factory \
          ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
@@ -950,7 +946,7 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
                 "'Default' => ReservedMemberDraft.default_,'In' => ReservedMemberDraft.in_,'Other' => ReservedMemberDraft.other,"
             ),
             plain_enum_validate("ReservedMember"),
-            plain_enum_valid("ReservedMember"),
+            plain_enum_valid("ReservedMember", &["default_", "in_", "other"]),
         )
     );
     assert_eq!(
@@ -1003,7 +999,7 @@ fn sku() -> Sku {
 
 #[cfg(not(feature = "serde"))]
 fn sku() -> Sku {
-    SkuDraft(String::new()).validate().unwrap()
+    SkuDraft(String::new()).into()
 }
 
 #[cfg(feature = "serde")]

@@ -93,13 +93,12 @@ impl UploadService<()> for UploadBackEnd {
             .unwrap()
             .push((folder_id, title.clone(), description, drained));
         if title == "toolarge" {
-            return Err(UploadErrorDraft::TooLarge.validate().unwrap());
+            return Err(UploadError::TooLarge);
         }
         Ok(UploadResponseDraft {
             document_id: format!("doc-{title}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 

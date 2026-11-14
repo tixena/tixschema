@@ -19,7 +19,7 @@ use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::wrapped_maps_models::{
     AdjacentDrawerDraft, AdjacentStowedDrawerDraft, CabinetDraft, Cubby, CubbyDraft, DrawerDraft,
-    Latch, LatchDraft, Satchel, SatchelDraft, StowedCabinetDraft, StowedCubby, StowedCubbyDraft,
+    Latch, Satchel, SatchelDraft, StowedCabinetDraft, StowedCubby, StowedCubbyDraft,
     StowedDrawerDraft, TaggedDrawerDraft, TaggedStowedDrawerDraft, UntaggedDrawerDraft,
     UntaggedStowedDrawerDraft, adjacent_drawer_swift, adjacent_stowed_drawer_swift, cabinet_swift,
     cubby_swift, drawer_swift, latch_swift, satchel_swift, stowed_cabinet_swift,
@@ -121,9 +121,7 @@ macro_rules! untagged_drawer_rows {
             read_row(
                 concat!("one slot that holds models, untagged", $parameter),
                 $read_as,
-                &Held::Sealed(one(LatchDraft::Inner.validate().unwrap(), "l"))
-                    .validate()
-                    .unwrap(),
+                &Held::Sealed(one(Latch::Inner, "l")).validate().unwrap(),
             ),
             read_row(
                 concat!("a tuple of named members, untagged", $parameter),
@@ -140,7 +138,7 @@ macro_rules! untagged_drawer_rows {
                     $parameter
                 ),
                 $read_as,
-                Held::Sealed(one(LatchDraft::Inner.validate().unwrap(), ""))
+                Held::Sealed(one(Latch::Inner, ""))
             ),
         ]
     }};
@@ -159,7 +157,7 @@ macro_rules! tagged_drawer_rows {
                 &Held::Stacked {
                     latches_by_latch: latched(&latched(&text)),
                     pair: (latched(&text), 3),
-                    sealed: (one(LatchDraft::Outer.validate().unwrap(), "l"), 4),
+                    sealed: (one(Latch::Outer, "l"), 4),
                 }
                 .validate()
                 .unwrap(),
@@ -170,7 +168,7 @@ macro_rules! tagged_drawer_rows {
                 Held::Stacked {
                     latches_by_latch: latched(&latched(&text)),
                     pair: (latched(&text), 3),
-                    sealed: (one(LatchDraft::Outer.validate().unwrap(), ""), 4),
+                    sealed: (one(Latch::Outer, ""), 4),
                 }
             ),
         ]
@@ -286,10 +284,7 @@ fn latched<Held>(held: &Held) -> HashMap<Latch, Held>
 where
     Held: Clone,
 {
-    HashMap::from([
-        (LatchDraft::Inner.validate().unwrap(), held.clone()),
-        (LatchDraft::Outer.validate().unwrap(), held.clone()),
-    ])
+    HashMap::from([(Latch::Inner, held.clone()), (Latch::Outer, held.clone())])
 }
 
 /// A satchel labelled `label` under `key`: one entry, so the Rust `validate()` reports the satchels

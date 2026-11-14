@@ -395,7 +395,7 @@ serde_json::from_str::<Crate<Crate<u32>>>(r#"{"codes":[{"codes":[],"label":""}],
 **A `validation_issues` of your own on one filling does not build.** A type has one inherent function under a name, and the generated one is there at every filling:
 
 ```rust,compile_fail
-impl CrateDraft<u32> {
+impl Crate<u32> {
     pub fn validation_issues(&self) -> Vec<String> {
         if self.codes.contains(&0) {
             return vec!["'codes': no code is zero".to_owned()];

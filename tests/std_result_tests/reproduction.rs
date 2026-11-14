@@ -37,8 +37,7 @@ fn a_frontmatter_of_either_arm_is_written_under_the_arm_and_read_back() {
                 frontmatter: Some(Ok(ReadDraft {
                     title: "Intro".to_owned(),
                 }
-                .validate()
-                .unwrap())),
+                .into())),
             },
             json!({ "frontmatter": { "Ok": { "title": "Intro" } } }),
         ),
@@ -47,8 +46,7 @@ fn a_frontmatter_of_either_arm_is_written_under_the_arm_and_read_back() {
                 frontmatter: Some(Err(BrokenDraft {
                     raw: "title: [".to_owned(),
                 }
-                .validate()
-                .unwrap())),
+                .into())),
             },
             json!({ "frontmatter": { "Err": { "raw": "title: [" } } }),
         ),

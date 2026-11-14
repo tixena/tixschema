@@ -625,8 +625,7 @@ fn test_untagged_entry_constructible() {
         variant: DataElementSampleValueVariantDraft::Date {
             sample_values: Vec::new(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(entry.data_element_id, String::new());
 }
@@ -859,13 +858,12 @@ fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() 
 #[cfg(feature = "typescript")]
 fn test_recursive_flag_keyed_map_member_writes_and_reads_the_two_string_keys() {
     let flags = FlagTreeUnionDraft::Nested(HashMap::from([(
-        FlagKeyDraft::True.validate().unwrap(),
+        FlagKey::True,
         FlagTreeUnionDraft::Nested(HashMap::from([(
-            FlagKeyDraft::False.validate().unwrap(),
+            FlagKey::False,
             FlagTreeUnionDraft::Leaf("x".to_owned()).validate().unwrap(),
         )]))
-        .validate()
-        .unwrap(),
+        .into(),
     )]));
     let written = serde_json::to_string(&flags).unwrap();
     assert_eq!(written, r#"{"true":{"false":"x"}}"#);
@@ -881,9 +879,7 @@ fn test_recursive_date_time_keyed_map_member_round_trips() {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
     let stamps = StampTreeUnionDraft::Nested(HashMap::from([(
         stamp,
-        StampTreeUnionDraft::Leaf("x".to_owned())
-            .validate()
-            .unwrap(),
+        StampTreeUnionDraft::Leaf("x".to_owned()).into(),
     )]));
     let written = serde_json::to_string(&stamps).unwrap();
     assert_eq!(written, r#"{"2023-11-14T22:13:20Z":"x"}"#);
@@ -947,15 +943,14 @@ fn test_recursive_enum_keyed_map_member_json_schema_refers_to_definition() {
 #[test]
 fn test_serde_round_trip_enum_keyed_recursive_union() {
     let value = BucketTreeUnionDraft::Nested(HashMap::from([(
-        BucketDraft::Large.validate().unwrap(),
+        Bucket::Large,
         BucketTreeUnionDraft::Nested(HashMap::from([(
-            BucketDraft::Small.validate().unwrap(),
+            Bucket::Small,
             BucketTreeUnionDraft::Leaf("leaf".to_owned())
                 .validate()
                 .unwrap(),
         )]))
-        .validate()
-        .unwrap(),
+        .into(),
     )]));
     let json = serde_json::to_string(&value).unwrap();
     assert_eq!(json, r#"{"Large":{"Small":"leaf"}}"#);
@@ -973,8 +968,7 @@ fn test_serde_round_trip_nested_recursive_union() {
             JsonValueUnionDraft::B(true).validate().unwrap(),
             JsonValueUnionDraft::N(1.5).validate().unwrap(),
         ])
-        .validate()
-        .unwrap(),
+        .into(),
     )]));
     let json = serde_json::to_string(&value).unwrap();
     assert_eq!(json, r#"{"items":["a",true,1.5]}"#);
@@ -1285,7 +1279,7 @@ fn test_untagged_map_member_keys_zod() {
 #[test]
 fn test_untagged_map_member_wire() {
     let counts = KeyedUnionDraft::Counts {
-        counts: HashMap::from([(BucketDraft::Large.validate().unwrap(), 3_u32)]),
+        counts: HashMap::from([(Bucket::Large, 3_u32)]),
     };
     let labels = KeyedUnionDraft::Labels {
         labels: HashMap::from([("a".to_owned(), "b".to_owned())]),
@@ -1361,10 +1355,7 @@ fn test_untagged_map_member_keys_json_schema() {
 #[test]
 fn test_untagged_map_member_schema_admits_the_captured_wire() {
     let counts = KeyedUnionDraft::Counts {
-        counts: HashMap::from([
-            (BucketDraft::Large.validate().unwrap(), 1_u32),
-            (BucketDraft::Small.validate().unwrap(), 2_u32),
-        ]),
+        counts: HashMap::from([(Bucket::Large, 1_u32), (Bucket::Small, 2_u32)]),
     };
     let wire = serde_json::to_value(&counts).unwrap();
     let schema = KeyedUnion::json_schema();
@@ -1870,11 +1861,7 @@ fn test_untagged_slot_constraint_decides_which_variant_is_read() {
     );
     assert_eq!(
         read_mime_type("application/pdf"),
-        Ok(
-            MimeTypeDraft::Known(KnownMimeTypeDraft::Pdf.validate().unwrap())
-                .validate()
-                .unwrap()
-        )
+        Ok(MimeTypeDraft::Known(KnownMimeType::Pdf).validate().unwrap())
     );
     for refused in [
         String::new(),
@@ -1915,9 +1902,7 @@ fn test_untagged_slot_constraint_is_reported_under_no_name() {
     MimeTypeDraft::Other("text/csv".to_owned())
         .validate()
         .unwrap();
-    MimeTypeDraft::Known(KnownMimeTypeDraft::Pdf.validate().unwrap())
-        .validate()
-        .unwrap();
+    MimeTypeDraft::Known(KnownMimeType::Pdf).validate().unwrap();
 
     let shown = format!("// {:?}", MimeTypeDraft::Other(String::new()).validate());
     assert!(
@@ -2209,11 +2194,7 @@ fn test_an_untagged_enums_own_check_decides_which_variant_is_read() {
     );
     assert_eq!(
         read_content_kind("application/pdf"),
-        Ok(
-            ContentKindDraft::Known(KnownKindDraft::Pdf.validate().unwrap())
-                .validate()
-                .unwrap()
-        )
+        Ok(ContentKindDraft::Known(KnownKind::Pdf).validate().unwrap())
     );
     for refused in [String::new(), "a".repeat(21)] {
         assert_eq!(read_content_kind(&refused), Err(no_variant.clone()));
@@ -2231,10 +2212,7 @@ fn test_an_untagged_enums_own_check_leaves_the_wire_a_bare_value() {
         serde_json::json!("")
     );
     assert_eq!(
-        serde_json::to_value(ContentKindDraft::Known(
-            KnownKindDraft::Pdf.validate().unwrap()
-        ))
-        .unwrap(),
+        serde_json::to_value(ContentKindDraft::Known(KnownKind::Pdf)).unwrap(),
         serde_json::json!("application/pdf")
     );
 }
@@ -2252,9 +2230,7 @@ fn test_an_untagged_enums_own_check_is_reported_under_no_name() {
     ContentKindDraft::Other("text/csv".to_owned())
         .validate()
         .unwrap();
-    ContentKindDraft::Known(KnownKindDraft::Pdf.validate().unwrap())
-        .validate()
-        .unwrap();
+    ContentKindDraft::Known(KnownKind::Pdf).validate().unwrap();
     assert_eq!(
         content_kind_schema::validate_other_0_value("").unwrap_err(),
         vec!["too short: minimum length is 1, got 0"]
@@ -2337,9 +2313,7 @@ fn test_each_check_of_an_untagged_enum_is_enforced_alone() {
     );
     assert_eq!(
         serde_json::from_value::<PatternKind>(serde_json::json!("application/pdf")).unwrap(),
-        PatternKindDraft::Known(KnownKindDraft::Pdf.validate().unwrap())
-            .validate()
-            .unwrap()
+        PatternKindDraft::Known(KnownKind::Pdf).validate().unwrap()
     );
 }
 

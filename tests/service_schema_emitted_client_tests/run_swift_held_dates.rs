@@ -122,8 +122,7 @@ fn plain_chart() -> PlainChart {
         .validate()
         .unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// [`StowedChart`] with [`first`] in each place a date is held.
@@ -141,8 +140,7 @@ fn stowed_chart() -> StowedChart<String> {
         held: "h".to_owned(),
         pair: (first(), "p".to_owned()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The payloads of a struct and of a tuple struct, in a type that declares a parameter and in one
@@ -168,8 +166,7 @@ fn struct_rows() -> Vec<Row> {
                     first: Vec::new(),
                     second: Some(second()),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 ..plain_chart().into()
             },
         ),
@@ -216,18 +213,16 @@ fn holder_rows() -> Vec<Row> {
             "TwinHolder",
             &TwinHolderDraft {
                 dated: dated().validate().unwrap(),
-                later: PannierDraft { held: second() }.validate().unwrap(),
+                later: PannierDraft { held: second() }.into(),
                 numbered: numbered().validate().unwrap(),
                 other_numbered: PannierDraft {
                     held: HashMap::from([(2, "b".to_owned())]),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 other_paired: PannierDraft {
                     held: ("q".to_owned(), 2),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 paired: paired().validate().unwrap(),
             },
         ),
@@ -370,8 +365,7 @@ fn refused_rows() -> Vec<Row> {
             first: Vec::new(),
             second: None,
         }
-        .validate()
-        .unwrap(),
+        .into(),
         ..chart.into()
     };
     vec![
@@ -406,8 +400,7 @@ fn refused_rows() -> Vec<Row> {
                     first: second(),
                     second: "c".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 ..stowed_chart().into()
             },
         ),

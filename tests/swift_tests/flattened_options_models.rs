@@ -334,8 +334,7 @@ pub fn north() -> Tabling {
     TablingDraft {
         label: "north".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// serde reads the flattened `Option` where its keys are held, writes its keys back beside its
@@ -351,7 +350,7 @@ fn serde_writes_a_flattened_option_only_where_it_holds_a_value() {
     let flaking: Flaking = serde_json::from_str(FLAKING).unwrap();
     assert_eq!(serde_json::to_string(&flaking).unwrap(), FLAKING);
     let none: Flaking = serde_json::from_str("{}").unwrap();
-    assert_eq!(none, FlakingDraft { tabling: None }.validate().unwrap());
+    assert_eq!(none, FlakingDraft { tabling: None }.into());
     assert_eq!(serde_json::to_string(&none).unwrap(), "{}");
     let sennit: Sennit = serde_json::from_str(SENNIT).unwrap();
     assert_eq!(serde_json::to_string(&sennit).unwrap(), SENNIT);
@@ -362,8 +361,7 @@ fn serde_writes_a_flattened_option_only_where_it_holds_a_value() {
             tabling: None,
             note: "n".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(serde_json::to_string(&absent).unwrap(), SENNIT_ABSENT);
     let crowning: Crowning = serde_json::from_str(LAPPING).unwrap();
@@ -387,8 +385,7 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
                 note: "n".to_owned(),
                 tabling: None,
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "{json}"
         );
         let gasketing: Gasketing = serde_json::from_str(json).unwrap();
@@ -398,30 +395,17 @@ fn serde_reads_a_flattened_option_as_none_wherever_its_type_does_not_read() {
                 note: "n".to_owned(),
                 tabling: None,
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "{json}"
         );
     }
     for json in [FLAKING_ABSENT, FLAKING_MISTYPED] {
         let flaking: Flaking = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            flaking,
-            FlakingDraft { tabling: None }.validate().unwrap(),
-            "{json}"
-        );
+        assert_eq!(flaking, FlakingDraft { tabling: None }.into(), "{json}");
         let kinking: Kinking = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            kinking,
-            KinkingDraft { plaiting: None }.validate().unwrap(),
-            "{json}"
-        );
+        assert_eq!(kinking, KinkingDraft { plaiting: None }.into(), "{json}");
         let ratline: Ratline = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            ratline,
-            RatlineDraft { nippering: None }.validate().unwrap(),
-            "{json}"
-        );
+        assert_eq!(ratline, RatlineDraft { nippering: None }.into(), "{json}");
     }
 }
 
@@ -436,8 +420,7 @@ fn serde_reads_a_flattened_option_that_names_a_function_beside_other_members() {
             tabling: None,
             note: "n".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let painter = |json: &str| {
         serde_json::from_str::<Painter>(json)
@@ -453,8 +436,7 @@ fn serde_reads_a_flattened_option_that_names_a_function_beside_other_members() {
                 label: "north".to_owned(),
                 turns: 2,
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(
@@ -463,8 +445,7 @@ fn serde_reads_a_flattened_option_that_names_a_function_beside_other_members() {
             NipperingDraft {
                 label: "north".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let plaiting = Some(
@@ -505,7 +486,7 @@ fn serde_reads_a_flattened_option_that_names_a_function_beside_other_members() {
     }
     for json in [FLAKING_ABSENT, LAPPING_ABSENT] {
         let fidding: Fidding = serde_json::from_str(json).unwrap();
-        assert_eq!(fidding, FiddingDraft { crowning: None }.validate().unwrap());
+        assert_eq!(fidding, FiddingDraft { crowning: None }.into());
     }
     let fidding: Fidding = serde_json::from_str(LAPPING).unwrap();
     assert_eq!(
@@ -515,8 +496,7 @@ fn serde_reads_a_flattened_option_that_names_a_function_beside_other_members() {
                 note: "n".to_owned(),
                 tabling: north(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
 }
@@ -540,7 +520,7 @@ fn serde_refuses_a_flattened_option_whose_function_answers_what_its_type_does_no
 /// not read, a unit variant's entry over a number, and a tag that names no variant or is missing.
 #[test]
 fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_read() {
-    let round = || Some(ThimbleDraft::Round { turns: 2 }.validate().unwrap());
+    let round = || Some(ThimbleDraft::Round { turns: 2 }.into());
     let easing = EASING.map(|json| {
         serde_json::from_str::<Easing>(json)
             .unwrap()
@@ -558,8 +538,8 @@ fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_
         lowering,
         [
             None,
-            Some(GrommetDraft::Round { turns: 2 }.validate().unwrap()),
-            Some(GrommetDraft::Calm.validate().unwrap()),
+            Some(GrommetDraft::Round { turns: 2 }.into()),
+            Some(Grommet::Calm),
             None,
             None,
             None,
@@ -575,8 +555,8 @@ fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_
         squaring,
         [
             None,
-            Some(BecketDraft::Round { turns: 2 }.validate().unwrap()),
-            Some(BecketDraft::Calm.validate().unwrap()),
+            Some(BecketDraft::Round { turns: 2 }.into()),
+            Some(Becket::Calm),
             None,
             None,
             None,
@@ -590,11 +570,7 @@ fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_
     });
     assert_eq!(
         heeling,
-        [
-            None,
-            Some(ToggleDraft::Round { turns: 2 }.validate().unwrap()),
-            None
-        ]
+        [None, Some(ToggleDraft::Round { turns: 2 }.into()), None]
     );
     let pitching = PITCHING.map(|json| {
         serde_json::from_str::<Pitching>(json)
@@ -604,10 +580,6 @@ fn serde_reads_a_flattened_option_of_an_enum_as_none_wherever_the_enum_does_not_
     });
     assert_eq!(
         pitching,
-        [
-            None,
-            Some(ShackleDraft::Round { turns: 2 }.validate().unwrap()),
-            None
-        ]
+        [None, Some(ShackleDraft::Round { turns: 2 }.into()), None]
     );
 }

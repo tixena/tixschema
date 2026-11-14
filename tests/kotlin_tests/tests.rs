@@ -44,7 +44,7 @@ use super::flattened_models::{
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::read::paired_plain_enum;
-use super::read::{NO_ISSUES, drafted_serializers, kept_draft, to_valid};
+use super::read::{NO_ISSUES, drafted_serializers, kept_draft, to_valid_free};
 use super::tuple_variants_models::LabellingDraft;
 #[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
@@ -367,12 +367,12 @@ fn test_every_declared_type_is_constructible() {
 
 #[test]
 fn test_every_declared_type_is_constructible_under_a_key_a_choice_and_an_audit() {
-    let alias_key: SlotAliasKey = SlotDraft::North.validate().unwrap();
-    assert_eq!(alias_key, SlotDraft::North.validate().unwrap());
+    let alias_key: SlotAliasKey = Slot::North;
+    assert_eq!(alias_key, Slot::North);
 
     let map_keys = MapKeysDraft {
         by_number: HashMap::from([(1_i32, "one".to_owned())]),
-        by_slot: HashMap::from([(SlotDraft::North.validate().unwrap(), "n".to_owned())]),
+        by_slot: HashMap::from([(Slot::North, "n".to_owned())]),
     };
     assert_eq!(map_keys.by_number.len(), 1);
 
@@ -401,8 +401,7 @@ fn test_every_declared_type_is_constructible_under_a_key_a_choice_and_an_audit()
             created_at: "2026-09-21T13:45:30Z".to_owned(),
             updated_at: None,
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(audit.id, "a");
 
@@ -459,8 +458,7 @@ fn test_every_generic_enum_variant_is_constructible() {
             created_at: "2026-09-21T13:45:30Z".to_owned(),
             updated_at: None,
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(tagged.id, "a");
 
@@ -469,8 +467,7 @@ fn test_every_generic_enum_variant_is_constructible() {
         body: WrapperDraft {
             value: "wrapped".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(envelope.body.value, "wrapped");
 }
@@ -1415,8 +1412,7 @@ fn serde_reads_an_optional_struct_with_a_flattened_member_wherever_it_reads() {
         .validate()
         .unwrap(),
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(
         SCARFING.map(read),
         [Some(held), None, None],
@@ -1659,8 +1655,8 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
             Some(&bay()),
             None,
             None,
-            Some(&TackingDraft::Calm.validate().unwrap()),
-            Some(&TackingDraft::Held("x".to_owned()).validate().unwrap())
+            Some(&Tacking::Calm),
+            Some(&TackingDraft::Held("x".to_owned()).into())
         ]
     );
     assert_refused_keys(&stowed, &[(2, "north"), (3, "Dock")]);
@@ -1696,16 +1692,14 @@ fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
                 JibingDraft::Jetty {
                     label: "n".to_owned()
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 north()
             )),
             Some(&(
                 JibingDraft::OpenBay {
                     label: "n".to_owned()
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 north()
             )),
         ]
@@ -1740,8 +1734,7 @@ fn serde_hands_a_flattened_enum_under_an_alias_and_a_holder_its_entry() {
         QuayingDraft::Bay {
             label: "n".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -2360,7 +2353,7 @@ fn a_member_named_after_a_hard_keyword_is_written_between_backticks() {
             "{} data class ReservedMembersDraft(val `class`: String, val `in`: String, val type: \
              String) {{ {NO_ISSUES} {} }} {}",
             kept_draft("ReservedMembers"),
-            to_valid("ReservedMembers", ""),
+            to_valid_free("ReservedMembers", ""),
             drafted_serializers(
                 "ReservedMembers",
                 "val `class`: String get() = draft.`class`; val `in`: String get() = \
@@ -2406,16 +2399,14 @@ fn bay() -> Tacking {
     TackingDraft::Bay {
         label: "n".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn dock() -> Tacking {
     TackingDraft::Dock {
         label: "s".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn north() -> Vec<String> {
@@ -2429,7 +2420,7 @@ fn correlation_id(text: &str) -> CorrelationId {
 
 #[cfg(not(feature = "serde"))]
 fn correlation_id(text: &str) -> CorrelationId {
-    CorrelationIdDraft(text.to_owned()).validate().unwrap()
+    CorrelationIdDraft(text.to_owned()).into()
 }
 
 #[cfg(feature = "serde")]

@@ -22,7 +22,6 @@ fn a_type_no_operation_is_called_on_builds_with_unused_items_denied() {
         Ok(ReceiptDraft {
             number: "R-1".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
