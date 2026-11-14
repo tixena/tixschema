@@ -1628,6 +1628,12 @@ fn joined_entries(def: &FieldDef, encode: &str) -> String {
         )
     } else if writes_an_object(def) {
         encode.to_owned()
+    } else if late_flattened(def) {
+        format!(
+            "((Object? held) => switch (held) {{ final String name => {{name: null}}, final \
+             Map<String, dynamic> written => written, _ => throw const FormatException('expected \
+             an object') }})({encode})"
+        )
     } else if matches!(def.field_type, FieldDefType::SiblingType(_, _))
         && def.array_depth == 0
         && !def.is_optional()
@@ -2920,16 +2926,80 @@ fn first_of(json: &str, enum_name: &str, names: &[Vec<String>]) -> String {
         .map(|variant| format!("[{}]", listed_names(variant)))
         .collect::<Vec<_>>()
         .join(", ");
+    first_among(
+        json,
+        enum_name,
+        &format!("const [{}]", listed_names(&names.concat())),
+        &variants,
+    )
+}
+
+/// [`first_of`] over `flat`, a Dart list of every name of every variant, and `variants`, the text
+/// of the list of each variant's names.
+fn first_among(json: &str, enum_name: &str, flat: &str, variants: &str) -> String {
     format!(
-        "(switch ({json}) {{ final whole => whole.keys.where(const [{}].contains).length > 1 ? \
+        "(switch ({json}) {{ final whole => whole.keys.where({flat}.contains).length > 1 ? \
          throw FormatException('more than one variant of enum {} found in flattened data: ' + \
          [for (final variant in const [{variants}]) if (variant.any(whole.containsKey)) \
          variant.first].join(', ')) : {{ for (final key in \
-         whole.keys.where(const [{}].contains).take(1)) key: whole[key] }} }})",
-        listed_names(&names.concat()),
-        dart_escaped(enum_name, '\''),
-        listed_names(&names.concat())
+         whole.keys.where({flat}.contains).take(1)) key: whole[key] }} }})",
+        dart_escaped(enum_name, '\'')
     )
+}
+
+/// The list of every name of every variant of an enum a holder reads late, from `entries`, the
+/// placeholder of each variant's names.
+fn late_names(entries: &str) -> String {
+    format!("[for (final variant in const [{entries}]) ...variant]")
+}
+
+/// Whether the flattened member typed `def` has a type declared below its holder or in another
+/// crate, which the holder is written without seeing.
+#[cfg(feature = "serde")]
+fn late_flattened(def: &FieldDef) -> bool {
+    def.array_depth == 0
+        && member_keys::is_unmet(def)
+        && lookup_dart_name(named_type(def)).is_none()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_flattened(_def: &FieldDef) -> bool {
+    false
+}
+
+/// The placeholder of the names each variant of the flattened member typed `def` is read under,
+/// where its type is declared below its holder or in another crate: filled when the holder's
+/// `dart_definition()` runs, with no name for a type that is no externally tagged enum.
+#[cfg(feature = "serde")]
+fn late_entries(def: &FieldDef) -> Option<String> {
+    (member_functions(def).is_empty()
+        && object_id_keys(def).is_empty()
+        && lookup_dart_name(named_type(def)).is_none())
+    .then(|| member_keys::entries_of(def))
+    .flatten()
+}
+
+/// The placeholder of the keys the flattened member typed `def` takes off the object its holder
+/// hands it, where its type is declared below its holder or in another crate.
+#[cfg(feature = "serde")]
+fn late_taken(def: &FieldDef) -> Vec<String> {
+    if lookup_dart_name(named_type(def)).is_some() {
+        return Vec::new();
+    }
+    member_keys::taken_of(def).unwrap_or_default()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_taken(_def: &FieldDef) -> Vec<String> {
+    Vec::new()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_entries(_def: &FieldDef) -> Option<String> {
+    None
 }
 
 /// The read of an externally tagged enum typed `def` flattened into its holder from `first`, the
@@ -3077,10 +3147,14 @@ fn corrected_option(def: &FieldDef, functions: &[FunctionName], handed: &str) ->
 /// The object `json` names without its first entry, in the object's order, under one of `names`:
 /// what serde hands a member flattened after an externally tagged enum, which takes that entry.
 fn without_first(json: &str, names: &[String]) -> String {
+    without_first_among(json, &format!("const [{}]", listed_names(names)))
+}
+
+/// [`without_first`] over `flat`, a Dart list of the names.
+fn without_first_among(json: &str, flat: &str) -> String {
     format!(
         "(switch ({{...{json}}}) {{ final rest => \
-         rest..remove(rest.keys.where(const [{}].contains).firstOrNull) }})",
-        listed_names(names)
+         rest..remove(rest.keys.where({flat}.contains).firstOrNull) }})"
     )
 }
 
@@ -4383,6 +4457,25 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
     }
 }
 
+/// The read of the flattened member typed `def` from `handed`, the object it is handed, where its
+/// type is declared below its holder or in another crate. The type publishes what it takes and
+/// the names it reads each variant under, which `entries` is the placeholder of and the holder
+/// reads at run time: an externally tagged enum from the first entry under a variant's name, a
+/// struct and an enum under a tag and a content key from the keys they take, and any other type as
+/// it is read where no key is known.
+fn late_flattened_decode(def: &FieldDef, handed: &str, placeholder: &str) -> String {
+    let entries = quoted(placeholder);
+    let first = first_among(handed, named_type(def), &late_names(&entries), &entries);
+    let whole = flattened_decode(def, handed, &[]);
+    let taken = late_taken(def);
+    let keyed = flattened_decode(def, &only(handed, &taken), &taken);
+    format!(
+        "(const [{entries}].isEmpty ? (const [{}].isEmpty ? {whole} : {keyed}) : {})",
+        listed_names(&taken),
+        first_entry_decode(def, &first)
+    )
+}
+
 /// The arguments the constructor of a class is read with from the object `json` names: each
 /// member from its key, where the payload holds it for a member that names a function, and a
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
@@ -4414,39 +4507,46 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
             let handed = without(&source, &keys);
             let def = field.wire_def();
             // A flattened member is walked whatever it writes.
-            let decode = match taken_by(def) {
-                Taken::Keys(taken) | Taken::Tagged(taken) => {
-                    // serde hands a member that leaves its keys every key still left, and one that
-                    // takes its own keys those keys alone.
-                    let known = closed_record_of(def)
-                        .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
-                        .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());
-                    let kept = match known {
-                        Some(read) => only(&handed, &read),
-                        None => handed,
-                    };
-                    let decode = flattened_decode(def, &kept, &taken);
-                    for key in taken {
-                        if !taken_ahead.contains(&key) {
-                            taken_ahead.push(key);
+            let decode = if let Some(held_entries) = late_entries(def) {
+                let flat = late_names(&quoted(&held_entries));
+                source = without_first_among(&handed, &flat);
+                removed = taken_ahead.len();
+                late_flattened_decode(def, &handed, &held_entries)
+            } else {
+                match taken_by(def) {
+                    Taken::Keys(taken) | Taken::Tagged(taken) => {
+                        // serde hands a member that leaves its keys every key still left, and one that
+                        // takes its own keys those keys alone.
+                        let known = closed_record_of(def)
+                            .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
+                            .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());
+                        let kept = match known {
+                            Some(read) => only(&handed, &read),
+                            None => handed,
+                        };
+                        let decode = flattened_decode(def, &kept, &taken);
+                        for key in taken {
+                            if !taken_ahead.contains(&key) {
+                                taken_ahead.push(key);
+                            }
                         }
+                        decode
                     }
-                    decode
-                }
-                Taken::Only(taken) => {
-                    let decode = flattened_decode(def, &only(&handed, &taken), &taken);
-                    for key in taken {
-                        if !taken_ahead.contains(&key) {
-                            taken_ahead.push(key);
+                    Taken::Only(taken) => {
+                        let decode = flattened_decode(def, &only(&handed, &taken), &taken);
+                        for key in taken {
+                            if !taken_ahead.contains(&key) {
+                                taken_ahead.push(key);
+                            }
                         }
+                        decode
                     }
-                    decode
-                }
-                Taken::FirstOf(names) => {
-                    source = without_first(&handed, &names.concat());
-                    removed = taken_ahead.len();
-                    let first = first_of(&handed, named_type(def), &names);
-                    first_entry_decode(def, &first)
+                    Taken::FirstOf(names) => {
+                        source = without_first(&handed, &names.concat());
+                        removed = taken_ahead.len();
+                        let first = first_of(&handed, named_type(def), &names);
+                        first_entry_decode(def, &first)
+                    }
                 }
             };
             let held = format!("_readFlattened(() => {decode})");

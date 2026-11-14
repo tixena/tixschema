@@ -1381,6 +1381,21 @@ mod run_swift_flattened_options;
 #[path = "service_schema_emitted_client_tests/run_dart_flattened_options.rs"]
 mod run_dart_flattened_options;
 
+/// The holders `run_late_flattened.rs` runs, each with the types it flattens declared above it,
+/// below it and in another crate.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/late_flattened_models.rs"]
+mod late_flattened_models;
+
+/// A flattened struct and externally tagged enum, and an `Option` of each, read and written back
+/// by the emitted Dart and Swift types alike whether their types are declared above their holder,
+/// below it or in another crate.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/run_late_flattened.rs"]
+mod run_late_flattened;
+
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]

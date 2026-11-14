@@ -127,6 +127,14 @@ pub(super) struct Entry {
     pub variant: String,
 }
 
+/// The placeholders of what an enum flattened into its holder publishes, where its type is
+/// declared below the holder or in another crate: the names each variant is read under, one list
+/// per variant, and the names its unit variants are read under.
+pub(super) struct Late<'late> {
+    pub entries: &'late str,
+    pub units: &'late str,
+}
+
 /// One member that names functions, as its read is written.
 #[derive(Clone, Copy)]
 pub(super) struct Member<'member> {
@@ -582,10 +590,32 @@ pub(super) fn entry(
              \\({stem}Variants.joined(separator: \", \"))"
         ))
     );
+    taken_entry(
+        member,
+        &opened,
+        &entry_payload(stem, entries),
+        (&enum_name, optional),
+        sink,
+        twins,
+    )
+}
+
+/// The statements that read from the one entry `opened` found, whose payload `payload` holds, the
+/// enum `enum_name` of `member`: no entry is refused, but where `optional`, which reads `nil`
+/// there, and an entry the enum does not read refuses the payload.
+fn taken_entry(
+    member: &Member<'_>,
+    opened: &str,
+    payload: &str,
+    (enum_name, optional): (&str, bool),
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
+    let stem = member.stem;
+    let found = found(stem);
     let held = format!("let {stem}Key = {found}.first, let {stem}Held = {stem}Object[{stem}Key]");
     let read = flattened(&format!(
-        "{}; {}",
-        entry_payload(stem, entries),
+        "{payload}; {}",
         value(member, "decoder.codingPath", sink, twins)
     ));
     if optional && is_nonstrict() {
@@ -600,11 +630,61 @@ pub(super) fn entry(
     } else {
         format!(
             "{opened}guard {held} else {{ {} }}; {read}",
-            refused(&format!(
+            decoding_refusal(&format!(
                 "no variant of enum {enum_name} found in flattened data"
             ))
         )
     }
+}
+
+/// The statement that refuses the payload at the holder's coding path with `description`.
+fn decoding_refusal(description: &str) -> String {
+    format!(
+        "throw DecodingError.dataCorrupted(DecodingError.Context(\
+         codingPath: decoder.codingPath, debugDescription: \"{description}\"))"
+    )
+}
+
+/// The statements that read `member`, an enum flattened into its holder whose type the holder is
+/// written without seeing, as [`entry`] reads one it sees: the names it reads each variant under
+/// are the ones the type publishes, and where it publishes none, `whole` reads the member. The
+/// local the names of the entry found are held in is declared ahead, as [`found`] names it.
+pub(super) fn entry_late(
+    member: &Member<'_>,
+    late: &Late<'_>,
+    (enum_name, taken, whole): (&str, &str, &str),
+    optional: bool,
+    sink: &dyn Fn(&str) -> String,
+    twins: &mut Vec<String>,
+) -> String {
+    let stem = member.stem;
+    let found = found(stem);
+    let groups = format!("{stem}Groups");
+    let units = format!("{stem}Units");
+    let named = swift_literal_text(enum_name);
+    let opened = format!(
+        "let {stem}Object = try SwiftSchemaPayload(from: decoder, without: {taken}).value \
+         as? [String: Any] ?? [:]; \
+         {found} = {groups}.flatMap {{ $0 }}.filter {{ {stem}Object[$0] != nil }}; \
+         if {found}.count > 1 {{ let {stem}Variants = {groups}.filter {{ group in \
+         group.contains {{ {found}.contains($0) }} }}.map {{ group in group[0] }}; {} }}; ",
+        decoding_refusal(&format!(
+            "more than one variant of enum {named} found in flattened data: \
+             \\({stem}Variants.joined(separator: \", \"))"
+        ))
+    );
+    let payload = format!(
+        "let {stem}Payload: Any = {{ () -> Any in let variant = {groups}.first(where: {{ \
+         $0.contains({stem}Key) }})![0]; return {units}.contains(variant) && {stem}Held is NSNull \
+         ? variant : [variant: {stem}Held] }}()"
+    );
+    let read = taken_entry(member, &opened, &payload, (&named, optional), sink, twins);
+    format!(
+        "var {found}: [String] = []; let {groups}: [[String]] = [\"{}\"]; \
+         let {units}: [String] = [\"{}\"]; if {groups}.isEmpty {{ {whole} }} else {{ {read} }}",
+        swift_literal_text(late.entries),
+        swift_literal_text(late.units)
+    )
 }
 
 /// The statement that holds in `{stem}Payload` what the enum's own read takes of the entry

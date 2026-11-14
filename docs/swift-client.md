@@ -328,9 +328,9 @@ to keep.
   variant there or not, and one under a content key too where the content is absent, and is
   refused where one is there and the enum does not read, as Zod refuses it. A type
   `keys_standing_for` answers no key for keeps `do { ... } catch { self.{member} = nil }`, which
-  reads `nil` wherever its read throws: a struct declared below its holder or in another crate,
-  one with a flattened member of its own or that names a function on itself, an untagged enum, an
-  enum declared below its holder or that names a function on itself, an alias and a type
+  reads `nil` wherever its read throws: one with a flattened member of its own or that names a
+  function on itself, an untagged enum, an enum under a tag alone declared below its holder, an enum
+  that names a function on itself, an alias and a type
   parameter `preprocess::filled_keys` tells no keys for. A type parameter is tested by the keys of
   what fills it: `filled_keys` writes `{member}Standing`, a dictionary by Swift name of the keys
   `keys_standing_for` answers for each type written above whose keys are known (an `ObjectId`, a
@@ -396,8 +396,13 @@ to keep.
   variant of enum {Enum} found in flattened data``, as serde refuses it; an optional enum is `nil`
   there, and an entry the enum does not read refuses the payload, as TypeScript and Zod refuse it,
   where serde reads `None`. `handed_reads` adds `{member}Found` to the keys each member flattened
-  after it is handed (`taken + [...] + {member}Found`). An enum declared below its holder is read as
-  any other flattened member is, and is refused where the object it is handed holds another key.
+  after it is handed (`taken + [...] + {member}Found`). An enum declared below its holder or in
+  another crate is read from the entry under the names it publishes, as one declared above is
+  (`preprocess::entry_late`): the holder declares `{member}Groups` and `{member}Units` from the
+  placeholders of `__TIXSCHEMA_ENTRIES` and `__TIXSCHEMA_UNITS` (`member_keys::entries_of`,
+  `units_of`), and reads the member as `known` where they are empty. A flattened `Option` of a type
+  declared below its holder tests the keys the type publishes in `__TIXSCHEMA_TAKEN`
+  (`member_keys::taken_of`), and reads as `known` where it publishes none.
   `tests/swift_tests/flattened.rs` pins the text of `Anchoring`, `Dredging` and `Fending`, and
   `run_swift_flattened_enums.rs` reads the holders of `tests/kotlin_tests/flattened_models.rs` and
   of `Careen` against serde, three times, the rows with entries under two names held to the refusal.
@@ -411,8 +416,7 @@ to keep.
   whose case of each unit variant writes `encodeNil(forKey:)` under `SwiftSchemaAnyKey` and whose
   `default` writes the value as before.
   `struct_body_content` declares the key type where the reads declare none
-  (`read::any_key_written`). An enum declared below its holder writes no entry for its unit
-  variant, and the guide states the limit. A member under a function reads the entry back
+  (`read::any_key_written`). An enum declared below its holder with a unit variant is refused at expansion. A member under a function reads the entry back
   through the enum's own read, which refuses it, as the Zod schema refuses it. `alias_swift_tokens`
   records an alias of such an enum with the enum's `UNIT_ENTRIES` and `ENTRIES`, so the alias is
   read and written the same way, and `value_wrapper_tokens` a brand and a struct of one slot over

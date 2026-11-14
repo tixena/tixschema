@@ -170,9 +170,8 @@ fn a_flattened_option_reads_a_walked_model_where_one_of_its_keys_is_there() {
 }
 
 /// A flattened `Option` of a type whose keys are not known is read as `nil` wherever its read
-/// throws: a struct with a flattened member of its own, read from the whole object, and a struct
-/// declared below its holder, read as a model, whose holder refuses a key beside the keys the
-/// struct publishes.
+/// throws: a struct with a flattened member of its own, read from the whole object. A struct
+/// declared below its holder is looked for by the keys it publishes, read at run time.
 #[test]
 fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_throws() {
     assert_written(
@@ -184,9 +183,7 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
     let ratline = ratline_swift::swift_definition();
     assert_written(
         &ratline,
-        "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
-         throws { do { self.nippering = try Nippering(swiftSchemaUnjudged: decoder) } catch { \
-         self.nippering = nil } }",
+        r#"var nipperingFound: [String] = []; let nipperingGroups: [[String]] = []; let nipperingUnits: [String] = []; if nipperingGroups.isEmpty { do { let nipperingStanding: [String] = ["label"]; if !nipperingStanding.isEmpty { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { nipperingStanding.contains($0.stringValue) && !taken.contains($0.stringValue) }) { let nipperingPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.nippering = try SwiftSchemaPayload.read(SwiftSchemaReadNippering.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadNippering.self, nipperingPayload, at: decoder.codingPath), at: decoder.codingPath).value } else { self.nippering = nil } } else { do { let nipperingPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.nippering = try SwiftSchemaPayload.read(SwiftSchemaReadNippering.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadNippering.self, nipperingPayload, at: decoder.codingPath), at: decoder.codingPath).value } catch { self.nippering = nil } } } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
     );
     assert_written(
         &ratline,
@@ -200,8 +197,8 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
 /// tagged enum by the names its variants are read under, and an enum under a tag key alone by its
 /// tag and one under a tag and a content key by both, in the whole object, as TypeScript and Zod
 /// read them. Beside the `nonstrict` `Lowering` a read that throws is `nil`, as serde and Zod read
-/// it. An untagged enum, which has no keys, and an enum declared below its holder are read as `nil`
-/// wherever their read throws.
+/// it. An untagged enum, which has no keys, is read as `nil` wherever its read throws, and an enum
+/// declared below its holder is read as one declared above it is, from the names it publishes.
 #[test]
 fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     assert_written(
@@ -247,11 +244,7 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
     );
     assert_written(
         &pitching_swift::swift_definition(),
-        "self.note = try container.decode(String.self, forKey: .note); do { let shacklePayload = \
-         try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; \
-         self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: \
-         SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: \
-         decoder.codingPath), at: decoder.codingPath).value } catch { self.shackle = nil } }",
+        r#"self.note = try container.decode(String.self, forKey: .note); var shackleFound: [String] = []; let shackleGroups: [[String]] = [["Calm"], ["Round"]]; let shackleUnits: [String] = []; if shackleGroups.isEmpty { do { let shackleStanding: [String] = []; if !shackleStanding.isEmpty { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { shackleStanding.contains($0.stringValue) && !(taken + ["note"]).contains($0.stringValue) }) { let shacklePayload = try SwiftSchemaPayload(from: decoder, without: taken + ["note"]).value; self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: decoder.codingPath), at: decoder.codingPath).value } else { self.shackle = nil } } else { do { let shacklePayload = try SwiftSchemaPayload(from: decoder, without: taken + ["note"]).value; self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: decoder.codingPath), at: decoder.codingPath).value } catch { self.shackle = nil } } } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
     );
 }
 

@@ -715,15 +715,7 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
                 "init(from decoder: Decoder) throws { ",
                 "self.value = try Behind(swiftSchemaUnjudged: decoder) } }",
             ),
-            concat!(
-                "do { let behindPayload = try SwiftSchemaPayload(from: decoder, ",
-                r#"without: taken + ["dock"]).value; "#,
-                "self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, ",
-                "from: SwiftSchemaPayload.flat(SwiftSchemaReadBehind.self, behindPayload, ",
-                "at: decoder.codingPath), at: decoder.codingPath).value } ",
-                "catch let refused as DecodingError { throw ",
-                "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
-            ),
+            r#"var behindFound: [String] = []; let behindGroups: [[String]] = []; let behindUnits: [String] = []; if behindGroups.isEmpty { do { let behindPayload = try SwiftSchemaPayload(from: decoder, without: taken + ["dock"]).value; self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadBehind.self, behindPayload, at: decoder.codingPath), at: decoder.codingPath).value } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
         ],
     );
     assert!(

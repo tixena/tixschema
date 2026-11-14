@@ -169,9 +169,7 @@ consumer's view; this is what a change has to keep.
   at each level, before it maps the items, where a level of no recorded length is read as it
   was; `own_tag_held` a struct's own tag; and `named_by_aliases` a member under two of its names. A
   cast's `TypeError` below the payload is refused with a `FormatException` of its words (`_readAt`
-  below), and every other error a Dart operation throws on its own is the language's. So an enum
-  declared below its holder, handed the object without the holder's own
-  keys, is refused where that object holds another key beside its entry, which serde reads.
+  below), and every other error a Dart operation throws on its own is the language's.
   `run_dart_refusals.rs` reads each refusal under the Dart SDK, beside serde's refusal of the same
   payload.
 - **Each value read under a step is read through `_readAt`** (`READ_AT_BODY`): a member under
@@ -376,8 +374,8 @@ consumer's view; this is what a change has to keep.
     serde reads `None`, and a variant's member with no tag reads `null`, as serde reads it. An
     enum under a tag alone takes no key: a member flattened after it is handed what it was. An
     untagged
-    enum, one declared below its holder and one that names a function on itself have no key to
-    be looked for by, and are read in the closure.
+    enum, an enum under a tag alone declared below its holder and one that names a function on
+    itself have no key to be looked for by, and are read in the closure.
   - A type parameter: an optional one is looked for by the keys of what fills it, which the type
     that fills it hands. `record_flattenings` notes in `DART_LOOKED_UP` each parameter a type
     reads flattened under an `Option`, itself or through a type it hands the parameter to, with
@@ -388,9 +386,16 @@ consumer's view; this is what a change has to keep.
     `(heldKeys == null ? <the closure> : (handed.keys.any(heldKeys.contains) ? ... : null))`.
 
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
-  flattened member of its own as a map: each records none. A type the emitter has not written
-  takes none, so a member after a struct declared below its holder is handed the struct's keys,
-  and an optional one is read in the closure, and the guide states both. `toJson` writes each
+  flattened member of its own as a map: each records none. A type declared below its holder or in
+  another crate publishes what it takes: `__TIXSCHEMA_TAKEN` (a struct's keys, an enum's tag and
+  content key), `__TIXSCHEMA_ENTRIES` (the names each variant of an externally tagged enum is read
+  under, one list per variant) and `__TIXSCHEMA_UNITS` (the first name of each unit variant, which
+  the Swift read uses), written by `model_schema/flatten_order/published.rs`. The holder names each by a placeholder
+  (`member_keys::taken_of`, `entries_of`, `units_of`) that `dart_definition()` replaces, and
+  `late_flattened_decode` reads the member as the type's entries and keys say at run time: from the
+  first entry under a variant's name where there are entries, from the keys taken where there are
+  keys, and as a type whose keys are not known otherwise. So the read of such a member is the one
+  a type declared above takes. `toJson` writes each
   flattened member at its place; a key two of them hold is refused at expansion
   (`model_schema/flatten_order.rs`), so no holder the emitter writes holds one. `run_dart_flattened_options.rs` pins the read of a flattened
   `Option` of a struct and of an enum of each tagging and runs it under the Dart SDK, over the
@@ -403,8 +408,9 @@ consumer's view; this is what a change has to keep.
   slot of a variant under a tag alone, writes as it is where `writes_an_object` answers: a map, the
   guide's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
   `Map<String, dynamic>`. An optional one is cast to the map it holds. A brand, an alias, a tuple struct and an enum answer `dynamic` from
-  `toJson` and are spread through `as Map<String, dynamic>`, and so is a type the emitter has not
-  written: a struct declared below its holder keeps the cast, which the analyzer reports. A
+  `toJson` and are spread through `as Map<String, dynamic>`. A type the emitter has not written, one
+  declared below its holder or in another crate, is spread through a `switch` over an `Object?`
+  that writes a `String` as `{name: null}` and a map as it is, which holds no cast. A
   flattened map is read off the object it is handed (`map_decode`), which the read types
   `Map<String, dynamic>`, and a map under a key off `json['key'] as Map<String, dynamic>`.
   `run_dart_validate.rs`, `run_dart_ranges.rs`, `run_dart_results.rs`, `run_dart_object_ids.rs`,
@@ -420,7 +426,7 @@ consumer's view; this is what a change has to keep.
   newtype variant under a tag alone, which serde writes beside the tag as it writes it flattened.
   `value_wrapper_tokens` records an alias, a brand and a struct of one slot over such an enum as
   well. A holder of any other flattened
-  member, and of an enum declared below it, writes the spread it wrote. The enum's map branch
+  member writes the spread it wrote. The enum's map branch
   reads a unit variant from its entry, under each of its names, where the value is `null`, and
   refuses any other value: the Zod schema takes the entry over `null` alone, where serde's
   flattened read takes an empty object too. So does the enum read alone, as serde reads it.

@@ -8,8 +8,8 @@
 //! type's keys, the tag and the content key of an enum under a tag key among them, as serde reads
 //! it. Where the object holds a key of the type that does not read, serde reads `None` and the
 //! Dart read refuses the payload, as TypeScript and Zod refuse it. A type whose keys are not
-//! known, an untagged enum, one declared below its holder and one that names a function on itself
-//! among them, is read as `null` wherever it does not read, as serde reads it. A member that names
+//! known, an untagged enum and one that names a function on itself among them, is read as `null`
+//! wherever it does not read, as serde reads it. A member that names
 //! a function and is handed none of its struct's keys reads `null`, as Zod reads it, where serde
 //! refuses what the function answers; the holders of `corrected_options_models.rs` are read as Zod
 //! reads each of their payloads.
@@ -255,7 +255,7 @@ fn rows() -> Vec<Row> {
         fidding("fidding absent", FLAKING_ABSENT),
         fidding("fidding unread", LAPPING_ABSENT),
         fidding("fidding mistyped", LAPPING_MISTYPED),
-        ratline("ratline mistyped", FLAKING_MISTYPED),
+        ratline("ratline mistyped", FLAKING_MISTYPED).in_dart(MISTYPED),
         // A key of the type held as a number, or one of two keys: TypeScript and Zod refuse it
         // beside a strict holder.
         lapping("lapping mistyped", LAPPING_MISTYPED).in_dart(MISTYPED),
@@ -330,7 +330,7 @@ fn enum_rows() -> Vec<Row> {
         heeling("heeling mistyped", HEELING[2]),
         pitching("pitching absent", PITCHING[0]),
         pitching("pitching", PITCHING[1]),
-        pitching("pitching mistyped", PITCHING[2]),
+        pitching("pitching mistyped", PITCHING[2]).in_dart(turns),
         tucking("tucking absent", LOWERING[0]),
         tucking("tucking", LOWERING[1]),
         tucking("tucking unit", LOWERING[2]),
@@ -381,11 +381,40 @@ fn assert_written(definition: &str, fragment: &str) {
     );
 }
 
+/// The read of a flattened `Option` of `named`, a type declared below its holder, from `handed`,
+/// the object it is handed, as the holder writes it: the type publishes the keys it takes (`taken`,
+/// the text of a list of them) and the names each of its variants is read under (`entries`, the
+/// text of a list of lists), and the holder reads at run time as the keys and the entries say.
+fn late_option(named: &str, handed: &str, taken: &str, entries: &str) -> String {
+    let caught = format!(
+        "(() {{ try {{ return {named}.fromJsonUnjudged({handed}); }} catch (_) {{ return null; }} \
+         }})()"
+    );
+    let kept = format!(
+        "(switch ({handed}) {{ final whole => {{ for (final key in const [{taken}]) if \
+         (whole.containsKey(key)) key: whole[key] }} }})"
+    );
+    let flat = format!("[for (final variant in const [{entries}]) ...variant]");
+    let entry = format!(
+        "(switch ({handed}) {{ final whole => whole.keys.where({flat}.contains).length > 1 ? \
+         throw FormatException('more than one variant of enum {named} found in flattened data: ' \
+         + [for (final variant in const [{entries}]) if (variant.any(whole.containsKey)) \
+         variant.first].join(', ')) : {{ for (final key in whole.keys.where({flat}.contains).take(1)) \
+         key: whole[key] }} }})"
+    );
+    format!(
+        "(const [{entries}].isEmpty ? (const [{taken}].isEmpty ? {caught} : ({kept}.keys.any(const \
+         [{taken}].contains) ? {named}.fromJsonUnjudged({kept}) : null)) : (switch ({entry}) {{ \
+         final entry => entry.isEmpty ? null : {named}.fromJsonUnjudged(entry) }}))"
+    )
+}
+
 /// A flattened `Option` of a struct whose keys are known is read where the whole object its holder
 /// reads holds one of them, as TypeScript and Zod read it, and is `null` where it holds none: alone
 /// in its holder, beside a member of its holder's own, and in a variant under a tag key. One whose
-/// keys are not known, a struct declared below its holder and one with a flattened member of its
-/// own, is read in a closure that answers `null` where the read throws.
+/// keys are not known, a struct with a flattened member of its own, is read in a closure that
+/// answers `null` where the read throws. One declared below its holder is read as one declared
+/// above it is, from the keys it publishes.
 #[test]
 fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     assert_written(
@@ -424,9 +453,10 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
     );
     assert_written(
         &ratline_dart::dart_definition(),
-        "RatlineDraft(nippering: _readFlattened(() => (() { try { return \
-         Nippering.fromJsonUnjudged(json); } catch (_) { \
-         return null; } })()),);",
+        &format!(
+            "RatlineDraft(nippering: _readFlattened(() => {}),);",
+            late_option("Nippering", "json", "'label'", "")
+        ),
     );
 }
 
@@ -434,8 +464,7 @@ fn a_flattened_option_is_read_where_one_of_its_keys_is_held() {
 /// whole object its holder reads holds its tag or its content key, as TypeScript and Zod read it,
 /// and is `null` where it holds neither; beside the `nonstrict` `Lowering`, it is read in a closure
 /// that answers `null` where the read throws, as serde and Zod read it. One with no key to be
-/// looked for by, an untagged enum, one declared below its holder and one that names a function on
-/// itself, is handed the object without its holder's own keys and read in such a closure.
+/// looked for by, an untagged enum and one that names a function on itself, is handed the object without its holder's own keys and read in such a closure.
 #[test]
 fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_held() {
     let handed = "({...json}..remove('note'))";
@@ -468,7 +497,7 @@ fn a_flattened_option_of_an_enum_is_read_where_its_tag_or_its_content_key_is_hel
         &format!(
             "PitchingDraft(note: _readAt(json, 'note', () => json['note'] as String),shackle: \
              _readFlattened(() => {}),);",
-            closed(&format!("Shackle.fromJsonUnjudged({handed})"))
+            late_option("Shackle", handed, "", "['Calm'], ['Round']")
         ),
     );
     assert_written(
@@ -576,8 +605,8 @@ fn a_flattened_option_beside_a_nonstrict_holder_reads_in_dart_as_serde_does() {
 /// a variant there with no tag among them. Where an entry, a tag or a content is there and does
 /// not read, or a content is there with no tag, serde reads `None` and the Dart read refuses the
 /// payload, as TypeScript and Zod refuse it, but beside the `nonstrict` `Lowering`, which reads
-/// `null` there, as serde and Zod read it. An untagged enum, one declared below its holder and
-/// one that names a function on itself have no key to be looked for by, and are read as `null`
+/// `null` there, as serde and Zod read it. An untagged enum and one
+/// that names a function on itself have no key to be looked for by, and are read as `null`
 /// wherever they do not read, as serde reads them. Each holder is written back as serde writes it
 /// back.
 #[test]

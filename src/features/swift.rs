@@ -2548,6 +2548,110 @@ fn present_statement(
     locals: &mut read::Locals,
     twins: &mut Vec<String>,
 ) -> String {
+    let known = present_known(
+        field,
+        source,
+        withheld,
+        absent_is_nil,
+        container,
+        locals,
+        twins,
+    );
+    if let read::Source::Beside(taken) = source
+        && let Some((entries, units)) = late_enum(field)
+    {
+        // The type is declared below its holder or in another crate: it publishes whether it is an
+        // externally tagged enum, which the holder reads at run time.
+        let def = if field.field_def.is_optional() {
+            validate::under_option(&field.field_def)
+        } else {
+            field.field_def.clone()
+        };
+        let real_type = field
+            .real_type
+            .strip_suffix('?')
+            .unwrap_or(&field.real_type);
+        let whole = if known.contains("swiftSchemaFlattened(") {
+            known
+        } else {
+            read::flattened(&known)
+        };
+        let mut late_twins = Vec::new();
+        let read = preprocess::entry_late(
+            &preprocess::Member {
+                def: &def,
+                flat: false,
+                functions: &[],
+                hint: &field.hint,
+                keys: "CodingKeys",
+                plain: preprocess::Plain::Declared,
+                real_type,
+                refusing: false,
+                stem: swift_bare(&field.swift_name),
+                units: &[],
+                walked: validate::walks(&def),
+            },
+            &preprocess::Late {
+                entries: &entries,
+                units: &units,
+            },
+            (named_type(&def), taken, &whole),
+            field.field_def.is_optional(),
+            &|held| format!("self.{} = {held}", field.swift_name),
+            &mut late_twins,
+        );
+        // The type written for the member is the one the read above wrote, where it wrote one.
+        let fresh: Vec<String> = late_twins
+            .into_iter()
+            .filter(|twin| !twins.contains(twin))
+            .collect();
+        twins.extend(fresh);
+        return read;
+    }
+    known
+}
+
+/// The placeholders of the names each variant, and each unit variant, of the flattened member
+/// `field` holds are read under, where its type is declared below its holder or in another crate
+/// and it names no function.
+#[cfg(feature = "serde")]
+fn late_enum(field: &SwiftField) -> Option<(String, String)> {
+    if !field.flatten
+        || !preprocess::functions(&field.field_def).is_empty()
+        || lookup_swift_name(named_type(&field.field_def)).is_some()
+    {
+        return None;
+    }
+    let entries = member_keys::entries_of(&field.field_def)?;
+    let units = member_keys::units_of(&field.field_def)?.concat();
+    Some((entries, units))
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_enum(_field: &SwiftField) -> Option<(String, String)> {
+    None
+}
+
+/// The name of the type a member `def` holds, or none.
+fn named_type(def: &FieldDef) -> &str {
+    if let FieldDefType::SiblingType(name, _) = &def.field_type {
+        name
+    } else {
+        ""
+    }
+}
+
+/// [`present_statement`] for a member whose type the holder sees.
+fn present_known(
+    field: &SwiftField,
+    source: &read::Source,
+    withheld: bool,
+    absent_is_nil: bool,
+    container: &str,
+    locals: &mut read::Locals,
+    twins: &mut Vec<String>,
+) -> String {
     let member = |held: &str| format!("self.{} = {held}", field.swift_name);
     let walked = validate::walks(&field.field_def);
     let functions = preprocess::functions(&field.field_def);
@@ -2715,7 +2819,7 @@ fn flattened_option(
     twins: &mut Vec<String>,
 ) -> String {
     let held = flattened_under_option(field);
-    let read = present_statement(&held, source, withheld, false, container, locals, twins);
+    let read = present_known(&held, source, withheld, false, container, locals, twins);
     let absent = format!("self.{} = nil", field.swift_name);
     let caught = format!("do {{ {read} }} catch {{ {absent} }}");
     let where_held = if is_nonstrict() { &caught } else { &read };
@@ -2739,7 +2843,19 @@ fn flattened_option(
     }
     let keys = preprocess::keys_standing_for(&field.field_def);
     if keys.is_empty() {
-        return caught;
+        let taken = late_taken(&field.field_def);
+        if taken.is_empty() {
+            return caught;
+        }
+        // A type declared below its holder or in another crate publishes the keys it takes, which
+        // the holder tests at run time, and none for a type whose keys are not known.
+        let standing = format!("{}Standing", swift_bare(&field.swift_name));
+        return format!(
+            "let {standing}: [String] = {}; if !{standing}.isEmpty {{ if {} {{ {where_held} }} \
+             else {{ {absent} }} }} else {{ {caught} }}",
+            preprocess::listed(&taken),
+            preprocess::holds_one_listed(&standing, without)
+        );
     }
     format!(
         "if {} {{ {where_held} }} else {{ {absent} }}",
@@ -3573,7 +3689,8 @@ fn handed_reads(fields: &[SwiftField], around: bool) -> (String, Vec<String>) {
                         taken_ahead.push(key);
                     }
                 }
-                if preprocess::entries_of(&field.field_def).is_some() {
+                if preprocess::entries_of(&field.field_def).is_some() || late_enum(field).is_some()
+                {
                     found_ahead.push(preprocess::found(swift_bare(&field.swift_name)));
                 }
             }
@@ -3801,6 +3918,22 @@ fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
 #[cfg(feature = "serde")]
 fn unmet_keys(def: &FieldDef) -> Option<Vec<String>> {
     member_keys::of(def)
+}
+
+/// The placeholder of the keys the flattened member typed `def` takes off the object its holder
+/// hands it, where its type is declared below its holder or in another crate.
+#[cfg(feature = "serde")]
+fn late_taken(def: &FieldDef) -> Vec<String> {
+    if lookup_swift_name(named_type(def)).is_some() {
+        return Vec::new();
+    }
+    member_keys::taken_of(def).unwrap_or_default()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_taken(_def: &FieldDef) -> Vec<String> {
+    Vec::new()
 }
 
 /// With no `serde`, nothing is flattened.

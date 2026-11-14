@@ -10,7 +10,7 @@
 //! does not read, serde reads `None` and the Swift read refuses the payload, as TypeScript and Zod
 //! refuse it: a struct's key, an entry under a name an externally tagged enum's variant is read
 //! under, and the tag or the content key of an enum under a tag key. A type whose keys are not
-//! known, an untagged enum and an enum declared below its holder among them, is read as `nil`
+//! known, an untagged enum among them, is read as `nil`
 //! there, as serde reads it, and so is every type a `nonstrict` holder flattens and the map of
 //! dates where an entry is no date. The map of
 //! dates absent is built in code. A member that names a function and is handed none of its
@@ -210,7 +210,12 @@ fn enum_rows() -> Vec<Row> {
         Row::read::<Heeling>("heeling mistyped", "Heeling", HEELING[2]),
         Row::read::<Pitching>("pitching absent", "Pitching", PITCHING[0]),
         Row::read::<Pitching>("pitching", "Pitching", PITCHING[1]),
-        Row::read::<Pitching>("pitching mistyped", "Pitching", PITCHING[2]),
+        Row::decided::<Pitching>(
+            "pitching mistyped",
+            "Pitching",
+            PITCHING[2],
+            "mismatch at ''",
+        ),
     ]
 }
 
@@ -240,7 +245,7 @@ fn rows() -> Vec<Row> {
         Row::read::<Tarring>("tarring absent", "Tarring", LAPPING_ABSENT),
         Row::read::<Fidding>("fidding absent", "Fidding", FLAKING_ABSENT),
         Row::read::<Fidding>("fidding unread", "Fidding", LAPPING_ABSENT),
-        Row::read::<Ratline>("ratline mistyped", "Ratline", FLAKING_MISTYPED),
+        Row::decided::<Ratline>("ratline mistyped", "Ratline", FLAKING_MISTYPED, mistyped),
         Row::read::<Gasketing>("gasketing", "Gasketing", LAPPING),
         Row::read::<Gasketing>("gasketing absent", "Gasketing", LAPPING_ABSENT),
         Row::read::<Gasketing>("gasketing mistyped", "Gasketing", LAPPING_MISTYPED),
@@ -330,7 +335,7 @@ fn printed(rows: &[Row]) -> Option<String> {
 /// not read, a key held as a number or one of two keys, a variant's entry, tag or content that does not read, or
 /// a content with no tag, serde reads `None` and the Swift read refuses the payload, but for a
 /// type whose keys are not known and a map of dates one of whose entries is no date, each read as
-/// `nil` as serde reads it: an untagged enum and an enum declared below its holder among them, and
+/// `nil` as serde reads it: an untagged enum among them, and
 /// so for every type beside the `nonstrict` `Lowering` and `Heeling`. An enum under a tag key
 /// alone is `nil` where its tag is absent, a member of a variant there or not.
 #[test]
