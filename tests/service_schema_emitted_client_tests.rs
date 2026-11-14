@@ -840,6 +840,12 @@ mod run_dart_dates;
 #[path = "service_schema_emitted_client_tests/run_kotlin_dates.rs"]
 mod run_kotlin_dates;
 
+/// A `DateTime<Utc>` and a `DateTime<FixedOffset>` written by the emitted Kotlin types as chrono
+/// writes them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_offset_instants.rs"]
+mod run_kotlin_offset_instants;
+
 /// A date read and written back by the emitted Swift types against serde, in every position.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_dates.rs"]

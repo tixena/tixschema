@@ -313,9 +313,12 @@ the consumer's view; this is what a change has to keep.
   and time under `Z` or with no seconds, which Zod reads. The write drops that `Z`
   (`TextForm::unzoned`), writes the seconds (`TextForm::unsecond`), and throws in the words of
   the read for a text that is then not of `TextForm::sent`. A `DateTime<Tz>` held as its text is
-  `TextForm::Zoned`: read as any text, as Zod reads any text a JavaScript `Date` reads, and
-  written held to RFC 3339 with its zone, its seconds written, `expected a date and time with its
-  zone, found "x"` for any other.
+  `TextForm::Zoned`, or `TextForm::Offset` where its zone is not `Utc` (`FieldDef::keeps_offset`,
+  read from the zone the type names): read as any text, as Zod reads any text a JavaScript
+  `Date` reads, and written through `java.time.OffsetDateTime.parse` as chrono writes it, in UTC
+  for `Zoned` and in the offset it was handed for `Offset`, with whole seconds, a fraction of
+  three, six or nine digits only where there is one, and `Z` for no offset; `expected a date and
+  time with its zone, found "x"` for a text that does not parse.
   - Where the plugin reads, the declaration names the serializer. `read::plugin_read` writes
     `@Serializable(with = KotlinText{N}{Crate}::class)` at each place `texts::declared` finds a form, the
     value itself, inside a list, a nullable, a map's key and value, a type argument, a range's

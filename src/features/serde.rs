@@ -20,7 +20,7 @@ use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-use crate::field_type::{FieldDef, FieldDefType, MissingKey, Scope, get_field_def};
+use crate::field_type::{FieldDef, FieldDefType, MissingKey, Scope, Zone, get_field_def};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "serde")]
@@ -335,6 +335,7 @@ where
         set_levels: Vec::new(),
         scope: Scope::default(),
         type_span: Span::call_site(),
+        zone: Zone::Utc,
     }
 }
 

@@ -18,7 +18,7 @@ pub fn held_as_text(field: &FieldDef) -> Option<TextForm> {
         #[cfg(feature = "chrono")]
         TextForm::Date | TextForm::DateTime | TextForm::Time => true,
         #[cfg(feature = "chrono")]
-        TextForm::Zoned => false,
+        TextForm::Zoned | TextForm::Offset => false,
     })
 }
 
@@ -33,7 +33,7 @@ const fn named(form: TextForm) -> &'static str {
         #[cfg(feature = "chrono")]
         TextForm::Time => "Time",
         #[cfg(feature = "chrono")]
-        TextForm::Zoned => "Zoned",
+        TextForm::Zoned | TextForm::Offset => "Zoned",
     }
 }
 

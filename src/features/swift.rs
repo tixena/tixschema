@@ -34,8 +34,8 @@ use crate::features::text_forms::TextForm;
 use crate::features::unmet_keys_filled;
 use crate::field_type::{
     EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, EXPECTED_VALUE, FieldDef, FieldDefType, INVALID_NUMBER,
-    MissingKey, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, Scope, VariantKind, get_field_def,
-    is_plain_enum, is_sequence_wrapper,
+    MissingKey, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, Scope, VariantKind, Zone,
+    get_field_def, is_plain_enum, is_sequence_wrapper,
 };
 #[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::flattened_keys;
@@ -4650,6 +4650,7 @@ fn tuple_struct_swift_tokens(item_struct: &ItemStruct, args: &SwiftTypeArgs<'_>)
         set_levels: Vec::new(),
         scope: Scope::default(),
         type_span: proc_macro2::Span::call_site(),
+        zone: Zone::Utc,
     };
     value_wrapper_tokens(
         &item_struct.ident,
