@@ -475,7 +475,7 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
              read.validationIssues(); if (violations.isNotEmpty) throw \
              FormatException(violations.join('; ')); return Parcel._(read); }} factory \
              Parcel.fromJsonUnjudged(Map<String, dynamic> json) => \
-             Parcel._(ParcelDraft.fromJson(json)); Map<String, dynamic> toJson() => \
+             Parcel._(ParcelDraft.fromJson(json)); factory Parcel.of({{required List<String> fragile_item_codes,required List<String> item_code_list,required String label,}}) => ParcelDraft(fragile_item_codes: fragile_item_codes,item_code_list: item_code_list,label: label,).validate(); Map<String, dynamic> toJson() => \
              _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static Object \
              $thrown(Object thrown) => thrown is ParcelDraft ? thrown.validate() : thrown; }}"
         )
@@ -726,7 +726,7 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
              AuditDraft.fromJson(json); final violations = read.validationIssues(); if \
              (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
              Audit._(read); }} factory Audit.fromJsonUnjudged(Map<String, dynamic> json) => \
-             Audit._(AuditDraft.fromJson(json)); Map<String, dynamic> toJson() => \
+             Audit._(AuditDraft.fromJson(json)); factory Audit.of({{required bool validate_,}}) => AuditDraft(validate_: validate_,).validate(); Map<String, dynamic> toJson() => \
              _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static Object \
              $thrown(Object thrown) => thrown is AuditDraft ? thrown.validate() : thrown; }}"
         )

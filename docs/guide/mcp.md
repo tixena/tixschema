@@ -244,7 +244,7 @@ async fn suggest_document_types(&self, ctx: &Ctx, typed: String, chosen: HashMap
 
 ```rust,ignore
 let client = DocumentServiceClient::new(HttpMcpTransport::new(url, api_key));
-let request = GetVersionRequestDraft { document_id: "doc-1".into() }.validate()?;
+let request = GetVersionRequest::new("doc-1".into())?;
 let version = client.get_version(request).await;
 ```
 

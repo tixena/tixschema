@@ -219,6 +219,13 @@ fn valid_class_with(named: &str, forwards: &str, statics: &str) -> String {
     )
 }
 
+/// The valid `class`, with `of` written in its companion object after the rest of it.
+fn with_of(valid: impl Into<String>, of: &str) -> String {
+    let class: String = valid.into();
+    let head = class.trim_end_matches(" } }");
+    format!("{head}; {of} }} }}")
+}
+
 /// [`valid_class`] of a type over the type parameters `generic`, written `<A, B>`.
 fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
     let checked = if generic.is_empty() {
@@ -711,7 +718,10 @@ fn a_types_own_check_is_called_on_the_whole_value() {
             kept_draft("ClosedDock"),
             to_valid("ClosedDock", ""),
             generated("ClosedDockDraft"),
-            valid_class("ClosedDock", ""),
+            with_of(
+                valid_class("ClosedDock", ""),
+                "fun of(): ClosedDock = ClosedDockDraft.validate()"
+            ),
             valid_unjudged("ClosedDock"),
             judged_valid("ClosedDock")
         )
@@ -796,11 +806,15 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
              {} {} {}",
             kept_draft("Crate"),
             to_valid("Crate", "<CodeType>"),
-            valid_class_over(
-                "Crate",
-                "<CodeType>",
-                "val codes: List<CodeType> get() = draft.codes; val label: String get() = \
-                 draft.label; "
+            with_of(
+                valid_class_over(
+                    "Crate",
+                    "<CodeType>",
+                    "val codes: List<CodeType> get() = draft.codes; val label: String get() = \
+                     draft.label; "
+                ),
+                "fun <CodeType> of(codes: List<CodeType>, label: String): Crate<CodeType> = \
+                 CrateDraft<CodeType>(codes = codes, label = label).validate()"
             ),
             valid_unjudged_over("Crate", "CodeType", "", "codeTypeSerializer"),
             judged_valid_over("Crate", "CodeType", "", "codeTypeSerializer")
@@ -971,10 +985,14 @@ fn a_tuple_struct_reads_its_slots_unjudged_and_judges_the_whole() {
              array[0], \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, ParcelUnjudged, array[1], \
              \"1\", \"[1]\")) }} }} }} {} {} {}",
             to_valid("Consignment", ""),
-            valid_class(
-                "Consignment",
-                "val slot0: List<String> get() = draft.slot0; val slot1: Parcel get() = \
-                 draft.slot1; "
+            with_of(
+                valid_class(
+                    "Consignment",
+                    "val slot0: List<String> get() = draft.slot0; val slot1: Parcel get() = \
+                     draft.slot1; "
+                ),
+                "fun of(slot0: List<String>, slot1: Parcel): Consignment = \
+                 ConsignmentDraft(slot0, slot1).validate()"
             ),
             valid_unjudged("Consignment"),
             judged_valid("Consignment")

@@ -21,15 +21,21 @@ use syn::{Attribute, Generics, Path, Token, Visibility};
 use super::judged_read::unclaimed_parameter;
 use super::refusal_from_violations;
 use super::unbounded;
-use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
+use super::{LiteralLeaf, literal_shape};
+use crate::features::model_schema_prop::{LiteralValue, parse_model_schema_prop_attributes};
 #[cfg(all(feature = "zod", feature = "serde"))]
 use crate::features::serde::parse_serde_type_attributes;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
 #[cfg(feature = "zod")]
 use crate::field_type::get_field_def;
+use crate::field_type::held_literal;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
 use crate::utils::{record_undrafted_enum, written_names};
+
+/// The most parameters a `new` takes unless the author asks for it with `new = true`, which is
+/// where clippy's `too_many_arguments` starts to fire.
+const MOST_PARAMETERS: usize = 7;
 
 /// Opens, and closes, the text of a surface that a type with no rule alone has.
 pub const SETTLE_OPEN: char = '\u{e000}';
@@ -46,6 +52,8 @@ pub struct Declared {
     /// Whether the type names a check of its own, on itself.
     pub checked: bool,
     pub conditional: Vec<(TokenStream, Vec<Path>)>,
+    /// The fields of a struct, which the valid type's `new` takes.
+    pub constructor: Constructor,
     pub debugs: Gate,
     pub derives: Vec<Path>,
     pub deserializes: Gate,
@@ -111,9 +119,54 @@ pub enum UnitValues {
     Variants(Vec<(Vec<Attribute>, Ident)>),
 }
 
+/// One field of a struct, as the valid type's `new` takes it.
+#[derive(Clone)]
+pub struct Slot {
+    /// The `cfg` attributes the field is declared under, which its parameter and its value repeat.
+    pub cfgs: Vec<String>,
+    /// The value `new` writes for a field a `literal` fixes, which is then no parameter. This and
+    /// `ty` are text: the thread-local that holds them outlives the expansion's token handles.
+    pub fill: Option<String>,
+    /// The field's name, or `None` for a tuple field.
+    pub member: Option<String>,
+    pub ty: String,
+}
+
+/// Who decides whether a struct's valid type has a `new`.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum NewBy {
+    /// `new = false`: the author writes it, or wants none.
+    Author,
+    /// Nothing written: the macro writes it for a struct of at most seven parameters.
+    #[default]
+    Default,
+    /// `new = true`: the macro writes it however many parameters it takes.
+    Written,
+}
+
+/// The value a `literal` fixes in a field whose own type holds it directly, which no client's
+/// constructor takes as a parameter.
+pub enum Fixed {
+    Bool(bool),
+    /// A number as its digits, and the Rust number type that holds it.
+    Number(String, &'static str),
+    Text(String),
+}
+
+/// The fields `new` builds the draft from.
+#[derive(Clone, Default)]
+pub enum Constructor {
+    Named(Vec<Slot>),
+    #[default]
+    None,
+    Tuple(Vec<Slot>),
+    Unit,
+}
+
 /// What the valid type of one declaration is written from.
 pub struct ValidType<'parts> {
     pub conditional: Vec<(TokenStream, Vec<Path>)>,
+    pub constructor: Constructor,
     pub debugs: Gate,
     pub derives: Vec<Path>,
     pub deserializes: Gate,
@@ -172,6 +225,18 @@ impl UnitShaped for syn::ItemEnum {
     }
 }
 
+impl Constructor {
+    /// How many parameters `new` takes: every field a `literal` does not fix.
+    fn parameters(&self) -> usize {
+        match self {
+            Self::Named(slots) | Self::Tuple(slots) => {
+                slots.iter().filter(|slot| slot.fill.is_none()).count()
+            }
+            Self::None | Self::Unit => 0,
+        }
+    }
+}
+
 impl ValidType<'_> {
     /// The valid value of each unit variant, and of a unit struct, as a constant named like it.
     fn constants(&self) -> Option<TokenStream> {
@@ -213,6 +278,76 @@ impl ValidType<'_> {
         }
     }
 
+    /// `new`, which builds the draft from its fields and judges it as `validate()` does.
+    fn constructor(&self) -> Option<TokenStream> {
+        let (name, draft) = (self.name, &self.draft);
+        let (_, type_generics, _) = self.generics.split_for_impl();
+        let valid_generics = self.valid_generics();
+        let (impl_generics, _, where_clause) = valid_generics.split_for_impl();
+        let (slots, named) = match &self.constructor {
+            Constructor::None => return None,
+            Constructor::Unit => (&[][..], None),
+            Constructor::Named(slots) => (slots.as_slice(), Some(true)),
+            Constructor::Tuple(slots) => (slots.as_slice(), Some(false)),
+        };
+        let one_slot = slots.len() == 1;
+        let bindings: Vec<TokenStream> = slots
+            .iter()
+            .enumerate()
+            .map(|(index, slot)| match &slot.member {
+                Some(member) => text_tokens(member),
+                None if one_slot => quote! { value },
+                None => format_ident!("value{}", index).to_token_stream(),
+            })
+            .collect();
+        let parameters = slots
+            .iter()
+            .zip(&bindings)
+            .filter(|(slot, _)| slot.fill.is_none())
+            .map(|(slot, binding)| {
+                let ty = text_tokens(&slot.ty);
+                let cfgs = slot.cfgs.iter().map(|cfg| text_tokens(cfg));
+                quote! { #(#cfgs)* #binding: #ty }
+            });
+        let values = slots.iter().zip(&bindings).map(|(slot, binding)| {
+            slot.fill
+                .as_deref()
+                .map_or_else(|| binding.clone(), text_tokens)
+        });
+        let built = match named {
+            None => quote! { #draft },
+            Some(true) => {
+                let fields = slots.iter().zip(&bindings).map(|(slot, binding)| {
+                    let cfgs = slot.cfgs.iter().map(|cfg| text_tokens(cfg));
+                    let value = slot.fill.as_deref().map_or_else(
+                        || binding.clone(),
+                        |text| {
+                            let value = text_tokens(text);
+                            quote! { #binding: #value }
+                        },
+                    );
+                    quote! { #(#cfgs)* #value }
+                });
+                quote! { #draft { #(#fields),* } }
+            }
+            Some(false) => quote! { #draft(#(#values),*) },
+        };
+        let wide = (self.constructor.parameters() > MOST_PARAMETERS)
+            .then(|| quote! { #[allow(clippy::too_many_arguments)] });
+        let doc = format!(
+            "Builds a valid `{name}` from its fields, judged as `{draft}::validate()` judges them."
+        );
+        Some(quote! {
+            impl #impl_generics #name #type_generics #where_clause {
+                #[doc = #doc]
+                #wide
+                pub fn new(#(#parameters),*) -> ::core::result::Result<#name #type_generics, ::std::vec::Vec<::std::string::String>> {
+                    #built.validate()
+                }
+            }
+        })
+    }
+
     /// The conversion from a draft that no rule judges.
     fn conversion(&self) -> Option<TokenStream> {
         let (name, draft) = (self.name, &self.draft);
@@ -243,7 +378,8 @@ impl ValidType<'_> {
         );
         let valid_generics = self.valid_generics();
         let (valid_impl_generics, _, valid_where) = valid_generics.split_for_impl();
-        let (conversion, constants) = (self.conversion(), self.constants());
+        let (conversion, constants, constructor) =
+            (self.conversion(), self.constants(), self.constructor());
         quote! {
             #vis type #name #alias_generics = #module_ident::#sealed::#name<#draft #type_generics>;
 
@@ -278,6 +414,8 @@ impl ValidType<'_> {
             #conversion
 
             #constants
+
+            #constructor
 
             #writes
 
@@ -570,6 +708,76 @@ fn is_upper_case(name: &Ident) -> bool {
     !name.unraw().to_string().chars().any(char::is_lowercase)
 }
 
+/// The fields of `item`, read before the expansion strips the `literal` keys that fix some.
+fn constructor_of(item: &syn::Item, new_by: NewBy) -> Constructor {
+    let syn::Item::Struct(item_struct) = item else {
+        return Constructor::None;
+    };
+    if new_by == NewBy::Author {
+        return Constructor::None;
+    }
+    let slot = |field: &syn::Field| Slot {
+        cfgs: field
+            .attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("cfg"))
+            .map(|attr| attr.to_token_stream().to_string())
+            .collect(),
+        member: field.ident.as_ref().map(ToString::to_string),
+        ty: field.ty.to_token_stream().to_string(),
+        fill: literal_fill(field),
+    };
+    let constructor = match &item_struct.fields {
+        syn::Fields::Named(fields) => Constructor::Named(fields.named.iter().map(slot).collect()),
+        syn::Fields::Unnamed(fields) => {
+            let slots: Vec<Slot> = fields.unnamed.iter().map(slot).collect();
+            if slots.iter().any(|held| !held.cfgs.is_empty()) {
+                return Constructor::None;
+            }
+            Constructor::Tuple(slots)
+        }
+        syn::Fields::Unit => Constructor::Unit,
+    };
+    if new_by == NewBy::Default && constructor.parameters() > MOST_PARAMETERS {
+        return Constructor::None;
+    }
+    constructor
+}
+
+/// What the `literal` of `field` fixes, where the field is neither wrapped nor of a type the
+/// literal cannot sit on directly.
+pub fn fixed_value(field: &syn::Field) -> Option<Fixed> {
+    let literal = parse_model_schema_prop_attributes(&field.attrs).literal?;
+    let shape = literal_shape(&field.ty)?;
+    if !shape.wraps.is_empty() {
+        return None;
+    }
+    match (&shape.leaf, &literal) {
+        (LiteralLeaf::Bool, LiteralValue::Bool(value)) => Some(Fixed::Bool(*value)),
+        (LiteralLeaf::Number(number), LiteralValue::Integer(_) | LiteralValue::Number(_)) => {
+            Some(Fixed::Number(held_literal(number, &literal)?, number))
+        }
+        (LiteralLeaf::Path | LiteralLeaf::Str, LiteralValue::Str(text)) => {
+            Some(Fixed::Text(text.clone()))
+        }
+        _ => None,
+    }
+}
+
+/// The value of a field a `literal` fixes, as Rust writes it.
+fn literal_fill(field: &syn::Field) -> Option<String> {
+    Some(match fixed_value(field)? {
+        Fixed::Bool(value) => value.to_string(),
+        Fixed::Number(digits, rust) => format!("{digits}{rust}"),
+        Fixed::Text(text) => format!("::core::convert::Into::into({text:?})"),
+    })
+}
+
+/// The tokens `text` spells, for a name or a type held as text.
+fn text_tokens(text: &str) -> TokenStream {
+    text.parse().unwrap_or_default()
+}
+
 /// The ident the declared item is emitted under.
 pub fn draft_ident(name: &Ident) -> Ident {
     if !has_draft() {
@@ -722,7 +930,7 @@ fn gate_of(attrs: &[Attribute], named: &str) -> Gate {
 }
 
 /// Records what `item` declares, for the expansion of its shape.
-pub fn record(item: &syn::Item, undrafted: bool, checked: bool) {
+pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
     let origin = if undrafted {
         Origin::Service
     } else if matches!(item, syn::Item::Struct(item_struct) if super::is_branded_newtype(item_struct))
@@ -745,6 +953,7 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool) {
     };
     let declared = Declared {
         conditional: conditional_derives(attrs),
+        constructor: constructor_of(item, new_by),
         debugs: gate_of(attrs, "Debug"),
         derives: wrapper_derives(attrs),
         deserializes: gate_of(attrs, "Deserialize"),

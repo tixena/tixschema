@@ -11824,13 +11824,14 @@ fn an_alias_claims_the_suffixed_name_it_publishes() {
 
 #[test]
 fn no_argument_the_parser_reads_is_rejected() {
-    let probes: [proc_macro2::TokenStream; 10] = [
+    let probes: [proc_macro2::TokenStream; 11] = [
         quote::quote! { name = "Renamed" },
         quote::quote! { pattern = "^[a-z]+$" },
         quote::quote! { minLength = 1 },
         quote::quote! { maxLength = 50 },
         quote::quote! { no_display },
         quote::quote! { nonstrict },
+        quote::quote! { new = false },
         quote::quote! { default_types(IdType = String) },
         quote::quote! { enable = ["decode_with"] },
         quote::quote! { check = ["withinParcel"] },
@@ -11845,6 +11846,18 @@ fn no_argument_the_parser_reads_is_rejected() {
     for probe in probes {
         let rendered = probe.to_string();
         assert_eq!(args_rejection(probe), None, "for {rendered}");
+    }
+}
+
+#[test]
+fn new_is_read_as_a_boolean_and_refused_otherwise() {
+    let read = |written: &str| super::parse_model_schema_args(syn::parse_str(written).unwrap());
+    assert!(read("").new_by == super::valid_type::NewBy::Default);
+    assert!(read("new = true").new_by == super::valid_type::NewBy::Written);
+    assert!(read("new = false").new_by == super::valid_type::NewBy::Author);
+    for written in ["new", "new = \"false\"", "new = 0"] {
+        let rejection = read(written).arg_rejection.unwrap().to_string();
+        assert!(rejection.contains("new = false"), "got: {rejection}");
     }
 }
 

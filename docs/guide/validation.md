@@ -57,7 +57,7 @@ pub struct Greeting<'text> {
     pub name: &'text str,
 }
 
-GreetingDraft { name: "al" }.validate();
+Greeting::new("al");
 // Err(["'name': too short: minimum length is 3, got 2"])
 ```
 
@@ -190,7 +190,7 @@ pub struct Document {
     pub name_config: Vec<Part>,
 }
 
-DocumentDraft { name_config: Vec::new() }.validate();
+Document::new(Vec::new());
 // Err(["'nameConfig': too short: minimum length is 1, got 0"])
 ```
 
@@ -238,7 +238,7 @@ pub struct Article {
     pub tags: Tags,
 }
 
-ArticleDraft { tags: Tags::new(Vec::new()).unwrap() }.validate();
+Article::new(Tags::new(Vec::new()).unwrap());
 // Err(["'tags': too short: minimum length is 1, got 0"])
 ```
 
@@ -546,7 +546,7 @@ pub struct Pair(
     #[model_schema_prop(minimum = 1)] pub u32,
 );
 
-PairDraft(String::new(), 0).validate();
+Pair::new(String::new(), 0);
 // Err(["'0': too short: minimum length is 1, got 0", "'1': too small: minimum is 1, got 0"])
 ```
 
@@ -752,7 +752,7 @@ pub struct Enrolment {
 ```
 
 ```rust
-EnrolmentDraft { slug: Slug::model_schema_read_unjudged(serde_json::json!("a")).unwrap() }.validate();
+Enrolment::new(Slug::model_schema_read_unjudged(serde_json::json!("a")).unwrap());
 // Err(["'slug': too short: minimum length is 3, got 1"])
 ```
 
@@ -803,7 +803,7 @@ TerminalDraft {
 .validate();
 // Err(["'parcelsByDock.north.itemLabel': too short: minimum length is 1, got 0"])
 
-ConsignmentDraft(String::new(), unlabelled()).validate();
+Consignment::new(String::new(), unlabelled());
 // Err(["'0': too short: minimum length is 1, got 0", "'1.itemLabel': too short: minimum length is 1, got 0"])
 ```
 

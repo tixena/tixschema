@@ -136,6 +136,12 @@ mod run_dart_sealed_brands;
 #[path = "service_schema_emitted_client_tests/run_dart_valid_types.rs"]
 mod run_dart_valid_types;
 
+/// The `of` factory of a valid Dart type.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_of.rs"]
+mod run_dart_of;
+
 /// The constants of a valid Dart enum and the `toValid()` of a draft with no rule.
 #[cfg(test)]
 #[cfg(feature = "dart")]
@@ -344,6 +350,12 @@ mod run_swift_sealed_brands;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_valid_types.rs"]
 mod run_swift_valid_types;
+
+/// The `of` function of a valid Swift type.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_of.rs"]
+mod run_swift_of;
 
 /// The constants of a valid Swift enum and the `valid` of a draft with no rule.
 #[cfg(test)]
@@ -858,6 +870,12 @@ mod run_kotlin_sealed_brands;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_valid_types.rs"]
 mod run_kotlin_valid_types;
+
+/// The `of` function of a valid Kotlin type.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_of.rs"]
+mod run_kotlin_of;
 
 /// The constants of a valid Kotlin enum and the `toValid()` of a draft with no rule.
 #[cfg(test)]

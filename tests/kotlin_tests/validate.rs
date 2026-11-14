@@ -23,7 +23,7 @@ use super::read::{
     kept_draft, to_valid, to_valid_free, valid_class_over, valid_unjudged, valid_unjudged_over,
 };
 #[cfg(feature = "serde")]
-use super::read::{valid_class, valid_class_with};
+use super::read::{valid_class, valid_class_with, with_of};
 #[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
@@ -476,7 +476,11 @@ fn every_shape_carries_validate() {
                 "{} object PingDraft {{ {NO_ISSUES} {} }} {}",
                 kept_draft("Ping"),
                 to_valid_free("Ping", ""),
-                drafted_serializers_with("Ping", "", "; val instance = checked(PingDraft)")
+                drafted_serializers_with(
+                    "Ping",
+                    "",
+                    "; val instance = checked(PingDraft); fun of(): Ping = PingDraft.validate()"
+                )
             ),
         ),
         #[cfg(feature = "serde")]
@@ -501,7 +505,10 @@ fn every_shape_carries_validate() {
                  by WrapperDraft.generatedSerializer(tSerializer) {} {} {}",
                 kept_draft("Wrapper"),
                 to_valid_free("Wrapper", "<T>"),
-                valid_class_over("Wrapper", "<T>", "val value: T get() = draft.value; "),
+                with_of(
+                    valid_class_over("Wrapper", "<T>", "val value: T get() = draft.value; "),
+                    "fun <T> of(value: T): Wrapper<T> = WrapperDraft<T>(value = value).validate()"
+                ),
                 valid_unjudged_over("Wrapper", "T", "", "tSerializer"),
                 judged_valid_over("Wrapper", "T", "", "tSerializer")
             ),
@@ -679,9 +686,13 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              = id, stamp = stamp) } } }",
             format!(
                 "{} {} {}",
-                valid_class(
-                    "Audit",
-                    "val id: String get() = draft.id; val stamp: Stamp get() = draft.stamp; "
+                with_of(
+                    valid_class(
+                        "Audit",
+                        "val id: String get() = draft.id; val stamp: Stamp get() = draft.stamp; "
+                    ),
+                    "fun of(id: String, stamp: Stamp): Audit = AuditDraft(id = id, stamp = \
+                     stamp).validate()"
                 ),
                 valid_unjudged("Audit"),
                 judged_valid("Audit")
@@ -706,10 +717,14 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
              KotlinNumber1, array[1], \"1\", \"[1]\")) } } }",
             format!(
                 "{} {} {}",
-                valid_class_over(
-                    "GenericPair",
-                    "<T>",
-                    "val slot0: T get() = draft.slot0; val slot1: UInt get() = draft.slot1; "
+                with_of(
+                    valid_class_over(
+                        "GenericPair",
+                        "<T>",
+                        "val slot0: T get() = draft.slot0; val slot1: UInt get() = draft.slot1; "
+                    ),
+                    "fun <T> of(slot0: T, slot1: UInt): GenericPair<T> = \
+                     GenericPairDraft<T>(slot0, slot1).validate()"
                 ),
                 valid_unjudged_over("GenericPair", "T", ": Any", "tSerializer"),
                 judged_valid_over("GenericPair", "T", ": Any", "tSerializer")

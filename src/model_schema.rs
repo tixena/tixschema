@@ -304,6 +304,7 @@ const KNOWN_ARGS: &[&str] = &[
     "maxLength",
     "no_display",
     "nonstrict",
+    "new",
     "default_types",
     "enable",
     "check",
@@ -1169,6 +1170,8 @@ struct ModelSchemaArgs {
     max_length: Option<usize>,
     min_length: Option<usize>,
     name_override: Option<String>,
+    /// Who writes the valid type's `new`.
+    new_by: valid_type::NewBy,
     /// Opt-out of the branded newtype `Display` impl (and its inner-type assertion) for brands
     /// whose inner type is a container rather than a scalar.
     no_display: bool,
@@ -2144,6 +2147,12 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.no_display = flag_arg(meta, "no_display")?;
     } else if path.is_ident("nonstrict") {
         result.nonstrict = flag_arg(meta, "nonstrict")?;
+    } else if path.is_ident("new") {
+        result.new_by = if new_arg(meta)? {
+            valid_type::NewBy::Written
+        } else {
+            valid_type::NewBy::Author
+        };
     } else if path.is_ident("__tixschema_undrafted") {
         result.undrafted = true;
     } else if path.is_ident("default_types") {
@@ -2367,6 +2376,22 @@ fn flag_arg(meta: &Meta, name: &str) -> syn::Result<bool> {
     }
 }
 
+/// Whether the macro writes `new`: `new = true` or `new = false`.
+fn new_arg(meta: &Meta) -> syn::Result<bool> {
+    let takes = "a boolean literal, written `new = false` where the type's own `impl` declares \
+                 `new` or where no `new` is wanted, or `new = true` to have one written however \
+                 many parameters it takes";
+    if matches!(*meta, Meta::Path(_)) {
+        return Err(arg_rejection(meta, "new", takes));
+    }
+    let lit = arg_literal(meta, "new", takes)?;
+    if let syn::Lit::Bool(lit_bool) = lit {
+        Ok(lit_bool.value())
+    } else {
+        Err(arg_rejection(lit, "new", takes))
+    }
+}
+
 /// Names what an argument takes, spanned on what was written instead.
 fn arg_rejection(tokens: impl quote::ToTokens, name: &str, takes: &str) -> syn::Error {
     syn::Error::new_spanned(
@@ -2410,7 +2435,7 @@ fn record_pattern(result: &mut ModelSchemaArgs, lit_str: &syn::LitStr) {
 /// Records what `item` declares, and whether it declares no rule of its own, ahead of the
 /// expansions that read them.
 fn note_what_it_declares(item: &Item, args: &ModelSchemaArgs) {
-    valid_type::record(item, args.undrafted, !args.check.is_empty());
+    valid_type::record(item, args.undrafted, !args.check.is_empty(), args.new_by);
     note_rule_less(valid_type::declares_no_rule(
         item,
         !args.check.is_empty(),
@@ -3504,6 +3529,7 @@ where
     let issues = issues_or_none(validate_method.as_ref());
     let declared = valid_type::declared();
     let valid = valid_type::ValidType {
+        constructor: declared.constructor,
         conditional: declared.conditional,
         debugs: declared.debugs,
         derives: declared.derives,
@@ -13123,6 +13149,7 @@ fn plain_enum_output(
     let issues = issues_or_none(added.validate.as_ref());
     let declared = valid_type::declared();
     let valid = valid_type::ValidType {
+        constructor: valid_type::Constructor::None,
         conditional: declared.conditional,
         debugs: declared.debugs,
         derives: declared.derives,

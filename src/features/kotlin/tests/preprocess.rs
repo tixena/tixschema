@@ -131,7 +131,10 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
                 "ParcelDraft.generatedSerializer()",
                 "withoutFragile(unwrapped(element))"
             ),
-            valid_class("Parcel", "val label: String get() = draft.label; "),
+            with_of(
+                valid_class("Parcel", "val label: String get() = draft.label; "),
+                "fun of(label: String): Parcel = ParcelDraft(label = label).validate()"
+            ),
             valid_unjudged("Parcel"),
             judged_valid("Parcel")
         )
@@ -155,7 +158,8 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
             valid_class_with(
                 "ClosedDock",
                 "",
-                "; val instance = checked(ClosedDockDraft)"
+                "; val instance = checked(ClosedDockDraft); fun of(): ClosedDock = \
+                 ClosedDockDraft.validate()"
             ),
             valid_unjudged("ClosedDock"),
             judged_valid("ClosedDock")
@@ -178,10 +182,14 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
                 "CrateDraft.generatedSerializer(codeTypeSerializer)",
                 "unwrapped(element)"
             ),
-            valid_class_over(
-                "Crate",
-                "<CodeType>",
-                "val codes: List<CodeType> get() = draft.codes; "
+            with_of(
+                valid_class_over(
+                    "Crate",
+                    "<CodeType>",
+                    "val codes: List<CodeType> get() = draft.codes; "
+                ),
+                "fun <CodeType> of(codes: List<CodeType>): Crate<CodeType> = \
+                 CrateDraft<CodeType>(codes = codes).validate()"
             ),
             valid_unjudged_over("Crate", "CodeType", "", "codeTypeSerializer"),
             judged_valid_over("Crate", "CodeType", "", "codeTypeSerializer")
@@ -203,7 +211,10 @@ fn a_type_that_names_no_function_keeps_the_plugins_serializer_under_its_name() {
             kept_draft("Parcel"),
             to_valid_free("Parcel", ""),
             generated("ParcelDraft"),
-            valid_class("Parcel", "val label: String get() = draft.label; "),
+            with_of(
+                valid_class("Parcel", "val label: String get() = draft.label; "),
+                "fun of(label: String): Parcel = ParcelDraft(label = label).validate()"
+            ),
             valid_unjudged("Parcel"),
             judged_valid("Parcel")
         )
@@ -422,11 +433,16 @@ fn a_member_the_plugin_reads_is_read_through_a_serializer_of_its_own() {
     let closes = format!(
         "}} {} {} {} {} {} {} {} {}",
         generated("ChitDraft"),
-        valid_class(
-            "Chit",
-            "val code: String get() = draft.code; val note: String? get() = draft.note; val \
-             parcels: List<Parcel> get() = draft.parcels; val plain: String get() = draft.plain; \
-             val spareParcel: Parcel? get() = draft.spareParcel; "
+        with_of(
+            valid_class(
+                "Chit",
+                "val code: String get() = draft.code; val note: String? get() = draft.note; val \
+                 parcels: List<Parcel> get() = draft.parcels; val plain: String get() = \
+                 draft.plain; val spareParcel: Parcel? get() = draft.spareParcel; "
+            ),
+            "fun of(code: String, note: String? = null, parcels: List<Parcel>, plain: String, \
+             spareParcel: Parcel? = null): Chit = ChitDraft(code = code, note = note, parcels = \
+             parcels, plain = plain, spareParcel = spareParcel).validate()"
         ),
         valid_unjudged("Chit"),
         judged_valid("Chit"),
@@ -520,11 +536,16 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
                     "HamperDraft.generatedSerializer(codeTypeSerializer)",
                     &keyed(whole, arms)
                 ),
-                valid_class_over(
-                    "Hamper",
-                    "<CodeType>",
-                    "val codes: List<CodeType> get() = draft.codes; val held: CodeType get() = \
-                     draft.held; val label: String get() = draft.label; "
+                with_of(
+                    valid_class_over(
+                        "Hamper",
+                        "<CodeType>",
+                        "val codes: List<CodeType> get() = draft.codes; val held: CodeType get() = \
+                         draft.held; val label: String get() = draft.label; "
+                    ),
+                    "fun <CodeType> of(codes: List<CodeType>, held: CodeType, label: String): \
+                     Hamper<CodeType> = HamperDraft<CodeType>(codes = codes, held = held, label = \
+                     label).validate()"
                 ),
                 valid_unjudged_over("Hamper", "CodeType", "", "codeTypeSerializer"),
                 judged_valid_over("Hamper", "CodeType", "", "codeTypeSerializer"),

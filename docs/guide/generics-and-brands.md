@@ -286,7 +286,7 @@ pub struct Label {
 
 fn main() -> Result<(), Vec<String>> {
     assert!(LabelText::new("").is_err());
-    let label = LabelDraft { text: LabelText::new("Shipping")? }.validate()?;
+    let label = Label::new(LabelText::new("Shipping")?)?;
     assert_eq!(label.text.as_inner(), "Shipping");
     assert_eq!(serde_json::to_string(&label).unwrap(), r#"{"text":"Shipping"}"#);
     assert!(serde_json::from_str::<Label>(r#"{"text":""}"#).is_err());

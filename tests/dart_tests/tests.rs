@@ -928,7 +928,7 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          ReservedMembersDraft.fromJson(json); final violations = read.validationIssues(); if \
          (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
          ReservedMembers._(read); } factory ReservedMembers.fromJsonUnjudged(Map<String, \
-         dynamic> json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); Map<String, \
+         dynamic> json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); factory ReservedMembers.of({required String class_,required String in_,required String type,}) => ReservedMembersDraft(class_: class_,in_: in_,type: type,).validate(); Map<String, \
          dynamic> toJson() => _draft.toJson(); List<String> validationIssues() => \
          _draft.validationIssues(); static Object $thrown(Object thrown) => thrown is \
          ReservedMembersDraft ? thrown.validate() : thrown; }"

@@ -33,6 +33,7 @@ use crate::field_type::{
     dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
     get_field_def, is_plain_enum, is_sequence_wrapper,
 };
+use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 #[cfg(feature = "serde")]
@@ -94,9 +95,10 @@ const DART_CLASS_MEMBERS: [&str; 11] = [
 /// What a field of an emitted class cannot be named beside the reserved words: a type its codec is
 /// written with, or a member the class has. Only names that never compiled are listed: a field
 /// and a constructor share a name, so `fromJson` and `fromJsonUnjudged` are not.
-const DART_FIELD_NAMES_TAKEN: [&str; 8] = [
+const DART_FIELD_NAMES_TAKEN: [&str; 9] = [
     "dynamic",
     "noSuchMethod",
+    "of",
     "runtimeType",
     "toDraft",
     "toJson",
@@ -158,6 +160,8 @@ struct DartField {
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
     field_def: FieldDef,
+    /// The Dart value a `literal` fixes the member to, which `of` writes for it.
+    fixed: Option<String>,
     flatten: bool,
     member: String,
     /// Whether serde never writes the member: it is under `skip_serializing`.
@@ -1812,6 +1816,11 @@ fn collect_dart_fields(
                 None
             },
             field_def,
+            fixed: fixed_value(field).map(|fixed| match fixed {
+                Fixed::Bool(value) => value.to_string(),
+                Fixed::Number(digits, _) => digits,
+                Fixed::Text(text) => quoted(&text),
+            }),
             member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
             never_written: has_serde_skip_serializing(&field.attrs),
             wire_name,
@@ -4250,6 +4259,34 @@ fn validate_method(export_name: &str, generic_params: &str, rule_less: bool) -> 
     )
 }
 
+/// The `of` factory of a valid type, which builds the draft from its members, as its constructor
+/// takes them, and judges it. A member a `literal` fixes is written, not taken.
+fn of_factory(export_name: &str, generic_params: &str, fields: &[DartField]) -> String {
+    let parameters = fields.iter().filter(|field| field.fixed.is_none()).fold(
+        String::new(),
+        |mut acc, field| {
+            let declared = dart_typename(&field.field_def);
+            let required = if field.required { "required " } else { "" };
+            write!(acc, "{required}{declared} {},", field.member).unwrap();
+            acc
+        },
+    );
+    let group = if parameters.is_empty() {
+        String::new()
+    } else {
+        format!("{{{parameters}}}")
+    };
+    let arguments = fields.iter().fold(String::new(), |mut acc, field| {
+        let value = field.fixed.as_ref().unwrap_or(&field.member);
+        write!(acc, "{}: {value},", field.member).unwrap();
+        acc
+    });
+    format!(
+        "factory {export_name}.of({group}) => {}{generic_params}({arguments}).validate(); ",
+        draft_name(export_name)
+    )
+}
+
 /// The getters of a valid type, one per member the draft declares.
 fn forwarding_getters(members: impl IntoIterator<Item = (String, String)>) -> String {
     members
@@ -4758,7 +4795,7 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         &declared,
     );
     if drafted {
-        let statics = if unit && is_rule_less() {
+        let instance = if unit && is_rule_less() {
             format!(
                 "static const instance = {export_name}._({}()); ",
                 draft_name(export_name)
@@ -4766,6 +4803,10 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         } else {
             String::new()
         };
+        let statics = format!(
+            "{instance}{}",
+            of_factory(export_name, generic_params, fields)
+        );
         let getters = forwarding_getters(
             fields
                 .iter()
@@ -5016,7 +5057,7 @@ fn value_wrapper_tokens(
         tp = codec.to_json_params,
     );
     if drafted {
-        let getters = forwarding_getters([(value_ty, "value".to_owned())]);
+        let getters = forwarding_getters([(value_ty.clone(), "value".to_owned())]);
         let pair = Pair {
             export_name: &export_name,
             generic_params: &generic_params,
@@ -5024,7 +5065,9 @@ fn value_wrapper_tokens(
             json_type: "dynamic",
             kind: "dynamic",
             by_draft: false,
-            statics: "",
+            statics: &format!(
+                "factory {export_name}.of({value_ty} value) => {class_name}{generic_params}(value).validate(); "
+            ),
         };
         body.push(' ');
         body.push_str(&valid_class(&pair, &codec));

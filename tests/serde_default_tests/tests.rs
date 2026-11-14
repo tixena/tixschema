@@ -532,7 +532,7 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
              GangwayDraft.fromJson(json); final violations = read.validationIssues(); if \
              (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
              Gangway._(read); }} factory Gangway.fromJsonUnjudged(Map<String, dynamic> json) => \
-             Gangway._(GangwayDraft.fromJson(json)); Map<String, dynamic> toJson() => \
+             Gangway._(GangwayDraft.fromJson(json)); factory Gangway.of({{required String label,required int width,}}) => GangwayDraft(label: label,width: width,).validate(); Map<String, dynamic> toJson() => \
              _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static \
              Object $thrown(Object thrown) => thrown is GangwayDraft ? thrown.validate() : thrown; }}"
         )
@@ -581,7 +581,7 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          draft: GangwayDraft) { val label: String get() = draft.label; val width: UInt get() = \
          draft.width; fun validationIssues(): List<String> = draft.validationIssues(); fun \
          kotlinSchemaChecked(): GangwayDraft = draft; companion object { internal fun \
-         checked(draft: GangwayDraft): Gangway = Gangway(draft) } } \
+         checked(draft: GangwayDraft): Gangway = Gangway(draft); fun of(label: String, width: UInt): Gangway = GangwayDraft(label = label, width = width).validate() } } \
          @OptIn(ExperimentalSerializationApi::class) private object GangwayUnjudged : \
          KSerializer<Gangway> { override val descriptor: SerialDescriptor = \
          GangwayDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Gangway) \
