@@ -52,7 +52,7 @@ use super::flattened_models::{
     stropping_kotlin, swaying_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
     whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
-use super::runtime::ran_kotlin;
+use super::runtime::{held_through, ran_kotlin};
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::swift_flattened_options_models::{
@@ -1848,16 +1848,24 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kot
         );
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     };
+    let lowering = lowering_kotlin::kotlin_definition();
     looked_for(
-        &lowering_kotlin::kotlin_definition(),
+        &lowering,
         "grommet",
-        "runCatching { lenient.decodeFromString(GrommetUnjudged, obj.toString()) }.getOrNull()",
+        &format!(
+            "runCatching {{ lenient.decodeFromString({}, obj.toString()) }}.getOrNull()",
+            held_through(&lowering, "Grommet")
+        ),
         "\"kind\"",
     );
+    let squaring = squaring_kotlin::kotlin_definition();
     looked_for(
-        &squaring_kotlin::kotlin_definition(),
+        &squaring,
         "becket",
-        "lenient.decodeFromString(BecketUnjudged, obj.toString())",
+        &format!(
+            "lenient.decodeFromString({}, obj.toString())",
+            held_through(&squaring, "Becket")
+        ),
         "\"kind\", \"body\"",
     );
 }

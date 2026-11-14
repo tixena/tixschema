@@ -7,7 +7,7 @@
 use core::fmt::Write as _;
 
 use super::omitted_models::{OMITTED, OMITTED_WRITTEN, muster_kotlin, roster_kotlin, squad_kotlin};
-use super::runtime::ran_kotlin;
+use super::runtime::{held_through, ran_kotlin};
 use super::serde_default_models::{
     Bollard, CASES, Harbour, Jetty, JettyDraft, Marina, PREPROCESSED, PREPROCESSED_REPORT, REPORT,
     REQUIRED, REQUIRED_REPORT, VARIANT_CASES, VARIANT_REPORT, adjacent_berthing_kotlin,
@@ -198,27 +198,29 @@ fn an_empty_collection_of_a_parameter_is_the_default_of_its_property() {
     );
     let config = config_kotlin::kotlin_definition();
     assert!(
-        config.contains(
+        config.contains(&format!(
             "data class ConfigDraft<IdType>(val dataLinks: List<@Serializable(with = \
-             LinkUnjudged::class) Link<IdType>> = emptyList(), val sequences: List<String> = \
-             Json.decodeFromString(serializer<List<String>>(), \"[]\"))"
-        ),
+             {}::class) Link<IdType>> = emptyList(), val sequences: List<String> = \
+             Json.decodeFromString(serializer<List<String>>(), \"[]\"))",
+            held_through(&config, "Link")
+        )),
         "{config}"
     );
     let fleet = fleet_kotlin::kotlin_definition();
     assert!(
-        fleet.contains(
-            "val vecDeque: List<@Serializable(with = LinkUnjudged::class) Link<IdType>> = \
-             emptyList()"
-        ),
+        fleet.contains(&format!(
+            "val vecDeque: List<@Serializable(with = {}::class) Link<IdType>> = emptyList()",
+            held_through(&fleet, "Link")
+        )),
         "{fleet}"
     );
     let logbook = logbook_kotlin::kotlin_definition();
     assert!(
-        logbook.contains(
-            "val btreeMap: Map<String, @Serializable(with = LinkUnjudged::class) Link<IdType>> = \
-             emptyMap()"
-        ),
+        logbook.contains(&format!(
+            "val btreeMap: Map<String, @Serializable(with = {}::class) Link<IdType>> = \
+             emptyMap()",
+            held_through(&logbook, "Link")
+        )),
         "{logbook}"
     );
 }

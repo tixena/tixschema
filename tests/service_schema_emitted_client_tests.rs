@@ -538,6 +538,12 @@ mod run_dart_lone_slots;
 #[path = "service_schema_emitted_client_tests/run_kotlin_lone_slots.rs"]
 mod run_kotlin_lone_slots;
 
+/// A generic enum's tuple variants and a nested tuple that reach its parameter, read and written by
+/// the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_generic_tuples.rs"]
+mod run_kotlin_generic_tuples;
+
 /// The same, read by the generated Zod schema under node.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_node_lone_slots.rs"]
@@ -1709,6 +1715,12 @@ mod run_kotlin_plain_enum_reads;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_check_order.rs"]
 mod run_kotlin_check_order;
+
+/// A holder that reads each model it holds unjudged, whatever the order the model is declared in,
+/// and in whatever crate.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_held_models.rs"]
+mod run_kotlin_held_models;
 
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.

@@ -131,12 +131,14 @@ pub fn valid_class(
     (declared, generic_params): (&str, &str),
     type_parameters: &[String],
     (members, statics): (&str, &str),
+    composed: bool,
 ) -> String {
     let checked_params = if type_parameters.is_empty() {
         String::new()
     } else {
         format!("<{}> ", type_parameters.join(", "))
     };
+    let unjudged = read::unjudged_member(export_name, generic_params, type_parameters, composed);
     let held = if statics.is_empty() {
         String::new()
     } else {
@@ -146,7 +148,8 @@ pub fn valid_class(
         "@ConsistentCopyVisibility @Serializable(with = {export_name}Serializer::class) data class \
          {export_name}{declared} private constructor(val draft: {draft}{generic_params}) {{ \
          {members}fun kotlinSchemaChecked(): {draft}{generic_params} = draft; companion object {{ internal fun {checked_params}checked(draft: \
-         {draft}{generic_params}): {export_name}{generic_params} = {export_name}(draft){held} }} }}"
+         {draft}{generic_params}): {export_name}{generic_params} = {export_name}(draft); \
+         {unjudged}{held} }} }}"
     )
 }
 
@@ -185,7 +188,8 @@ pub fn pair(
             draft,
             generics,
             type_parameters,
-            (members, statics)
+            (members, statics),
+            composed
         ),
         read::valid_unjudged(export_name, draft, generics.1, type_parameters, composed)
     )

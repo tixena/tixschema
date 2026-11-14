@@ -18,9 +18,7 @@ use core::fmt::Write as _;
 use std::collections::{HashMap, HashSet};
 
 use super::read::PATHED;
-use super::{
-    KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_quoted, kotlin_template_text, validate,
-};
+use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_quoted, kotlin_template_text};
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
     EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, FieldDef, FieldDefType, INVALID_NUMBER,
@@ -452,7 +450,7 @@ fn walk(field: &FieldDef, written: bool, sought: fn(&FieldDef, bool) -> bool, ke
         } else if arguments.is_empty() {
             written && named_by(name).is_some_and(|target| found(&target))
         } else {
-            (!written || validate::reads_unjudged(name))
+            (!written || super::read::reads_unjudged(name))
                 && arguments
                     .iter()
                     .any(|argument| walk(argument, written, sought, false))

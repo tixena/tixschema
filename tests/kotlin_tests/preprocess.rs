@@ -168,10 +168,10 @@ fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
 /// that serializer is the one that calls the type's functions.
 #[test]
 fn a_holder_reads_the_type_through_the_serializer_that_corrects_it() {
-    let lading = lading_kotlin::kotlin_definition();
+    let lading = super::tests::renumbered(&lading_kotlin::kotlin_definition());
     assert!(
         lading.contains(
-            "data class LadingDraft(@Serializable(with = PacketUnjudged::class) val packet: Packet) {"
+            "data class LadingDraft(@Serializable(with = KotlinHeld1::class) val packet: Packet) {"
         ),
         "got: {lading}"
     );

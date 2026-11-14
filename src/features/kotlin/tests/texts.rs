@@ -175,8 +175,9 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let pairing_read = plain(&pairing);
     assert!(
         pairing_read.contains(
-            "data class PairingDraft(@Serializable(with = HeldUnjudged::class) val held: \
-             Held<@Serializable(with = KotlinText1::class) String>, val later: \
+            "data class PairingDraft(@Serializable(with = KotlinHeld1::class) val held: \
+             Held<@Serializable(with = KotlinText1::class) String>, \
+             @Serializable(with = KotlinHeld2::class) val later: \
              Later<@Serializable(with = KotlinText1::class) String>, val pair: \
              PairType<@Serializable(with = KotlinText1::class) String>) {"
         ),
@@ -188,8 +189,8 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let paired_read = plain(&paired);
     assert!(
         paired_read.contains(
-            "PairedDraft(kotlinSchemaDecoded(input.json, HeldUnjudged(KotlinText2), array[0], \
-             \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, serializer<Later<String>>(), \
+            "PairedDraft(kotlinSchemaDecoded(input.json, KotlinHeld3(KotlinText2), array[0], \
+             \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, KotlinHeld4(KotlinText2), \
              array[1], \"1\", \"[1]\"), kotlinSchemaDecoded(input.json, \
              serializer<PairType<String>>(), array[2], \"2\", \"[2]\"))"
         ),

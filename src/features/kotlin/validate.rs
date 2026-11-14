@@ -144,8 +144,6 @@ struct Noted {
     /// Whether a value of the type answers its text: a brand that carries `kotlinSchemaText()`,
     /// and an alias of a string or of such a brand.
     text: bool,
-    /// Whether `{Type}Unjudged` reads the type with no judgement.
-    unjudged: bool,
     /// Whether the type carries `validate()`.
     validates: bool,
 }
@@ -1230,7 +1228,6 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
             filling: Answers::No,
             length,
             text,
-            unjudged: false,
             validates: false,
         },
     );
@@ -1254,7 +1251,6 @@ pub fn note_brand(
             filling: Answers::of(filling),
             length: Answers::of(length),
             text,
-            unjudged: true,
             validates: true,
         },
     );
@@ -1270,15 +1266,13 @@ pub fn note_model(rust_ident: &str) {
             filling: Answers::No,
             length: Answers::No,
             text: false,
-            unjudged: true,
             validates: true,
         },
     );
 }
 
-/// Notes a plain enum, which carries `validate()`. One that names a check is read by two
-/// serializers, as `unjudged` says; any other keeps the one serializer it has.
-pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
+/// Notes a plain enum, which carries `validate()`.
+pub fn note_plain_enum(rust_ident: &str) {
     note(
         rust_ident,
         Noted {
@@ -1287,7 +1281,6 @@ pub fn note_plain_enum(rust_ident: &str, unjudged: bool) {
             filling: Answers::No,
             length: Answers::No,
             text: false,
-            unjudged,
             validates: true,
         },
     );
@@ -1355,12 +1348,12 @@ fn presented(member: &Member<'_>) -> (FieldDef, String) {
     }
 }
 
-/// Whether the emitter wrote a type under `rust_ident` that `{Type}Unjudged` reads.
-pub fn reads_unjudged(rust_ident: &str) -> bool {
+/// Whether the emitter wrote an alias under `rust_ident`, which is whatever it names.
+pub fn is_alias(rust_ident: &str) -> bool {
     NOTED.with(|seen| {
         seen.borrow()
             .get(rust_ident)
-            .is_some_and(|noted| noted.unjudged)
+            .is_some_and(|noted| !noted.validates)
     })
 }
 

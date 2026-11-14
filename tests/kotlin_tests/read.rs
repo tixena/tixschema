@@ -44,8 +44,14 @@ const LABELLED_ISSUES: &str = "fun validationIssues(): List<String> { val violat
      violations.add(\"'label': too short: minimum length is 1, got \
      ${label.codePointCount(0, label.length)}\"); return violations }";
 
+/// What a serializer that reads a held type unjudged answers where the type's companion has no
+/// member for it.
+const HELD_FALLBACK: &str = "private fun <KotlinSchemaCompanion, KotlinSchemaHeld> \
+     KotlinSchemaCompanion.kotlinSchemaUnjudged(own: KSerializer<KotlinSchemaHeld>, vararg \
+     arguments: KSerializer<*>): KSerializer<KotlinSchemaHeld> = own; ";
+
 /// The annotation a holder reads a pallet unjudged with.
-const UNJUDGED: &str = "@Serializable(with = PalletUnjudged::class)";
+const UNJUDGED: &str = "@Serializable(with = KotlinHeld1::class)";
 
 /// A model with one bound.
 #[model_schema()]
@@ -174,9 +180,40 @@ pub fn valid_class(named: &str, forwards: &str) -> String {
 
 /// [`valid_class`] with `statics`, the constants its companion holds, after a semicolon.
 pub fn valid_class_with(named: &str, forwards: &str, statics: &str) -> String {
+    let member = unjudged_member(named, "");
     valid_class(named, forwards).replace(
-        &format!("= {named}(draft) }}"),
-        &format!("= {named}(draft){statics} }}"),
+        &format!("= {named}(draft); {member} }}"),
+        &format!("= {named}(draft); {member}{statics} }}"),
+    )
+}
+
+/// The member of the companion of `named` that answers its unjudged serializer, over the one type
+/// parameter `generic` lists, written `<A>`.
+pub fn unjudged_member(named: &str, generic: &str) -> String {
+    if generic.is_empty() {
+        return format!(
+            "internal fun kotlinSchemaUnjudged(own: KSerializer<{named}>): KSerializer<{named}> = \
+             {named}Unjudged"
+        );
+    }
+    let parameter = generic.trim_matches(['<', '>']);
+    let (first, rest) = parameter.split_at(1);
+    let handed = format!("{}{rest}Serializer", first.to_lowercase());
+    format!(
+        "internal fun {generic} kotlinSchemaUnjudged(own: KSerializer<{named}{generic}>, {handed}: \
+         KSerializer<{parameter}>): KSerializer<{named}{generic}> = {named}Unjudged({handed})"
+    )
+}
+
+/// The private serializer `named` a holder reads the type `class`, with no type parameter,
+/// unjudged through, declared ahead of the holder.
+pub fn held(named: &str, class: &str) -> String {
+    format!(
+        "private object {named} : KSerializer<{class}> {{ {HELD_FALLBACK}private val held: \
+         KSerializer<{class}> = {class}.kotlinSchemaUnjudged(serializer<{class}>()); override val \
+         descriptor: SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
+         value: {class}) = held.serialize(encoder, value); override fun deserialize(decoder: \
+         Decoder): {class} = held.deserialize(decoder) }}"
     )
 }
 
@@ -191,7 +228,8 @@ pub fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
         "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
          {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
          validationIssues(): List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): \
-         {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
+         {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft); {} }} }}",
+        unjudged_member(named, generic)
     )
 }
 
@@ -318,7 +356,8 @@ pub fn brand_companion(named: &str, value: &str) -> String {
         "companion object {{ fun of(value: {value}): {named} {{ val read = {named}(value); val \
          violations = read.validate(); if (violations.isNotEmpty()) throw \
          SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }} }}"
+         IllegalArgumentException(\"validate()\")); return read }}; {} }}",
+        unjudged_member(named, "")
     )
 }
 
@@ -448,15 +487,18 @@ fn a_class_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
 
 /// A holder names the unjudged serializer of each model it holds where `validate()` walks it: on
 /// the property, and on the type inside a list and a map. A type declared below the holder is
-/// read by its own serializer.
+/// read the same way.
 #[test]
 fn a_holder_reads_each_model_it_walks_with_no_judgement() {
     let bay = super::tests::renumbered(&bay_kotlin::kotlin_definition());
     assert!(
         bay.starts_with(&format!(
-            "{} data class BayDraft({UNJUDGED} val first: Pallet, val listed: List<{UNJUDGED} \
-             Pallet>, {UNJUDGED} val spare: Pallet? = null, val stored: Map<String, {UNJUDGED} \
-             Pallet>, val trailer: Trailer) {{ fun validationIssues(): List<String> {{",
+            "{} {} {} data class BayDraft({UNJUDGED} val first: Pallet, val listed: \
+             List<{UNJUDGED} Pallet>, {UNJUDGED} val spare: Pallet? = null, val stored: \
+             Map<String, {UNJUDGED} Pallet>, @Serializable(with = KotlinHeld2::class) val \
+             trailer: Trailer) {{ fun validationIssues(): List<String> {{",
+            held("KotlinHeld1", "Pallet"),
+            held("KotlinHeld2", "Trailer"),
             kept_draft("Bay")
         )),
         "got: {bay}"
@@ -510,8 +552,8 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     let cellar = super::tests::renumbered(&cellar_kotlin::kotlin_definition());
     assert!(
         cellar.contains(
-            "data class CellarDraft(@Serializable(with = CaskUnjudged::class) val cask: Cask<Pallet>, \
-             val casks: List<@Serializable(with = CaskUnjudged::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
+            "data class CellarDraft(@Serializable(with = KotlinHeld1::class) val cask: Cask<Pallet>, \
+             val casks: List<@Serializable(with = KotlinHeld1::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
         ),
         "got: {cellar}"
     );
@@ -550,10 +592,10 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
          SerialDescriptor = buildClassSerialDescriptor(\"Load\");"
             .to_owned(),
         "is LoadBoxed -> buildJsonObject { put(\"Boxed\", \
-         output.json.encodeToJsonElement(PalletUnjudged, value.value)) }"
+         output.json.encodeToJsonElement(KotlinHeld1, value.value)) }"
             .to_owned(),
         "\"Boxed\" -> kotlinSchemaUnder(\".\" + tag) { LoadBoxed(kotlinSchemaDecoded(input.json, \
-         PalletUnjudged, data, \"Boxed\", \"\"))"
+         KotlinHeld1, data, \"Boxed\", \"\"))"
             .to_owned(),
     ] {
         assert!(load.contains(&held), "no `{held}` in: {load}");

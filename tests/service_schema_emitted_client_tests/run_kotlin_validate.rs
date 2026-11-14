@@ -1350,14 +1350,12 @@ fn struct_rows() -> Vec<Row> {
             &numbered,
             crate::judged_issues(numbered.validation_issues()),
         ),
-        // `Later` is declared below `Probe`, which reads it by its own serializer: a probe that
-        // holds one that breaks its bound is built, and its read is another run's.
-        Row {
-            expected: probe.validate().err().unwrap_or_default(),
-            kotlin: Some("Probe.checked(ProbeDraft(Later.checked(LaterDraft(\"\")), Crate.checked(CrateDraft<UInt>(emptyList(), \"\")), \"\", 0u))".to_owned()),
-            name: "Probe",
-            read: None,
-        },
+        row(
+            "Probe",
+            "Probe",
+            &probe,
+            crate::judged_issues(probe.validation_issues()),
+        ),
         row(
             "Probe, the member typed with a type declared below held",
             "Probe",

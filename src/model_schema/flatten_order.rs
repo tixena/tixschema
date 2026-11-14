@@ -4001,6 +4001,8 @@ pub(super) fn tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
         impl #impl_generics #name #type_generics #where_clause {
             #[doc = " What a holder that flattens this type reads of it: the bits `#[model_schema]` holds the order and the strictness of its flattened members to."]
             pub const #constant: u16 = #value;
+            #[doc = " Whether `#[model_schema]` expanded this type, which a holder that cannot name it asks."]
+            pub const __TIXSCHEMA_MODELLED: bool = true;
             #[doc = " The keys a holder that flattens this type sees it write or read, which no other source of keys of that holder may declare."]
             pub const #keys: &'static [&'static str] = #keys_value;
             #[doc = " The names a holder that flattens this type reads each variant under, one list per variant, where the type is an externally tagged enum; none for any other type."]

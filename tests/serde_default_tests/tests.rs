@@ -588,7 +588,7 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          draft: GangwayDraft) { val label: String get() = draft.label; val width: UInt get() = \
          draft.width; fun validationIssues(): List<String> = draft.validationIssues(); fun \
          kotlinSchemaChecked(): GangwayDraft = draft; companion object { internal fun \
-         checked(draft: GangwayDraft): Gangway = Gangway(draft); fun of(label: String, width: UInt): Gangway = GangwayDraft(label = label, width = width).validate() } } \
+         checked(draft: GangwayDraft): Gangway = Gangway(draft); internal fun kotlinSchemaUnjudged(own: KSerializer<Gangway>): KSerializer<Gangway> = GangwayUnjudged; fun of(label: String, width: UInt): Gangway = GangwayDraft(label = label, width = width).validate() } } \
          @OptIn(ExperimentalSerializationApi::class) private object GangwayUnjudged : \
          KSerializer<Gangway> { override val descriptor: SerialDescriptor = \
          GangwayDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Gangway) \
@@ -653,14 +653,18 @@ fn swift_reads_a_key_left_out_from_the_json_of_its_default() {
 #[test]
 fn kotlin_reads_a_key_left_out_from_the_json_of_its_default() {
     let written = super::models::wharf_kotlin::kotlin_definition();
+    let held = written
+        .split(|letter: char| !letter.is_ascii_alphanumeric())
+        .find(|word| word.starts_with("KotlinHeld"))
+        .unwrap();
     assert!(
-        written.contains(
+        written.contains(&format!(
             "data class WharfDraft(val dock: String = Json.decodeFromString(serializer<String>(), \
-             \"\\\"\\\"\"), @Serializable(with = GangwayUnjudged::class) val gangway: Gangway = \
-             Json.decodeFromString(GangwayUnjudged, \
-             \"{\\\"label\\\":\\\"main\\\",\\\"width\\\":2}\"), val gate: String = \
+             \"\\\"\\\"\"), @Serializable(with = {held}::class) val gangway: Gangway = \
+             Json.decodeFromString({held}, \
+             \"{{\\\"label\\\":\\\"main\\\",\\\"width\\\":2}}\"), val gate: String = \
              Json.decodeFromString(serializer<String>(), \"\\\"north\\\"\"), val label: String)"
-        ),
+        )),
         "{written}"
     );
 }

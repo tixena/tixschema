@@ -3,8 +3,15 @@
 //! through the first and throws what `validate()` answers. A holder reads each model its
 //! `validate()` asks with the unjudged one, so the whole value is judged once.
 
+use core::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
+
+use proc_macro2::{Ident, TokenStream};
+use quote::quote;
+use syn::{GenericArgument, PathArguments, Type};
+
 use super::texts;
-use super::{arrays, validate};
+use super::{KOTLIN_TUPLE_AUX, arrays, validate};
 use super::{
     field_reaches_type_parameter, innermost, key_object_name, key_serializer_expr, kotlin_base,
     kotlin_quoted, kotlin_serializer_expr, kotlin_serializer_param_name, kotlin_typename,
@@ -16,7 +23,32 @@ use crate::features::text_forms::TextForm;
 use crate::field_type::{
     BUFFERED_WORDS, EXPECTED_VALUE, FieldDef, FieldDefType, is_sequence_wrapper,
 };
-use crate::utils::is_nonstrict;
+use crate::utils::{crate_tag, is_nonstrict};
+
+thread_local! {
+    /// The serializer each type the item reads unjudged is read through, by the Kotlin name of the
+    /// type and the number of its type arguments. Cleared with the tuple wrappers.
+    static KOTLIN_HELD: RefCell<Vec<((String, usize), String)>> = const { RefCell::new(Vec::new()) };
+    /// How many of those any item has declared: the types of one file share their names, so it is
+    /// not cleared.
+    static KOTLIN_HELD_COUNTER: Cell<usize> = const { Cell::new(0) };
+    /// How many reads any item has asked the compiler about, which numbers their placeholders.
+    static KOTLIN_HELD_ASKS: Cell<usize> = const { Cell::new(0) };
+    /// The reads of the item being written that depend on whether a held type is a model.
+    static KOTLIN_HELD_ASKED: RefCell<Vec<Asked>> = const { RefCell::new(Vec::new()) };
+    /// The types a member under a `cfg` names.
+    static KOTLIN_HELD_UNCERTAIN: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// What the item just written asked, until [`held_filled`] takes it.
+    static KOTLIN_HELD_PENDING: RefCell<Vec<Asked>> = const { RefCell::new(Vec::new()) };
+    /// Each type with type arguments a member wrote, as it wrote it, by name and number of
+    /// arguments.
+    static KOTLIN_HELD_WRITTEN: RefCell<HashMap<(String, usize), Type>> =
+        RefCell::new(HashMap::new());
+    /// What every read asked was filled with where the compiler was not asked, for the tests.
+    #[cfg(test)]
+    static KOTLIN_HELD_RESOLVED: RefCell<Vec<(String, String)>> =
+        const { RefCell::new(Vec::new()) };
+}
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself: a part is read from its text, where kotlinx states the path of what it refuses, and the
@@ -87,6 +119,12 @@ const COMPOSED: &str = ": Any";
 /// What opts a declaration into `@KeepGeneratedSerializer` and the serializer it keeps.
 const OPTED_IN: &str = "@OptIn(ExperimentalSerializationApi::class)";
 
+/// What a serializer that reads a held type unjudged answers where the type's companion has no
+/// `unjudged_member`: the type's own serializer. A member is found ahead of an extension.
+pub const HELD_FALLBACK: &str = "private fun <KotlinSchemaCompanion, KotlinSchemaHeld> \
+     KotlinSchemaCompanion.kotlinSchemaUnjudged(own: KSerializer<KotlinSchemaHeld>, vararg \
+     arguments: KSerializer<*>): KSerializer<KotlinSchemaHeld> = own; ";
+
 /// A declaration the emitter's own serializer reads, which names no serializer, of a member whose
 /// models `validate()` asks.
 const WRITTEN: Annotated = Annotated {
@@ -95,6 +133,18 @@ const WRITTEN: Annotated = Annotated {
     numbers: Numbers::Plain,
     unjudged: true,
 };
+
+/// A read that depends on whether the type `key` names is one `#[model_schema]` expanded:
+/// `needle` stands for it in the text until the holder's `kotlin_definition()` writes `modelled`
+/// where the type is, and `unmodelled` where it is not.
+#[derive(Clone)]
+struct Asked {
+    key: (String, usize),
+    modelled: String,
+    needle: String,
+    ty: TokenStream,
+    unmodelled: String,
+}
 
 /// The type parameters a map is keyed by, and the variants that take their serializers.
 type KeyedBy<'keys> = (&'keys [String], &'keys [String]);
@@ -172,10 +222,17 @@ fn annotated_base(field: &FieldDef, annotated: Annotated) -> String {
                 ),
             };
         }
-        unjudged_of(name).filter(|_| annotated.models).map_or_else(
-            || written.clone(),
-            |unjudged| format!("@Serializable(with = {unjudged}::class) {written}"),
-        )
+        if annotated.models && reads_unjudged(name) {
+            held_site(
+                field,
+                name,
+                arguments.len(),
+                |unjudged| format!("@Serializable(with = {unjudged}::class) {written}"),
+                || written.clone(),
+            )
+        } else {
+            written
+        }
     } else if let FieldDefType::Map(key, value) = &field.field_type {
         annotated_map((key, value), in_keys, annotated)
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
@@ -336,7 +393,7 @@ fn holds_an_unjudged(field: &FieldDef) -> bool {
         {
             return holds_an_unjudged(&field.collection_element_field(element));
         }
-        unjudged_of(name).is_some()
+        reads_unjudged(name)
     } else if let FieldDefType::Map(_, value) = &field.field_type {
         holds_an_unjudged(value)
     } else if let FieldDefType::Tuple(positions) = &field.field_type {
@@ -709,13 +766,38 @@ pub fn plugin_read(field: &FieldDef) -> (String, String) {
     }
     if models
         && field.array_depth == 0
-        && let FieldDefType::SiblingType(name, _) = &field.field_type
-        && let Some(unjudged) = unjudged_of(name)
+        && let FieldDefType::SiblingType(name, arguments) = &field.field_type
+        && reads_unjudged(name)
     {
-        return (
-            format!("@Serializable(with = {unjudged}::class) "),
-            with_text_forms(field),
+        let annotation = held_site(
+            field,
+            name,
+            arguments.len(),
+            |unjudged| format!("@Serializable(with = {unjudged}::class) "),
+            String::new,
         );
+        let declared = held_site(
+            field,
+            name,
+            arguments.len(),
+            |_| with_text_forms(field),
+            || {
+                if texts::declared(field) || arrays::declared(field) {
+                    annotated_typename(
+                        field,
+                        Annotated {
+                            models: false,
+                            texts: true,
+                            numbers: Numbers::Refusing,
+                            unjudged: false,
+                        },
+                    )
+                } else {
+                    kotlin_typename(field)
+                }
+            },
+        );
+        return (annotation, declared);
     }
     (
         String::new(),
@@ -983,15 +1065,365 @@ pub fn with_text_forms(field: &FieldDef) -> String {
     )
 }
 
-/// The serializer that reads the type written `name` with no judgement, where the emitter wrote
-/// that type above.
-fn unjudged_of(name: &str) -> Option<String> {
-    validate::reads_unjudged(name).then(|| {
-        format!(
-            "{}Unjudged",
-            lookup_kotlin_name(name).unwrap_or_else(|| name.to_owned())
-        )
+/// Whether `validate()` asks the type written `name` for what it reports, which reads it with no
+/// judgement: every type but an alias and a std sequence.
+pub fn reads_unjudged(name: &str) -> bool {
+    !validate::is_alias(name) && !is_sequence_wrapper(name)
+}
+
+/// The member of a type's companion that answers its unjudged serializer, where the unjudged one
+/// is not its own: `own` is the type's own serializer and `typeSerial*` that of each of its type
+/// arguments. A type without it answers `own`, as [`HELD_FALLBACK`] says.
+pub fn unjudged_member(
+    export_name: &str,
+    generic_params: &str,
+    type_parameters: &[String],
+    composed: bool,
+) -> String {
+    let own = format!("{export_name}{generic_params}");
+    if type_parameters.is_empty() {
+        return format!(
+            "internal fun kotlinSchemaUnjudged(own: KSerializer<{own}>): KSerializer<{own}> = \
+             {export_name}Unjudged"
+        );
+    }
+    let bound = if composed { COMPOSED } else { "" };
+    format!(
+        "internal fun {} kotlinSchemaUnjudged(own: KSerializer<{own}>, {}): KSerializer<{own}> = \
+         {export_name}Unjudged({})",
+        parameter_list(type_parameters, bound),
+        handed(type_parameters, ""),
+        arguments(type_parameters)
+    )
+}
+
+/// The private serializer, declared once per item, that reads the type written `name` with
+/// `arguments` type arguments through its companion's [`unjudged_member`]: an `object`, or a class
+/// over the serializer of each argument. The plugin reads a member by it, which an annotation can
+/// only name by a class.
+fn held_unjudged(field: &FieldDef, name: &str, arguments: usize) -> String {
+    let class = lookup_kotlin_name(name).unwrap_or_else(|| name.to_owned());
+    KOTLIN_HELD.with(|held| {
+        let mut declared = held.borrow_mut();
+        if let Some((_, named)) = declared
+            .iter()
+            .find(|(key, _)| key.0 == class && key.1 == arguments)
+        {
+            return named.clone();
+        }
+        let index = KOTLIN_HELD_COUNTER.with(|counter| {
+            let next = counter.get() + 1;
+            counter.set(next);
+            next
+        });
+        let named = format!("KotlinHeld{index}{}", crate_tag());
+        let asked = asked_type(field, name, arguments).map(|ty| (ty, (name.to_owned(), arguments)));
+        let expression = asked.as_ref().filter(|_| arguments == 0).map(|(ty, key)| {
+            ask(
+                ty,
+                key,
+                format!("{class}.kotlinSchemaUnjudged(serializer<{class}>())"),
+                format!("serializer<{class}>()"),
+            )
+        });
+        let declared_text = held_declared(&named, &class, arguments, expression.as_deref());
+        let aux = match asked.filter(|_| arguments > 0) {
+            Some((ty, key)) => ask(&ty, &key, declared_text, String::new()),
+            None => declared_text,
+        };
+        KOTLIN_TUPLE_AUX.with(|list| list.borrow_mut().push(aux));
+        declared.push(((class, arguments), named.clone()));
+        named
     })
+}
+
+/// The text a site that reads the held type `name` unjudged writes: `modelled`, written for the
+/// serializer `held_unjudged` names, where the type is a model or the holder cannot ask, and a
+/// placeholder of it and `unmodelled` where the compiler is asked.
+fn held_site(
+    field: &FieldDef,
+    name: &str,
+    arguments: usize,
+    modelled: impl FnOnce(&str) -> String,
+    unmodelled: impl FnOnce() -> String,
+) -> String {
+    let unjudged = held_unjudged(field, name, arguments);
+    let read = modelled(&unjudged);
+    match asked_type(field, name, arguments).filter(|_| arguments > 0) {
+        Some(ty) => ask(&ty, &(name.to_owned(), arguments), read, unmodelled()),
+        None => read,
+    }
+}
+
+/// The type `name` is written as in the member `field`, where a `const` beside the holder can ask
+/// whether it is a model: not under a `cfg`, and with no argument that is a type parameter of the
+/// holder.
+fn asked_type(field: &FieldDef, name: &str, arguments: usize) -> Option<TokenStream> {
+    if KOTLIN_HELD_UNCERTAIN.with(|names| names.borrow().contains(name)) {
+        return None;
+    }
+    if arguments == 0 {
+        let span = field.type_span;
+        return Some(field.scope.reaching(&Ident::new(name, span), span));
+    }
+    let FieldDefType::SiblingType(_, written) = &field.field_type else {
+        return None;
+    };
+    if written.iter().any(reaches_a_parameter) {
+        return None;
+    }
+    KOTLIN_HELD_WRITTEN.with(|types| {
+        types
+            .borrow()
+            .get(&(name.to_owned(), arguments))
+            .map(|ty| quote! { #ty })
+    })
+}
+
+/// Whether `def` names a type parameter of the item it is written in.
+fn reaches_a_parameter(def: &FieldDef) -> bool {
+    if let FieldDefType::TypeParam(_) = &def.field_type {
+        true
+    } else if let FieldDefType::SiblingType(_, arguments) = &def.field_type {
+        arguments.iter().any(reaches_a_parameter)
+    } else if let FieldDefType::Map(key, value) = &def.field_type {
+        reaches_a_parameter(key) || reaches_a_parameter(value)
+    } else if let FieldDefType::Tuple(positions) = &def.field_type {
+        positions.iter().any(reaches_a_parameter)
+    } else if let FieldDefType::Range(_, bound) = &def.field_type {
+        reaches_a_parameter(bound)
+    } else if let FieldDefType::Result(ok, err) = &def.field_type {
+        reaches_a_parameter(ok) || reaches_a_parameter(err)
+    } else {
+        false
+    }
+}
+
+/// The placeholder of a read that depends on whether the type written `ty` is a model.
+fn ask(ty: &TokenStream, key: &(String, usize), modelled: String, unmodelled: String) -> String {
+    let index = KOTLIN_HELD_ASKS.with(|counter| {
+        let next = counter.get() + 1;
+        counter.set(next);
+        next
+    });
+    let needle = format!("\u{1}tixschema-held-{index}\u{1}");
+    KOTLIN_HELD_ASKED.with(|asked| {
+        asked.borrow_mut().push(Asked {
+            key: key.clone(),
+            modelled,
+            needle: needle.clone(),
+            ty: ty.clone(),
+            unmodelled,
+        });
+    });
+    needle
+}
+
+/// Notes the types with type arguments that `ty` writes, as it writes them, for the `const`s
+/// beside a holder that asks whether each is a model.
+pub fn note_written(ty: &Type) {
+    if let Type::Path(path) = ty {
+        if let Some(last) = path.path.segments.last()
+            && let PathArguments::AngleBracketed(arguments) = &last.arguments
+        {
+            let held: Vec<&Type> = arguments
+                .args
+                .iter()
+                .filter_map(|argument| {
+                    if let GenericArgument::Type(inner) = argument {
+                        Some(inner)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if !held.is_empty() {
+                KOTLIN_HELD_WRITTEN.with(|types| {
+                    types
+                        .borrow_mut()
+                        .insert((last.ident.to_string(), held.len()), ty.clone());
+                });
+            }
+            held.into_iter().for_each(note_written);
+        }
+    } else if let Type::Paren(inner) = ty {
+        note_written(&inner.elem);
+    } else if let Type::Group(inner) = ty {
+        note_written(&inner.elem);
+    } else if let Type::Reference(inner) = ty {
+        note_written(&inner.elem);
+    } else if let Type::Array(inner) = ty {
+        note_written(&inner.elem);
+    } else if let Type::Slice(inner) = ty {
+        note_written(&inner.elem);
+    } else if let Type::Tuple(inner) = ty {
+        inner.elems.iter().for_each(note_written);
+    } else {
+        // Any other type writes no type argument a holder asks about.
+    }
+}
+
+/// Notes the types a member that a `cfg` may leave out names, which the holder cannot ask about:
+/// a `const` naming one would not compile where the `cfg` leaves the type out.
+pub fn note_uncertain(def: &FieldDef) {
+    if let FieldDefType::SiblingType(name, arguments) = &def.field_type {
+        KOTLIN_HELD_UNCERTAIN.with(|names| {
+            names.borrow_mut().insert(name.clone());
+        });
+        arguments.iter().for_each(note_uncertain);
+    } else if let FieldDefType::Map(key, value) = &def.field_type {
+        note_uncertain(key);
+        note_uncertain(value);
+    } else if let FieldDefType::Tuple(positions) = &def.field_type {
+        positions.iter().for_each(note_uncertain);
+    } else if let FieldDefType::Range(_, bound) = &def.field_type {
+        note_uncertain(bound);
+    } else if let FieldDefType::Result(ok, err) = &def.field_type {
+        note_uncertain(ok);
+        note_uncertain(err);
+    } else {
+        // A scalar names no type of the consumer's.
+    }
+}
+
+/// The declaration of the serializer [`held_unjudged`] names `named`.
+fn held_declared(named: &str, class: &str, arguments: usize, asked: Option<&str>) -> String {
+    let types: Vec<String> = (0..arguments)
+        .map(|at| format!("KotlinSchemaArgument{at}"))
+        .collect();
+    let serializers: Vec<String> = (0..arguments)
+        .map(|at| format!("argument{at}Serializer"))
+        .collect();
+    let (opens, own, held) = if arguments == 0 {
+        (
+            format!("private object {named}"),
+            class.to_owned(),
+            asked.map_or_else(
+                || format!("{class}.kotlinSchemaUnjudged(serializer<{class}>())"),
+                ToOwned::to_owned,
+            ),
+        )
+    } else {
+        let own = format!("{class}<{}>", types.join(", "));
+        let declared = types
+            .iter()
+            .map(|parameter| format!("{parameter}{COMPOSED}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let handed = types
+            .iter()
+            .zip(&serializers)
+            .map(|(parameter, serializer)| format!("{serializer}: KSerializer<{parameter}>"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let passed = serializers.join(", ");
+        (
+            format!("private class {named}<{declared}>({handed})"),
+            own,
+            format!("{class}.kotlinSchemaUnjudged({class}.serializer({passed}), {passed})"),
+        )
+    };
+    format!(
+        "{opens} : KSerializer<{own}> {{ {HELD_FALLBACK}private val held: KSerializer<{own}> = \
+         {held}; override val descriptor: SerialDescriptor = held.descriptor; override fun \
+         serialize(encoder: Encoder, value: {own}) = held.serialize(encoder, value); override fun \
+         deserialize(decoder: Decoder): {own} = held.deserialize(decoder) }}"
+    )
+}
+
+/// `declarations` with the read of each held type that may have no companion written as the
+/// companion's, for a client or a server that has no module to ask the compiler in.
+pub fn held_resolved(declarations: Vec<String>) -> Vec<String> {
+    let pending = KOTLIN_HELD_PENDING.with(RefCell::take);
+    declarations
+        .into_iter()
+        .map(|declared| {
+            pending.iter().fold(declared, |text, asked| {
+                text.replace(&asked.needle, &asked.modelled)
+            })
+        })
+        .collect()
+}
+
+/// `text` with every placeholder `held_filled` filled written as a model's read.
+#[cfg(test)]
+pub fn held_modelled(text: &str) -> String {
+    KOTLIN_HELD_RESOLVED.with(|resolved| {
+        resolved
+            .borrow()
+            .iter()
+            .fold(text.to_owned(), |written, (needle, modelled)| {
+                written.replace(needle, modelled)
+            })
+    })
+}
+
+/// Drops the serializers of the item just written, keeping the held types it asked the compiler
+/// about for [`held_filled`].
+pub fn clear() {
+    KOTLIN_HELD.with(|held| held.borrow_mut().clear());
+    let asked = KOTLIN_HELD_ASKED.with(RefCell::take);
+    KOTLIN_HELD_PENDING.with(|pending| *pending.borrow_mut() = asked);
+}
+
+/// What fills, in the text of `module`, the read of each type a holder holds that may have no
+/// companion to ask: the struct in the module and the `impl` beside the holder that answers, where
+/// every name its author wrote resolves, whether the type is one `#[model_schema]` expanded,
+/// and the statements that write into `written` the read of a type that is not: its
+/// own serializer, which a `typealias` of a list or of a map, and a type of the consumer's, answer.
+pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream, TokenStream) {
+    let pending = KOTLIN_HELD_PENDING.with(RefCell::take);
+    if pending.is_empty() {
+        return (TokenStream::new(), TokenStream::new(), TokenStream::new());
+    }
+    let mut flags = Vec::new();
+    let mut keys: Vec<&(String, usize)> = Vec::new();
+    let mut statements = TokenStream::new();
+    for asked in &pending {
+        let at = keys
+            .iter()
+            .position(|key| **key == asked.key)
+            .unwrap_or_else(|| {
+                let ty = &asked.ty;
+                flags.push(quote! { <#ty>::__TIXSCHEMA_MODELLED });
+                keys.push(&asked.key);
+                keys.len() - 1
+            });
+        let (needle, modelled, unmodelled) = (&asked.needle, &asked.modelled, &asked.unmodelled);
+        statements.extend(quote! {
+            #written = #written.replace(
+                #needle,
+                if tixschema_held[#at] { #modelled } else { #unmodelled },
+            );
+        });
+        #[cfg(test)]
+        KOTLIN_HELD_RESOLVED.with(|resolved| {
+            resolved
+                .borrow_mut()
+                .push((asked.needle.clone(), asked.modelled.clone()));
+        });
+    }
+    let count = proc_macro2::Literal::usize_unsuffixed(flags.len());
+    let inside = quote! {
+        #[non_exhaustive]
+        pub struct TixschemaHeld;
+    };
+    let beside = quote! {
+        impl #module::TixschemaHeld {
+            pub fn flags() -> [bool; #count] {
+                trait Unmodelled {
+                    const __TIXSCHEMA_MODELLED: bool = false;
+                }
+                impl<T: ?::core::marker::Sized> Unmodelled for T {}
+                [#(#flags),*]
+            }
+        }
+    };
+    let filled = quote! {
+        let tixschema_held = TixschemaHeld::flags();
+        #statements
+    };
+    (inside, beside, filled)
 }
 
 /// The `KSerializer` of a value typed `field`, each model it holds read by its unjudged one.
@@ -1002,18 +1434,30 @@ pub(super) fn unjudged_serializer(field: &FieldDef, type_parameters: &[String]) 
         {
             return unjudged_serializer(&field.collection_element_field(element), type_parameters);
         }
-        match unjudged_of(name) {
-            Some(unjudged) if written.is_empty() => unjudged,
-            // A serializer the emitter writes binds a parameter to `Any`, which no nullable is.
-            Some(unjudged) if !written.iter().any(FieldDef::is_optional) => {
-                let own = written
+        // A serializer the emitter writes binds a parameter to `Any`, which no nullable is.
+        if !reads_unjudged(name) || written.iter().any(FieldDef::is_optional) {
+            kotlin_serializer_expr(&innermost(field), type_parameters)
+        } else {
+            let own = || {
+                written
                     .iter()
                     .map(|argument| kotlin_serializer_expr(argument, type_parameters))
                     .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{unjudged}({own})")
-            }
-            Some(_) | None => kotlin_serializer_expr(&innermost(field), type_parameters),
+                    .join(", ")
+            };
+            held_site(
+                field,
+                name,
+                written.len(),
+                |unjudged| {
+                    if written.is_empty() {
+                        unjudged.to_owned()
+                    } else {
+                        format!("{unjudged}({})", own())
+                    }
+                },
+                || kotlin_serializer_expr(&innermost(field), type_parameters),
+            )
         }
     } else if let FieldDefType::Map(key, value) = &field.field_type {
         map_serializer(

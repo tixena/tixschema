@@ -22,7 +22,7 @@ use self::loading_client_service_schema::{
 use super::named_by_rust_models::{
     Hitch, HitchDraft, HitchedTrailer, HitchedTrailerDraft, hitch_kotlin, hitched_trailer_kotlin,
 };
-use super::runtime::ran_kotlin;
+use super::runtime::{held_through, ran_kotlin};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.coroutines.flow.*\n\
@@ -115,12 +115,14 @@ Slip, a rating its check refuses: refused
     'rating': a slip is rated
 Rating, read on its own, one its check refuses: refused
     a slip is rated
+Hitch, its own bound and the trailer's broken: refused
+    'hook': too short: minimum length is 1, got 0
+    'trailer.plate': too short: minimum length is 1, got 0
 ";
 
 /// What the read answers where it is not the text of the Rust read. A model judges itself as it
-/// is read behind a type parameter, under a bound a member writes of its own on a brand, and
-/// where its type is declared below its holder: the first broken one ends the read with its own
-/// messages, under no place.
+/// is read behind a type parameter, and under a bound a member writes of its own on a brand: the
+/// first broken one ends the read with its own messages, under no place.
 const APART_FROM_RUST: &str = "\
 Crate<Parcel>, the second code broken: refused
     'fragileItemCodes.1': y is outside of itemCodeList
@@ -129,8 +131,6 @@ Crate<Code>, a code broken: refused
 Docket, a code that breaks its own bound: refused
     'code': too short: minimum length is 2, got 1
     'code': too short: minimum length is 3, got 1
-Hitch, its own bound and the trailer's broken: refused
-    'plate': too short: minimum length is 1, got 0
 ";
 
 /// What `{Type}Unjudged` answers of a payload the type's own serializer refuses: the value.
@@ -788,6 +788,12 @@ fn enum_rows() -> Vec<Sample> {
             &Rating::model_schema_wrap_unjudged(RatingDraft::Unrated),
             |_| "Rating",
         ),
+        sample(
+            "Hitch, its own bound and the trailer's broken",
+            "Hitch",
+            &hitch(),
+            |_| "Hitch",
+        ),
     ]
 }
 
@@ -822,12 +828,6 @@ fn apart_rows() -> Vec<Sample> {
                 "'code': too short: minimum length is 2, got 1",
                 "'code': too short: minimum length is 3, got 1",
             ]),
-        ),
-        pinned(
-            "Hitch, its own bound and the trailer's broken",
-            "serializer<Hitch>()",
-            &hitch(),
-            Err(&["'plate': too short: minimum length is 1, got 0"]),
         ),
     ]
 }
@@ -1017,19 +1017,15 @@ fn a_read_refuses_what_the_rust_read_refuses_in_its_words() {
     assert_eq!(printed, JUDGED);
 }
 
-/// A model behind a type parameter, a brand under a bound of its member's own, and a model whose
-/// type is declared below its holder, is read by its own serializer: the payload is refused
-/// there, with that model's messages. The Rust read answers each of these payloads in other
-/// words, written out here.
+/// A model behind a type parameter, and a brand under a bound of its member's own, is read by its
+/// own serializer: the payload is refused there, with that model's messages. The Rust read
+/// answers each of these payloads in other words, written out here.
 #[test]
 fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
     let rows = apart_rows();
     assert_eq!(report(&rows), APART_FROM_RUST);
     // What the Rust read answers of the same payloads. A model that judges itself is told at its
     // position in the text, and a brand under its member's key beside the member's own bound.
-    // A model declared below its holder
-    // is read unjudged, so the holder's own message is answered too, and the trailer's at its
-    // place.
     assert_eq!(
         [
             refused_by_rust(&sealed_crate(vec![held(), outside()], "A", "ab")),
@@ -1043,14 +1039,11 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
                 "ab"
             )),
             refused_by_rust(&docket()),
-            refused_by_rust(&hitch()),
         ],
         [
             "'fragileItemCodes.1': y is outside of itemCodeList at line 1 column 134",
             "too short: minimum length is 2, got 1 at line 1 column 19",
             "'code': too short: minimum length is 2, got 1; 'code': too short: minimum length is 3, got 1",
-            "'hook': too short: minimum length is 1, got 0; 'trailer.plate': too short: minimum \
-             length is 1, got 0",
         ]
     );
     let body: Vec<String> = rows.iter().map(|row| row.kotlin.clone()).collect();
@@ -1166,13 +1159,15 @@ fn the_readme_shows_what_the_runs_answer() {
         "the README no longer shows the four messages of the manifest"
     );
     let manifest = manifest_kotlin::kotlin_definition();
+    let held = held_through(&manifest, "Parcel");
     for property in [
-        "@Serializable(with = ParcelUnjudged::class) val firstParcel: Parcel",
-        "val parcelList: List<@Serializable(with = ParcelUnjudged::class) Parcel>",
-        "val parcelsByDock: Map<String, @Serializable(with = ParcelUnjudged::class) Parcel>",
-        "@Serializable(with = ParcelUnjudged::class) val spareParcel: Parcel? = null",
+        "@Serializable(with = KotlinHeld1::class) val firstParcel: Parcel",
+        "val parcelList: List<@Serializable(with = KotlinHeld1::class) Parcel>",
+        "val parcelsByDock: Map<String, @Serializable(with = KotlinHeld1::class) Parcel>",
+        "@Serializable(with = KotlinHeld1::class) val spareParcel: Parcel? = null",
     ] {
-        assert!(manifest.contains(property), "not emitted: {property}");
+        let emitted = property.replace("KotlinHeld1", &held);
+        assert!(manifest.contains(&emitted), "not emitted: {property}");
         assert!(
             readme.contains(&format!("\n  {property},\n")),
             "not in the README: {property}"
