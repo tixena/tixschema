@@ -3,6 +3,10 @@
 
 #![cfg(feature = "dart")]
 
+use alloc::borrow::Cow;
+use alloc::rc::Rc;
+use alloc::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -44,6 +48,32 @@ pub struct DockStamp;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DockWrapped(pub String);
 
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DockHeld {
+    #[model_schema_prop(literal = "dock")]
+    pub boxed: Box<str>,
+    #[model_schema_prop(literal = 3)]
+    pub counted: Rc<u32>,
+    #[model_schema_prop(literal = "dock")]
+    pub cow: Cow<'static, str>,
+    pub label: String,
+    #[model_schema_prop(literal = true)]
+    pub shared: Arc<bool>,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DockStatic {
+    #[model_schema_prop(literal = true)]
+    pub flag: &'static bool,
+    pub label: String,
+    #[model_schema_prop(literal = 3)]
+    pub number: &'static u32,
+    #[model_schema_prop(literal = "dock")]
+    pub text: &'static str,
+}
+
 fn models() -> String {
     module(
         &[
@@ -52,6 +82,8 @@ fn models() -> String {
             dock_of_dart::dart_definition(),
             dock_stamp_dart::dart_definition(),
             dock_wrapped_dart::dart_definition(),
+            dock_held_dart::dart_definition(),
+            dock_static_dart::dart_definition(),
         ],
         &[],
         "",
@@ -60,7 +92,7 @@ fn models() -> String {
 
 #[test]
 fn of_builds_the_valid_value_the_draft_validates() {
-    let user = "import 'dart:convert';\nimport 'models.dart';\n\nvoid main() {\n  final DockTime time = DockTime.of(hour: 12, minute: 0);\n  print(jsonEncode(time.toJson()));\n  final DockFlag flag = DockFlag.of(advanced: false);\n  print(jsonEncode(flag.toJson()));\n  final DockOf named = DockOf.of(of_: 'x');\n  print(jsonEncode(named.toJson()));\n  print(jsonEncode(DockStamp.of().toJson()));\n  print(jsonEncode(DockWrapped.of('w').toJson()));\n}\n";
+    let user = "import 'dart:convert';\nimport 'models.dart';\n\nvoid main() {\n  final DockTime time = DockTime.of(hour: 12, minute: 0);\n  print(jsonEncode(time.toJson()));\n  final DockFlag flag = DockFlag.of(advanced: false);\n  print(jsonEncode(flag.toJson()));\n  final DockOf named = DockOf.of(of_: 'x');\n  print(jsonEncode(named.toJson()));\n  print(jsonEncode(DockStamp.of().toJson()));\n  print(jsonEncode(DockWrapped.of('w').toJson()));\n  print(jsonEncode(DockHeld.of(label: 'x').toJson()));\n  print(jsonEncode(DockStatic.of(label: 'x').toJson()));\n}\n";
     let Some((ran, printed)) = dart_files(
         "of-builds",
         &[],
@@ -73,7 +105,7 @@ fn of_builds_the_valid_value_the_draft_validates() {
     assert_eq!(
         printed,
         format!(
-            "{}\n{}\n{}\n{}\n{}\n",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
             serde_json::to_string(&DockTimeDraft {
                 hour: 12,
                 minute: 0
@@ -89,6 +121,21 @@ fn of_builds_the_valid_value_the_draft_validates() {
             serde_json::to_string(&DockOfDraft { of: "x".to_owned() }).unwrap(),
             serde_json::to_string(&DockStampDraft).unwrap(),
             serde_json::to_string(&DockWrappedDraft("w".to_owned())).unwrap(),
+            serde_json::to_string(&DockHeldDraft {
+                boxed: "dock".into(),
+                counted: Rc::new(3),
+                cow: Cow::Borrowed("dock"),
+                label: "x".to_owned(),
+                shared: Arc::new(true),
+            })
+            .unwrap(),
+            serde_json::to_string(&DockStaticDraft {
+                flag: &true,
+                label: "x".to_owned(),
+                number: &3,
+                text: "dock",
+            })
+            .unwrap(),
         )
     );
 }

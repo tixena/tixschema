@@ -3,6 +3,10 @@
 
 #![cfg(feature = "swift")]
 
+use alloc::borrow::Cow;
+use alloc::rc::Rc;
+use alloc::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -21,6 +25,8 @@ try show(try DockFlag.of(advanced: false))
 try show(try DockOf.of(of: "x"))
 try show(try DockStamp.of())
 try show(try DockWrapped.of(value: "w"))
+try show(try DockHeld.of(label: "x"))
+try show(try DockStatic.of(label: "x"))
 do {
     _ = try DockTime.of(hour: 24, minute: 0)
     print("built")
@@ -64,6 +70,32 @@ pub struct DockStamp;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DockWrapped(pub String);
 
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DockHeld {
+    #[model_schema_prop(literal = "dock")]
+    pub boxed: Box<str>,
+    #[model_schema_prop(literal = 3)]
+    pub counted: Rc<u32>,
+    #[model_schema_prop(literal = "dock")]
+    pub cow: Cow<'static, str>,
+    pub label: String,
+    #[model_schema_prop(literal = true)]
+    pub shared: Arc<bool>,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DockStatic {
+    #[model_schema_prop(literal = true)]
+    pub flag: &'static bool,
+    pub label: String,
+    #[model_schema_prop(literal = 3)]
+    pub number: &'static u32,
+    #[model_schema_prop(literal = "dock")]
+    pub text: &'static str,
+}
+
 fn generated() -> String {
     [
         "import Foundation".to_owned(),
@@ -72,6 +104,8 @@ fn generated() -> String {
         dock_of_swift::swift_definition(),
         dock_stamp_swift::swift_definition(),
         dock_wrapped_swift::swift_definition(),
+        dock_held_swift::swift_definition(),
+        dock_static_swift::swift_definition(),
     ]
     .join("\n\n")
 }
@@ -120,6 +154,23 @@ fn of_builds_the_valid_value_and_throws_what_validate_throws() {
             serde_json::to_string(&DockWrappedDraft("w".to_owned()))
                 .unwrap()
                 .as_str(),
+            serde_json::to_string(&DockHeldDraft {
+                boxed: "dock".into(),
+                counted: Rc::new(3),
+                cow: Cow::Borrowed("dock"),
+                label: "x".to_owned(),
+                shared: Arc::new(true),
+            })
+            .unwrap()
+            .as_str(),
+            serde_json::to_string(&DockStaticDraft {
+                flag: &true,
+                label: "x".to_owned(),
+                number: &3,
+                text: "dock",
+            })
+            .unwrap()
+            .as_str(),
             refused.join("; ").as_str(),
         ]
     );

@@ -21,7 +21,7 @@ use syn::{Attribute, Generics, Path, Token, Visibility};
 use super::judged_read::unclaimed_parameter;
 use super::refusal_from_violations;
 use super::unbounded;
-use super::{LiteralLeaf, literal_shape};
+use super::{LiteralLeaf, literal_shape, sole_type_argument};
 use crate::features::model_schema_prop::{LiteralValue, parse_model_schema_prop_attributes};
 #[cfg(all(feature = "zod", feature = "serde"))]
 use crate::features::serde::parse_serde_type_attributes;
@@ -31,6 +31,7 @@ use crate::field_type::get_field_def;
 use crate::field_type::held_literal;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
+use crate::utils::written_type;
 use crate::utils::{record_undrafted_enum, written_names};
 
 /// The most parameters a `new` takes unless the author asks for it with `new = true`, which is
@@ -744,15 +745,13 @@ fn constructor_of(item: &syn::Item, new_by: NewBy) -> Constructor {
     constructor
 }
 
-/// What the `literal` of `field` fixes, where the field is neither wrapped nor of a type the
-/// literal cannot sit on directly.
+/// What the `literal` of `field` fixes, where the field's type holds one value of it: the value
+/// itself, or behind a pointer, a `Cow` or a `'static` reference. An `Option`, a list or a set
+/// holds none or several, so its literal stays a parameter.
 pub fn fixed_value(field: &syn::Field) -> Option<Fixed> {
     let literal = parse_model_schema_prop_attributes(&field.attrs).literal?;
     let shape = literal_shape(&field.ty)?;
-    if !shape.wraps.is_empty() {
-        return None;
-    }
-    match (&shape.leaf, &literal) {
+    let fixed = match (&shape.leaf, &literal) {
         (LiteralLeaf::Bool, LiteralValue::Bool(value)) => Some(Fixed::Bool(*value)),
         (LiteralLeaf::Number(number), LiteralValue::Integer(_) | LiteralValue::Number(_)) => {
             Some(Fixed::Number(held_literal(number, &literal)?, number))
@@ -761,16 +760,99 @@ pub fn fixed_value(field: &syn::Field) -> Option<Fixed> {
             Some(Fixed::Text(text.clone()))
         }
         _ => None,
-    }
+    }?;
+    held_fill(&field.ty, &fixed, false)?;
+    Some(fixed)
 }
 
 /// The value of a field a `literal` fixes, as Rust writes it.
 fn literal_fill(field: &syn::Field) -> Option<String> {
-    Some(match fixed_value(field)? {
-        Fixed::Bool(value) => value.to_string(),
-        Fixed::Number(digits, rust) => format!("{digits}{rust}"),
-        Fixed::Text(text) => format!("::core::convert::Into::into({text:?})"),
-    })
+    held_fill(&field.ty, &fixed_value(field)?, false)
+}
+
+/// The value of type `ty` that holds `fixed`, or `None` where no one value of it does. A `bare`
+/// value is the argument of a conversion, so it names its own type.
+fn held_fill(ty: &syn::Type, fixed: &Fixed, bare: bool) -> Option<String> {
+    if let syn::Type::Reference(reference) = written_type(ty) {
+        if reference.mutability.is_some()
+            || reference
+                .lifetime
+                .as_ref()
+                .is_none_or(|held| held.ident != "static")
+        {
+            return None;
+        }
+        return match (fixed, plain_ident(&reference.elem)?.as_str()) {
+            (Fixed::Text(text), "str") => Some(format!("{text:?}")),
+            (Fixed::Bool(_), "bool") => Some(format!("&{}", scalar(fixed)?)),
+            (Fixed::Number(_, rust), name) if name == *rust => Some(format!("&{}", scalar(fixed)?)),
+            (Fixed::Bool(_) | Fixed::Number(..) | Fixed::Text(_), _) => None,
+        };
+    }
+    if let syn::Type::Path(path) = written_type(ty) {
+        let segment = path.path.segments.last()?;
+        return match &segment.arguments {
+            syn::PathArguments::None => match fixed {
+                Fixed::Text(text) if !bare => {
+                    Some(format!("::core::convert::Into::into({text:?})"))
+                }
+                Fixed::Text(text) => match segment.ident.to_string().as_str() {
+                    "String" => Some(format!("::std::string::String::from({text:?})")),
+                    "PathBuf" => Some(format!("::std::path::PathBuf::from({text:?})")),
+                    _ => None,
+                },
+                Fixed::Bool(_) | Fixed::Number(..) => scalar(fixed),
+            },
+            syn::PathArguments::AngleBracketed(args) if !bare => {
+                let inner = written_type(sole_type_argument(args)?);
+                let name = segment.ident.to_string();
+                match (name.as_str(), fixed, plain_ident(inner).as_deref()) {
+                    ("Box" | "Rc" | "Arc", Fixed::Text(text), Some("str")) => {
+                        Some(format!("::core::convert::Into::into({text:?})"))
+                    }
+                    ("Box" | "Rc" | "Arc", Fixed::Text(text), Some("Path")) => Some(format!(
+                        "::core::convert::Into::into(::std::path::PathBuf::from({text:?}))"
+                    )),
+                    ("Cow", Fixed::Text(text), Some("str")) => {
+                        Some(format!("::std::borrow::Cow::Borrowed({text:?})"))
+                    }
+                    (_, _, Some("Path")) => None,
+                    ("Box" | "Rc" | "Arc", _, _) => Some(format!(
+                        "::core::convert::Into::into({})",
+                        held_fill(inner, fixed, true)?
+                    )),
+                    ("Cow", _, _) => Some(format!(
+                        "::std::borrow::Cow::Owned({})",
+                        held_fill(inner, fixed, true)?
+                    )),
+                    _ => None,
+                }
+            }
+            syn::PathArguments::AngleBracketed(_) | syn::PathArguments::Parenthesized(_) => None,
+        };
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests;
+
+/// A boolean or a number as Rust writes it, which holds its own type.
+fn scalar(fixed: &Fixed) -> Option<String> {
+    match fixed {
+        Fixed::Bool(value) => Some(value.to_string()),
+        Fixed::Number(digits, rust) => Some(format!("{digits}{rust}")),
+        Fixed::Text(_) => None,
+    }
+}
+
+/// The name of `ty` where it is a path of one segment with no arguments.
+fn plain_ident(ty: &syn::Type) -> Option<String> {
+    let syn::Type::Path(path) = written_type(ty) else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    matches!(segment.arguments, syn::PathArguments::None).then(|| segment.ident.to_string())
 }
 
 /// The tokens `text` spells, for a name or a type held as text.

@@ -3,6 +3,10 @@
 
 #![cfg(feature = "kotlin")]
 
+use alloc::borrow::Cow;
+use alloc::rc::Rc;
+use alloc::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -49,6 +53,32 @@ pub struct DockStamp;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DockWrapped(pub String);
 
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DockHeld {
+    #[model_schema_prop(literal = "dock")]
+    pub boxed: Box<str>,
+    #[model_schema_prop(literal = 3)]
+    pub counted: Rc<u32>,
+    #[model_schema_prop(literal = "dock")]
+    pub cow: Cow<'static, str>,
+    pub label: String,
+    #[model_schema_prop(literal = true)]
+    pub shared: Arc<bool>,
+}
+
+#[model_schema()]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DockStatic {
+    #[model_schema_prop(literal = true)]
+    pub flag: &'static bool,
+    pub label: String,
+    #[model_schema_prop(literal = 3)]
+    pub number: &'static u32,
+    #[model_schema_prop(literal = "dock")]
+    pub text: &'static str,
+}
+
 fn module(main: &str) -> String {
     [
         KOTLIN_IMPORTS.to_owned(),
@@ -57,6 +87,8 @@ fn module(main: &str) -> String {
         dock_of_kotlin::kotlin_definition(),
         dock_stamp_kotlin::kotlin_definition(),
         dock_wrapped_kotlin::kotlin_definition(),
+        dock_held_kotlin::kotlin_definition(),
+        dock_static_kotlin::kotlin_definition(),
         main.to_owned(),
     ]
     .join("\n\n")
@@ -71,6 +103,8 @@ fun main() {
     println(Json.encodeToString(DockOf.of(of = "x")))
     println(Json.encodeToString(DockStamp.of()))
     println(Json.encodeToString(DockWrapped.of("w")))
+    println(Json.encodeToString(DockHeld.of(label = "x")))
+    println(Json.encodeToString(DockStatic.of(label = "x")))
     try {
         DockTime.of(24u, 0u)
         println("built")
@@ -91,7 +125,7 @@ fun main() {
     assert_eq!(
         printed,
         format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
             serde_json::to_string(&DockTimeDraft {
                 hour: 12,
                 minute: 0
@@ -107,6 +141,21 @@ fun main() {
             serde_json::to_string(&DockOfDraft { of: "x".to_owned() }).unwrap(),
             serde_json::to_string(&DockStampDraft).unwrap(),
             serde_json::to_string(&DockWrappedDraft("w".to_owned())).unwrap(),
+            serde_json::to_string(&DockHeldDraft {
+                boxed: "dock".into(),
+                counted: Rc::new(3),
+                cow: Cow::Borrowed("dock"),
+                label: "x".to_owned(),
+                shared: Arc::new(true),
+            })
+            .unwrap(),
+            serde_json::to_string(&DockStaticDraft {
+                flag: &true,
+                label: "x".to_owned(),
+                number: &3,
+                text: "dock",
+            })
+            .unwrap(),
             refused.join("; "),
         )
     );

@@ -2,10 +2,16 @@
 
 #![cfg(feature = "serde")]
 
+extern crate alloc;
+
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::rc::Rc;
+    use alloc::sync::Arc;
     use core::marker::PhantomData;
     use serde::{Deserialize, Serialize};
+    use std::path::Path;
     use tixschema::model_schema;
 
     #[model_schema()]
@@ -53,6 +59,61 @@ mod tests {
         #[model_schema_prop(literal = "mark")]
         #[serde(skip_serializing_if = "Option::is_none", default)]
         pub mark: Option<String>,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Marker {
+        #[model_schema_prop(literal = "fixed")]
+        pub kind: Box<str>,
+        pub label: String,
+        #[model_schema_prop(literal = true)]
+        pub on: Arc<bool>,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+    pub struct Pointers {
+        #[model_schema_prop(literal = "shared")]
+        pub arc_text: Arc<str>,
+        #[model_schema_prop(literal = 7)]
+        pub boxed_number: Box<u8>,
+        #[model_schema_prop(literal = "path")]
+        pub boxed_path: Box<Path>,
+        #[model_schema_prop(literal = "boxed")]
+        pub boxed_text: Box<str>,
+        #[model_schema_prop(literal = false)]
+        pub cow_flag: Cow<'static, bool>,
+        #[model_schema_prop(literal = "cow")]
+        pub cow_text: Cow<'static, str>,
+        pub label: String,
+        #[model_schema_prop(literal = 1.5)]
+        pub rc_float: Rc<f64>,
+        #[model_schema_prop(literal = "counted")]
+        pub rc_text: Rc<str>,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+    pub struct Borrowing {
+        #[model_schema_prop(literal = true)]
+        pub flag: &'static bool,
+        pub label: String,
+        #[model_schema_prop(literal = 9)]
+        pub number: &'static u16,
+        #[model_schema_prop(literal = "plain")]
+        pub text: &'static str,
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    pub struct Listed {
+        #[model_schema_prop(literal = "member")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pub boxed_option: Option<Box<str>>,
+        #[model_schema_prop(literal = "item")]
+        pub items: Vec<String>,
     }
 
     #[model_schema()]
@@ -245,6 +306,44 @@ mod tests {
         assert!((value.ratio - 1.5).abs() < f64::EPSILON);
         assert_eq!(value.kind, "kind");
         assert_eq!(value.label, "x");
+    }
+
+    #[test]
+    fn a_literal_behind_a_pointer_is_written_and_is_no_parameter() {
+        let marker = Marker::new("first".to_owned()).unwrap();
+        assert_eq!(&*marker.kind, "fixed");
+        assert!(*marker.on);
+        assert_eq!(marker.label, "first");
+    }
+
+    #[test]
+    fn every_pointer_and_cow_a_literal_sits_behind_is_filled() {
+        let value = Pointers::new("x".to_owned()).unwrap();
+        assert_eq!(&*value.boxed_text, "boxed");
+        assert_eq!(&*value.rc_text, "counted");
+        assert_eq!(&*value.arc_text, "shared");
+        assert_eq!(value.cow_text, "cow");
+        assert_eq!(&*value.boxed_path, Path::new("path"));
+        assert_eq!(*value.boxed_number, 7);
+        assert!((*value.rc_float - 1.5).abs() < f64::EPSILON);
+        assert!(!*value.cow_flag);
+    }
+
+    #[test]
+    fn a_literal_on_a_static_reference_is_written_and_is_no_parameter() {
+        let value = Borrowing::new("x".to_owned()).unwrap();
+        assert_eq!(value.text, "plain");
+        assert!(*value.flag);
+        assert_eq!(*value.number, 9);
+    }
+
+    #[test]
+    fn a_literal_on_a_list_or_an_optional_pointer_stays_a_parameter() {
+        let value = Listed::new(None, vec!["item".to_owned()]).unwrap();
+        assert_eq!(value.items, ["item"]);
+        Listed::new(None, vec!["other".to_owned()]).unwrap_err();
+        let held = Listed::new(Some("member".into()), Vec::new()).unwrap();
+        assert_eq!(held.boxed_option.as_deref(), Some("member"));
     }
 
     #[test]
