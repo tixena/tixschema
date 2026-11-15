@@ -104,10 +104,12 @@ The Swift read of a strict type refuses a key no member reads, as the Rust, Zod,
 named after the valid type the item is published as (`refusals::refusal_name`,
 `src/features/refusals.rs`). `swift_schema_dispatch` makes it the refusal of the item being
 emitted (`SWIFT_REFUSAL`), and `swift_module_tokens` declares the struct (`refusal_struct`) at the
-head of the type's text where the text throws it, recording it in `SWIFT_REFUSALS` under the Rust
-ident. An alias is a `typealias`, so `alias_swift_tokens` records the refusals of what it names, and
-`swift_refusals_of` answers what a read of a `FieldDef` throws, through a list, a set, a map, an
-option, a tuple and a `Result`, for `swift_ws_client()`. The value a wrapper reads beside the keys
+head of the type's text, a type with no rule included, so a service names the struct of any type it
+reads by the type's name, wherever the type is declared. An alias of one declared type declares a
+`typealias` of that type's refusal (`alias_refusal`), and `swift_refusals_of` answers the structs a
+read of a `FieldDef` names, through a list, a set, a map, an option, a tuple and a `Result`, for
+`swift_ws_client()`. A judged `init(from:)` rebuilds a refusal a value it holds throws as its own
+(`read::judged`), so the read of a message throws the message's refusal alone. The value a wrapper reads beside the keys
 its holder took is judged as its own read judges it, and refused with its type's refusal
 (`refusal_of`). `swift_ws_client()` lists the refusals its reads throw in `{prefix}WsRefusal`, reads
 `issues` off them through `{prefix}WsUnwrapped`, which drops the key of the reply's envelope, and

@@ -86,6 +86,9 @@ flattened_members_apart = { path = "tests/crates_apart/flattened_members_apart" 
 # A crate apart that declares the faults a service names, which the expansion of the service has
 # never seen.
 fault_variants_apart = { path = "tests/crates_apart/fault_variants_apart" }
+# A crate apart that declares a message a service names, which the expansion of the service has
+# never seen.
+refusal_order_apart = { path = "tests/crates_apart/refusal_order_apart" }
 # A crate apart that lists no `serde_json`, whose model types read over any deserializer.
 no_serde_json_apart = { path = "tests/crates_apart/no_serde_json_apart" }
 # The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert

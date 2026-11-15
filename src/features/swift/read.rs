@@ -391,7 +391,9 @@ impl Source {
 /// each issue placed under the coding path the value was read at.
 pub(super) fn judged(listed: &str, refused: &str) -> String {
     format!(
-        "public init(from decoder: Decoder) throws {{ try self.init(swiftSchemaUnjudged: decoder); \
+        "public init(from decoder: Decoder) throws {{ do {{ try self.init(swiftSchemaUnjudged: decoder) }} \
+         catch {{ guard let held = Mirror(reflecting: error).children.first(where: {{ $0.label == \"issues\" }})?.value as? \
+         [String] else {{ throw error }}; throw {refused}(issues: held) }}; \
          let violations = {listed}(); if !violations.isEmpty {{ throw {refused}(issues: {}) }} }}",
         super::placed("decoder.codingPath", "violations")
     )

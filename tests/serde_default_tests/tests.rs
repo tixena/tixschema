@@ -21,7 +21,7 @@ use crate::dart_integer_read::integer_read;
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
-use crate::kotlin_thrown::THROWN;
+use crate::kotlin_thrown::{THROWN, held_refusal};
 
 /// The write of `Gangway`'s `u32`, held to its range.
 #[cfg(feature = "dart")]
@@ -539,7 +539,7 @@ fn a_type_with_no_default_writes_the_dart_text_it_wrote() {
              List<String>) {{ for (var at = 0; at < listed.length; at += 1) {{ final said = \
              listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; \
              listed[at] = end > 0 ? \"'$key.${{said.substring(1, end)}}'${{said.substring(end + \
-             1)}}\" : \"'$key': $said\"; }} }} }} rethrow; }} }} Map<String, dynamic> toJson() => \
+             1)}}\" : \"'$key': $said\"; }} throw GangwayRefusal(listed); }} }} rethrow; }} }} Map<String, dynamic> toJson() => \
              {{ 'label': label,'width': {WIDTH_WRITTEN}, }}; List<String> validationIssues() => \
              const []; Gangway validate() {{ final found = validationIssues(); if \
              (found.isNotEmpty) throw GangwayRefusal(found); return Gangway._(this); }} Gangway \
@@ -586,7 +586,7 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
              DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
              [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
              self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
-             decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let \
+             decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw GangwayRefusal(issues: held) }; let \
              violations = validationIssues(); if !violations.isEmpty { throw \
              GangwayRefusal(issues: { () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { \
              $0.intValue.map(String.init) ?? $0.stringValue }).joined(separator: \".\"); return \
@@ -637,11 +637,13 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          refused.cause) }) } object GangwaySerializer : KSerializer<Gangway>, () -> \
          KSerializer<Gangway> { ",
         THROWN,
+        &held_refusal("GangwayRefusal"),
         "override fun invoke(): KSerializer<Gangway> = GangwayUnjudged; \
          override val descriptor: SerialDescriptor = GangwayUnjudged.descriptor; override fun \
          serialize(encoder: Encoder, value: Gangway) = GangwayUnjudged.serialize(encoder, value); \
-         override fun deserialize(decoder: Decoder): Gangway { val read = \
-         GangwayUnjudged.deserialize(decoder); val violations = read.validationIssues(); if \
+         override fun deserialize(decoder: Decoder): Gangway { val read = try { \
+         GangwayUnjudged.deserialize(decoder) } catch (refused: SerializationException) { throw \
+         kotlinSchemaHeld(refused) }; val violations = read.validationIssues(); if \
          (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, GangwayRefusal(violations)); return read } }",
     ].concat()
     );

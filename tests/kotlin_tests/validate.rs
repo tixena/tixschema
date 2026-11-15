@@ -536,7 +536,7 @@ fn every_shape_carries_validate() {
         (
             super::tests::renumbered(&widget_kotlin::kotlin_definition()),
             format!(
-                "{} {} data class RenamedWidgetDraft(val label: String) {{ {NO_ISSUES} {} }} {} typealias \
+                "{} typealias WidgetRefusal = RenamedWidgetRefusal; {} data class RenamedWidgetDraft(val label: String) {{ {NO_ISSUES} {} }} {} typealias \
                  Widget = RenamedWidget;",
                 refusal("RenamedWidget"),
                 kept_draft("RenamedWidget"),

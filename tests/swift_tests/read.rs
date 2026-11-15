@@ -35,8 +35,10 @@ const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var stringV
                        stringValue }; init?(intValue: Int) { nil } }";
 
 /// What every judged read opens with, whatever it lists the broken rules with.
-const JUDGED_OPENS: &str =
-    "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ";
+const JUDGED_OPENS: &str = "public init(from decoder: Decoder) throws { do { try \
+    self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: \
+    error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw \
+    error }; throw ";
 
 /// What opens the read a wrapper of a map's keys makes of the values it holds unjudged.
 const UNJUDGED_IN_A_WRAPPER: &str = concat!(
@@ -178,8 +180,8 @@ pub struct Jaws {
 /// then `validationIssues()` on the value read.
 fn judged(named: &str) -> String {
     format!(
-        "{JUDGED_OPENS}let violations = validationIssues(); if !violations.isEmpty {{ throw \
-         {named}Refusal(issues: {PLACED}) }} }}"
+        "{JUDGED_OPENS}{named}Refusal(issues: held) }}; let violations = validationIssues(); if \
+         !violations.isEmpty {{ throw {named}Refusal(issues: {PLACED}) }} }}"
     )
 }
 
@@ -187,8 +189,8 @@ fn judged(named: &str) -> String {
 /// read, then `validate()` on the value read.
 fn judged_by_validate(named: &str) -> String {
     format!(
-        "{JUDGED_OPENS}let violations = validate(); if !violations.isEmpty {{ throw \
-         {named}Refusal(issues: {PLACED}) }} }}"
+        "{JUDGED_OPENS}{named}Refusal(issues: held) }}; let violations = validate(); if \
+         !violations.isEmpty {{ throw {named}Refusal(issues: {PLACED}) }} }}"
     )
 }
 
@@ -485,7 +487,7 @@ fn an_absent_key_and_a_null_of_an_optional_and_a_nullable_member_are_read_as_nil
             "self.flattened = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
              taken + [\"anchorNote\", \"heldParcel\"]) } catch let refused as DecodingError { \
              throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; if \
-             container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) { self.heldParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .heldParcel)) } else { self.heldParcel = nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"anchorNote\", \"reason\", \"heldParcel\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+             container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) { self.heldParcel = try Parcel(swiftSchemaUnjudged: container.superDecoder(forKey: .heldParcel)) } else { self.heldParcel = nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"anchorNote\", \"reason\", \"heldParcel\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw AnchorageRefusal(issues: held) }; ",
             concat!(
                 "if container.contains(.heldParcel), try !container.decodeNil(forKey: .heldParcel) ",
                 "{ self.heldParcel = try Parcel(swiftSchemaUnjudged: ",
@@ -591,7 +593,7 @@ fn a_flattened_struct_is_read_from_its_holders_whole_object() {
             "self.parcel = try Parcel(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + \
              [\"quay\"]) } catch let refused as DecodingError { throw \
              Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; self.quay = try \
-             container.decode(String.self, forKey: .quay) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"fragileItemCodes\", \"itemCodeList\", \"label\", \"quay\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+             container.decode(String.self, forKey: .quay) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"fragileItemCodes\", \"itemCodeList\", \"label\", \"quay\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw BerthedRefusal(issues: held) }; ",
         ],
     );
     holds(
@@ -600,7 +602,7 @@ fn a_flattened_struct_is_read_from_its_holders_whole_object() {
             "self.extra = try FlattenedExtra(swiftSchemaUnjudged: decoder, swiftSchemaWithout: \
              taken + [\"id\"]) } catch let refused as DecodingError { throw \
              Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; self.id = try \
-             container.decode(String.self, forKey: .id) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"reason\", \"id\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+             container.decode(String.self, forKey: .id) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"reason\", \"id\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw WithFlattenRefusal(issues: held) }; ",
         ],
     );
 }

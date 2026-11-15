@@ -640,7 +640,7 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
          [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
          self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
-         decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = \
+         decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw ReservedMembersRefusal(issues: held) }; let violations = \
          validationIssues(); if !violations.isEmpty { throw ReservedMembersRefusal(issues: { () \
          -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? \
          $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \

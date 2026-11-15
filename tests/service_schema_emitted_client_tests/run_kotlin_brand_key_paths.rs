@@ -224,25 +224,25 @@ fn rows() -> Vec<Row> {
         refused_key::<Keyring>(
             "Keyring",
             r#"{"pitches":{"3":1},"tones":{"mute":1}}"#,
-            "KeyedToneRefusal: ['tones.mute': mute is silent]",
+            "KeyringRefusal: ['tones.mute': mute is silent]",
         ),
         row::<Keyring>("Keyring", r#"{"pitches":{"3":1},"tones":{"ring":1}}"#),
         refused_key::<Keyring>(
             "Keyring",
             r#"{"pitches":{"13":1},"tones":{"low":2}}"#,
-            "KeyedPitchRefusal: ['pitches.13': 13 is outside of the scale]",
+            "KeyringRefusal: ['pitches.13': 13 is outside of the scale]",
         ),
         row::<Nested>("Nested", r#"{"outer":{"ring":1}}"#),
         row::<Nested>("Nested", r#"{"outer":{"ring":-1}}"#),
         refused_key::<Nested>(
             "Nested",
             r#"{"outer":{"soft":1}}"#,
-            "OuterToneRefusal: ['outer.soft': soft is quiet]",
+            "NestedRefusal: ['outer.soft': soft is quiet]",
         ),
         refused_key::<Nested>(
             "Nested",
             r#"{"outer":{"mute":1}}"#,
-            "KeyedToneRefusal: ['outer.mute': mute is silent]",
+            "NestedRefusal: ['outer.mute': mute is silent]",
         ),
     ];
     rows.into_iter().chain(dated_rows()).collect()
@@ -256,7 +256,7 @@ fn dated_rows() -> Vec<Row> {
         refused_key::<Calendar>(
             "Calendar",
             r#"{"days":{"2024-01-06":1}}"#,
-            "KeyedDayRefusal: ['days.2024-01-06': 2024-01-06 is a day of rest]",
+            "CalendarRefusal: ['days.2024-01-06': 2024-01-06 is a day of rest]",
         ),
     ]
 }

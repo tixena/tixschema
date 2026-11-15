@@ -1166,7 +1166,7 @@ fn the_parcel_of_the_documents_is_written_with_its_two_functions() {
             "at: decoder.codingPath, within: decoder).value }; ",
             "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ",
             "try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
-            "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
+            "public init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw ParcelRefusal(issues: held) }; ",
         ),
     ] {
         assert!(swift.contains(written), "{written} is not in: {swift}");

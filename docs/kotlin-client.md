@@ -13,12 +13,15 @@ List<String>` and a `validationIssues()` that answers the same (`Rules::written_
 `valid::drafted`) keeps its one class. `docs/guide/kotlin.md`'s "`validate()` in the Kotlin client"
 section is the consumer's view; this is what a change has to keep.
 
-- **Every type that judges a value declares its refusal.** `{Name}Refusal`, named after the valid
+- **Every type declares its refusal.** `{Name}Refusal`, named after the valid
   class (`refusals::refusal_name`), is a `SerializationException` whose cause marks it as a
   judgement (`refusal_class`); `entered` and `alias_kotlin_tokens` make it the refusal of the item
   being emitted (`KOTLIN_REFUSAL`), and `kotlin_module_tokens` declares it at the head of the
-  type's text where the text throws it, recording it in `KOTLIN_REFUSALS`. An alias is a
-  `typealias` and records the refusals of what it names. `run_kotlin_refusal_classes.rs` compiles
+  type's text, a type with no rule included, so a service names the class of any type it reads by
+  the type's name, wherever the type is declared. An alias of one declared type is a `typealias` of
+  that type's refusal (`alias_refusal`). A judged serializer rebuilds a refusal a value it holds
+  throws as its own (`kotlinSchemaHeld`), so the read of a message throws the message's refusal
+  alone. `run_kotlin_refusal_classes.rs` compiles
   a struct, an enum, a generic type, a brand and an alias in one file and holds each refusal's
   `issues` to the Rust `validate()` of the same value.
 - **A model is a draft and a valid class.** `{Name}Draft` is the declared class, with its own
@@ -567,8 +570,8 @@ the consumer's view; this is what a change has to keep.
   and drops the place it states, keeping the key it names as unknown or missing, so the holder's
   `kotlinSchemaAt` rebases it onto the holder, as serde places it. The `ws_rpc` attachment and client read the field of the
   problem the fault lists off the path (`kotlin_ws_client::refused_at_fn`), and list each issue of
-  a refusal of a type the service reads apart (`WsRefusal` names each class `kotlin_read_refusals`
-  finds through `kotlin_refusals_of`, and `WsRefusedIssues` cuts each issue at its field, both
+  a refusal of a type the service reads apart (`WsRefusal` names the class of each type an
+  operation's signature names, `kotlin_read_refusals` finding them through `kotlin_refusals_of`, and `WsRefusedIssues` cuts each issue at its field, both
   written by `kotlin_ws_client::refused_fn`); `run_carillon.rs` holds each shape to the field
   the Rust dispatcher names.
 - **An optional flattened map is `null` where serde reads `None`** (`flatten_map_field_plan`):

@@ -528,7 +528,7 @@ Manifest, four broken parcels: refused (ManifestRefusal)
     '1.parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
     '1.parcelsByDock.north.label': too short: minimum length is 1, got 0
     '1.spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-Crate<Parcel>, the second code broken: refused (ParcelRefusal)
+Crate<Parcel>, the second code broken: refused (CrateRefusal)
     'codes.1.fragileItemCodes.1': y is outside of itemCodeList
 Manifest with no spareParcel key, all good: read
 "
@@ -848,7 +848,7 @@ fn a_model_its_holder_does_not_walk_judges_itself() {
         "\
 Waybill: refused (WaybillRefusal)
     'shortCode': too short: minimum length is 2, got 1
-SealedCode: refused (CodeRefusal)
+SealedCode: refused (SealedCodeRefusal)
     too short: minimum length is 2, got 1
 "
     );

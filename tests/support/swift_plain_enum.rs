@@ -48,7 +48,7 @@ pub fn plain_enum_read(named: &str) -> String {
 pub fn plain_enum_reads(named: &str) -> String {
     format!(
         "{ANY_KEY}; public init(swiftSchemaUnjudged decoder: Decoder) throws {{ {} }}; public \
-         init(from decoder: Decoder) throws {{ try self.init(swiftSchemaUnjudged: decoder); let \
+         init(from decoder: Decoder) throws {{ do {{ try self.init(swiftSchemaUnjudged: decoder) }} catch {{ guard let held = Mirror(reflecting: error).children.first(where: {{ $0.label == \"issues\" }})?.value as? [String] else {{ throw error }}; throw {named}Refusal(issues: held) }}; let \
          violations = validate(); if !violations.isEmpty {{ throw {named}Refusal(issues: \
          {PLACED}) }} }};",
         plain_enum_read(named)

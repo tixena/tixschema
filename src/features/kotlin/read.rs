@@ -547,14 +547,31 @@ fn judging(
             .join("; ");
         format!("when (read) {{ {arms}; else -> read.validate() }}")
     };
+    let refusal = super::refusal();
     format!(
-        "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}{THROWN}override fun \
+        "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}{THROWN}{}override fun \
          invoke(): KSerializer<{own}> = {unjudged}; override val descriptor: SerialDescriptor = \
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
-         {{ val read = {unjudged}.deserialize(decoder); val violations = {validated}; if \
-         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {}); return read }} }}",
+         {{ val read = try {{ {unjudged}.deserialize(decoder) }} catch (refused: \
+         SerializationException) {{ throw kotlinSchemaHeld(refused) }}; val violations = \
+         {validated}; if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {}); return \
+         read }} }}",
+        held_refusal(&refusal),
         refused()
+    )
+}
+
+/// The private function a judged serializer holds that answers a refusal a value it holds threw as
+/// the refusal of `refusal`, the type being read, with the issues it lists and the mark that
+/// they are placed.
+pub fn held_refusal(refusal: &str) -> String {
+    format!(
+        "private fun kotlinSchemaHeld(refused: SerializationException): SerializationException {{ \
+         if (refused.cause?.message != \"validate()\") return refused; val issues = \
+         (refused.javaClass.getMethod(\"getIssues\").invoke(refused) as List<*>).map {{ said -> \
+         said as String }}; val rebuilt = {refusal}(issues); refused.suppressed.forEach {{ marked -> \
+         rebuilt.addSuppressed(marked) }}; return rebuilt }}; "
     )
 }
 

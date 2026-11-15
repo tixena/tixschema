@@ -1,20 +1,6 @@
 //! The statements the Dart read of a strict class opens with, and the helper it reads each member
 //! with.
 
-/// The helper a class reads each member under its key with, which puts the key ahead of the path
-/// a refusal carries.
-pub const READ_AT: &str = "static Read _readAt<Read>(Map<String, dynamic>? object, Object key, \
-     Read Function() read) { try { return read(); } catch (refused) { if (object != null && \
-     !object.containsKey(key)) throw FormatException('missing field `$key`', <Object>[key]); if \
-     (refused is TypeError) throw FormatException('$refused', <Object>[key]); if (refused is \
-     FormatException) { final at = refused.source; throw FormatException(refused.message, \
-     <Object>[key, if (at is List<Object>) ...at]); } if (refused is Exception) { Object? listed; \
-     try { listed = (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if \
-     (listed is List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = \
-     listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = \
-     end > 0 ? \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': \
-     $said\"; } } } rethrow; } }";
-
 /// The helper a class reads the members it takes from content its holder buffers with, which words
 /// a refusal of the shape of an externally tagged enum's value as a value of the wrong kind.
 pub const READ_BUFFERED: &str = "static Read _readBuffered<Read>(Read Function() read) { try { \
@@ -28,6 +14,24 @@ pub const READ_FLATTENED: &str = "static Read _readFlattened<Read>(Read Function
      List<Object> || at.isEmpty) rethrow; final message = refused.message; throw \
      FormatException(message, <Object>[if (message.startsWith('missing field ') || \
      message.startsWith('Unknown key of a ')) at.last]); } }";
+
+/// The helper a class reads each member under its key with, which puts the key ahead of the path
+/// a refusal carries and rebuilds a refusal a member's read throws as the `refusal` of the class.
+pub fn read_at(refusal: &str) -> String {
+    format!(
+        "static Read _readAt<Read>(Map<String, dynamic>? object, Object key, \
+         Read Function() read) {{ try {{ return read(); }} catch (refused) {{ if (object != null && \
+         !object.containsKey(key)) throw FormatException('missing field `$key`', <Object>[key]); if \
+         (refused is TypeError) throw FormatException('$refused', <Object>[key]); if (refused is \
+         FormatException) {{ final at = refused.source; throw FormatException(refused.message, \
+         <Object>[key, if (at is List<Object>) ...at]); }} if (refused is Exception) {{ Object? listed; \
+         try {{ listed = (refused as dynamic).issues; }} on NoSuchMethodError {{ listed = null; }} if \
+         (listed is List<String>) {{ for (var at = 0; at < listed.length; at += 1) {{ final said = \
+         listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = \
+         end > 0 ? \"'$key.${{said.substring(1, end)}}'${{said.substring(end + 1)}}\" : \"'$key': \
+         $said\"; }} throw {refusal}(listed); }} }} rethrow; }} }}"
+    )
+}
 
 /// The statements that refuse a key of `json` that is none of `keys`, in the read of `class`.
 pub fn refusing(class: &str, keys: &[&str]) -> String {
@@ -61,7 +65,9 @@ pub fn plain_enum_read(named: &str, json: &str, arms: &str) -> String {
 /// holds the two reads.
 pub fn plain_enum_text(named: &str, members: &str, reads: &str) -> String {
     format!(
-        "enum {named} {{ {members}; const {named}(this.wireValue); final String wireValue; {reads} \
+        "class {named}Refusal implements Exception {{ const {named}Refusal(this.issues); final \
+         List<String> issues; @override String toString() => '{named}Refusal: $issues'; }} enum \
+         {named} {{ {members}; const {named}(this.wireValue); final String wireValue; {reads} \
          String toJson() => wireValue; List<String> validationIssues() => const []; static \
          Object $thrown(Object thrown) => thrown; }}"
     )

@@ -14,7 +14,7 @@ try { shipment.draft.copy(parcelCount = 200u).validate() } catch (refusal: Shipm
 
 #### The refusal of a Kotlin type
 
-Every type whose text has `validate()`, `of(..)` or a judged serializer declares its refusal in that text, `{Name}Refusal`, named after the valid class: `ShipmentRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`. An alias is a `typealias` of what it names, and a read of it throws the refusal of that type. Nothing is shared between two types, so the file the types are joined into declares each refusal once, and you add nothing to it:
+Every type declares its refusal in its text, one with no rule included, `{Name}Refusal`, named after the valid class: `ShipmentRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`. An alias is a `typealias` of what it names, and a read of it throws the refusal of that type. Nothing is shared between two types, so the file the types are joined into declares each refusal once, and you add nothing to it:
 
 ```kotlin
 class ShipmentRefusal(val issues: List<String>) : SerializationException("$issues", IllegalArgumentException("validate()"))
@@ -77,11 +77,12 @@ private object ParcelUnjudged : KSerializer<Parcel> {
 }
 object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   @OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
+  private fun kotlinSchemaHeld(refused: SerializationException): SerializationException { if (refused.cause?.message != "validate()") return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = ParcelRefusal(issues); refused.suppressed.forEach { marked -> rebuilt.addSuppressed(marked) }; return rebuilt };
   override fun invoke(): KSerializer<Parcel> = ParcelUnjudged;
   override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Parcel {
-    val read = ParcelUnjudged.deserialize(decoder);
+    val read = try { ParcelUnjudged.deserialize(decoder) } catch (refused: SerializationException) { throw kotlinSchemaHeld(refused) };
     val violations = read.validationIssues();
     if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, ParcelRefusal(violations));
     return read
@@ -136,11 +137,12 @@ private object ManifestUnjudged : KSerializer<Manifest> {
 }
 object ManifestSerializer : KSerializer<Manifest>, () -> KSerializer<Manifest> {
   @OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
+  private fun kotlinSchemaHeld(refused: SerializationException): SerializationException { if (refused.cause?.message != "validate()") return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = ManifestRefusal(issues); refused.suppressed.forEach { marked -> rebuilt.addSuppressed(marked) }; return rebuilt };
   override fun invoke(): KSerializer<Manifest> = ManifestUnjudged;
   override val descriptor: SerialDescriptor = ManifestUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Manifest) = ManifestUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Manifest {
-    val read = ManifestUnjudged.deserialize(decoder);
+    val read = try { ManifestUnjudged.deserialize(decoder) } catch (refused: SerializationException) { throw kotlinSchemaHeld(refused) };
     val violations = read.validationIssues();
     if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, ManifestRefusal(violations));
     return read
@@ -483,11 +485,12 @@ private object ParcelUnjudged : KSerializer<Parcel> {
 }
 object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
   @OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
+  private fun kotlinSchemaHeld(refused: SerializationException): SerializationException { if (refused.cause?.message != "validate()") return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = ParcelRefusal(issues); refused.suppressed.forEach { marked -> rebuilt.addSuppressed(marked) }; return rebuilt };
   override fun invoke(): KSerializer<Parcel> = ParcelUnjudged;
   override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Parcel {
-    val read = ParcelUnjudged.deserialize(decoder);
+    val read = try { ParcelUnjudged.deserialize(decoder) } catch (refused: SerializationException) { throw kotlinSchemaHeld(refused) };
     val violations = read.validationIssues();
     if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, ParcelRefusal(violations));
     return read

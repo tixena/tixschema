@@ -9,6 +9,7 @@ use crate::features::dart::{
     dart_json_decode, dart_json_encode, dart_named_class_of, dart_refusals_of, dart_typename,
     quoted, read_at_function, reading_at,
 };
+use crate::features::refusals;
 use crate::features::refusals::refusal_name;
 use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -91,7 +92,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         published.push(written_fn(&fn_prefix));
     }
     if helper_called {
-        published.push(read_at_function(&helper));
+        published.push(read_at_function(&helper, None));
     }
     published
 }
@@ -181,7 +182,12 @@ pub(super) fn dart_read_refusals(service: &ServiceDef) -> Vec<String> {
             let named: Type = syn::parse_quote! { #ident };
             refusal_name(&dart_type_of(&named))
         },
-        &|ty| dart_refusals_of(&get_field_def("value", ty, "")),
+        &|ty| {
+            dart_refusals_of(
+                &get_field_def("value", ty, ""),
+                &refusals::service_types(&service.ident.to_string()),
+            )
+        },
     )
 }
 

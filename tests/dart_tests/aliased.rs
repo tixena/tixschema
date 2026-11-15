@@ -9,7 +9,7 @@ use super::aliased_models::{
 };
 use super::flattened_aliased_models::riding_dart;
 use super::unknown_keys::{
-    READ_AT, plain_enum_corrected_reads, plain_enum_read, plain_enum_reads, plain_enum_text,
+    plain_enum_corrected_reads, plain_enum_read, plain_enum_reads, plain_enum_text, read_at,
 };
 
 /// What copies a payload's entries into `named` with the key `name` read as `label`, and refuses
@@ -61,8 +61,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
                  {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'label', 'name'}}.contains(key)) throw \
                  FormatException('Unknown key of a SurgingBerth: $key', <Object>[key]); }} return \
                  SurgingBerth(label: _readAt(named, 'label', () => named['label'] as String),); \
-                 }} {READ_AT} @override dynamic toJson() => {{ 'Berth': {{ \
-                 'label': label, }} }};"
+                 }} {read_at} @override dynamic toJson() => {{ 'Berth': {{ \
+                 'label': label, }} }};",
+                read_at = read_at("SurgingRefusal")
             ),
             "@override dynamic toJson() => 'Calm';".to_owned(),
             "@override dynamic toJson() => { 'Held': value };".to_owned(),
@@ -83,8 +84,9 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
                  {NAME_AS_LABEL} for (final key in named.keys) {{ if (!const <String>{{'kind', 'label', 'name'}}.contains(key)) throw \
                  FormatException('Unknown key of a CareeningBerth: $key', <Object>[key]); }} \
                  return CareeningBerth(label: _readAt(named, 'label', () => named['label'] as \
-                 String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'kind': \
-                 'Berth','label': label, }};"
+                 String),); }} {read_at} Map<String, dynamic> toJson() => {{ 'kind': \
+                 'Berth','label': label, }};",
+                read_at = read_at("CareeningRefusal")
             ),
             "@override dynamic toJson() => { 'kind': 'Calm' };".to_owned(),
         ],
@@ -177,8 +179,9 @@ fn a_struct_reads_a_member_under_each_alias() {
              FormatException('Unknown key of a Hawsing: $key', <Object>[key]); }} return \
              HawsingDraft(label: _readAt(named, 'label', () => named['label'] as String),note: \
              _readAt(named, 'note', () => (named['note'] == null ? null : named['note'] as \
-             String)),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'label': label,if (note \
-             != null) 'note': (note == null ? null : note), }};"
+             String)),); }} {read_at} Map<String, dynamic> toJson() => {{ 'label': label,if (note \
+             != null) 'note': (note == null ? null : note), }};",
+            read_at = read_at("HawsingRefusal")
         )],
     );
     holds_each(

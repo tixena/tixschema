@@ -55,7 +55,7 @@ List<String> validationIssues() => [
 
 #### The refusal of a type
 
-Every type whose text has `validate()`, `of(..)` or a judged `fromJson` declares its refusal in that text, `{Name}Refusal`, named after the valid type: `ParcelRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`, and `ParcelsTypeRefusal` for `pub type Parcels = Vec<Parcel>;`, whose class is `ParcelsType`. Nothing is shared between two types, so a file that holds many types declares each refusal once, and you add nothing to it:
+Every type declares its refusal in its text, one with no rule included, `{Name}Refusal`, named after the valid type: `ParcelRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`, and `ParcelsTypeRefusal` for `pub type Parcels = Vec<Parcel>;`, whose class is `ParcelsType`. Nothing is shared between two types, so a file that holds many types declares each refusal once, and you add nothing to it:
 
 ```dart
 class ParcelRefusal implements Exception { const ParcelRefusal(this.issues); final List<String> issues; @override String toString() => 'ParcelRefusal: $issues'; }
@@ -72,7 +72,7 @@ try {
 ```
 
 - **A refusal of shape keeps its `FormatException`**: a missing key, a value of the wrong kind and a key no member reads are refused as before, and a `ParcelRefusal` says a value was read and broke a rule.
-- **A value read below the top is refused at its full path.** A type's refusal a read below the value asked for throws, the key of a map a brand's `check` refuses or a parcel of a `Parcels` among them, keeps its class, and each issue is placed under the steps ahead of it: `'pitches.13': 13 is outside of the scale` for `{"pitches":{"13":1}}`. Each class's `_readAt` reads the `issues` of such a refusal through `dynamic`, as no class is shared to name.
+- **A value read below the top is refused at its full path.** A type's refusal a read below the value asked for throws, the key of a map a brand's `check` refuses or a parcel of a `Parcels` among them, is thrown as the refusal of the type that holds it, and each issue is placed under the steps ahead of it: `'pitches.13': 13 is outside of the scale` for `{"pitches":{"13":1}}`. Each class's `_readAt` reads the `issues` of such a refusal through `dynamic`, as no class is shared to name.
 - **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second class of the name, as one named `{Name}Draft` does: `dart analyze` refuses the file with `The name 'ParcelRefusal' is already defined.` Rename one of them.
 
 #### The functions you write in Dart
@@ -267,7 +267,7 @@ List<Terminal>, the second broken: refused (TerminalRefusal)
     'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
     'parcelsByDock.north.label': too short: minimum length is 1, got 0
     'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-Crate<Parcel>, the second code broken: refused (ParcelRefusal)
+Crate<Parcel>, the second code broken: refused (CrateRefusal)
     'codes.1.fragileItemCodes.1': y is outside of itemCodeList
 Terminal with no spareParcel key, all good: read
 ```
