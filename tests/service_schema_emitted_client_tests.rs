@@ -1782,6 +1782,12 @@ mod run_kotlin_held_models;
 #[path = "service_schema_emitted_client_tests/run_parameter_holders.rs"]
 mod run_parameter_holders;
 
+/// A holder that judges what fills a type parameter of a generic model it holds, for every shape of
+/// the generic model and of what fills it, in Swift as in Rust.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_parameter_shapes.rs"]
+mod run_parameter_shapes;
+
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.
 #[cfg(test)]

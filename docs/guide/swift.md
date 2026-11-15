@@ -193,9 +193,8 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 | Held | Judged |
 |---|---|
 | in a field, an optional, a list, a map's value, a tuple, a flattened member or the payload of a variant, in any nesting of those | once, with its holder, each message at its full path |
-| filling a type parameter of a generic type the holder holds, as `Parcel` in `firstPage: Page<Parcel>`, where the generic type is written above the holder | once, with its holder, each message at its full path |
+| filling a type parameter of a generic type the holder holds, as `Parcel` in `firstPage: Page<Parcel>`, wherever the generic type is declared (above the holder, below it or in another crate) and whatever shape it has (a member that is a tuple, a range, a `Result`, a fixed-size array or a map under a key Swift wraps, a `#[serde(flatten)]`, a `#[serde(default)]`, a box or a `preprocess`, a variant of several slots or one under a tag alone) | once, with its holder, each message at its full path |
 | under one of the holder's type parameters, the holder read by itself | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with a `CrateRefusal` of `'codes.1.fragileItemCodes.1': y is outside of itemCodeList` |
-| filling a type parameter of a generic type declared below the holder or in another crate, of one that names a `preprocess` on itself, or of one a member of which reaches the parameter through a tuple, a range, a `Result`, a fixed-size array, a map under a key Swift wraps, a `#[serde(flatten)]`, a `#[serde(default)]` or a `preprocess` of its own | by itself, as it is read |
 | as the value a brand wraps | by itself, as it is read |
 
 - **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`. A key under `#[serde(default)]` is read as its default where it is absent ([A Key Read as Its Default](models.md#a-key-read-as-its-default-serdedefault)).

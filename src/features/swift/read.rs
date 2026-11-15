@@ -3,6 +3,7 @@
 //! `validate()` runs the `validate()` of what it holds, so the whole value is judged once.
 
 use core::cell::RefCell;
+use core::fmt::Write as _;
 use std::collections::HashMap;
 
 use super::preprocess::{self, Written};
@@ -149,6 +150,18 @@ enum Aliased {
 pub(super) struct Locals {
     listed: usize,
     mapped: usize,
+}
+
+/// What the reads of a type that hands readers have in common with the ones it hands none to.
+struct Opening<'opening> {
+    judged: &'opening str,
+    key: &'opening str,
+    payload: &'opening str,
+    reach: &'opening str,
+    read: &'opening str,
+    refused: Option<String>,
+    taking: bool,
+    twins: &'opening str,
 }
 
 /// What an absent key is to the read of the value under it.
@@ -820,6 +833,53 @@ pub(super) fn readers_declared(parameters: &[String]) -> String {
         .join(", ")
 }
 
+/// The argument that hands `parameters`' readers to a read through the payload of a function:
+/// through the `userInfo` of the decoder that reads the payload, which holds no closure of the
+/// holder's.
+pub(super) fn handing(parameters: &[String]) -> String {
+    if parameters.is_empty() {
+        return String::new();
+    }
+    let readers: Vec<String> = parameters
+        .iter()
+        .map(|parameter| format!("\"{parameter}\": {}", reader_of(parameter)))
+        .collect();
+    format!(", handing: [{}]", readers.join(", "))
+}
+
+/// `expression`, a read of a payload that [`handing`] hands the readers of `parameters` to, written
+/// where each is held as an escaping closure, which a dictionary of `userInfo` stores.
+pub(super) fn escaping(parameters: &[String], expression: &str) -> String {
+    let opened = parameters
+        .iter()
+        .fold(String::new(), |mut opened, parameter| {
+            let reader = reader_of(parameter);
+            let _ = write!(opened, "withoutActuallyEscaping({reader}) {{ {reader} in ");
+            opened
+        });
+    let closed = " }".repeat(parameters.len());
+    format!("try {opened}{expression}{closed}")
+}
+
+/// The statements that bind, in the read a payload is handed to, the readers of `parameters`
+/// [`handing`] hands it.
+pub(super) fn extracted(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .fold(String::new(), |mut bound, parameter| {
+            let _ = write!(
+                bound,
+                "guard let {} = (decoder.userInfo[CodingUserInfoKey(rawValue: \
+             \"swiftSchemaReaders\")!] as? [String: Any])?[\"{parameter}\"] as? \
+             (Decoder) throws -> {parameter} else {{ throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+             decoder.codingPath, debugDescription: \"no reader of {parameter}\")) }}; ",
+                reader_of(parameter)
+            );
+            bound
+        })
+}
+
 /// The readers a read with readers hands on, each by its name.
 pub(super) fn readers_named(parameters: &[String]) -> String {
     parameters
@@ -851,7 +911,7 @@ pub(super) fn held_handing(
 
 /// The reader of each of `parameters` a read with none handed in reads with: the value's own
 /// `Decodable`, which judges it.
-fn readers_by_default(parameters: &[String]) -> String {
+pub(super) fn readers_by_default(parameters: &[String]) -> String {
     parameters
         .iter()
         .map(|parameter| format!("{{ try SwiftSchemaFit<{parameter}>(from: $0).value }}"))
@@ -866,7 +926,8 @@ fn reader_of(parameter: &str) -> String {
 
 /// What a holder hands the read with readers of a generic type for one of its type arguments,
 /// `argument`: the reader of the holder's own parameter where the argument is one, and otherwise a
-/// closure that reads a value of the argument as a member of its type is read.
+/// closure that reads a value of the argument as a member of its type is read, held as the generic
+/// type holds it.
 fn argument_reader(argument: &FieldDef, hint: &str, locals: &mut Locals) -> String {
     if let FieldDefType::TypeParam(parameter) = &argument.field_type
         && argument.array_depth == 0
@@ -875,17 +936,18 @@ fn argument_reader(argument: &FieldDef, hint: &str, locals: &mut Locals) -> Stri
     {
         return reader_of(parameter);
     }
-    if !validate::walks(argument) {
+    let form = super::argument_form(argument, hint);
+    if !validate::walks(form.def()) {
         return format!(
             "{{ try SwiftSchemaFit<{}>(from: $0).value }}",
-            written_type(argument, hint)
+            form.held_type()
         );
     }
     let read = unjudged(
-        argument,
+        form.def(),
         hint,
         &Source::Decoder,
-        &|value| format!("return {value}"),
+        &|value| format!("return {}", form.held(value)),
         locals,
     );
     format!("{{ decoder in {read} }}")
@@ -932,30 +994,18 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
         &super::refusal(),
     );
     let parameters = validate::walked_parameters();
-    if written.own.is_empty() && !parameters.is_empty() {
-        let defaults = readers_by_default(&parameters);
-        let opened = format!(
-            "{key}{payload}{twins}{}",
-            helpers_for(&format!("{read}{payload}{defaults}"))
-        );
-        let (declared, handed) = (readers_declared(&parameters), readers_named(&parameters));
-        if !taking && refused.is_none() {
-            return format!(
-                "{opened}{reach} init(swiftSchemaUnjudged decoder: Decoder, {declared}) throws {{ \
-                 {body} }}; {reach} {UNJUDGED} {{ try self.init(swiftSchemaUnjudged: decoder, \
-                 {defaults}) }}; {judged}; "
-            );
-        }
-        let refusing = refused.unwrap_or_default();
-        return format!(
-            "{opened}{reach} init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
-             [String], {declared}) throws {{ {body} }}; {reach} {TAKING} {{ try \
-             self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken, {defaults}) }}; \
-             {reach} init(swiftSchemaUnjudged decoder: Decoder, {declared}) throws {{ \
-             {refusing}try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: [], \
-             {handed}) }}; {reach} {UNJUDGED} {{ try self.init(swiftSchemaUnjudged: decoder, \
-             {defaults}) }}; {judged}; "
-        );
+    if !parameters.is_empty() {
+        let opening = Opening {
+            judged: &judged,
+            key: &key,
+            payload: &payload,
+            reach,
+            read: &read,
+            refused,
+            taking,
+            twins: &twins,
+        };
+        return both_with_readers(body, written, &opening, &parameters);
     }
     let opened = format!(
         "{key}{payload}{twins}{}",
@@ -977,6 +1027,95 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
             format!("{opened}{reach} {UNJUDGED} {{ {body} }}; {judged}; ")
         };
     }
+    corrected_reads(body, written, &opened, (taking, reach), &judged)
+}
+
+/// [`both`] of a type whose reads take a reader for each of `parameters`.
+fn both_with_readers(
+    body: &str,
+    written: &Written<'_>,
+    opening: &Opening<'_>,
+    parameters: &[String],
+) -> String {
+    let Opening {
+        judged,
+        key,
+        payload,
+        reach,
+        read,
+        refused: closed,
+        taking: names_taken,
+        twins,
+    } = opening;
+    let (taking, refused) = (*names_taken, closed.clone());
+    let defaults = readers_by_default(parameters);
+    let (declared, handed) = (readers_declared(parameters), readers_named(parameters));
+    let own_read = (!written.own.is_empty()).then(|| {
+        let owner = written.named;
+        let untaken = if taking {
+            "let taken: [String] = []; "
+        } else {
+            ""
+        };
+        let corrected = preprocess::called(
+            written.own,
+            "try SwiftSchemaPayload(from: decoder, without: taken).value",
+        );
+        (
+            format!(
+                "private struct SwiftSchemaRead: Decodable {{ let value: {owner}; \
+                     init(from decoder: Decoder) throws {{ {}value = try \
+                     {owner}(swiftSchemaCorrected: decoder, {handed}) }} }}; \
+                     private init(swiftSchemaCorrected decoder: Decoder, {declared}) throws \
+                     {{ {untaken}{body} }}; ",
+                extracted(parameters)
+            ),
+            format!(
+                "self = {}",
+                escaping(
+                    parameters,
+                    &format!(
+                        "try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: {corrected}, \
+                             at: decoder.codingPath, within: decoder{}).value",
+                        handing(parameters)
+                    )
+                )
+            ),
+        )
+    });
+    let (held, taken_body) = own_read.unwrap_or_else(|| (String::new(), body.to_owned()));
+    let opened = format!(
+        "{key}{payload}{twins}{}",
+        helpers_for(&format!("{read}{payload}{defaults}{held}{taken_body}"))
+    );
+    if !taking && refused.is_none() && written.own.is_empty() {
+        return format!(
+            "{opened}{reach} init(swiftSchemaUnjudged decoder: Decoder, {declared}) throws {{ \
+                 {body} }}; {reach} {UNJUDGED} {{ try self.init(swiftSchemaUnjudged: decoder, \
+                 {defaults}) }}; {judged}; "
+        );
+    }
+    let refusing = refused.unwrap_or_default();
+    format!(
+        "{opened}{held}{reach} init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+             [String], {declared}) throws {{ {taken_body} }}; {reach} {TAKING} {{ try \
+             self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken, {defaults}) }}; \
+             {reach} init(swiftSchemaUnjudged decoder: Decoder, {declared}) throws {{ \
+             {refusing}try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: [], \
+             {handed}) }}; {reach} {UNJUDGED} {{ try self.init(swiftSchemaUnjudged: decoder, \
+             {defaults}) }}; {judged}; "
+    )
+}
+
+/// The reads of a type that names a function on itself and declares no parameter: its own is
+/// read from what the function answers.
+fn corrected_reads(
+    body: &str,
+    written: &Written<'_>,
+    opened: &str,
+    (taking, reach): (bool, &str),
+    judged: &str,
+) -> String {
     let owner = written.named;
     let untaken = if taking {
         "let taken: [String] = []; "
@@ -1017,6 +1156,30 @@ pub(super) fn beside(
 pub(super) fn held(source: &Source, read_as: &str, sink: &dyn Fn(&str) -> String) -> String {
     let read = format!("try {read_as}(swiftSchemaUnjudged: {})", source.decoder());
     format!("{}{}", source.refusing_an_absent_key(), sink(&read))
+}
+
+/// The statements that read from `source` a value of the generic type `def` names, `named` filled
+/// with `arguments`, through its read with a reader for each argument, and hand it to `sink`.
+fn handed_readers(
+    def: &FieldDef,
+    (named, arguments): (&str, &[FieldDef]),
+    hint: &str,
+    (source, sink): (&Source, &dyn Fn(&str) -> String),
+    locals: &mut Locals,
+) -> String {
+    let readers: Vec<String> = arguments
+        .iter()
+        .enumerate()
+        .map(|(index, argument)| {
+            argument_reader(argument, &format!("{hint}Argument{index}"), locals)
+        })
+        .collect();
+    held_handing(
+        source,
+        (&written_type(def, hint), preprocess::takes(named)),
+        &readers.join(", "),
+        sink,
+    )
 }
 
 /// The statements that read from `source` a value `validate()` walks, each value whose
@@ -1067,16 +1230,7 @@ pub(super) fn unjudged(
         FieldDefType::SiblingType(named, arguments)
             if validate::walked_with(named) && validate::hands_on(arguments) =>
         {
-            let readers: Vec<String> = arguments
-                .iter()
-                .map(|argument| argument_reader(argument, hint, locals))
-                .collect();
-            held_handing(
-                source,
-                (&written_type(def, hint), preprocess::takes(named)),
-                &readers.join(", "),
-                sink,
-            )
+            handed_readers(def, (named, arguments), hint, (source, sink), locals)
         }
         FieldDefType::SiblingType(named, _) => {
             let read_as = written_type(def, hint);
@@ -1088,6 +1242,16 @@ pub(super) fn unjudged(
         FieldDefType::TypeParam(parameter) if validate::walks_parameter(parameter) => {
             let read = format!("try {}({})", reader_of(parameter), source.decoder());
             format!("{}{}", source.refusing_an_absent_key(), sink(&read))
+        }
+        FieldDefType::Range(..) | FieldDefType::Result(..) | FieldDefType::Tuple(_)
+            if !validate::walked_through(def).is_empty() =>
+        {
+            held_handing(
+                source,
+                (&written_type(def, hint), false),
+                &readers_named(&validate::walked_through(def)),
+                sink,
+            )
         }
         FieldDefType::Range(_, _)
         | FieldDefType::Result(_, _)
@@ -1229,7 +1393,12 @@ fn map_unjudged(
     if matches!(map_keys(key), MapKeys::Wrapped) {
         let (wrapper, generic_params) = keyed_map_wrapper(hint, key, value);
         let read_as = held_at(&wrapper, &generic_params);
-        return held(source, &read_as, &|read| sink(&format!("{read}.storage")));
+        let with = validate::walked_through(def);
+        let stored = |read: &str| sink(&format!("{read}.storage"));
+        if with.is_empty() {
+            return held(source, &read_as, &stored);
+        }
+        return held_handing(source, (&read_as, false), &readers_named(&with), &stored);
     }
     let value_hint = format!("{hint}Value");
     read_entries(

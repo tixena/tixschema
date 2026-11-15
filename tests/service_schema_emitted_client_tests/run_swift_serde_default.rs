@@ -163,10 +163,15 @@ fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
     let basin = basin_swift::swift_definition();
     assert!(
         basin.contains(
-            "if container.contains(.moored) { self.moored = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .moored).map({ $0.value }) } else { let mooredDefaultPayload = try \
-             JSONSerialization.jsonObject(with: Data(\"[]\".utf8), options: \
-             [.fragmentsAllowed]); self.moored = try SwiftSchemaPayload.read([Moored].self, \
-             from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored], within: decoder) }"
+            "if container.contains(.moored) { var listed = try container.nestedUnkeyedContainer(forKey: \
+             .moored); var items: [Moored] = []; while !listed.isAtEnd { items.append(try \
+             swiftSchemaReaderOfMoored(listed.superDecoder())) }; self.moored = items } else { \
+             let mooredDefaultPayload = try JSONSerialization.jsonObject(with: Data(\"[]\".utf8), \
+             options: [.fragmentsAllowed]); self.moored = try \
+             withoutActuallyEscaping(swiftSchemaReaderOfMoored) { swiftSchemaReaderOfMoored in try \
+             SwiftSchemaPayload.read(SwiftSchemaReadMooredDefault.self, from: \
+             mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored], within: \
+             decoder, handing: [\"Moored\": swiftSchemaReaderOfMoored]) }.value }"
         ),
         "{basin}"
     );
@@ -181,8 +186,10 @@ fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json(
         fleet.contains(
             "else { let vecDefaultPayload = try JSONSerialization.jsonObject(with: \
              Data(\"[]\".utf8), options: [.fragmentsAllowed]); self.vec = try \
-             SwiftSchemaPayload.read([Link<IdType>].self, from: vecDefaultPayload, at: \
-             container.codingPath + [CodingKeys.vec], within: decoder) }"
+             withoutActuallyEscaping(swiftSchemaReaderOfIdType) { swiftSchemaReaderOfIdType in try \
+             SwiftSchemaPayload.read(SwiftSchemaReadVecDefault.self, from: vecDefaultPayload, at: \
+             container.codingPath + [CodingKeys.vec], within: decoder, handing: [\"IdType\": \
+             swiftSchemaReaderOfIdType]) }.value }"
         ),
         "{fleet}"
     );
@@ -191,8 +198,10 @@ fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json(
         logbook.contains(
             "else { let hashMapDefaultPayload = try JSONSerialization.jsonObject(with: \
              Data(\"{}\".utf8), options: [.fragmentsAllowed]); self.hashMap = try \
-             SwiftSchemaPayload.read([String: Link<IdType>].self, from: hashMapDefaultPayload, \
-             at: container.codingPath + [CodingKeys.hashMap], within: decoder) }"
+             withoutActuallyEscaping(swiftSchemaReaderOfIdType) { swiftSchemaReaderOfIdType in try \
+             SwiftSchemaPayload.read(SwiftSchemaReadHashMapDefault.self, from: hashMapDefaultPayload, \
+             at: container.codingPath + [CodingKeys.hashMap], within: decoder, handing: [\"IdType\": \
+             swiftSchemaReaderOfIdType]) }.value }"
         ),
         "{logbook}"
     );

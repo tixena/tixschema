@@ -32,10 +32,23 @@ where
     written
 }
 
-/// Each of `written` in `swift`, with `@held` filled with `held` and `@p` with `parameter`.
+/// Each of `written` in `swift`, with `@held` filled with `held` and `@p` with `parameter`. A
+/// template that reads another way where the type declares a parameter holds both, the second
+/// after a `\u{1}`: for each such type, after its name and a `\u{3}`, the whole statement that hands
+/// each reader to the wrapper, the statements of the types apart by a `\u{2}`.
 fn holds(swift: &str, held: &str, parameter: &str, written: &[&str]) {
     for template in written {
-        let text = template.replace("@held", held).replace("@p", parameter);
+        let (plain, with_readers) = template.split_once('\u{1}').unwrap_or((template, template));
+        let chosen = if parameter.is_empty() {
+            plain
+        } else {
+            with_readers
+                .split('\u{2}')
+                .filter_map(|entry| entry.split_once('\u{3}'))
+                .find_map(|(named, read)| (named == held).then_some(read))
+                .unwrap_or(with_readers)
+        };
+        let text = chosen.replace("@held", held).replace("@p", parameter);
         assert!(swift.contains(&text), "{text}\nin: {swift}");
     }
 }
@@ -236,14 +249,11 @@ fn a_tuple_reads_and_writes_a_map_in_its_slot_through_the_wrapper() {
             held,
             parameter,
             &[
-                "let wireSlot0 = try container.decode(@heldFlagsTupleSlot0KeyedMap@p.self); \
-                 slot0 = wireSlot0.storage; ",
+                "let wireSlot0 = try container.decode(@heldFlagsTupleSlot0KeyedMap@p.self); slot0 = wireSlot0.storage; \u{1}StowedCubby\u{3}slot0 = try StowedCubbyFlagsTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try container.decode(SwiftSchemaFit<UInt8>.self).value;",
                 "try container.encode(@heldFlagsTupleSlot0KeyedMap@p(storage: slot0)); ",
-                "let wireSlot0 = try container.decode(@heldLatchesTupleSlot0KeyedMap@p.self); \
-                 slot0 = wireSlot0.storage; ",
+                "let wireSlot0 = try container.decode(@heldLatchesTupleSlot0KeyedMap@p.self); slot0 = wireSlot0.storage; \u{1}StowedCubby\u{3}slot0 = try StowedCubbyLatchesTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try container.decode(SwiftSchemaFit<UInt8>.self).value;",
                 "try container.encode(@heldLatchesTupleSlot0KeyedMap@p(storage: slot0)); ",
-                "let wireSlot0 = try container.decode(@heldNumbersTupleSlot0KeyedMap@p.self); \
-                 slot0 = wireSlot0.storage; ",
+                "let wireSlot0 = try container.decode(@heldNumbersTupleSlot0KeyedMap@p.self); slot0 = wireSlot0.storage; \u{1}StowedCubby\u{3}slot0 = try StowedCubbyNumbersTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try swiftSchemaReaderOfStowed(container.superDecoder());",
                 "try container.encode(@heldNumbersTupleSlot0KeyedMap@p(storage: slot0)); ",
                 "slot0 = try @heldSatchelsTupleSlot0KeyedMap(swiftSchemaUnjudged: \
                  container.superDecoder()).storage; ",
@@ -286,14 +296,7 @@ fn a_tuple_struct_reads_and_writes_a_map_in_each_slot_through_the_wrapper() {
             held,
             parameter,
             &[
-                "let wireSlot0 = try container.decode(@heldTupleSlot0KeyedMap@p.self); \
-                 slot0 = wireSlot0.storage; \
-                 let wireSlot1 = try container.decode(@heldTupleSlot1KeyedMap@p.self); \
-                 slot1 = wireSlot1.storage; \
-                 let wireSlot2 = try container.decode(@heldTupleSlot2KeyedMap@p.self); \
-                 slot2 = wireSlot2.storage; \
-                 slot3 = try @heldTupleSlot3KeyedMap(swiftSchemaUnjudged: \
-                 container.superDecoder()).storage; ",
+                "let wireSlot0 = try container.decode(@heldTupleSlot0KeyedMap@p.self); slot0 = wireSlot0.storage; let wireSlot1 = try container.decode(@heldTupleSlot1KeyedMap@p.self); slot1 = wireSlot1.storage; let wireSlot2 = try container.decode(@heldTupleSlot2KeyedMap@p.self); slot2 = wireSlot2.storage; slot3 = try @heldTupleSlot3KeyedMap(swiftSchemaUnjudged: container.superDecoder()).storage; \u{1}StowedCabinet\u{3}slot0 = try StowedCabinetTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try StowedCabinetTupleSlot1KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot2 = try StowedCabinetTupleSlot2KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage;\u{2}StowedCellar\u{3}var listed = try container.nestedUnkeyedContainer(); var items: [[UInt32: Stowed]] = []; while !listed.isAtEnd { items.append(try StowedCellarTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: listed.superDecoder(), swiftSchemaReaderOfStowed).storage) }; slot0 = items; var listed1 = try container.nestedUnkeyedContainer(); var items1: [[Bool: Stowed]?] = []; while !listed1.isAtEnd { if try !listed1.decodeNil() { items1.append(try StowedCellarTupleSlot1KeyedMap<Stowed>(swiftSchemaUnjudged: listed1.superDecoder(), swiftSchemaReaderOfStowed).storage) } else { items1.append(nil) } }; slot1 = items1; if try !container.decodeNil() { var listed2 = try container.nestedUnkeyedContainer(); var items2: [[Rung: Stowed]] = []; while !listed2.isAtEnd { items2.append(try StowedCellarTupleSlot2KeyedMap<Stowed>(swiftSchemaUnjudged: listed2.superDecoder(), swiftSchemaReaderOfStowed).storage) }; slot2 = items2 } else { slot2 = nil };",
                 "try container.encode(@heldTupleSlot0KeyedMap@p(storage: slot0)); \
                  try container.encode(@heldTupleSlot1KeyedMap@p(storage: slot1)); \
                  try container.encode(@heldTupleSlot2KeyedMap@p(storage: slot2)); \
@@ -326,15 +329,16 @@ fn a_map_reads_and_writes_a_map_it_holds_through_the_wrapper() {
                  forKey: codingKey); result[key] = wireValue.storage }; ",
                 "try container.encode(@heldLatchesByLatchValueKeyedMap@p(storage: value), \
                  forKey: codingKey) } } };",
-                "let wireNumbersByName = try \
-                 container.decode([String: @heldNumbersByNameValueKeyedMap@p].self, \
-                 forKey: .numbersByName); \
-                 self.numbersByName = wireNumbersByName.mapValues { $0.storage }; ",
+                "let wireNumbersByName = try container.decode([String: @heldNumbersByNameValueKeyedMap@p].self, forKey: .numbersByName); self.numbersByName = wireNumbersByName.mapValues { $0.storage }; \u{1}StowedCubby\u{3}let keyed = try container.nestedContainer(keyedBy: SwiftSchemaAnyKey.self, forKey: .numbersByName); var entries: [String: [UInt32: Stowed]] = [:]; for entry in keyed.allKeys { entries[entry.stringValue] = try StowedCubbyNumbersByNameValueKeyedMap<Stowed>(swiftSchemaUnjudged: keyed.superDecoder(forKey: entry), swiftSchemaReaderOfStowed).storage }; self.numbersByName = entries;",
                 "let wireNumbersByName = self.numbersByName.mapValues { \
                  @heldNumbersByNameValueKeyedMap@p(storage: $0) }; ",
                 "entries[entry.stringValue] = try \
                  @heldSatchelsByNameValueKeyedMap(swiftSchemaUnjudged: \
-                 keyed.superDecoder(forKey: entry)).storage }; ",
+                 keyed.superDecoder(forKey: entry)).storage }; \u{1}StowedCubby\u{3}\
+                 entries1[entry1.stringValue] = try \
+                 @heldSatchelsByNameValueKeyedMap(swiftSchemaUnjudged: \
+                 keyed1.superDecoder(forKey: entry1)).storage }; self.satchelsByName = \
+                 entries1 }; ",
                 "let wireSatchelsByName = self.satchelsByName.mapValues { \
                  @heldSatchelsByNameValueKeyedMap(storage: $0) }; ",
             ],
@@ -360,15 +364,9 @@ fn a_variant_of_one_slot_reads_and_writes_its_map_through_the_wrapper_under_each
                 "case \"Bagged\": self = .bagged(try \
                  @heldBaggedValueKeyedMap(swiftSchemaUnjudged: \
                  container.superDecoder(forKey: key)).storage); ",
-                "case \"Flagged\": let wireFlagged = try \
-                 container.decode(@heldFlaggedValueKeyedMap@p.self, forKey: key); \
-                 self = .flagged(wireFlagged.storage); ",
-                "case \"Latched\": let wireLatched = try \
-                 container.decode(@heldLatchedValueKeyedMap@p.self, forKey: key); \
-                 self = .latched(wireLatched.storage); ",
-                "case \"Numbered\": let wireNumbered = try \
-                 container.decode(@heldNumberedValueKeyedMap@p.self, forKey: key); \
-                 self = .numbered(wireNumbered.storage); ",
+                "case \"Flagged\": let wireFlagged = try container.decode(@heldFlaggedValueKeyedMap@p.self, forKey: key); self = .flagged(wireFlagged.storage); \u{1}AdjacentStowedDrawer\u{3}case \"Flagged\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .flagged(try AdjacentStowedDrawerFlaggedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage); case \"Keyed\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .keyed(try AdjacentStowedDrawerKeyedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed));\u{2}StowedDrawer\u{3}case \"Flagged\": self = .flagged(try StowedDrawerFlaggedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage); case \"Keyed\": self = .keyed(try StowedDrawerKeyedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed));",
+                "case \"Latched\": let wireLatched = try container.decode(@heldLatchedValueKeyedMap@p.self, forKey: key); self = .latched(wireLatched.storage); \u{1}AdjacentStowedDrawer\u{3}case \"Latched\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .latched(try AdjacentStowedDrawerLatchedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage); case \"Numbered\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .numbered(try AdjacentStowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage);\u{2}StowedDrawer\u{3}case \"Latched\": self = .latched(try StowedDrawerLatchedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage); case \"Numbered\": self = .numbered(try StowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage);\u{2}UntaggedStowedDrawer\u{3}if let value = try? UntaggedStowedDrawerLatchedValueKeyedMap<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaReaderOfStowed).storage { self = .latched(value); return };",
+                "case \"Numbered\": let wireNumbered = try container.decode(@heldNumberedValueKeyedMap@p.self, forKey: key); self = .numbered(wireNumbered.storage); \u{1}AdjacentStowedDrawer\u{3}case \"Numbered\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .numbered(try AdjacentStowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage); case \"Packed\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .packed(try AdjacentStowedDrawerPackedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed));\u{2}StowedDrawer\u{3}case \"Numbered\": self = .numbered(try StowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage); case \"Packed\": self = .packed(try StowedDrawerPackedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed));",
                 "try container.encode(@heldBaggedValueKeyedMap(storage: payload), \
                  forKey: SwiftSchemaExternalCodingKey(stringValue: \"Bagged\")!); ",
                 "try container.encode(@heldFlaggedValueKeyedMap@p(storage: payload), \
@@ -400,12 +398,8 @@ fn a_variant_of_one_slot_reads_and_writes_its_map_through_the_wrapper_under_each
                 "case \"Bagged\": _ = try container.decodeNil(forKey: .swiftSchemaContent); \
                  self = .bagged(try @heldBaggedValueKeyedMap(swiftSchemaUnjudged: \
                  container.superDecoder(forKey: .swiftSchemaContent)).storage); ",
-                "case \"Flagged\": let wireFlagged = try \
-                 container.decode(@heldFlaggedValueKeyedMap@p.self, \
-                 forKey: .swiftSchemaContent); self = .flagged(wireFlagged.storage); ",
-                "case \"Numbered\": let wireNumbered = try \
-                 container.decode(@heldNumberedValueKeyedMap@p.self, \
-                 forKey: .swiftSchemaContent); self = .numbered(wireNumbered.storage); ",
+                "case \"Flagged\": let wireFlagged = try container.decode(@heldFlaggedValueKeyedMap@p.self, forKey: .swiftSchemaContent); self = .flagged(wireFlagged.storage); \u{1}AdjacentStowedDrawer\u{3}case \"Flagged\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .flagged(try AdjacentStowedDrawerFlaggedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage); case \"Keyed\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .keyed(try AdjacentStowedDrawerKeyedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed));\u{2}StowedDrawer\u{3}case \"Flagged\": self = .flagged(try StowedDrawerFlaggedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage); case \"Keyed\": self = .keyed(try StowedDrawerKeyedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed));",
+                "case \"Numbered\": let wireNumbered = try container.decode(@heldNumberedValueKeyedMap@p.self, forKey: .swiftSchemaContent); self = .numbered(wireNumbered.storage); \u{1}AdjacentStowedDrawer\u{3}case \"Numbered\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .numbered(try AdjacentStowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage); case \"Packed\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .packed(try AdjacentStowedDrawerPackedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed));\u{2}StowedDrawer\u{3}case \"Numbered\": self = .numbered(try StowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage); case \"Packed\": self = .packed(try StowedDrawerPackedTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed));",
                 "try container.encode(@heldBaggedValueKeyedMap(storage: payload), \
                  forKey: .swiftSchemaContent); ",
                 "try container.encode(@heldFlaggedValueKeyedMap@p(storage: payload), \
@@ -432,8 +426,7 @@ fn a_variant_of_one_slot_reads_and_writes_its_map_through_the_wrapper_under_each
             held,
             parameter,
             &[
-                "let wireLatched = try @heldLatchedValueKeyedMap@p(from: decoder); \
-                 return wireLatched.storage }; ",
+                "let wireLatched = try @heldLatchedValueKeyedMap@p(from: decoder); return wireLatched.storage }; \u{1}AdjacentStowedDrawer\u{3}self = .latched(try AdjacentStowedDrawerLatchedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage); case \"Numbered\": _ = try container.decodeNil(forKey: .swiftSchemaContent); self = .numbered(try AdjacentStowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: .swiftSchemaContent), swiftSchemaReaderOfStowed).storage);\u{2}StowedDrawer\u{3}case \"Latched\": self = .latched(try StowedDrawerLatchedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage); case \"Numbered\": self = .numbered(try StowedDrawerNumberedValueKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: key), swiftSchemaReaderOfStowed).storage);\u{2}UntaggedStowedDrawer\u{3}if let value = try? UntaggedStowedDrawerLatchedValueKeyedMap<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaReaderOfStowed).storage { self = .latched(value); return };",
                 "if let value = try? @heldSealedValueKeyedMap(swiftSchemaUnjudged: \
                  decoder).storage { self = .sealed(value); return }; ",
                 "case .latched(let value): try \
@@ -470,12 +463,7 @@ fn the_tuple_of_a_variant_of_several_slots_reads_and_writes_each_map_through_the
             held,
             parameter,
             &[
-                "let wireSlot0 = try container.decode(@heldKeyedTupleSlot0KeyedMap@p.self); \
-                 slot0 = wireSlot0.storage; \
-                 let wireSlot1 = try container.decode(@heldKeyedTupleSlot1KeyedMap@p.self); \
-                 slot1 = wireSlot1.storage; \
-                 let wireSlot2 = try container.decode(@heldKeyedTupleSlot2KeyedMap@p.self); \
-                 slot2 = wireSlot2.storage; ",
+                "let wireSlot0 = try container.decode(@heldKeyedTupleSlot0KeyedMap@p.self); slot0 = wireSlot0.storage; let wireSlot1 = try container.decode(@heldKeyedTupleSlot1KeyedMap@p.self); slot1 = wireSlot1.storage; let wireSlot2 = try container.decode(@heldKeyedTupleSlot2KeyedMap@p.self); slot2 = wireSlot2.storage; \u{1}AdjacentStowedDrawer\u{3}slot0 = try AdjacentStowedDrawerKeyedTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try AdjacentStowedDrawerKeyedTupleSlot1KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot2 = try AdjacentStowedDrawerKeyedTupleSlot2KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage;\u{2}StowedDrawer\u{3}slot0 = try StowedDrawerKeyedTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try StowedDrawerKeyedTupleSlot1KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot2 = try StowedDrawerKeyedTupleSlot2KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage;",
                 "try container.encode(@heldKeyedTupleSlot0KeyedMap@p(storage: slot0)); \
                  try container.encode(@heldKeyedTupleSlot1KeyedMap@p(storage: slot1)); \
                  try container.encode(@heldKeyedTupleSlot2KeyedMap@p(storage: slot2)); ",
@@ -528,9 +516,7 @@ fn named_members_read_and_write_a_map_in_a_tuple_through_the_wrapper_under_each_
             held,
             parameter,
             &[
-                "let wireSlot0 = try \
-                 container.decode(@heldStackedPayloadPairTupleSlot0KeyedMap@p.self); \
-                 slot0 = wireSlot0.storage; ",
+                "let wireSlot0 = try container.decode(@heldStackedPayloadPairTupleSlot0KeyedMap@p.self); slot0 = wireSlot0.storage; \u{1}AdjacentStowedDrawer\u{3}slot0 = try AdjacentStowedDrawerStackedPayloadPairTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try AdjacentStowedDrawerStackedPayloadPairTupleSlot1KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage;\u{2}StowedDrawer\u{3}slot0 = try StowedDrawerStackedPayloadPairTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try StowedDrawerStackedPayloadPairTupleSlot1KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage;\u{2}TaggedStowedDrawer\u{3}slot0 = try TaggedStowedDrawerStackedPayloadPairTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try container.decode(SwiftSchemaFit<UInt8>.self).value;\u{2}UntaggedStowedDrawer\u{3}slot0 = try UntaggedStowedDrawerStackedPayloadPairTupleSlot0KeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(), swiftSchemaReaderOfStowed).storage; slot1 = try container.decode(SwiftSchemaFit<UInt8>.self).value;",
                 "try container.encode(@heldStackedPayloadPairTupleSlot0KeyedMap@p(storage: \
                  slot0)); ",
             ],

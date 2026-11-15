@@ -332,7 +332,7 @@ fn a_tuple_reads_and_writes_the_date_of_a_slot_as_its_text() {
             "public struct StowedChartPairTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Date; let slot1: Stowed; "
                 .to_owned(),
-            format!("{SLOT_READ}slot1 = try container.decode(SwiftSchemaFit<Stowed>.self).value; "),
+            format!("{SLOT_READ}slot1 = try swiftSchemaReaderOfStowed(container.superDecoder()); "),
             format!("{SLOT_WRITTEN}try container.encode(slot1); "),
         ],
     );
@@ -354,7 +354,7 @@ fn a_tuple_struct_reads_and_writes_the_date_of_a_slot_as_its_text() {
     holds(
         declared(&stowed, "WaypointTuple"),
         &[
-            format!("{SLOT_READ}slot1 = try container.decode(SwiftSchemaFit<Stowed>.self).value; "),
+            format!("{SLOT_READ}slot1 = try swiftSchemaReaderOfStowed(container.superDecoder()); "),
             SLOT_WRITTEN.to_owned(),
         ],
     );
@@ -517,16 +517,25 @@ fn a_variant_of_one_slot_reads_and_writes_its_date_under_each_tagging() {
             COMPUTED,
         ),
     ] {
+        let (readers, handed) = if named.contains("Plain") {
+            ("", "")
+        } else {
+            (
+                ", _ swiftSchemaReaderOfStowed: (Decoder) throws -> Stowed",
+                ", swiftSchemaReaderOfStowed",
+            )
+        };
         holds(
             &swift,
             &[
-                "private static func swiftSchemaReadStamped(_ decoder: Decoder) throws -> Date { \
+                format!(
+                    "private static func swiftSchemaReadStamped(_ decoder: Decoder{readers}) throws -> Date {{ \
                  let wireStamped = try String(from: decoder); \
                  return try Self.swiftSchemaParseIso8601Date(wireStamped, \
-                 codingPath: decoder.codingPath) }; "
-                    .to_owned(),
+                 codingPath: decoder.codingPath) }}; "
+                ),
                 format!(
-                    "if let value = try? {named}.swiftSchemaReadStamped(decoder) {{ \
+                    "if let value = try? {named}.swiftSchemaReadStamped(decoder{handed}) {{ \
                      self = .stamped(value); return }}; "
                 ),
                 "case .stamped(let value): \

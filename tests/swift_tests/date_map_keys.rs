@@ -250,20 +250,20 @@ fn a_date_is_written_as_chrono_writes_it_by_the_models_the_swift_runs_read() {
 fn each_wrapper_of_a_date_key_computes_its_formatter_and_reads_an_optional_key() {
     for (swift, wrapped, reads) in [
         (timetable_swift::swift_definition(), 2, 3),
-        (tidetable_swift::swift_definition(), 2, 2),
+        (tidetable_swift::swift_definition(), 2, 3),
         (watch_swift::swift_definition(), 2, 3),
         (tagged_watch_swift::swift_definition(), 2, 3),
         (adjacent_watch_swift::swift_definition(), 2, 3),
         (untagged_watch_swift::swift_definition(), 2, 3),
-        (shift_swift::swift_definition(), 2, 2),
-        (tagged_shift_swift::swift_definition(), 2, 2),
-        (adjacent_shift_swift::swift_definition(), 2, 2),
-        (untagged_shift_swift::swift_definition(), 2, 2),
+        (shift_swift::swift_definition(), 2, 3),
+        (tagged_shift_swift::swift_definition(), 2, 3),
+        (adjacent_shift_swift::swift_definition(), 2, 3),
+        (untagged_shift_swift::swift_definition(), 2, 3),
         (daybook_swift::swift_definition(), 1, 1),
         (chronicle_swift::swift_definition(), 1, 1),
-        (diary_swift::swift_definition(), 1, 1),
+        (diary_swift::swift_definition(), 1, 2),
         (logbook_swift::swift_definition(), 5, 6),
-        (stowed_logbook_swift::swift_definition(), 4, 4),
+        (stowed_logbook_swift::swift_definition(), 4, 8),
         (daybooks_swift::swift_definition(), 1, 1),
     ] {
         assert_eq!(wrappers(&swift).len(), wrapped, "{swift}");
@@ -392,6 +392,15 @@ fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
              init?(stringValue: String) {{ self.stringValue = stringValue }}; \
              var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
              public init(storage: [UInt32: Stowed]) {{ self.storage = storage }}; \
+             init(swiftSchemaUnjudged decoder: Decoder, \
+             _ swiftSchemaReaderOfStowed: (Decoder) throws -> Stowed) throws {{ \
+             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+             var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
+             result[key] = try swiftSchemaReaderOfStowed(container.superDecoder(forKey: codingKey)) }}; \
+             storage = result }}; \
+             init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
+             try self.init(swiftSchemaUnjudged: decoder, {{ try SwiftSchemaFit<Stowed>(from: $0).value }}) }}; \
              public init(from decoder: Decoder) throws {{ \
              let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
              var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys {{ \
@@ -504,6 +513,46 @@ fn only_a_wrapper_of_a_date_key_declares_the_formatter() {
     assert_eq!(seen, 21);
 }
 
+/// Each list and optional of a map keyed by a date, in a type that declares a parameter, is read
+/// through the wrapper handed the reader of the parameter, and its storage handed on.
+fn holds_with_readers(swift: &str, held: &str, parameter: &str) {
+    holds(
+        swift,
+        &[
+            &format!(
+                "var listed = try container.nestedUnkeyedContainer(forKey: .listed); \
+                 var items: [[Date: Stowed]] = []; while !listed.isAtEnd {{ \
+                 items.append(try {held}ListedKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 listed.superDecoder(), swiftSchemaReaderOfStowed).storage) }}; \
+                 self.listed = items; "
+            ),
+            &format!(
+                "var listed1 = try container.nestedUnkeyedContainer(forKey: .listedOrNone); \
+                 var items1: [[Date: Stowed]?] = []; while !listed1.isAtEnd {{ \
+                 if try !listed1.decodeNil() {{ \
+                 items1.append(try {held}ListedOrNoneKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 listed1.superDecoder(), swiftSchemaReaderOfStowed).storage) }} else {{ \
+                 items1.append(nil) }} }}; self.listedOrNone = items1; "
+            ),
+            &format!(
+                "if container.contains(.maybe), try !container.decodeNil(forKey: .maybe) {{ \
+                 self.maybe = try {held}MaybeKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 container.superDecoder(forKey: .maybe), swiftSchemaReaderOfStowed).storage \
+                 }} else {{ self.maybe = nil }}; "
+            ),
+            &format!(
+                "if container.contains(.maybeListed), try !container.decodeNil(forKey: \
+                 .maybeListed) {{ var listed2 = try \
+                 container.nestedUnkeyedContainer(forKey: .maybeListed); var items2: \
+                 [[Date: Stowed]] = []; while !listed2.isAtEnd {{ \
+                 items2.append(try {held}MaybeListedKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 listed2.superDecoder(), swiftSchemaReaderOfStowed).storage) }}; \
+                 self.maybeListed = items2 }} else {{ self.maybeListed = nil }}"
+            ),
+        ],
+    );
+}
+
 /// A list or an optional of maps keyed by a date is read as one of the wrapper, whose own read
 /// parses each key, and handed on as each wrapper's storage, with no `try` around a conversion
 /// that throws nothing.
@@ -543,32 +592,36 @@ fn a_list_or_an_optional_of_maps_keyed_by_a_date_hands_on_each_storage_with_no_t
             "<Stowed>",
         ),
     ] {
-        holds(
-            &swift,
-            &[
-                &format!(
-                    "let wireListed = try container.decode([{held}ListedKeyedMap{parameter}].self, \
-                     forKey: .listed); self.listed = wireListed.map {{ $0.storage }}; "
-                ),
-                &format!(
-                    "let wireListedOrNone = try \
-                     container.decode([{held}ListedOrNoneKeyedMap{parameter}?].self, \
-                     forKey: .listedOrNone); \
-                     self.listedOrNone = wireListedOrNone.map {{ $0.map {{ $0.storage }} }}; "
-                ),
-                &format!(
-                    "let wireMaybe = try \
-                     container.decodeIfPresent({held}MaybeKeyedMap{parameter}.self, \
-                     forKey: .maybe); self.maybe = wireMaybe.map {{ $0.storage }}; "
-                ),
-                &format!(
-                    "let wireMaybeListed = try \
-                     container.decodeIfPresent([{held}MaybeListedKeyedMap{parameter}].self, \
-                     forKey: .maybeListed); \
-                     self.maybeListed = wireMaybeListed.map {{ $0.map {{ $0.storage }} }}"
-                ),
-            ],
-        );
+        if parameter.is_empty() {
+            holds(
+                &swift,
+                &[
+                    &format!(
+                        "let wireListed = try container.decode([{held}ListedKeyedMap{parameter}].self, \
+                         forKey: .listed); self.listed = wireListed.map {{ $0.storage }}; "
+                    ),
+                    &format!(
+                        "let wireListedOrNone = try \
+                         container.decode([{held}ListedOrNoneKeyedMap{parameter}?].self, \
+                         forKey: .listedOrNone); \
+                         self.listedOrNone = wireListedOrNone.map {{ $0.map {{ $0.storage }} }}; "
+                    ),
+                    &format!(
+                        "let wireMaybe = try \
+                         container.decodeIfPresent({held}MaybeKeyedMap{parameter}.self, \
+                         forKey: .maybe); self.maybe = wireMaybe.map {{ $0.storage }}; "
+                    ),
+                    &format!(
+                        "let wireMaybeListed = try \
+                         container.decodeIfPresent([{held}MaybeListedKeyedMap{parameter}].self, \
+                         forKey: .maybeListed); \
+                         self.maybeListed = wireMaybeListed.map {{ $0.map {{ $0.storage }} }}"
+                    ),
+                ],
+            );
+        } else {
+            holds_with_readers(&swift, held, parameter);
+        }
     }
     holds(
         &logbook_swift::swift_definition(),

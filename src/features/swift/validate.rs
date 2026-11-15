@@ -191,9 +191,9 @@ thread_local! {
     /// The type parameters of the type being written whose values its walk hands to a check and
     /// its read reads with a reader, each handed in by a holder that writes what fills it.
     static WALKING: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-    /// The generic types the emitter has written with `validateWith` and the reads that take a
-    /// reader per type parameter.
-    static WITH: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The aliases the emitter has written: a typealias holds no `validateWith` and no read that
+    /// takes a reader, which every other generic type has.
+    static ALIASES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// Runs `write` with the walk and the read of the type being written handing each value behind
@@ -210,19 +210,32 @@ pub(super) fn walked_parameters() -> Vec<String> {
     WALKING.with(|walking| walking.borrow().clone())
 }
 
+/// The type parameters `def` reaches that the type being written walks: those a type written for
+/// `def` walks and is handed readers and checks of.
+pub(super) fn walked_through(def: &FieldDef) -> Vec<String> {
+    let reached = super::parameters_reached(&[def]);
+    WALKING.with(|walking| {
+        reached
+            .into_iter()
+            .filter(|parameter| walking.borrow().contains(parameter))
+            .collect()
+    })
+}
+
 /// Whether the type being written hands each value behind `parameter` to its check and reader.
 pub(super) fn walks_parameter(parameter: &str) -> bool {
     WALKING.with(|walking| walking.borrow().iter().any(|named| named == parameter))
 }
 
-/// Records that the generic type `rust_ident` has `validateWith` and the reads with readers.
-pub(super) fn note_with(rust_ident: &str) {
-    WITH.with(|with| with.borrow_mut().insert(rust_ident.to_owned()));
+/// Records that `rust_ident` is an alias, which has no `validateWith` and no read with readers.
+pub(super) fn note_alias(rust_ident: &str) {
+    ALIASES.with(|aliases| aliases.borrow_mut().insert(rust_ident.to_owned()));
 }
 
-/// Whether the generic type `rust_ident` has `validateWith` and the reads with readers.
+/// Whether the generic type `rust_ident` has `validateWith` and the reads with readers: every one
+/// the emitter writes but an alias, declared above its holder, below it or in another crate.
 pub(super) fn walked_with(rust_ident: &str) -> bool {
-    WITH.with(|with| with.borrow().contains(rust_ident))
+    ALIASES.with(|aliases| !aliases.borrow().contains(rust_ident))
 }
 
 /// The check `validateWith` takes for the values behind `parameter`.
@@ -1145,17 +1158,17 @@ fn held_walk(
         return map_walk(walk, owner, (key, entry), value, place, bindings);
     }
     if let FieldDefType::Tuple(slots) = &def.field_type {
-        // A type written for the tuple walks no parameter of the type that holds it.
-        return (!walking(&[], || slot_rules(owner, slots)).is_empty())
-            .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        return written_walk(owner, def, value, place, |named| slot_rules(named, slots));
     }
     if let FieldDefType::Range(kind, bound) = &def.field_type {
-        return (!walking(&[], || range_rules(owner, *kind, bound)).is_empty())
-            .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        return written_walk(owner, def, value, place, |named| {
+            range_rules(named, *kind, bound)
+        });
     }
     if let FieldDefType::Result(ok, err) = &def.field_type {
-        return (!walking(&[], || result_rules(owner, ok, err)).is_empty())
-            .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        return written_walk(owner, def, value, place, |named| {
+            result_rules(named, ok, err)
+        });
     }
     if let FieldDefType::TypeParam(parameter) = &def.field_type {
         return walks_parameter(parameter)
@@ -1182,74 +1195,35 @@ fn held_walk(
     validates(named).then(|| reporting(owner, place, &format!("{value}.validate()")))
 }
 
+/// [`held_walk`] of `value`, a type written for `def`, a tuple, a range or a `Result`: its
+/// `validate()`, or its `validateWith` where it walks type parameters of the holder, where
+/// `rules` writes its rules. `None` where it has none.
+fn written_walk(
+    owner: &str,
+    def: &FieldDef,
+    value: &str,
+    place: &[Step],
+    rules: impl FnOnce(&str) -> Vec<String>,
+) -> Option<String> {
+    let with = walked_through(def);
+    if walking(&with, || rules(owner)).is_empty() {
+        return None;
+    }
+    let asked = if with.is_empty() {
+        format!("{value}.validate()")
+    } else {
+        format!("{value}.validateWith({})", checks_named(&with))
+    };
+    Some(reporting(owner, place, &asked))
+}
+
 /// Whether a holder of a generic type filled with `arguments` hands it a check or a reader that
 /// does anything: an argument that is a type parameter the holder walks, or one whose walk reaches
 /// a value. Where none is, the type is walked and read as one that declares no parameter.
 pub(super) fn hands_on(arguments: &[FieldDef]) -> bool {
-    arguments.iter().all(read_by_its_own_form)
-        && arguments.iter().any(|argument| {
-            held_walk(Walk::Rules, "", argument, "", &[], &mut Bindings::default()).is_some()
-        })
-}
-
-/// Whether a type argument `def` is held as the Swift type it is written as, which a reader can
-/// read: a type parameter, a string, a number, a `bool`, a named type at such arguments, and an
-/// `Option`, a list and a map under a key Swift reads as its text of those. A tuple, a range, a
-/// `Result`, a date, a fixed-size array and a map under a key Swift wraps are held in a type the
-/// holder writes for the argument.
-fn read_by_its_own_form(def: &FieldDef) -> bool {
-    if def.is_optional() {
-        return read_by_its_own_form(&under_option(def));
-    }
-    if def.array_depth > 0 {
-        return def
-            .fixed_length_at(def.array_depth.saturating_sub(1))
-            .is_none()
-            && read_by_its_own_form(&item_of(def));
-    }
-    match &def.field_type {
-        FieldDefType::Map(key, value) => {
-            matches!(super::map_keys(key), super::MapKeys::Text) && read_by_its_own_form(value)
-        }
-        FieldDefType::SiblingType(named, arguments) => {
-            if let [item] = arguments.as_slice()
-                && is_sequence_wrapper(named)
-            {
-                return read_by_its_own_form(&def.collection_element_field(item));
-            }
-            arguments.iter().all(read_by_its_own_form)
-        }
-        FieldDefType::TypeParam(_)
-        | FieldDefType::String
-        | FieldDefType::Boolean
-        | FieldDefType::U8
-        | FieldDefType::U16
-        | FieldDefType::U32
-        | FieldDefType::U64
-        | FieldDefType::Usize
-        | FieldDefType::I8
-        | FieldDefType::I16
-        | FieldDefType::I32
-        | FieldDefType::I64
-        | FieldDefType::Isize
-        | FieldDefType::F32
-        | FieldDefType::F64 => true,
-        FieldDefType::BooleanLiteral(_)
-        | FieldDefType::Char
-        | FieldDefType::NumberLiteral(_)
-        | FieldDefType::Range(..)
-        | FieldDefType::Result(..)
-        | FieldDefType::StringLiteral(_)
-        | FieldDefType::Tuple(_)
-        | FieldDefType::Unknown => false,
-        #[cfg(feature = "mongodb")]
-        FieldDefType::ObjectId => false,
-        #[cfg(feature = "chrono")]
-        FieldDefType::DateTime
-        | FieldDefType::NaiveDate
-        | FieldDefType::NaiveDateTime
-        | FieldDefType::NaiveTime => false,
-    }
+    arguments.iter().any(|argument| {
+        held_walk(Walk::Rules, "", argument, "", &[], &mut Bindings::default()).is_some()
+    })
 }
 
 /// The walk of `value`, of a generic type filled with `arguments`, through its `validateWith`,
@@ -1284,7 +1258,9 @@ fn argument_check(owner: &str, argument: &FieldDef, bindings: &mut Bindings) -> 
         return check_of(parameter);
     }
     let held = bindings.next_held();
-    held_walk(Walk::Reported, owner, argument, &held, &[], bindings).map_or_else(
+    let form = super::argument_form(argument, "");
+    let real = form.real(&held);
+    held_walk(Walk::Reported, owner, form.def(), &real, &[], bindings).map_or_else(
         || "{ _ in [] }".to_owned(),
         |walked| format!("{{ {held} in var errors: [String] = []; {walked}; return errors }}"),
     )
@@ -1303,7 +1279,8 @@ fn map_walk(
     let (named, held) = (bindings.next_key(), bindings.next_held());
     let mut at = place.to_vec();
     at.push(Step::Read(key_text(key, &named)));
-    let judged_key = (!matches!(walk, Walk::Rules))
+    // A key behind a type parameter is held as the text it is written as, which no check takes.
+    let judged_key = (!matches!(walk, Walk::Rules) && super::parameters_reached(&[key]).is_empty())
         .then(|| held_walk(walk, owner, key, &named, &at, bindings))
         .flatten();
     let below = held_walk(walk, owner, entry, &held, &at, bindings);

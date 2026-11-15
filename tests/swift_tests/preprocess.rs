@@ -365,6 +365,45 @@ fn reads_reached(named: &str, called: &str, closing: &str, corrected: &str, reac
     )
 }
 
+/// [`reads_reached`] of a type that declares the parameter `parameter`: the payload the function
+/// answers is read through a type that is handed the reader of the parameter by the `userInfo` of
+/// its decoder, through the read that takes none.
+fn reads_with_reader(
+    named: &str,
+    called: &str,
+    closing: &str,
+    corrected: &str,
+    parameter: &str,
+) -> String {
+    format!(
+        "private struct SwiftSchemaRead: Decodable {{ let value: {named}; \
+         init(from decoder: Decoder) throws {{ guard let swiftSchemaReaderOf{parameter} = \
+         (decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaReaders\")!] as? \
+         [String: Any])?[\"{parameter}\"] as? (Decoder) throws -> {parameter} else {{ throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+         debugDescription: \"no reader of {parameter}\")) }}; value = try \
+         {named}(swiftSchemaCorrected: decoder, swiftSchemaReaderOf{parameter}) }} }}; \
+         private init(swiftSchemaCorrected decoder: Decoder, _ swiftSchemaReaderOf{parameter}: \
+         (Decoder) throws -> {parameter}) throws {{ {corrected} }}; fileprivate \
+         init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String], _ \
+         swiftSchemaReaderOf{parameter}: (Decoder) throws -> {parameter}) throws {{ self = try \
+         withoutActuallyEscaping(swiftSchemaReaderOf{parameter}) {{ swiftSchemaReaderOf{parameter} \
+         in try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: {called}try \
+         SwiftSchemaPayload(from: decoder, without: taken).value{closing}, at: \
+         decoder.codingPath, within: decoder, handing: [\"{parameter}\": \
+         swiftSchemaReaderOf{parameter}]).value }} }}; fileprivate init(swiftSchemaUnjudged \
+         decoder: Decoder, swiftSchemaWithout taken: [String]) throws {{ try \
+         self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken, {{ try \
+         SwiftSchemaFit<{parameter}>(from: $0).value }}) }}; fileprivate \
+         init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOf{parameter}: (Decoder) \
+         throws -> {parameter}) throws {{ try self.init(swiftSchemaUnjudged: decoder, \
+         swiftSchemaWithout: [], swiftSchemaReaderOf{parameter}) }}; fileprivate \
+         init(swiftSchemaUnjudged decoder: Decoder) throws {{ try \
+         self.init(swiftSchemaUnjudged: decoder, {{ try SwiftSchemaFit<{parameter}>(from: \
+         $0).value }}) }}; public init(from decoder: Decoder) throws {{ "
+    )
+}
+
 /// A member's function is called on the payload of its key, and the member is read from what it
 /// answers, at the coding path of the key. The type's own is called on the whole payload, and
 /// the members are read from what it answers.
@@ -440,7 +479,8 @@ fn the_payload_type_reads_any_value_and_reads_a_type_back_from_one() {
             ),
             concat!(
                 "static func read<Read: Decodable>(_ type: Read.Type, from payload: Any, ",
-                "at path: [CodingKey], within held: Decoder) throws -> Read { ",
+                "at path: [CodingKey], within held: Decoder, ",
+                "handing readers: [String: Any] = [:]) throws -> Read { ",
                 "guard JSONSerialization.isValidJSONObject([payload]), ",
                 "let written = try? JSONSerialization.data(withJSONObject: payload, ",
                 "options: [.fragmentsAllowed]) else { ",
@@ -456,6 +496,7 @@ fn the_payload_type_reads_any_value_and_reads_a_type_back_from_one() {
                 "underlyingError: context.underlyingError) }; ",
                 "let reader = decoder(for: payload, outer: outer); ",
                 r#"reader.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] = true; "#,
+                r#"reader.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaReaders")!] = readers; "#,
                 "do { return try reader.decode(type, from: written) } ",
                 "catch DecodingError.typeMismatch(let asked, let context) { ",
                 "throw DecodingError.typeMismatch(asked, placed(context)) } ",
@@ -755,26 +796,28 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
         ),
         (
             ticket_swift::swift_definition(),
-            reads_reached(
+            reads_with_reader(
                 "Ticket",
                 "unwrapped(",
                 ")",
-                "let container = try decoder.singleValueContainer(); \
-                 self.value = try container.decode(SwiftSchemaFit<IdType>.self).value",
-                "fileprivate",
+                "self.value = try swiftSchemaReaderOfIdType(decoder)",
+                "IdType",
             ),
         ),
         (
             bin_swift::swift_definition(),
-            corrected_reads(
-                "Bin",
+            reads_with_reader(
+                "BinDraft",
                 "unwrapped(",
                 ")",
                 "let container = try decoder.container(keyedBy: CodingKeys.self); \
                  let codesPayload = try container.decode(SwiftSchemaPayload.self, forKey: .codes).value; \
-                 self.codes = try SwiftSchemaPayload.read([CodeType].self, from: unwrapped(codesPayload), \
-                 at: container.codingPath + [CodingKeys.codes], within: decoder); \
+                 self.codes = try withoutActuallyEscaping(swiftSchemaReaderOfCodeType) { \
+                 swiftSchemaReaderOfCodeType in try SwiftSchemaPayload.read(SwiftSchemaReadCodes.self, \
+                 from: unwrapped(codesPayload), at: container.codingPath + [CodingKeys.codes], \
+                 within: decoder, handing: [\"CodeType\": swiftSchemaReaderOfCodeType]) }.value; \
                  self.label = try container.decode(String.self, forKey: .label)",
+                "CodeType",
             ),
         ),
         (

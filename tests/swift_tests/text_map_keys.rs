@@ -295,19 +295,19 @@ fn each_variant_beside_the_maps_is_written_as_serde_writes_it() {
 fn a_key_held_as_its_text_is_bound_with_no_guard() {
     for (swift, reads) in [
         (almanac_swift::swift_definition(), 5),
-        (ephemeris_swift::swift_definition(), 3),
+        (ephemeris_swift::swift_definition(), 5),
         (gazetteer_swift::swift_definition(), 1),
         (tidings_swift::swift_definition(), 3),
         (tagged_tidings_swift::swift_definition(), 3),
         (adjacent_tidings_swift::swift_definition(), 3),
         (untagged_tidings_swift::swift_definition(), 3),
-        (bulletin_swift::swift_definition(), 3),
-        (tagged_bulletin_swift::swift_definition(), 3),
-        (adjacent_bulletin_swift::swift_definition(), 3),
-        (untagged_bulletin_swift::swift_definition(), 3),
+        (bulletin_swift::swift_definition(), 5),
+        (tagged_bulletin_swift::swift_definition(), 5),
+        (adjacent_bulletin_swift::swift_definition(), 5),
+        (untagged_bulletin_swift::swift_definition(), 5),
         (datebook_swift::swift_definition(), 1),
         (hourbook_swift::swift_definition(), 1),
-        (logsheet_swift::swift_definition(), 1),
+        (logsheet_swift::swift_definition(), 2),
     ] {
         assert!(
             !swift.contains("let wireKey = codingKey.stringValue; guard"),

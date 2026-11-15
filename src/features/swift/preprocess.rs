@@ -13,6 +13,7 @@ use core::iter;
 use std::collections::{HashMap, HashSet};
 
 use super::read::{Locals, Source, counted, flattened, unjudged};
+use super::validate;
 use super::{Shaped, lookup_swift_name, swift_upper_camel};
 use crate::bound_message::swift_literal_text;
 use crate::features::model_schema_prop::FunctionName;
@@ -60,7 +61,8 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] = outer; \
      return reader }; \
      static func read<Read: Decodable>(_ type: Read.Type, from payload: Any, \
-     at path: [CodingKey], within held: Decoder) throws -> Read { \
+     at path: [CodingKey], within held: Decoder, handing readers: [String: Any] = [:]) \
+     throws -> Read { \
      guard JSONSerialization.isValidJSONObject([payload]), \
      let written = try? JSONSerialization.data(withJSONObject: payload, \
      options: [.fragmentsAllowed]) else { \
@@ -73,6 +75,7 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
      let reader = decoder(for: payload, outer: outer); \
      reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] = true; \
+     reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaReaders\")!] = readers; \
      do { return try reader.decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
      throw DecodingError.typeMismatch(asked, placed(context)) } \
@@ -90,7 +93,8 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
 /// payload of its own: `read` with no `swiftSchemaFlat`, so the type refuses a key it does not
 /// declare.
 const REFUSING: &str = "static func readRefusing<Read: Decodable>(_ type: Read.Type, \
-     from payload: Any, at path: [CodingKey], within held: Decoder) throws -> Read { \
+     from payload: Any, at path: [CodingKey], within held: Decoder, \
+     handing readers: [String: Any] = [:]) throws -> Read { \
      guard JSONSerialization.isValidJSONObject([payload]), \
      let written = try? JSONSerialization.data(withJSONObject: payload, \
      options: [.fragmentsAllowed]) else { \
@@ -101,7 +105,9 @@ const REFUSING: &str = "static func readRefusing<Read: Decodable>(_ type: Read.T
      func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
      DecodingError.Context(codingPath: path + context.codingPath, \
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
-     do { return try decoder(for: payload, outer: outer).decode(type, from: written) } \
+     let reader = decoder(for: payload, outer: outer); \
+     reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaReaders\")!] = readers; \
+     do { return try reader.decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
      throw DecodingError.typeMismatch(asked, placed(context)) } \
      catch DecodingError.valueNotFound(let asked, let context) { \
@@ -889,6 +895,12 @@ fn value(
         &called(member.functions, &format!("{stem}Payload")),
         member.units,
     );
+    let parameters = validate::walked_through(member.def);
+    let handing = if member.walked {
+        super::read::handing(&parameters)
+    } else {
+        String::new()
+    };
     let read = |read_as: &str| {
         let from = if member.flat {
             format!(
@@ -902,9 +914,14 @@ fn value(
         } else {
             "read"
         };
-        format!(
-            "try SwiftSchemaPayload.{reader}({read_as}.self, from: {from}, at: {path}, within: decoder)"
-        )
+        let reading = format!(
+            "try SwiftSchemaPayload.{reader}({read_as}.self, from: {from}, at: {path}, within: decoder{handing})"
+        );
+        if handing.is_empty() {
+            reading
+        } else {
+            super::read::escaping(&parameters, &reading)
+        }
     };
     let held = |value: &str| format!("self.value = {value}");
     let statements = if member.walked {
@@ -932,9 +949,14 @@ fn value(
         }
     };
     let twin = format!("SwiftSchemaRead{}", swift_upper_camel(stem));
+    let readers = if member.walked {
+        super::read::extracted(&parameters)
+    } else {
+        String::new()
+    };
     twins.push(format!(
         "private struct {twin}: Decodable {{ let value: {}; \
-         init(from decoder: Decoder) throws {{ {statements} }} }}",
+         init(from decoder: Decoder) throws {{ {readers}{statements} }} }}",
         member.real_type
     ));
     sink(&format!("{}.value", read(&twin)))

@@ -328,8 +328,8 @@ fn the_tuple_and_the_map_of_a_field_declare_the_parameter_they_reach() {
              public var storage: [UInt32: Stowed]; ",
             "public struct StackByCaskKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
              public var storage: [UInt32: Cask<Stowed>]; ",
-            "result[key] = try Cask<Stowed>(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: codingKey)) }; ",
+            "result[key] = try Cask<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: codingKey), \
+             swiftSchemaReaderOfStowed) }; ",
             "public struct StackCaskArgument0Tuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: Stowed; let slot1: UInt8; ",
         ],
@@ -349,15 +349,20 @@ fn every_type_position_names_the_helper_at_its_parameters() {
              public var numberedPair: StackNumberedPairTuple<Stowed>; \
              public var pair: StackPairTuple<Stowed>; \
              public var pairedByNumber: [UInt32: StackPairedByNumberValueTuple<Stowed>]; ",
-            "self.byCask = try StackByCaskKeyedMap<Stowed>(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: .byCask)).storage; ",
-            "let wireByNumber = try container.decode(StackByNumberKeyedMap<Stowed>.self, \
-             forKey: .byNumber); self.byNumber = wireByNumber.storage; ",
+            "self.byCask = try StackByCaskKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .byCask), swiftSchemaReaderOfStowed).storage; ",
+            "self.byNumber = try StackByNumberKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .byNumber), swiftSchemaReaderOfStowed).storage; ",
             "self.cask = try Cask<StackCaskArgument0Tuple<Stowed>>(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: .cask)); ",
-            "let wireListed = try container.decode([StackListedKeyedMap<Stowed>].self, \
-             forKey: .listed); self.listed = wireListed.map { $0.storage }; ",
-            "self.pair = try container.decode(StackPairTuple<Stowed>.self, forKey: .pair); ",
+             container.superDecoder(forKey: .cask), { decoder in return try \
+             StackCaskArgument0Tuple<Stowed>(swiftSchemaUnjudged: decoder, \
+             swiftSchemaReaderOfStowed) }); ",
+            "var listed = try container.nestedUnkeyedContainer(forKey: .listed); var items: \
+             [[UInt32: Stowed]] = []; while !listed.isAtEnd { items.append(try \
+             StackListedKeyedMap<Stowed>(swiftSchemaUnjudged: listed.superDecoder(), \
+             swiftSchemaReaderOfStowed).storage) }; self.listed = items; ",
+            "self.pair = try StackPairTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .pair), swiftSchemaReaderOfStowed); ",
             "let wireByCask = StackByCaskKeyedMap<Stowed>(storage: self.byCask); ",
             "let wireByNumber = StackByNumberKeyedMap<Stowed>(storage: self.byNumber); ",
             "let wireListed = self.listed.map { StackListedKeyedMap<Stowed>(storage: $0) }; ",
@@ -376,15 +381,14 @@ fn a_helper_held_by_another_declares_the_parameter_both_reach() {
              Sendable { public var storage: [UInt32: StackPairedByNumberValueTuple<Stowed>]; ",
             "result[key] = try container.decode(StackPairedByNumberValueTuple<Stowed>.self, \
              forKey: codingKey) }; ",
-            "let wirePairedByNumber = try \
-             container.decode(StackPairedByNumberKeyedMap<Stowed>.self, forKey: \
-             .pairedByNumber); ",
+            "self.pairedByNumber = try StackPairedByNumberKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .pairedByNumber), swiftSchemaReaderOfStowed).storage }; ",
             "public struct StackNumberedPairTupleSlot0KeyedMap<Stowed: Codable & Sendable>: \
              Codable, Sendable { public var storage: [UInt32: Stowed]; ",
             "public struct StackNumberedPairTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: [UInt32: Stowed]; let slot1: UInt8; ",
-            "self.numberedPair = try container.decode(StackNumberedPairTuple<Stowed>.self, \
-             forKey: .numberedPair); ",
+            "self.numberedPair = try StackNumberedPairTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .numberedPair), swiftSchemaReaderOfStowed); ",
         ],
     );
 }
@@ -444,12 +448,17 @@ fn the_tuple_of_a_tuple_struct_declares_the_parameter_its_slots_reach() {
              let slot0: Stowed; let slot1: UInt8; ",
             "public struct TallyTuple<Stowed: Codable & Sendable>: Codable, Sendable { \
              let slot0: TallyTupleSlot0Tuple<Stowed>; let slot1: UInt32; ",
-            "slot0 = try container.decode(TallyTupleSlot0Tuple<Stowed>.self); ",
+            "slot0 = try TallyTupleSlot0Tuple<Stowed>(swiftSchemaUnjudged: \
+             container.superDecoder(), swiftSchemaReaderOfStowed); ",
             "public struct TallyDraft<Stowed: Codable & Sendable>: Codable, Sendable { \
              public var value: TallyTuple<Stowed>; \
-             public init(value: TallyTuple<Stowed>) { self.value = value }; \
-             fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { \
-             self.value = try TallyTuple<Stowed>(swiftSchemaUnjudged: decoder) }; ",
+             public init(value: TallyTuple<Stowed>) { self.value = value }; ",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOfStowed: \
+             (Decoder) throws -> Stowed) throws { self.value = try \
+             TallyTuple<Stowed>(swiftSchemaUnjudged: decoder) }; fileprivate \
+             init(swiftSchemaUnjudged decoder: Decoder) throws { try \
+             self.init(swiftSchemaUnjudged: decoder, { try SwiftSchemaFit<Stowed>(from: $0).value \
+             }) }; ",
         ],
     );
     holds(
@@ -517,15 +526,13 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_under_no_tag_attribu
              case halves(SplitHalvesTuple<Stowed>); case keyed(SplitKeyedTuple<Stowed>); \
              case numbered([UInt32: Stowed]); case paired(SplitPairedValueTuple<Stowed>); \
              case stacked(SplitStackedPayload<Stowed>); ",
-            "case \"Halves\": self = .halves(try SplitHalvesTuple<Stowed>(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: key))); \
-             case \"Keyed\": self = .keyed(try SplitKeyedTuple<Stowed>(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: key))); ",
-            "case \"Paired\": self = .paired(try \
-             container.decode(SplitPairedValueTuple<Stowed>.self, forKey: key)); ",
-            "let wireByNumber = try \
-             container.decode(SplitStackedPayloadByNumberKeyedMap<Stowed>.self, forKey: \
-             .byNumber); ",
+            "case \"Halves\": self = .halves(try SplitHalvesTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             key), swiftSchemaReaderOfStowed)); case \"Keyed\": self = .keyed(try SplitKeyedTuple<Stowed>(swiftSchemaUnjudged: \
+             container.superDecoder(forKey: key), swiftSchemaReaderOfStowed)); ",
+            "case \"Paired\": self = .paired(try SplitPairedValueTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             key), swiftSchemaReaderOfStowed)); ",
+            "self.byNumber = try SplitStackedPayloadByNumberKeyedMap<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .byNumber), swiftSchemaReaderOfStowed).storage; ",
         ],
     );
 }
@@ -563,10 +570,10 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_under_a_tag_and_a_co
              case keyed(AdjacentSplitKeyedTuple<Stowed>); case numbered([UInt32: Stowed]); \
              case paired(AdjacentSplitPairedValueTuple<Stowed>); \
              case stacked(AdjacentSplitStackedPayload<Stowed>); ",
-            "self = .halves(try AdjacentSplitHalvesTuple<Stowed>(swiftSchemaUnjudged: \
-             container.superDecoder(forKey: .swiftSchemaContent))); ",
-            "self = .paired(try container.decode(AdjacentSplitPairedValueTuple<Stowed>.self, \
-             forKey: .swiftSchemaContent)); ",
+            "self = .halves(try AdjacentSplitHalvesTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .swiftSchemaContent), swiftSchemaReaderOfStowed)); ",
+            "self = .paired(try AdjacentSplitPairedValueTuple<Stowed>(swiftSchemaUnjudged: container.superDecoder(forKey: \
+             .swiftSchemaContent), swiftSchemaReaderOfStowed)); ",
         ],
     );
 }
@@ -582,8 +589,8 @@ fn a_variant_holds_its_helper_at_the_parameters_it_declares_untagged() {
              Sendable { ",
             "case decked([Deck: Stowed]); case paired(UntaggedSplitPairedValueTuple<Stowed>); \
              case stacked(UntaggedSplitStackedPayload<Stowed>); ",
-            "if let value = try? UntaggedSplitPairedValueTuple<Stowed>(from: decoder) { \
-             self = .paired(value); return }; ",
+            "if let value = try? UntaggedSplitPairedValueTuple<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaReaderOfStowed) \
+             { self = .paired(value); return }; ",
         ],
     );
 }
