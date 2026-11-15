@@ -73,7 +73,7 @@ try {
 
 - **A refusal of shape keeps its `FormatException`**: a missing key, a value of the wrong kind and a key no member reads are refused as before, and a `ParcelRefusal` says a value was read and broke a rule.
 - **A value read below the top is refused at its full path.** A type's refusal a read below the value asked for throws, the key of a map a brand's `check` refuses or a parcel of a `Parcels` among them, is thrown as the refusal of the type that holds it, and each issue is placed under the steps ahead of it: `'pitches.13': 13 is outside of the scale` for `{"pitches":{"13":1}}`. Each class's `_readAt` reads the `issues` of such a refusal through `dynamic`, as no class is shared to name.
-- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second class of the name, as one named `{Name}Draft` does: `dart analyze` refuses the file with `The name 'ParcelRefusal' is already defined.` Rename one of them.
+- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second class of the name, as one named `{Name}Draft` does: `dart analyze` refuses the file with `The name 'ParcelRefusal' is already defined.` In one crate the second of the two to expand, whichever it is, stops the build at expansion, spanned on its name, with a message that names the class and both types; a renamed type counts under its Rust name too. Across crates the Dart compiler refuses the pair as above. Rename one of the two types.
 
 #### The functions you write in Dart
 

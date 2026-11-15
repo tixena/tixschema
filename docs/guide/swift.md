@@ -139,7 +139,7 @@ public struct ManifestRefusal: Error, CustomStringConvertible { public let issue
 - **`issues` is what `validationIssues()` answers of the value**, the list the Rust `validation_issues()` answers of the same value, entry by entry, for the value the read was asked for.
 - **`description` prints the name and the issues**, `ManifestRefusal: ['firstParcel.label': too short: minimum length is 1, got 0]`, as the Dart and Kotlin refusals print.
 - **A refusal of shape keeps its `DecodingError`**: a missing key, a value of the wrong type and a key no member reads are refused as before, and a `ManifestRefusal` says a value was read and broke a rule.
-- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second struct of the name, as one named `{Name}Draft` does: the Swift compiler refuses the file with ``error: invalid redeclaration of 'ManifestRefusal'``. Rename one of them.
+- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second struct of the name, as one named `{Name}Draft` does: the Swift compiler refuses the file with ``error: invalid redeclaration of 'ManifestRefusal'``. In one crate the second of the two to expand, whichever it is, stops the build at expansion, spanned on its name, with a message that names the class and both types; a renamed type counts under its Rust name too. Across crates the Swift compiler refuses the pair as above. Rename one of the two types.
 
 **What the emitter writes.** Every draft has two initializers that read it, and the valid type forwards them. The read alone is `fileprivate`, which the generated file alone reaches:
 

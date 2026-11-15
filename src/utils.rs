@@ -762,6 +762,21 @@ thread_local! {
     static COUNTED: RefCell<HashMap<String, Counted>> = RefCell::new(HashMap::new());
     /// The Rust ident holding each published name — see [`claim_published_name`].
     static PUBLISHED_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    /// The published names that type aliases hold, among [`PUBLISHED_NAMES`].
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+    static PUBLISHED_ALIASES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// A class the Dart, Swift and Kotlin texts of one type write, and the name another type publishes
+/// that it would redeclare.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub struct GeneratedClassCollision {
+    /// What the class is: `draft` or `refusal`.
+    pub kind: &'static str,
+    /// The published name of the type that writes the class.
+    pub owner: String,
+    /// The name both the class and the other type take.
+    pub taken: String,
 }
 
 /// What a name `#[model_schema]` was written on stands for, as an expansion that follows it reads
@@ -1463,6 +1478,76 @@ pub fn claim_published_name(published: &str, rust_ident: &str) -> Option<String>
                 None
             }
         }
+    })
+}
+
+/// Records that the item published as `published` is a type alias, which writes no draft class.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub fn record_published_alias(published: &str) {
+    PUBLISHED_ALIASES.with(|aliases| aliases.borrow_mut().insert(published.to_owned()));
+}
+
+/// The classes the type `rust_ident`, published as `published`, writes in the Dart, Swift and
+/// Kotlin texts, each with the name that owns it: the refusal under the published name and under
+/// the Rust ident where that differs, and for a type that is no alias, its draft.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+fn generated_classes(
+    published: &str,
+    rust_ident: &str,
+    is_alias: bool,
+) -> Vec<(&'static str, String, String)> {
+    let mut classes = vec![(
+        "refusal",
+        format!("{published}Refusal"),
+        published.to_owned(),
+    )];
+    if !is_alias {
+        classes.push(("draft", format!("{published}Draft"), published.to_owned()));
+    }
+    if rust_ident != published {
+        classes.push((
+            "refusal",
+            format!("{rust_ident}Refusal"),
+            rust_ident.to_owned(),
+        ));
+    }
+    classes
+}
+
+/// Reads the names already claimed for a type that writes a class of the new type's published
+/// name, or a published name the new type's classes would redeclare, without claiming anything.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+pub fn generated_class_collision(
+    published: &str,
+    rust_ident: &str,
+    is_alias: bool,
+) -> Option<GeneratedClassCollision> {
+    PUBLISHED_NAMES.with(|names| {
+        let held = names.borrow();
+        let mut entries: Vec<(&String, &String)> = held.iter().collect();
+        entries.sort();
+        let taking = entries.iter().find_map(|(other_published, other_ident)| {
+            let other_alias =
+                PUBLISHED_ALIASES.with(|aliases| aliases.borrow().contains(*other_published));
+            generated_classes(other_published, other_ident, other_alias)
+                .into_iter()
+                .find(|(_, class, _)| class == published)
+                .map(|(kind, class, owner)| GeneratedClassCollision {
+                    kind,
+                    owner,
+                    taken: class,
+                })
+        });
+        taking.or_else(|| {
+            generated_classes(published, rust_ident, is_alias)
+                .into_iter()
+                .find(|(_, class, _)| held.contains_key(class))
+                .map(|(kind, class, owner)| GeneratedClassCollision {
+                    kind,
+                    owner,
+                    taken: class,
+                })
+        })
     })
 }
 
