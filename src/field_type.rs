@@ -22,8 +22,6 @@ use crate::features::model_schema_prop::ModelSchemaPropMeta;
 use crate::features::model_schema_prop::{FunctionName, limit_number, limit_text};
 #[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
 use crate::utils::NumberKey;
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use crate::utils::admits_null_recorded;
 #[cfg(any(
     feature = "zod",
     feature = "dart",
@@ -34,6 +32,8 @@ use crate::utils::reads_one_key_named;
 use crate::utils::{
     MapKeyWire, is_declared_ident, lookup_alias_info, option_alias, ts_quoted, written_type,
 };
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use crate::utils::{NullAdmitted, null_decided};
 #[cfg(feature = "typescript")]
 use crate::utils::{assume_drafted_type, is_drafted_type};
 
@@ -704,7 +704,7 @@ impl FieldDef {
         self.stands_for_an_option()
             || (self.array_depth == 0
                 && (matches!(&self.field_type, FieldDefType::Tuple(elements) if elements.is_empty())
-                    || matches!(&self.field_type, FieldDefType::SiblingType(name, _) if admits_null_recorded(name))))
+                    || matches!(&self.field_type, FieldDefType::SiblingType(name, _) if null_decided(name) == Some(NullAdmitted::Always))))
     }
 
     /// The enclosing item's own type parameter this field reaches *below* its own position — the
@@ -1423,6 +1423,23 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => Vec::new(),
+        }
+    }
+
+    /// What this field's own value admits of `null`: what [`Self::admits_null`] says, and for a
+    /// type parameter or a model no expansion before this one decided, that it may.
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    pub fn null_admitted(&self) -> NullAdmitted {
+        if self.admits_null() {
+            return NullAdmitted::Always;
+        }
+        let undecided = self.array_depth == 0
+            && (matches!(&self.field_type, FieldDefType::TypeParam(_))
+                || matches!(&self.field_type, FieldDefType::SiblingType(name, _) if null_decided(name) != Some(NullAdmitted::Never)));
+        if undecided {
+            NullAdmitted::Perhaps
+        } else {
+            NullAdmitted::Never
         }
     }
 

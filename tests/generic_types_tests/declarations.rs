@@ -143,6 +143,14 @@ mod flattened_zod;
 #[path = "flattened_function_models.rs"]
 mod flattened_function;
 
+/// Models that hold a type whose draft admits `null`, declared above it, below it, behind an alias
+/// and in another crate, and models whose slot is a type parameter.
+#[path = "null_holder_models.rs"]
+mod null_holder_models;
+
+#[path = "null_holder_tests.rs"]
+mod null_holder_tests;
+
 #[cfg(feature = "chrono")]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;

@@ -167,6 +167,19 @@ pub enum MapKeyWire {
     Unsigned64,
 }
 
+/// Whether the draft of a type admits `null`, as far as the expansion that reads it can tell.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NullAdmitted {
+    /// The draft is always `null` or another value.
+    Always,
+    /// The draft is never `null`.
+    Never,
+    /// The draft is a type this expansion has not seen decided, or a type parameter: it admits
+    /// `null` where the type it names does, which only TypeScript can tell.
+    Perhaps,
+}
+
 /// The `str` method call a `pattern` says the same thing as, for the patterns a regex engine is
 /// avoidable work for. Each variant carries the needle in the spelling the check takes it — the
 /// literal the pattern's own escapes already resolved to, not the pattern text: `^foo\.bar` starts
@@ -696,9 +709,10 @@ thread_local! {
     static WIRE_SCALAR_KINDS: RefCell<HashMap<String, WireScalarKind>> = RefCell::new(HashMap::new());
     /// The names of enums declared `#[serde(untagged)]`.
     static UNTAGGED_ENUMS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-    /// The names of items whose draft admits `null`, so that their valid type keeps it.
+    /// Each item whose own expansion decided whether its draft admits `null`, to what it decided,
+    /// and `None` for a name two items of the crate decided differently.
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    static NULL_ADMITTING: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    static NULL_DECIDED: RefCell<HashMap<String, Option<NullAdmitted>>> = RefCell::new(HashMap::new());
     /// The names of brands and aliases serde writes as a number or a `bool`, which the `bson`
     /// library refuses as a document key.
     static BSON_REFUSED_KEYS: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -2030,19 +2044,27 @@ pub fn bson_refused_holder(rust_ident: &str) -> Option<String> {
     BSON_REFUSED_HOLDERS.with(|names| names.borrow().get(rust_ident).cloned())
 }
 
-/// Records that the draft of `rust_ident` admits `null`.
+/// Records what the expansion of `rust_ident` decided about its own draft.
 #[cfg(any(feature = "typescript", feature = "zod"))]
-pub fn record_null_admitting(rust_ident: &str) {
-    NULL_ADMITTING.with(|names| {
-        names.borrow_mut().insert(rust_ident.to_owned());
+pub fn record_null_decided(rust_ident: &str, decided: NullAdmitted) {
+    NULL_DECIDED.with(|names| {
+        names
+            .borrow_mut()
+            .entry(rust_ident.to_owned())
+            .and_modify(|held| {
+                if *held != Some(decided) {
+                    *held = None;
+                }
+            })
+            .or_insert(Some(decided));
     });
 }
 
-/// Whether [`record_null_admitting`] has seen `rust_ident`. `false` for a type declared below the
-/// item asking.
+/// What [`record_null_decided`] recorded for `rust_ident`. `None` for a type declared below the
+/// item asking, in another crate, or declared twice under that name with different answers.
 #[cfg(any(feature = "typescript", feature = "zod"))]
-pub fn admits_null_recorded(rust_ident: &str) -> bool {
-    NULL_ADMITTING.with(|names| names.borrow().contains(rust_ident))
+pub fn null_decided(rust_ident: &str) -> Option<NullAdmitted> {
+    NULL_DECIDED.with(|names| names.borrow().get(rust_ident).copied().flatten())
 }
 
 /// Records that `rust_ident` names an enum declared `#[serde(untagged)]`.
