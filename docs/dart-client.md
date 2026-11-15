@@ -259,17 +259,27 @@ consumer's view; this is what a change has to keep.
   answers what serde classifies as text that is not the document, and the transport's `_onFrame`
   reads a frame through `_{service}WsHeld`, a reviver that refuses an infinity, so a frame that
   holds a number beyond an `f64` is dropped, as the Rust transports drop it. It reads the frame
-  after `_{service}WsSignedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
-  `SIGNED_ZERO`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
+  through `_{service}WsReadText`, which writes each `-0` outside a string as `-0.0` (`read_text_fn`,
+  `NUMBER_OR_STRING`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
   read of an integer refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
   reads as a `double`, with ``invalid type: floating point `-0.0`, expected u32``, serde's words
   (`integer_read`: the float spelled as `serde_json` spells it, plainly from `0.00001` to below
   `1e16`, `1e+16` beyond, and `number out of range` for an infinity). Every Dart read of a JSON text passes it through such a function first, one
-  declared in each text that reads JSON (`signed_zeros_call`): the `http_rest` client reads a
-  response's body and a fault's through `_{service}HttpSignedZeros` (`response_json`), the `mcp`
-  server each message through `_{service}WsSignedZeros`, and the `mcp` client each answer and the
-  text of a tool error through `_{service}McpSignedZeros`. `fromJson` called by hand on what
-  `jsonDecode` hands reads `-0` as 0. The `mcp` server reads each message through the same
+  declared in each text that reads JSON (`read_text_call`): the `http_rest` client reads a
+  response's body and a fault's through `_{service}HttpReadText` (`response_json`), the `mcp`
+  server each message through `_{service}WsReadText`, and the `mcp` client each answer and the
+  text of a tool error through `_{service}McpReadText`. `fromJson` called by hand on what
+  `jsonDecode` hands reads `-0` as 0. Each text a generated client or server reads also keeps the
+  digits of an integer literal above an `i64` that a `u64` holds: `jsonDecode` reads it as a
+  `double`, so `_{service}…ReadText` pairs each number `jsonDecode`'s reviver visits, which it visits
+  in the order the text writes them, with the literal at its place, and hands the read a `BigInt`.
+  The integer read words it ``invalid value: integer `9223372036854775808`, expected i64``, and a
+  millisecond `DateTime` ``value is not a legal timestamp: 9223372036854775808``, as serde does; a
+  float read takes a `BigInt` as the `double` of its digits. An integer below an `i64`, or above a
+  `u64`, stays a `double` and is worded as the float serde reads it as. `fromJson` called by hand
+  cannot keep them, since the caller decoded the text and the digits are gone, so it words such an
+  integer as a float. A `DateTime<Tz>` under `as_number` is read through the integer read, as an
+  `i64` member is, with `a unix timestamp in milliseconds` for the type serde names. The `mcp` server reads each message through the same
   reviver, and answers one that holds such a number with `-32600`. It names the field of a refusal
   from the JSON schema of the message, and where the schema admits the value, `1.0` or `-0` for
   an integer, from the path the read refused at (`_{service}WsRefusedAt`). A `DateTime<Tz>` is written

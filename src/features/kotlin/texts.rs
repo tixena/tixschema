@@ -57,12 +57,14 @@ const ZONED_WRITER: &str = r#"private fun written(text: String, utc: Boolean): S
 
 /// The private function of an integer's serializer that spells a float as serde does: its shortest
 /// digits, laid out plainly from `0.00001` to below `1e16`, with `.0` where they hold no fraction.
-pub(super) const FLOATING: &str = "private fun floating(number: Double): String { if (number == \
-     0.0) return if (1.0 / number < 0) \"-0.0\" else \"0.0\"; val exact = \
-     java.math.BigDecimal(number.toString()).stripTrailingZeros(); val digits = \
-     exact.movePointRight(exact.scale()).toBigInteger().abs().toString(); val at = digits.length - \
-     1 - exact.scale(); return \
-     (if (number < 0) \"-\" else \"\") + when (at) { in 0..15 -> digits.padEnd(at + 1, \
+pub(super) const FLOATING: &str = "private fun floating(number: Double): String = \
+     floated(number.toString()); private fun floating(number: Float): String = \
+     floated(number.toString()); private fun floated(shortest: String): String { val negative = \
+     shortest.startsWith(\"-\"); val exact = \
+     java.math.BigDecimal(shortest.removePrefix(\"-\")).stripTrailingZeros(); if (exact.signum() \
+     == 0) return if (negative) \"-0.0\" else \"0.0\"; val digits = \
+     exact.unscaledValue().toString(); val at = digits.length - 1 - exact.scale(); return (if \
+     (negative) \"-\" else \"\") + when (at) { in 0..15 -> digits.padEnd(at + 1, \
      '0').let { it.take(at + 1) + \".\" + it.drop(at + 1).ifEmpty { \"0\" } }; in -5..-1 -> \
      \"0.\" + \"0\".repeat(-at - 1) + digits; else -> digits.take(1) + (if (digits.length > 1) \
      \".\" + digits.drop(1) else \"\") + \"e\" + (if (at > 0) \"+\" else \"\") + at } }; ";
@@ -216,8 +218,13 @@ impl Primitive {
 /// digits beyond `bounds` refused as serde refuses them (as a float past the `u64` and `i64`
 /// range serde reads an integer in, as an out-of-range integer within it), any other text left to
 /// the library.
-fn integral(expected: &str, bounds: (&str, &str)) -> String {
+fn integral(expected: &str, bounds: (&str, &str), timestamp: bool) -> String {
     let (least, most) = bounds;
+    let within = if timestamp {
+        "\"value is not a legal timestamp: \" + text".to_owned()
+    } else {
+        format!("\"invalid value: integer `\" + text + \"`, expected {expected}\"")
+    };
     format!(
         "val text = element.content; val wide = text.toDoubleOrNull(); if (wide != null && (text \
          == \"-0\" || text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if \
@@ -230,7 +237,7 @@ fn integral(expected: &str, bounds: (&str, &str)) -> String {
          whole > java.math.BigInteger(\"{U64_MOST}\")) throw SerializationException(\"invalid \
          type: floating point `\" + floating(wide) + \"`, expected {expected}\"); if (whole < \
          java.math.BigInteger(\"{least}\") || whole > java.math.BigInteger(\"{most}\")) throw \
-         SerializationException(\"invalid value: integer `\" + text + \"`, expected {expected}\") \
+         SerializationException({within}) \
          }}; "
     )
 }
@@ -256,8 +263,9 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
         return format!(
             "object {named} : KSerializer<{kotlin}> {{ private val held = serializer<{kotlin}>(); \
              override val descriptor: SerialDescriptor = held.descriptor; override fun \
-             serialize(encoder: Encoder, value: {kotlin}) = held.serialize(encoder, value); \
-             {PATHED}{}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder \
+             serialize(encoder: Encoder, value: {kotlin}) = if (value.isInfinite() || value.isNaN()) \
+             held.serialize(encoder, value) else encoder.encodeString(floating(value)); \
+             {PATHED}{FLOATING}{}override fun deserialize(decoder: Decoder): {kotlin} {{ val json = decoder \
              as? JsonDecoder ?: return held.deserialize(decoder); val element = \
              json.decodeJsonElement(); return kotlinSchemaAt(json) {{ val text = (element as? \
              JsonPrimitive)?.takeIf {{ it.isString }}?.content ?: throw \
@@ -296,9 +304,9 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
         | Primitive::U16
         | Primitive::U32
         | Primitive::U8
-        | Primitive::Usize => (integral(expected, primitive.bounds()), FLOATING),
+        | Primitive::Usize => (integral(expected, primitive.bounds(), false), FLOATING),
         #[cfg(feature = "chrono")]
-        Primitive::Millis => (integral(expected, primitive.bounds()), FLOATING),
+        Primitive::Millis => (integral(expected, primitive.bounds(), true), FLOATING),
         Primitive::Bool | Primitive::BoolKey | Primitive::F32Key | Primitive::F64Key => {
             (String::new(), "")
         }

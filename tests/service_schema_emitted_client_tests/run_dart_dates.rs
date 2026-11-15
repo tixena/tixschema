@@ -8,7 +8,7 @@
 use core::fmt::Write as _;
 
 use super::dates_models::{
-    SAME_AS_SERDE, landing_dart, nudge_dart, positions_dart, serde_back, stamped_dart,
+    Nudge, SAME_AS_SERDE, landing_dart, nudge_dart, positions_dart, serde_back, stamped_dart,
 };
 use super::run_dart_validate::{analyzed, dart, module};
 
@@ -20,6 +20,20 @@ void told(String at, Object? Function() read) {
     printed = 'read ${jsonEncode(read())}';
   } on FormatException catch (_) {
     printed = 'refused';
+  }
+  print('$at: $printed');
+}
+";
+
+/// What prints a row: the message of the refusal, or `read`.
+const MESSAGE: &str = "
+void message(String at, Object? Function() read) {
+  String printed;
+  try {
+    read();
+    printed = 'read';
+  } on FormatException catch (refusal) {
+    printed = refusal.message;
   }
   print('$at: $printed');
 }
@@ -133,4 +147,37 @@ fn a_date_in_every_position_is_read_and_written_back_by_dart_as_serde_writes_it(
     };
     assert!(ran, "{printed}");
     assert_eq!(printed, expected, "the Dart write is not serde's");
+}
+
+/// A date under `as_number` that holds a float, or an integer a `u64` holds above an `i64`, is
+/// refused by Dart in the words serde refuses it in.
+#[test]
+fn a_date_under_as_number_is_refused_by_dart_in_the_words_serde_refuses_it_in() {
+    let rows = [
+        ("a fraction", r#"{"due":1.5}"#, r#"{"due":1.5}"#),
+        ("a whole float", r#"{"due":1e3}"#, r#"{"due":1000.0}"#),
+        (
+            "an integer above an i64",
+            r#"{"due":9223372036854775808}"#,
+            r#"{"due":BigInt.parse('9223372036854775808')}"#,
+        ),
+    ];
+    let mut main = String::from("void main() {\n");
+    let mut expected = String::new();
+    for (name, json, held) in rows {
+        let _ = writeln!(
+            main,
+            "  message('{name}', () => Nudge.fromJson(<String, dynamic>{held}));"
+        );
+        let refused = serde_json::from_str::<Nudge>(json).unwrap_err().to_string();
+        let (words, _) = refused.rsplit_once(" at line ").unwrap();
+        let _ = writeln!(expected, "{name}: {words}");
+    }
+    main.push_str("}\n");
+    let source = module(&[nudge_dart::dart_definition()], &[MESSAGE], &main);
+    let Some((ran, printed)) = dart("dates-as-number-refused", &[], &source) else {
+        return;
+    };
+    assert!(ran, "{printed}");
+    assert_eq!(printed, expected, "the Dart refusal is not serde's");
 }

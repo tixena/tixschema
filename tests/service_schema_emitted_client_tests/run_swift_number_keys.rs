@@ -8,10 +8,11 @@
 use core::fmt::Write as _;
 
 use super::number_key_rows::{
-    adjacent_pier_swift, anchor_swift, beacon_swift, burgee_swift, cutter_swift, depths_swift,
-    dinghy_swift, float_texts_serde_refuses, gauge_swift, hull_swift, ketch_swift, lanyard_swift,
-    moorings_swift, pennant_swift, pier_swift, rows, rudder_swift, shoal_swift, signal_swift,
-    skiff_swift, slips_swift, sloop_swift, soundings_swift, yawl_swift,
+    adjacent_pier_swift, anchor_swift, beacon_swift, buoy_swift, buoys_swift, burgee_swift,
+    cutter_swift, depths_swift, dinghy_swift, float_key_rows, float_texts_serde_refuses,
+    gauge_swift, hull_swift, ketch_swift, lanyard_swift, moorings_swift, pennant_swift, pier_swift,
+    rows, rudder_swift, shoal_swift, signal_swift, skiff_swift, slips_swift, sloop_swift,
+    soundings_swift, yawl_swift,
 };
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -38,6 +39,7 @@ func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
 fn a_map_keyed_by_a_number_brand_or_alias_is_read_and_written_back_by_swift_as_serde_does() {
     let mut rows = rows();
     rows.extend(float_texts_serde_refuses());
+    rows.extend(float_key_rows());
     let mut calls = String::new();
     let mut expected = String::new();
     for (at, row) in rows.iter().enumerate() {
@@ -54,6 +56,8 @@ fn a_map_keyed_by_a_number_brand_or_alias_is_read_and_written_back_by_swift_as_s
         adjacent_pier_swift::swift_definition(),
         anchor_swift::swift_definition(),
         beacon_swift::swift_definition(),
+        buoy_swift::swift_definition(),
+        buoys_swift::swift_definition(),
         burgee_swift::swift_definition(),
         cutter_swift::swift_definition(),
         depths_swift::swift_definition(),

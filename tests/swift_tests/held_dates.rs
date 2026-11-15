@@ -653,8 +653,10 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
             &[
                 "case counted(Int64); case maybe(Int64?); ".to_owned(),
                 format!("{named}SpannedTuple: Codable, Sendable {{ let slot0: Int64; "),
-                "slot0 = try container.decode(SwiftSchemaFit<Int64>.self).value; ".to_owned(),
-                "try container.encode(slot0); ".to_owned(),
+                "let wireSlot0 = try container.decode(SwiftSchemaMillis.self); slot0 = \
+                 wireSlot0.value; "
+                    .to_owned(),
+                "try container.encode(SwiftSchemaMillis(value: slot0)); ".to_owned(),
             ],
         );
         assert!(!swift.contains("extension "), "{swift}");
@@ -662,22 +664,25 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
     holds(
         &counted_tide_swift::swift_definition(),
         &[
-            "case \"Counted\": self = .counted(try container.decode(SwiftSchemaFit<Int64>.self, forKey: key).value); \
-             case \"Maybe\": self = .maybe(try container.decode(SwiftSchemaFit<Int64>?.self, forKey: key)?.value); "
+            "case \"Counted\": let wireCounted = try container.decode(SwiftSchemaMillis.self, forKey: key); \
+             self = .counted(wireCounted.value); case \"Maybe\": let wireMaybe = try \
+             container.decode(SwiftSchemaMillis?.self, forKey: key); self = .maybe(wireMaybe.map \
+             { $0.value }); "
                 .to_owned(),
             "case .counted(let payload): var container = encoder.container(keyedBy: \
-             SwiftSchemaExternalCodingKey.self); try container.encode(payload, \
-             forKey: SwiftSchemaExternalCodingKey(stringValue: \"Counted\")!); "
+             SwiftSchemaExternalCodingKey.self); try container.encode(SwiftSchemaMillis(value: \
+             payload), forKey: SwiftSchemaExternalCodingKey(stringValue: \"Counted\")!); "
                 .to_owned(),
         ],
     );
     holds(
         &untagged_counted_tide_swift::swift_definition(),
         &[
-            "if let value = try? SwiftSchemaFit<Int64>(from: decoder).value { self = .counted(value); \
+            "if let value = try? UntaggedCountedTideDraft.swiftSchemaReadCounted(decoder) { self = .counted(value); \
              return }; "
                 .to_owned(),
-            "case .counted(let value): try value.encode(to: encoder); ".to_owned(),
+            "case .counted(let value): try SwiftSchemaMillis(value: value).encode(to: encoder); "
+                .to_owned(),
         ],
     );
     for swift in [
@@ -688,8 +693,10 @@ fn a_date_under_as_number_in_a_slot_is_read_and_written_as_the_number() {
             &swift,
             &[
                 "let slot0: Int64; ".to_owned(),
-                "slot0 = try container.decode(SwiftSchemaFit<Int64>.self).value; ".to_owned(),
-                "try container.encode(slot0); ".to_owned(),
+                "let wireSlot0 = try container.decode(SwiftSchemaMillis.self); slot0 = \
+                 wireSlot0.value; "
+                    .to_owned(),
+                "try container.encode(SwiftSchemaMillis(value: slot0)); ".to_owned(),
             ],
         );
         assert!(!swift.contains("extension "), "{swift}");

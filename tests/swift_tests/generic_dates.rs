@@ -284,9 +284,12 @@ fn a_struct_that_declares_a_parameter_computes_its_formatter() {
     holds(
         &voyage_swift::swift_definition(),
         &[
-            "public struct VoyageDraft<Stowed: Codable & Sendable>: Codable, Sendable { ".to_owned(),
+            "public struct VoyageDraft<Stowed: Codable & Sendable>: Codable, Sendable { "
+                .to_owned(),
             helpers("VoyageDraft", COMPUTED),
-            "self.atMillis = try container.decode(SwiftSchemaFit<Int64>.self, forKey: .atMillis).value; ".to_owned(),
+            "let wireAtMillis = try container.decode(SwiftSchemaMillis.self, forKey: .atMillis); \
+             self.atMillis = wireAtMillis.value; "
+                .to_owned(),
             "private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String { \
              swiftSchemaIso8601Formatter.string(from: date)\
              .replacingOccurrences(of: \".000Z\", with: \"Z\") } };"

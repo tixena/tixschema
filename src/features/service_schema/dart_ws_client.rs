@@ -21,8 +21,9 @@ use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_n
 use core::fmt::Write as _;
 use syn::Type;
 
-/// A JSON string, or a `-0` that is neither an exponent's nor followed by more of its number.
-const SIGNED_ZERO: &str = r#""(?:[^"\\]|\\.)*"|(?<![eE])-0(?![.eE0-9])"#;
+/// A JSON string, or the run of characters a number is written with, taken whole so that a `-0` is
+/// told from the start of a longer number.
+const NUMBER_OR_STRING: &str = r#""(?:[^"\\]|\\.)*"|-?[0-9]+(?:\.[0-9]*)?(?:[eE][+-]?[0-9]*)?"#;
 
 /// The seam `{Named}WsTransport.frames` publishes and `attach{Named}WsDispatcher` takes, spelled
 /// identically for every service so one service's attachment composes over another's transport.
@@ -54,7 +55,7 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         heartbeat_class(&named),
         transport_class(&named, headered),
         held_fn(&fn_prefix),
-        signed_zeros_fn(&signed_zeros_call(&fn_prefix, "Ws")),
+        read_text_fn(&read_text_call(&fn_prefix, "Ws")),
     ];
     if has_one_way(service) {
         published.push(refusal_class(&named));
@@ -363,28 +364,48 @@ fn transport_request_and_notify_methods(named: &str, headered: bool) -> String {
     )
 }
 
-/// The name of the function [`signed_zeros_fn`] declares for the text `side` names (`Ws`, `Http`
+/// The name of the function [`read_text_fn`] declares for the text `side` names (`Ws`, `Http`
 /// or `Mcp`), each text that reads JSON declaring its own.
-pub(super) fn signed_zeros_call(fn_prefix: &str, side: &str) -> String {
-    format!("_{fn_prefix}{side}SignedZeros")
+pub(super) fn read_text_call(fn_prefix: &str, side: &str) -> String {
+    format!("_{fn_prefix}{side}ReadText")
 }
 
-/// The function, named `name`, every Dart read of a JSON text passes the text through ahead of
-/// `jsonDecode`: it answers the text with each `-0` outside a string written `-0.0`, since serde
-/// reads `-0` as the float `-0.0`, and `jsonDecode` as the `int` 0.
-pub(super) fn signed_zeros_fn(name: &str) -> String {
+/// The function, named `name`, every Dart read of a JSON text decodes it with: `jsonDecode` of the
+/// text with each `-0` outside a string written `-0.0`, since serde reads `-0` as the float `-0.0`
+/// and `jsonDecode` as the `int` 0, and each integer literal above an `i64` and within a `u64`
+/// kept as a `BigInt` of its digits, since `jsonDecode` reads it as a `double` and the integer
+/// read could then word it only as a float. `jsonDecode` revives the numbers of a text in the order
+/// the text writes them, a repeated key included, so each is paired with the literal at its place.
+/// `reviver` judges every other value.
+pub(super) fn read_text_fn(name: &str) -> String {
     format!(
-        "/// `text` with each `-0` outside a string written `-0.0`, the float serde reads it as.\n\
-         String {name}(String text) => !text.contains('-0')\n    \
-         ? text\n    \
-         : text.replaceAllMapped(RegExp(r'{SIGNED_ZERO}'), (found) => found[0] == '-0' ? '-0.0' : found[0]!);"
+        "/// `text` as `jsonDecode` reads it, but for each `-0` outside a string, which it reads as the float `-0.0` serde does, and each integer above an `i64` within a `u64`, which it reads with its digits as a `BigInt`.\n\
+         dynamic {name}(String text, [Object? Function(Object?, Object?)? reviver]) {{\n  \
+         if (!RegExp(r'-0|[0-9]{{19}}').hasMatch(text)) return jsonDecode(text, reviver: reviver);\n  \
+         final wide = <BigInt?>[];\n  \
+         final read = text.replaceAllMapped(RegExp(r'{NUMBER_OR_STRING}'), (found) {{\n    \
+         final literal = found[0]!;\n    \
+         if (literal.startsWith('\"')) return literal;\n    \
+         final digits = BigInt.tryParse(literal);\n    \
+         wide.add(digits != null && digits >= BigInt.parse('9223372036854775808') && digits <= BigInt.parse('18446744073709551615') ? digits : null);\n    \
+         return literal == '-0' ? '-0.0' : literal;\n  \
+         }});\n  \
+         var next = 0;\n  \
+         return jsonDecode(read, reviver: (key, value) {{\n    \
+         if (value is num) {{\n      \
+         final kept = wide[next++];\n      \
+         if (kept != null) return kept;\n    \
+         }}\n    \
+         return reviver == null ? value : reviver(key, value);\n  \
+         }});\n\
+         }}"
     )
 }
 
 /// [`transport_class`]'s own close: `send`, the inbound frame reader, the heartbeat, and `close`.
 fn transport_class_rest(named: &str) -> String {
     let fn_prefix = RenameRule::CamelCase.apply_to_variant(named);
-    let signed_zeros = signed_zeros_call(&fn_prefix, "Ws");
+    let read_text = read_text_call(&fn_prefix, "Ws");
     format!(
         "/// Writes one frame straight onto the sink.\n  \
          void send(Map<String, dynamic> frame) {{\n    \
@@ -399,7 +420,7 @@ fn transport_class_rest(named: &str) -> String {
          void _onFrame(dynamic raw) {{\n    \
          final Map<String, dynamic> frame;\n    \
          try {{\n      \
-         frame = jsonDecode({signed_zeros}(raw as String), reviver: _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
+         frame = {read_text}(raw as String, _{fn_prefix}WsHeld) as Map<String, dynamic>;\n    \
          }} catch (_) {{\n      \
          return;\n    \
          }}\n    \

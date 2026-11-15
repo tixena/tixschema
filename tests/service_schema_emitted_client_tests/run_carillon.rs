@@ -484,19 +484,10 @@ main().catch((error) => { console.error(error); process.exit(1); });
 /// The cases whose reply the Rust dispatcher cannot write: serde reads an `f32` key beyond its
 /// range as an infinity and writes no such key, so the reply holds no value. An attachment writes
 /// the key as the text of the infinity.
-#[cfg(feature = "dart")]
+#[cfg(any(feature = "dart", feature = "kotlin"))]
 const INFINITE_KEYS: [(&str, Option<&str>); 2] = [
     ("an f32 brand key beyond its range", None),
     ("an f32 brand key beyond its range below zero", None),
-];
-
-/// [`INFINITE_KEYS`] and the key Kotlin writes in its own form: `1.0E39` where serde writes
-/// `1e+39`.
-#[cfg(feature = "kotlin")]
-const KOTLIN_WRITTEN_KEYS: [(&str, Option<&str>); 3] = [
-    ("an f32 brand key beyond its range", None),
-    ("an f32 brand key beyond its range below zero", None),
-    ("a float brand key beyond an f32", None),
 ];
 
 /// [`INFINITE_KEYS`] and the keys a TypeScript object writes as the number it holds: `1000` where
@@ -512,6 +503,10 @@ const NUMBER_WRITTEN_KEYS: [(&str, Option<&str>); 9] = [
     ("an f32 brand key with an exponent", None),
     ("an f32 brand key of minus zero", None),
 ];
+
+/// The cases whose refusal an attachment words as the Rust dispatcher does: an integer beyond an
+/// `i64` that a `u64` holds, and a number below an `i64`.
+const WIDE_INTEGERS: [&str; 2] = ["a number beyond an i64", "a number below an i64"];
 
 /// Each payload of [`CASES`].
 fn payloads() -> Vec<String> {
@@ -587,6 +582,29 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
         })
         .collect();
     assert_same(&told, &expected);
+}
+
+/// Holds the detail an attachment gave each of [`WIDE_INTEGERS`], less the `prefix` its language
+/// puts before it, to the detail the Rust dispatcher gave.
+fn assert_wide_integers_worded_as_rust(attached: &Value, prefix: &str) {
+    let detail = |reply: &Value| {
+        reply["error"]["fault"]["issues"][0]["detail"]
+            .as_str()
+            .map(|said| said.trim_start_matches(prefix).to_owned())
+    };
+    let told: Vec<Option<String>> = CASES
+        .into_iter()
+        .zip(attached.as_array().unwrap())
+        .filter(|(case, _)| WIDE_INTEGERS.contains(&case.0))
+        .map(|(_, held)| detail(&held["reply"]))
+        .collect();
+    let expected: Vec<Option<String>> = CASES
+        .into_iter()
+        .filter(|case| WIDE_INTEGERS.contains(&case.0))
+        .map(|case| over_ws(&payload(case)).0.as_ref().and_then(detail))
+        .collect();
+    assert_eq!(told.len(), WIDE_INTEGERS.len());
+    assert_eq!(told, expected);
 }
 
 /// Holds `told` to `expected`, naming each case where they part.
@@ -676,6 +694,7 @@ fn the_dart_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
     assert_attached_as_rust(&told["attached"], &INFINITE_KEYS);
+    assert_wide_integers_worded_as_rust(&told["attached"], "FormatException: ");
     assert_read_as_rust(&told["read"], &INFINITE_KEYS);
     assert_eq!(
         told["refused"],
@@ -759,8 +778,8 @@ fn the_kotlin_attachment_and_client_name_the_field_the_rust_dispatcher_names() {
         return;
     };
     let told: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_attached_as_rust(&told["attached"], &KOTLIN_WRITTEN_KEYS);
-    assert_read_as_rust(&told["read"], &KOTLIN_WRITTEN_KEYS);
+    assert_attached_as_rust(&told["attached"], &INFINITE_KEYS);
+    assert_read_as_rust(&told["read"], &INFINITE_KEYS);
     let refused = &told["refused"];
     assert_eq!(
         (&refused["kind"], &refused["sent"]),
