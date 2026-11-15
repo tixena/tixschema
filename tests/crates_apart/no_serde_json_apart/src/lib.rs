@@ -3,6 +3,7 @@
 
 // No lint table reaches a crate apart, and clippy lints none.
 #![deny(warnings)]
+#![cfg(feature = "reads")]
 
 use serde::{Deserialize, Deserializer, Serialize};
 use tixschema::model_schema;

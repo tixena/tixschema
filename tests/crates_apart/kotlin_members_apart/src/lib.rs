@@ -44,6 +44,7 @@ pub struct HeldStuffApart {
 }
 
 /// A brand with a bound.
+#[cfg(feature = "bounded_brand")]
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]

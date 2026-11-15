@@ -4,6 +4,11 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 
+# `reads` holds every type and read. tixschema's own `serde` turns it on: `from_deserializer` and
+# a bound on a brand need tixschema's `serde`, and a build without it refuses the declaration.
+[features]
+reads = []
+
 # No `serde_json`: the generated read of a model type names no format.
 [dependencies]
 # No feature of its own: the build that compiles this crate decides tixschema's.
