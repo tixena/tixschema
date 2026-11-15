@@ -267,9 +267,9 @@ use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
 #[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::utils::record_ts_union_members;
 
-#[cfg(any(feature = "typescript", feature = "zod"))]
-use crate::utils::record_null_admitting;
 use crate::utils::register_alias_info;
+#[cfg(any(feature = "typescript", feature = "zod"))]
+use crate::utils::{NullAdmitted, record_null_decided};
 use crate::utils::{
     bson_refused_holder, forwarded_key_maps, forwarded_key_parameter, is_recorded_bson_refused_key,
     is_recorded_untagged_enum, is_wire_scalar_type, record_bson_refused_holder,
@@ -10262,24 +10262,34 @@ fn tuple_struct_writes_an_inexact_key(shape: &TupleStructShape) -> bool {
     }
 }
 
-/// Whether the tuple struct is a newtype over an `Option`, or over an alias of one, so that its
-/// draft admits `null`.
+/// Whether the draft of a tuple struct admits `null`: what its one value does, for a newtype.
 #[cfg(any(feature = "typescript", feature = "zod"))]
-fn tuple_struct_admits_null(shape: &TupleStructShape) -> bool {
-    matches!(shape, TupleStructShape::BareValue(slot) if slot.admits_null())
+fn tuple_struct_null(shape: &TupleStructShape) -> NullAdmitted {
+    match shape {
+        TupleStructShape::BareValue(slot) => slot.null_admitted(),
+        TupleStructShape::Array(_) => NullAdmitted::Never,
+    }
 }
 
-/// Whether a variant of an untagged enum that serde writes as its one slot's value alone writes
-/// `null`, so that the enum's draft admits it.
+/// Whether the draft of an untagged enum admits `null`: it does where a variant that serde writes
+/// as its one slot's value alone does, and it may where such a slot names a type nothing decided.
 #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
-fn untagged_enum_admits_null(item_enum: &syn::ItemEnum) -> bool {
-    item_enum.variants.iter().any(|variant| {
-        variant_on_the_wire(variant)
-            && variant_wire_kind(variant) == VariantKind::TupleSingle
-            && variant.fields.iter().next().is_some_and(|slot| {
-                with_as_number(get_field_def("_slot", &slot.ty, ""), &slot.attrs).admits_null()
-            })
-    })
+fn untagged_enum_null(item_enum: &syn::ItemEnum) -> NullAdmitted {
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| {
+            variant_on_the_wire(variant) && variant_wire_kind(variant) == VariantKind::TupleSingle
+        })
+        .filter_map(|variant| variant.fields.iter().next())
+        .map(|slot| {
+            with_as_number(get_field_def("_slot", &slot.ty, ""), &slot.attrs).null_admitted()
+        })
+        .fold(NullAdmitted::Never, |held, slot| match (held, slot) {
+            (NullAdmitted::Always, _) | (_, NullAdmitted::Always) => NullAdmitted::Always,
+            (NullAdmitted::Perhaps, _) | (_, NullAdmitted::Perhaps) => NullAdmitted::Perhaps,
+            (NullAdmitted::Never, NullAdmitted::Never) => NullAdmitted::Never,
+        })
 }
 
 /// Builds the `ts_definition()` method for a tuple struct's schema module, under the note of a map
@@ -10297,7 +10307,7 @@ fn build_tuple_struct_ts_definition_method(
         item_name,
         rust_ident,
         ts_generics,
-        (noted, tuple_struct_admits_null(shape)),
+        (noted, tuple_struct_null(shape)),
         &[],
     );
     let draft_name = ts_draft_name(item_name);
@@ -10373,8 +10383,8 @@ fn tuple_struct_schema_impl_items(
         ));
     }
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    if tuple_struct_admits_null(&slots.shape) {
-        record_null_admitting(&item_struct.ident.to_string());
+    if tuple_struct_null(&slots.shape) == NullAdmitted::Always {
+        record_null_decided(&item_struct.ident.to_string(), NullAdmitted::Always);
     }
     #[cfg(feature = "typescript")]
     items.push(build_tuple_struct_ts_definition_method(
@@ -10397,7 +10407,7 @@ fn tuple_struct_schema_impl_items(
             republished: tuple_struct_republishes_slot(&slots.shape),
             drafted: valid_type::has_draft(),
             frozen: valid_type::freezes(),
-            admits: if tuple_struct_admits_null(&slots.shape) {
+            admits: if tuple_struct_null(&slots.shape) == NullAdmitted::Always {
                 DraftAdmits::Null
             } else {
                 DraftAdmits::Nothing
@@ -13168,7 +13178,7 @@ fn tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
-        (false, &constants),
+        (NullAdmitted::Never, &constants),
     )
 }
 
@@ -13196,7 +13206,7 @@ fn externally_tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
-        (false, &constants),
+        (NullAdmitted::Never, &constants),
     )
 }
 
@@ -16176,7 +16186,7 @@ fn build_untagged_schema_impl_items(
     // read by different surfaces, and the JSON one reads the parameters beside the attribute.
     item_enum: &syn::ItemEnum,
     item_name: &str,
-    admits_null: bool,
+    #[cfg(any(feature = "typescript", feature = "zod"))] admits_null: NullAdmitted,
     args: &ModelSchemaArgs,
     ts_parts: &[String],
     zod: (&str, &str),
@@ -16187,8 +16197,6 @@ fn build_untagged_schema_impl_items(
     let (zod_union, zod_members) = zod;
     #[cfg(not(feature = "zod"))]
     let _: &_ = &(zod_union, zod_members);
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let _: &_ = &admits_null;
 
     #[cfg(feature = "typescript")]
     let type_code = ts_parts.join(" | ");
@@ -16221,7 +16229,7 @@ fn build_untagged_schema_impl_items(
         &type_parameters_in_scope(&item_enum.generics),
         args,
         schema_code,
-        admits_null,
+        admits_null == NullAdmitted::Always,
     );
 
     let mut items = Vec::new();
@@ -16354,17 +16362,16 @@ fn process_untagged_enum(
     );
     let decode_with = enum_decode_with(&item_enum, args);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    let admits_null = untagged_enum_admits_null(&item_enum);
+    let admits_null = untagged_enum_null(&item_enum);
     #[cfg(any(feature = "typescript", feature = "zod"))]
-    if admits_null {
-        record_null_admitting(&name.to_string());
+    if admits_null == NullAdmitted::Always {
+        record_null_decided(&name.to_string(), NullAdmitted::Always);
     }
-    #[cfg(not(any(feature = "typescript", feature = "zod")))]
-    let admits_null = false;
 
     let schema_impl_items = build_untagged_schema_impl_items(
         &item_enum,
         item_name,
+        #[cfg(any(feature = "typescript", feature = "zod"))]
         admits_null,
         args,
         &ts_parts,
@@ -22923,7 +22930,7 @@ fn ts_valid_type(
     item_name: &str,
     rust_ident: &str,
     ts_generics: &str,
-    (noted, nullable): (bool, bool),
+    (noted, nullable): (bool, NullAdmitted),
     constants: &[(String, String)],
 ) -> String {
     if !valid_type::has_draft() {
@@ -22943,10 +22950,17 @@ fn ts_valid_type(
     let declared = String::new();
     #[cfg(not(feature = "zod"))]
     let declared = format!("\n\ndeclare const __brand_{item_name}: unique symbol;");
-    let body = if nullable {
-        format!("(Readonly<NonNullable<{item_name}Draft{ts_generics}>> & {marker}) | null")
-    } else {
-        format!("Readonly<{item_name}Draft{ts_generics}> & {marker}")
+    record_null_decided(rust_ident, nullable);
+    let body = match nullable {
+        NullAdmitted::Always => {
+            format!("(Readonly<NonNullable<{item_name}Draft{ts_generics}>> & {marker}) | null")
+        }
+        NullAdmitted::Perhaps => format!(
+            "(Readonly<NonNullable<{item_name}Draft{ts_generics}>> & {marker}) | Extract<{item_name}Draft{ts_generics}, null>"
+        ),
+        NullAdmitted::Never => {
+            format!("Readonly<{item_name}Draft{ts_generics}> & {marker}")
+        }
     };
     let converts = ts_valid_conversion(item_name, ts_generics, constants);
     format!(
@@ -23022,7 +23036,13 @@ fn generate_ts_definition_method(
     own_keys: &[String],
     flatten_types: &[MergedOperand],
 ) -> proc_macro2::TokenStream {
-    let valid = ts_valid_type(item_name, rust_ident, ts_generics, (false, false), &[]);
+    let valid = ts_valid_type(
+        item_name,
+        rust_ident,
+        ts_generics,
+        (false, NullAdmitted::Never),
+        &[],
+    );
     let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
     let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
     let fields_empty = own_keys.is_empty();
@@ -24167,7 +24187,7 @@ fn generate_plain_enum_ts_definition_method(
             item_name,
             rust_ident,
             ts_generics,
-            (false, false),
+            (false, NullAdmitted::Never),
             constants,
         );
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
@@ -24303,7 +24323,7 @@ fn generate_discriminated_enum_ts_definition_method(
     ts_generics: &str,
     type_code: &str,
     variant_reader: &str,
-    (admits_null, constants): (bool, &[(String, String)]),
+    (admits_null, constants): (NullAdmitted, &[(String, String)]),
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {

@@ -15,3 +15,12 @@ pub enum RefrainApart {
     Beats { beats: u32 },
     Words { text: String },
 }
+
+/// A reading that is a text, a count, or nothing at all: serde reads `null` as the first variant.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ReadingApart {
+    Absent(Option<String>),
+    Count(u32),
+}

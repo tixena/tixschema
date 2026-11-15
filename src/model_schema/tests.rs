@@ -40,6 +40,8 @@ use super::{MergedOperand, SourceAbsence};
 use crate::field_type::{MissingKey, Scope, Zone, is_set_wrapper};
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
+#[cfg(feature = "typescript")]
+use crate::utils::NullAdmitted;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::maps_of_itself_through_the_self_view;
@@ -10384,7 +10386,7 @@ fn discriminated_enum_ts_definition_carries_no_cfg_attribute() {
         "",
         "  'a'",
         "export function Shape$Variant(value: unknown): string { return \"\"; }",
-        (false, &[]),
+        (NullAdmitted::Never, &[]),
     );
     assert_no_cfg_attribute(&tokens, "generate_discriminated_enum_ts_definition_method");
 }
