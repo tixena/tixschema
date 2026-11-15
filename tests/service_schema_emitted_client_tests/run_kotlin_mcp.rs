@@ -113,7 +113,7 @@ object DocumentHandlers : MobileDocumentServiceHandlers {
         if (versionOf(req.documentId) != null) MobileDocumentServiceRenameDocumentResult.Ok
         else MobileDocumentServiceRenameDocumentResult.Declared(VersionErrorNotFound.validate())
 
-    override suspend fun archiveDocument(req: ArchiveDocumentRequest, exchange: String): MobileDocumentServiceArchiveDocumentResult =
+    override suspend fun archiveDocument(req: ArchiveDocumentRequest, exchange: String, transport: String): MobileDocumentServiceArchiveDocumentResult =
         if (versionOf(req.documentId) != null) MobileDocumentServiceArchiveDocumentResult.Ok
         else MobileDocumentServiceArchiveDocumentResult.Declared(VersionErrorNotFound.validate())
 
@@ -645,7 +645,7 @@ suspend fun clientReport(input: JsonObject): JsonObject {
         },
     )
     lines.add(
-        when (val archived = client.archiveDocument(ArchiveDocumentRequest("doc-1", "stale"), "reviewer-7")) {
+        when (val archived = client.archiveDocument(ArchiveDocumentRequest("doc-1", "stale"), "reviewer-7", "t")) {
             is MobileDocumentServiceArchiveDocumentResult.Ok -> "ok unit"
             is MobileDocumentServiceArchiveDocumentResult.Declared -> "declared"
             is MobileDocumentServiceArchiveDocumentResult.Fault -> "fault ${kind(archived.fault)}"

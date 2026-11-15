@@ -1219,6 +1219,19 @@ pub trait LookupClientService<Ctx> {
 
     #[service_schema_op(http(
         method = "POST",
+        path = "/relays/{label}",
+        header_in("x-transport" = transport),
+    ))]
+    async fn relay(
+        &self,
+        ctx: &Ctx,
+        label: String,
+        note: String,
+        transport: String,
+    ) -> Result<LookupFound, LookupError>;
+
+    #[service_schema_op(http(
+        method = "POST",
         path = "/shadows/{message}",
         header_in("x-body" = body),
         header_in("x-path" = path),
@@ -1278,6 +1291,20 @@ impl LookupClientService<()> for LookupBackEnd {
         }
         Ok(LookupFoundDraft {
             name: [req.class.clone(), req.var.clone()].join("|"),
+        }
+        .into())
+    }
+
+    async fn relay(
+        &self,
+        _ctx: &(),
+        label: String,
+        note: String,
+        transport: String,
+    ) -> Result<LookupFound, LookupError> {
+        ready(()).await;
+        Ok(LookupFoundDraft {
+            name: [label, note, transport].join("|"),
         }
         .into())
     }

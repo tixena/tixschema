@@ -336,7 +336,7 @@ fn a_reply_operation_answers_the_sealed_result_and_decodes_through_the_generated
     let method = body_from(&written, "suspend fun window(");
     assert!(
         method.contains(
-            "transport.request(\"window\", Json.encodeToJsonElement(serializer<WindowRequest>(), req))"
+            "this.transport.request(\"window\", Json.encodeToJsonElement(serializer<WindowRequest>(), req))"
         ),
         "got: {method}"
     );
@@ -421,7 +421,7 @@ fn a_one_way_operation_answers_plainly_and_throws_a_ws_refusal_named_apart_from_
     let method = body_from(&written, "suspend fun purgeConversation(");
     assert!(
         method.contains(
-            "transport.notify(\"purge-conversation\", Json.encodeToJsonElement(serializer<ConversationId>(), req))"
+            "this.transport.notify(\"purge-conversation\", Json.encodeToJsonElement(serializer<ConversationId>(), req))"
         ) && method.contains(
             "throw ConversationClientServiceWsRefusal(conversationClientServiceWsTransportFailure(\"purge-conversation\", uncarried.toString()))"
         ),

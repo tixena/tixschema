@@ -199,7 +199,7 @@ fn operation_rows() -> Vec<ServerRow> {
             &call(
                 27,
                 "archive-document",
-                &json!({ "documentId": "doc-1", "reason": "stale", "x-exchange": "reviewer-7" }),
+                &json!({ "documentId": "doc-1", "reason": "stale", "x-exchange": "reviewer-7", "x-transport": "t" }),
             ),
         ),
         row(

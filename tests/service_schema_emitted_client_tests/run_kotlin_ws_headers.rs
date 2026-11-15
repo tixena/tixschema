@@ -83,11 +83,11 @@ object Handlers : StampClientServiceHandlers {
     override suspend fun stamp(req: String, tenant: String, trace: UInt?): StampClientServiceStampResult {
         if (req == "refuse") {
             return StampClientServiceStampResult.Declared(
-                StampClientServiceStampResultDeclared(StampErrorRefused, trace?.let { "refused at $it" }),
+                StampClientServiceStampResultDeclared(StampErrorRefused.validate(), trace?.let { "refused at $it" }),
             )
         }
         return StampClientServiceStampResult.Ok(
-            StampClientServiceStampResultValue(StampReceipt(req, tenant), "etag-$tenant", trace?.let { it + 1u }),
+            StampClientServiceStampResultValue(StampReceiptDraft(req, tenant).validate(), "etag-$tenant", trace?.let { it + 1u }),
         )
     }
 }

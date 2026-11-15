@@ -107,7 +107,8 @@ pub trait MobileDocumentService<Ctx> {
     #[service_schema_op(http(
         method = "POST",
         path = "/archive-document",
-        header_in("x-exchange" = exchange)
+        header_in("x-exchange" = exchange),
+        header_in("x-transport" = transport)
     ))]
     async fn archive_document(
         &self,
@@ -115,6 +116,7 @@ pub trait MobileDocumentService<Ctx> {
         document_id: String,
         reason: String,
         exchange: String,
+        transport: String,
     ) -> Result<(), VersionError>;
 
     /// Answers the number of drafts it was handed.
@@ -275,6 +277,7 @@ impl MobileDocumentService<()> for Archive {
         document_id: String,
         _reason: String,
         _exchange: String,
+        _transport: String,
     ) -> impl Future<Output = Result<(), VersionError>> {
         ready(Self::version_of(&document_id).map(|_found| ()))
     }
