@@ -76,13 +76,14 @@ private object ParcelUnjudged : KSerializer<Parcel> {
   })
 }
 object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
+  @OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
   override fun invoke(): KSerializer<Parcel> = ParcelUnjudged;
   override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Parcel {
     val read = ParcelUnjudged.deserialize(decoder);
     val violations = read.validationIssues();
-    if (violations.isNotEmpty()) throw ParcelRefusal(violations);
+    if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, ParcelRefusal(violations));
     return read
   }
 }
@@ -134,13 +135,14 @@ private object ManifestUnjudged : KSerializer<Manifest> {
   })
 }
 object ManifestSerializer : KSerializer<Manifest>, () -> KSerializer<Manifest> {
+  @OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
   override fun invoke(): KSerializer<Manifest> = ManifestUnjudged;
   override val descriptor: SerialDescriptor = ManifestUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Manifest) = ManifestUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Manifest {
     val read = ManifestUnjudged.deserialize(decoder);
     val violations = read.validationIssues();
-    if (violations.isNotEmpty()) throw ManifestRefusal(violations);
+    if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, ManifestRefusal(violations));
     return read
   }
 }
@@ -210,7 +212,7 @@ A string bound on a field typed with a brand over a brand measures the text of t
 
 #### A brand
 
-The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items. A brand with such a bound carries `fun kotlinSchemaBound(): List<String>` beside `validate()`: what the bounds alone answer, the checks apart, which is what [an untagged enum chooses a variant by](#the-read-in-the-kotlin-client).
+The value class of a brand runs the brand's own `minLength`, `maxLength` and `pattern` over `value`, then the checks the brand names, and names no place: `too short: minimum length is 2, got 1`. A brand over a list counts its items. 
 
 A brand that holds one of its type parameters bare runs its bounds where the value is of the type declared for the parameter, and at no other filling: `if (value is String) { ... }`. Where the declared type is itself a brand written with arguments, `default_types(WrapType = StrictDocumentId<String>)`, the JVM keeps no argument to tell the filling by, so the bounds run where the value is a `StrictDocumentId<*>` that holds a `String`, the type the declared default gives its parameter: `if (value is StrictDocumentId<*>) { val kotlinSchemaHeld = value.value; if (kotlinSchemaHeld is String) { ... } }`. That is the one difference from Rust, which runs the bounds at exactly the declared default: a `StrictDocumentId<CharSequence>` built by hand, which holds a `String`, is judged as well. A `StrictDocumentId<UInt>` and a `WrapType` filled with a `String` are not.
 
@@ -347,12 +349,12 @@ A manifest that holds a broken parcel in each of the four places is refused once
 'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
 ```
 
-A model is read unjudged where the holder's `validate()` asks it for what it reports, and nowhere else. Held any other way it is read by its own serializer and judges itself as it is read: the payload is refused there too, by the first broken model, with that model's own messages and no place in front of them.
+A model is read unjudged where the holder's `validate()` asks it for what it reports, and nowhere else. Held any other way it is read by its own serializer and judges itself as it is read: the payload is refused there too, by the first broken model, with that model's own messages, each placed under the path the value was read at: the steps of the path kotlinx states, as the Dart and Swift reads place them and as the fault the Rust dispatcher answers names the field. A model read at the top of the payload has no steps in front of its messages, and a `Manifest` read as the second item of a list has `1.` in front of each.
 
 | Held | Judged |
 |---|---|
 | in a field, a nullable, a list, a map's values, a tuple written as a field's type, a `#[serde(flatten)]` member, a slot of a tuple struct or of a variant | once, with its holder, each message at its full place |
-| behind one of the holder's own type parameters | by itself: `Crate<Parcel>` with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList` |
+| behind one of the holder's own type parameters | by itself: `Crate<Parcel>` with a broken parcel answers `'codes.1.fragileItemCodes.1': y is outside of itemCodeList`, and a brand there, `'codes.1': too short: minimum length is 2, got 1` |
 | by a brand, and by a member that writes a length or a pattern of its own on a brand | by itself: `too short: minimum length is 2, got 1`, where Rust writes the member's key in front, `'code': too short: ...` |
 | by a brand over a text, a number, a date or a `bool` as a map's key | by itself, as the map reads the key, each message under the key's text at the path of the map: `'13': 13 is outside of the scale at path: $.pitches`, where Rust writes `'pitches.13': 13 is outside of the scale`, and over a text `'mute': mute is silent at path: $.tones`; a brand over a brand over a text writes the inner brand's messages the same way, `'mute': mute is silent at path: $.outer` |
 | where its type is an alias declared above its holder | by itself |
@@ -360,7 +362,7 @@ A model is read unjudged where the holder's `validate()` asks it for what it rep
 
 A holder reads a model declared below it, or in another crate, as it reads one declared above it: each type the emitter writes answers its unjudged serializer through its companion, whatever order the types are written in, and a holder that breaks a bound of its own and holds a model that breaks one answers both messages, as Rust does.
 
-**An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged serializer tries each variant in the order declared and takes the first whose payload decodes and whose bounds hold: each member's own, and the `minLength`, `maxLength` and `pattern` of each brand the variant holds. A [check](checks.md#checks-check) and what a held model reports choose no variant: the variant is chosen first, and the enum's own serializer then refuses the value. A variant with such a bound, and the value class of a brand with one, carry `fun kotlinSchemaBound(): List<String>` for that: what the bounds alone answer.
+**An `#[serde(untagged)]` enum takes the variant serde takes.** Its unjudged serializer tries each variant in the order declared and takes the first whose payload decodes. A bound, the `minLength`, `maxLength` and `pattern` of each brand the variant holds, a [check](checks.md#checks-check) and what a held model reports choose no variant: the variant is chosen first, and the enum's own serializer then refuses the value.
 
 ```rust
 #[model_schema(pattern = "^[A-Z]+$", check = ["unreserved"])]
@@ -381,9 +383,7 @@ pub enum Mark {
 | Payload | Read |
 |---|---|
 | `"ab"` | `MarkBrief` |
-| `"ABCD"` | `MarkCoded`: past the bound of the first variant |
-| `"abcd"` | `MarkPlain`: past that bound, and outside the pattern of the brand |
-| `"NONE"` | refused with `a tag is not NONE`: `MarkCoded` is chosen, and the check of the brand refuses it |
+| `"ABCD"` | refused with `too long: maximum length is 3, got 4`: `MarkBrief` is the first variant a string fits, and its bound refuses the value |
 
 A payload no variant takes throws `SerializationException: No variant of Mark matched`.
 
@@ -443,7 +443,7 @@ object ParcelDraftUnjudged : KSerializer<ParcelDraft> {
   override val descriptor: SerialDescriptor = held.descriptor;
   override fun serialize(encoder: Encoder, value: ParcelDraft) = held.serialize(encoder, value);
   private fun kotlinSchemaRebased(refused: SerializationException, at: String): SerializationException {
-    if (refused.cause?.message == "validate()") return refused;
+    if (refused.cause?.message == "validate()") return if (refused.suppressed.isNotEmpty()) refused else kotlinSchemaPlaced(refused, at, true);
     val said = refused.message.orEmpty().replaceFirst(Regex("^Unexpected JSON token at offset \\d+: "), "");
     return SerializationException(if (" at path: \$" in said) said.replaceFirst(" at path: \$", " at path: " + at) else said + " at path: " + at, refused)
   };
@@ -451,7 +451,8 @@ object ParcelDraftUnjudged : KSerializer<ParcelDraft> {
     val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: throw refused;
     throw kotlinSchemaRebased(refused, at)
   };
-  private inline fun <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw kotlinSchemaRebased(refused, "\$" + step) };
+  private inline fun <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw if (refused.cause?.message == "validate()") kotlinSchemaPlaced(refused, "\$" + step, false) else kotlinSchemaRebased(refused, "\$" + step) };
+  private fun kotlinSchemaPlaced(refused: SerializationException, at: String, held: Boolean): SerializationException { val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(if (place.isEmpty()) issues else issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; if (held) rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
   override fun deserialize(decoder: Decoder): ParcelDraft {
     val input = decoder as JsonDecoder;
     val element = input.decodeJsonElement();
@@ -481,13 +482,14 @@ private object ParcelUnjudged : KSerializer<Parcel> {
   })
 }
 object ParcelSerializer : KSerializer<Parcel>, () -> KSerializer<Parcel> {
+  @OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
   override fun invoke(): KSerializer<Parcel> = ParcelUnjudged;
   override val descriptor: SerialDescriptor = ParcelUnjudged.descriptor;
   override fun serialize(encoder: Encoder, value: Parcel) = ParcelUnjudged.serialize(encoder, value);
   override fun deserialize(decoder: Decoder): Parcel {
     val read = ParcelUnjudged.deserialize(decoder);
     val violations = read.validationIssues();
-    if (violations.isNotEmpty()) throw ParcelRefusal(violations);
+    if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, ParcelRefusal(violations));
     return read
   }
 }
@@ -504,7 +506,7 @@ object ParcelLabelPreprocess : KSerializer<String> {
   };
   private fun <KotlinSchemaRead> kotlinSchemaDecoded(json: Json, serializer: DeserializationStrategy<KotlinSchemaRead>, element: JsonElement, at: String, step: String): KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, kotlinSchemaKinded(serializer, element, at).toString()) };
   private fun kotlinSchemaRebased(refused: SerializationException, at: String): SerializationException {
-    if (refused.cause?.message == "validate()") return refused;
+    if (refused.cause?.message == "validate()") return if (refused.suppressed.isNotEmpty()) refused else kotlinSchemaPlaced(refused, at, true);
     val said = refused.message.orEmpty().replaceFirst(Regex("^Unexpected JSON token at offset \\d+: "), "");
     return SerializationException(if (" at path: \$" in said) said.replaceFirst(" at path: \$", " at path: " + at) else said + " at path: " + at, refused)
   };
@@ -512,7 +514,8 @@ object ParcelLabelPreprocess : KSerializer<String> {
     val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: throw refused;
     throw kotlinSchemaRebased(refused, at)
   };
-  private inline fun <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw kotlinSchemaRebased(refused, "\$" + step) };
+  private inline fun <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw if (refused.cause?.message == "validate()") kotlinSchemaPlaced(refused, "\$" + step, false) else kotlinSchemaRebased(refused, "\$" + step) };
+  private fun kotlinSchemaPlaced(refused: SerializationException, at: String, held: Boolean): SerializationException { val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(if (place.isEmpty()) issues else issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; if (held) rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt };
   override fun deserialize(decoder: Decoder): String {
     val input = decoder as JsonDecoder;
     val element = input.decodeJsonElement();

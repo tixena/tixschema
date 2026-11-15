@@ -407,3 +407,49 @@ mod tests {
         assert_ne!(Unit::On, Unit::Off);
     }
 }
+
+#[cfg(test)]
+mod tuple_slot_under_a_cfg {
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    pub struct Unwritten(u8, #[cfg(unix)] u8, u8);
+
+    impl Unwritten {
+        pub fn new(first: u8) -> Result<Self, Vec<String>> {
+            UnwrittenDraft(first, 0, 0).validate()
+        }
+    }
+
+    #[model_schema(new = false)]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    pub struct Declined(u8, #[cfg(unix)] u8, u8);
+
+    impl Declined {
+        pub fn new(first: u8) -> Result<Self, Vec<String>> {
+            DeclinedDraft(first, 0, 0).validate()
+        }
+    }
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    pub struct Named {
+        pub first: u8,
+        #[cfg(unix)]
+        pub second: u8,
+    }
+
+    #[test]
+    fn a_tuple_struct_with_a_slot_under_a_cfg_has_the_new_its_author_wrote() {
+        assert_eq!(Unwritten::new(7).unwrap().0, 7);
+        assert_eq!(Declined::new(7).unwrap().0, 7);
+    }
+
+    #[test]
+    fn a_named_struct_with_a_field_under_a_cfg_keeps_its_generated_new() {
+        let named = Named::new(1, 2).unwrap();
+        assert_eq!((named.first, named.second), (1, 2));
+    }
+}

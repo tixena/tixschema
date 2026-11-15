@@ -822,7 +822,7 @@ fn an_untagged_enum_corrects_each_variant_as_it_tries_it() {
         ".recoverCatching { input.json.decodeFromJsonElement(serializer<GuessCoded>(), element) \
          as GuessDraft }",
         ".recoverCatching { input.json.decodeFromJsonElement(serializer<GuessShort>(), \
-         trimmed(element)).also { chosen -> ",
+         trimmed(element)) as GuessDraft }",
         ".recoverCatching { input.json.decodeFromJsonElement(serializer<GuessWhole>(), element) \
          as GuessDraft }",
     ] {

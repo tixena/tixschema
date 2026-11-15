@@ -1,5 +1,4 @@
-//! What the Dart backend writes for a brand's own string check: in `validate()`, and alone in
-//! `validateBound()`, which chooses a variant of an untagged enum that holds the brand.
+//! What the Dart backend writes for a brand's own string check: in `validate()`.
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -46,9 +45,7 @@ fn a_brand_over_a_string_measures_its_value_under_no_place() {
          Slug.fromJson(dynamic json) { final read = Slug.fromJsonUnjudged(json); final violations \
          = read.validationIssues(); if (violations.isNotEmpty) throw SlugRefusal(violations); \
          return read; } factory Slug.fromJsonUnjudged(dynamic json) => Slug._(json as String); \
-         dynamic toJson() => value; List<String> validateBound() => [ if (value.runes.length < 2) \
-         \"too short: minimum length is 2, got ${value.runes.length}\", if \
-         (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \"does not match pattern '^[A-Z]+\\$'\", ]; \
+         dynamic toJson() => value; \
          List<String> validationIssues() => [ if (value.runes.length < 2) \"too short: minimum \
          length is 2, got ${value.runes.length}\", if (!RegExp(\"^[A-Z]+\\$\").hasMatch(value)) \
          \"does not match pattern '^[A-Z]+\\$'\", ]; static Object $thrown(Object thrown) => \
@@ -72,9 +69,7 @@ fn a_brand_with_a_parameter_measures_its_declared_default_alone() {
          if (violations.isNotEmpty) throw TagRefusal(violations); return read; } factory \
          Tag.fromJsonUnjudged(dynamic json, IdType Function(dynamic) idTypeFromJson) => \
          Tag._(idTypeFromJson(json)); dynamic toJson(dynamic Function(IdType) idTypeToJson) => \
-         idTypeToJson(value); List<String> validateBound() => [ if (value case final String held) \
-         if (held.runes.length < 2) \"too short: minimum length is 2, got ${held.runes.length}\", \
-         ]; List<String> validationIssues() => validationIssuesWith((_) => const <String>[]); \
+         idTypeToJson(value); List<String> validationIssues() => validationIssuesWith((_) => const <String>[]); \
          List<String> validationIssuesWith(List<String> Function(IdType) issuesOfIdType) => [ if \
          (value case final String held) if (held.runes.length < 2) \"too short: minimum length is \
          2, got ${held.runes.length}\", ...issuesOfIdType(value), ]; static Object \
@@ -106,10 +101,7 @@ fn a_brand_over_a_list_counts_its_items() {
          List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
          final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
          \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
-         } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); List<String> \
-         validateBound() => [ if (value.length < 1) \"too short: minimum length is 1, got \
-         ${value.length}\", if (value.length > 2) \"too long: maximum length is 2, got \
-         ${value.length}\", ]; List<String> validationIssues() => [ if (value.length < 1) \"too \
+         } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); List<String> validationIssues() => [ if (value.length < 1) \"too \
          short: minimum length is 1, got ${value.length}\", if (value.length > 2) \"too long: \
          maximum length is 2, got ${value.length}\", ]; static Object $thrown(Object thrown) => \
          thrown; }"

@@ -936,30 +936,9 @@ fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     assert!(!serde_reads::<Contact>(&stored));
     let read = Contact::from_value_with(stored, |_raw, _found| contact_schema::Verdict::Reject);
     assert_eq!(
-        tried!(contact_schema, read.unwrap_err().issues),
+        lines(&read.unwrap_err()),
         [
-            (
-                "Email",
-                vec![
-                    "address: invalid: expected String, found String(\"ab\"): 'address': too short: minimum length is 3, got 2"
-                        .to_owned()
-                ]
-            ),
-            (
-                "Phone",
-                vec![
-                    "country: missing: expected I32".to_owned(),
-                    "digits: missing: expected String".to_owned(),
-                    "address: unknown: found String(\"ab\")".to_owned(),
-                ]
-            ),
-            (
-                "Versioned",
-                vec![
-                    "number: missing: expected I32".to_owned(),
-                    "address: unknown: found String(\"ab\")".to_owned(),
-                ]
-            ),
+            "address: invalid: expected String, found String(\"ab\"): too short: minimum length is 3, got 2"
         ]
     );
 }

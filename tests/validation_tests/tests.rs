@@ -281,7 +281,7 @@ mod a_bound_the_fields_own_type_declares {
     }
 
     #[test]
-    fn test_an_untagged_members_brand_still_chooses_the_variant_on_the_read() {
+    fn test_an_untagged_members_brand_does_not_choose_the_variant_on_the_read() {
         let checked: CheckedThenLoose = serde_json::from_str(r#"{"slug":"abc"}"#).unwrap();
         assert!(
             matches!(&*checked, CheckedThenLooseDraft::Checked { slug } if *slug == long()),
@@ -289,16 +289,12 @@ mod a_bound_the_fields_own_type_declares {
         );
         assert_eq!(checked.validation_issues(), Vec::<String>::new());
 
-        let loose: CheckedThenLoose = serde_json::from_str(r#"{"slug":"a"}"#).unwrap();
-        assert!(
-            matches!(&*loose, CheckedThenLooseDraft::Loose { slug } if slug == "a"),
-            "the bound took the first member out of the running rather than ending the read. \
-             Got: {loose:?}"
-        );
         assert_eq!(
-            loose.validation_issues(),
-            Vec::<String>::new(),
-            "the member that was chosen declares no bound of its own"
+            serde_json::from_str::<CheckedThenLoose>(r#"{"slug":"a"}"#)
+                .unwrap_err()
+                .to_string(),
+            "'slug': too short: minimum length is 3, got 1",
+            "the shape fits the first member, so its bound refuses the read"
         );
     }
 
@@ -563,9 +559,8 @@ mod a_bound_inside_an_untagged_variant {
     #[model_schema()]
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(untagged)]
-    /// `Bounded` is declared first because an untagged read tries its members in order and
-    /// `Free` admits every string: the bound is what takes the first member out of the running,
-    /// and a `Free` ahead of it would take that decision away from the bound entirely.
+    /// An untagged read takes the first member whose shape fits, and `Free` admits every string,
+    /// so a string reads as `Bounded` and the brand's bound judges it.
     pub enum Label {
         Bounded(Tag),
         Free(String),
@@ -694,13 +689,13 @@ mod a_bound_inside_an_untagged_variant {
             vec!["'label': too short: minimum length is 3, got 1".to_owned()]
         );
 
-        let refused: Label = serde_json::from_str(r#""ab""#).unwrap();
-        assert!(
-            matches!(&*refused, LabelDraft::Free(loose) if loose == "ab"),
-            "the brand's bound took the newtype member out of the running rather than ending the \
-             read. Got: {refused:?}"
+        assert_eq!(
+            serde_json::from_str::<Label>(r#""ab""#)
+                .unwrap_err()
+                .to_string(),
+            "too short: minimum length is 3, got 2",
+            "the shape fits the first member, so the brand's bound refuses the read"
         );
-        assert_eq!(refused.validation_issues(), Vec::<String>::new());
         let admitted: Label = serde_json::from_str(r#""abc""#).unwrap();
         assert!(
             matches!(&*admitted, LabelDraft::Bounded(tag) if tag.as_inner() == "abc"),

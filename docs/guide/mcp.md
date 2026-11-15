@@ -200,7 +200,7 @@ async fn suggest_documents(&self, ctx: &Ctx, typed: String, chosen: HashMap<Stri
 - `server/discover` adds `"resources": {}` where a service declares a resource, a template or a listing, and `"completions": {}` where it declares a completion. The Rust client has no method for these operations, which are not tools.
 - The macro refuses, naming the operation: a placeholder that names no argument, two operations with one URI (templates that differ only in their placeholders' names included), a success a resource cannot answer (anything but a `String` or a `(Vec<u8>, String)`), a `completes` that names no resource template of the service or a placeholder it lacks, a listing or a completion of the wrong shape, an operation that is more than one of the three, and a `cache_scope` other than `"public"` or `"private"`.
 
-**Asking the user.** A handler asks by answering an arm of its declared error, and the operation names the arm with `interview(...)`, for a form or for a link. The service macro cannot read the enum, so the generated match on `DeleteError::NeedsConfirmation { .. }` fails to compile where no such arm exists:
+**Asking the user.** A handler asks by answering an arm of its declared error, and the operation names the arm with `interview(...)`, for a form or for a link. The service macro cannot read the enum, so the arm is named by its Rust name and read from the error with `model_schema_variant()`, in any order the declarations come in, and the build stops where the enum has no such variant (an arm that asks with a link is read through the enum's draft, `DeleteErrorDraft::NeedsConfirmation { .. }`, which the module that expands the dispatcher names):
 
 ```rust
 /// Deletes one document after the user confirms it.

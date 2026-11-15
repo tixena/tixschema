@@ -184,7 +184,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   stem, with the name the validator writes in front of a violation, an `Option`), `walked_field`
   reads it back (`recorded_validator`, into `FieldValidator::named`), and `Walker::bounded` writes
   one `{source}_bound` call beside the read of each value the bound reaches: the validator run on
-  what serde read, one `Invalid` per value, its violations joined by `; `, that name taken off
+  what serde read, one `Invalid` per violation, each at the value's path, that name taken off
   each sentence. The name is the steps serde writes on the way to the field, read from the
   registry and computed nowhere else, so the two cannot drift, and the validator of a value
   serde writes itself, the one slot of a struct and of a variant under a tag alone, writes none:

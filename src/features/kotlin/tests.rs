@@ -10,7 +10,7 @@ use proc_macro2::{Span, TokenTree};
 
 #[cfg(feature = "serde")]
 use super::read::INNER;
-use super::read::{DECODED, HELD_FALLBACK};
+use super::read::{DECODED, HELD_FALLBACK, THROWN};
 use super::validate::jvm_pattern;
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
@@ -120,12 +120,12 @@ fn kept_plain_draft(named: &str) -> String {
 fn judged(named: &str) -> String {
     format!(
         "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ \
-         override fun invoke(): KSerializer<{named}> = {named}Unjudged; override val \
+         {THROWN}override fun invoke(): KSerializer<{named}> = {named}Unjudged; override val \
          descriptor: SerialDescriptor = {named}Unjudged.descriptor; override fun \
          serialize(encoder: Encoder, value: {named}) = {named}Unjudged.serialize(encoder, \
          value); override fun deserialize(decoder: Decoder): {named} {{ val read = \
          {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }} }}"
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
     )
 }
 
@@ -135,13 +135,13 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
         "class {named}Serializer<{parameter}{bound}>({handed}: \
          KSerializer<{parameter}>) : KSerializer<{named}<{parameter}>>, () -> \
          KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
-         {named}Unjudged({handed}); override fun invoke(): \
+         {named}Unjudged({handed}); {THROWN}override fun invoke(): \
          KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
          SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
          Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, \
          value); override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read \
          = kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }} }}"
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
     )
 }
 
@@ -179,7 +179,7 @@ fn mapped(named: &str) -> String {
             "val key = try {{ kotlinSchemaDecoded(input.json, keySerializer, \
              JsonPrimitive(entry.key), entry.key, \"\") }} catch (refused: {named}Refusal) {{ val \
              at = kotlinSchemaPlace(input, entry.key); throw {named}Refusal(refused.issues.map {{ \
-             \"'\" + at + \"': \" + it }}) }}; key to {MAPPED_VALUE}"
+             \"'\" + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}; key to {MAPPED_VALUE}"
         ),
     )
 }
@@ -194,7 +194,7 @@ fn mapped_judging(named: &str) -> String {
             "val key = kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
              entry.key, \"\"); val violations = key.validate(); if (violations.isNotEmpty()) {{ \
              val at = kotlinSchemaPlace(input, entry.key); throw {named}Refusal(violations.map {{ \
-             \"'\" + at + \"': \" + it }}) }}; key to {MAPPED_VALUE}"
+             \"'\" + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}; key to {MAPPED_VALUE}"
         ),
     )
 }
@@ -210,9 +210,9 @@ fn mapped_over_a_brand(named: &str, inner: &str) -> String {
             "val key = try {{ kotlinSchemaDecoded(input.json, {named}Unjudged, \
              JsonPrimitive(entry.key), entry.key, \"\") }} catch (refused: {inner}Refusal) {{ val \
              at = kotlinSchemaPlace(input, entry.key); throw {inner}Refusal(refused.issues.map {{ \
-             \"'\" + at + \"': \" + it }}) }}; val violations = key.validate(); if \
+             \"'\" + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}; val violations = key.validate(); if \
              (violations.isNotEmpty()) {{ val at = kotlinSchemaPlace(input, entry.key); throw \
-             {named}Refusal(violations.map {{ \"'\" + at + \"': \" + it }}) }}; key to \
+             {named}Refusal(violations.map {{ \"'\" + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}; key to \
              {MAPPED_VALUE}"
         ),
     )
@@ -743,8 +743,7 @@ fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
         bounded(&[]).contains(&format!(
             "{{ fun validate(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
              validationIssuesWith(issuesOfIdType: (IdType) -> List<String>): List<String> \
-             {handed_on}; fun validationIssues(): List<String> = validate(); fun \
-             kotlinSchemaBound(): List<String> {held}; "
+             {handed_on}; fun validationIssues(): List<String> = validate(); "
         )),
         "a parameter with no declared type is bounded as a string"
     );
@@ -1009,9 +1008,7 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
              kotlinSchemaLength(): Int = value.codePointCount(0, value.length); fun validate(): \
              List<String> {{ val violations = mutableListOf<String>(); {bound}; \
              violations.addAll(unreserved(this)); return violations }}; fun validationIssues(): \
-             List<String> = validate(); fun kotlinSchemaBound(): \
-             List<String> {{ val violations = mutableListOf<String>(); {bound}; return \
-             violations }}; {} }} {} {} {}",
+             List<String> = validate(); {} }} {} {} {}",
             refusal("Code"),
             factory("Code", "", "String"),
             generated("Code").replacen("object", "private object", 1),
@@ -1606,7 +1603,7 @@ fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
 /// none, so a variant that holds no bound is taken as it decodes.
 #[cfg(feature = "serde")]
 #[test]
-fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
+fn an_untagged_enum_takes_the_first_variant_that_decodes() {
     let coded: ItemStruct = syn::parse_quote! {
         #[serde(transparent)]
         struct Code(String);
@@ -1639,8 +1636,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
                  short: minimum length is 1, got ${name.codePointCount(0, name.length)}\")";
     let asked = format!(
         "{{ override fun validationIssues(): List<String> {{ {opens} violations.addAll(value.validationIssues()); \
-         return violations }}; fun kotlinSchemaBound(): List<String> {{ {opens} \
-         violations.addAll(value.kotlinSchemaBound()); return violations }}"
+         return violations }}"
     );
     for held in [
         format!(
@@ -1654,9 +1650,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         ),
         format!(
             "data class ReferenceNamed(val name: String) : ReferenceDraft {{ override fun \
-             validationIssues(): List<String> {{ {opens} {named}; return violations }}; fun \
-             kotlinSchemaBound(): \
-             List<String> {{ {opens} {named}; return violations }} }} @JvmInline"
+             validationIssues(): List<String> {{ {opens} {named}; return violations }} }} @JvmInline"
         ),
         "value class ReferenceText(val value: String) : ReferenceDraft { override fun \
          validationIssues(): List<String> = emptyList() } @JvmInline"
@@ -1664,8 +1658,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         format!(
             "value class ReferenceTrailing(@Serializable(with = KotlinHeld3::class) val value: \
              Trailer) : ReferenceDraft {asked}; private \
-             fun Any?.validationIssues(): List<String> = emptyList(); private fun \
-             Any?.kotlinSchemaBound(): List<String> = emptyList() }} object ReferenceDraftUnjudged : \
+             fun Any?.validationIssues(): List<String> = emptyList() }} object ReferenceDraftUnjudged : \
              KSerializer<ReferenceDraft> {{"
         ),
     ] {
@@ -1678,24 +1671,16 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
              ReferenceDraft }}"
         )
     };
-    let held_to_its_bounds = |variant: &str| {
-        format!(
-            ".recoverCatching {{ \
-             input.json.decodeFromJsonElement(serializer<Reference{variant}>(), element).also {{ \
-             chosen -> if (chosen.kotlinSchemaBound().isNotEmpty()) error(\"a bound of \
-             Reference{variant} is broken\") }} as ReferenceDraft }}"
-        )
-    };
     assert!(
         kotlin.contains(&format!(
             "return kotlinSchemaAt(input) {{ runCatching {{ error(\"unreachable\") as Nothing \
              }}{}{}{}{}{}.getOrElse {{ throw SerializationException(\"No variant of Reference \
              matched\") }} }} }} }} {} {} {}",
             taken("Boxed"),
-            held_to_its_bounds("Coded"),
-            held_to_its_bounds("Named"),
+            taken("Coded"),
+            taken("Named"),
             taken("Text"),
-            held_to_its_bounds("Trailing"),
+            taken("Trailing"),
             valid_class("Reference", ""),
             valid_unjudged("Reference"),
             judged_valid("Reference")

@@ -134,11 +134,9 @@ pub mod a_message_annotated_with_a_constraint {
         Scoped(ScopedBalanceRequest),
     }
 
-    /// A union whose first member's own bound is what takes it out of the running: the read tries
-    /// `Attributed`, the bound refuses the value, and the payload is `Unattributed` instead. That
-    /// check stays on the read, and moving it would change which variant a payload *is* rather than
-    /// how a violation is worded. Nonstrict, so that `Unattributed` reads past the `name` the
-    /// first member was refused for.
+    /// A union whose first member holds a bound: the read takes `Attributed` for any payload that
+    /// has a `name`, and the message is judged once as that variant. Nonstrict, so that
+    /// `Unattributed` reads past a `name`.
     #[model_schema(nonstrict)]
     #[derive(Deserialize, Serialize)]
     #[serde(untagged)]
@@ -163,9 +161,7 @@ pub mod a_message_annotated_with_a_constraint {
         pub customer_id: String,
     }
 
-    /// The same carve-out in the position this change newly walks: a *newtype* member whose bound
-    /// selects it. `Tag`'s own read hook is what takes `Tagged` out of the running, and the arm
-    /// added for the slot runs after that choice is settled.
+    /// A *newtype* member whose brand holds a bound.
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
@@ -174,8 +170,6 @@ pub mod a_message_annotated_with_a_constraint {
     #[model_schema()]
     #[derive(Deserialize, Serialize)]
     #[serde(untagged)]
-    /// `Bounded` is declared first because an untagged read tries its members in order and `Free`
-    /// admits every string: the bound is what takes the first member out of the running.
     pub enum Label {
         Bounded(Tag),
         Free(String),
@@ -767,53 +761,48 @@ pub mod a_message_annotated_with_a_constraint {
         );
     }
 
-    /// The carve-out, from both sides.
+    /// What `operation` refuses of `payload`, the implementation having been reached by nothing.
+    fn refused_with(operation: &str, payload: &[u8]) -> Vec<String> {
+        let (reached, reported) = dispatched(operation, payload);
+        assert!(reached.is_empty(), "got: {reached:?}");
+        listed(&reported[0])
+    }
+
+    /// A bound chooses no variant: the read takes the first variant the shape fits, and the
+    /// message is judged once, whichever variant that was.
     #[test]
-    fn a_bound_that_selects_the_variant_stays_on_the_read() {
-        assert_eq!(
-            dispatched(
-                "place-call",
-                br#"{"caller":{"name":"ab","jti":"a"},"customerId":"gate-org"}"#
-            )
-            .0,
-            vec!["anonymous".to_owned()],
-            "the bound took the first member out of the running rather than ending the read"
-        );
+    fn a_bound_does_not_select_the_variant_the_read_takes() {
         assert_eq!(
             dispatched(
                 "place-call",
                 br#"{"caller":{"name":"abc","jti":"a"},"customerId":"gate-org"}"#
             )
             .0,
-            vec!["named:abc".to_owned()],
-            "the same key one character longer is the first member, which is what the bound              decides and what only the read can decide"
+            vec!["named:abc".to_owned()]
         );
-
-        // And the member's *type* is still walked in whichever variant was chosen: the bound below
-        // the hop is reported, under the path the payload spells, in both.
-        for (name, chosen) in [("ab", "the second member"), ("abc", "the first")] {
-            let payload =
-                format!(r#"{{"caller":{{"name":"{name}","jti":""}},"customerId":"gate-org"}}"#);
-            let (reached, reported) = dispatched("place-call", payload.as_bytes());
-            assert!(reached.is_empty(), "{chosen} executed. Got: {reached:?}");
-            assert_eq!(
-                listed(&reported[0]),
-                ["'caller.jti': too short: minimum length is 1, got 0"],
-                "{chosen} was chosen and its own members went unwalked"
-            );
-        }
-
-        // And in the position this change newly walks: a newtype member whose brand's own hook is
-        // what selects it. Adding an arm for the slot must not have moved that decision.
         assert_eq!(
-            dispatched("label", br#"{"label":"ab"}"#).0,
-            vec!["free:ab".to_owned()],
-            "the brand's hook took the newtype member out of the running"
+            refused_with(
+                "place-call",
+                br#"{"caller":{"name":"ab","jti":"a"},"customerId":"gate-org"}"#
+            ),
+            ["'caller.name': too short: minimum length is 3, got 2"],
+            "the shape fits the first variant, whose bound refuses the name"
+        );
+        assert_eq!(
+            refused_with(
+                "place-call",
+                br#"{"caller":{"name":"abc","jti":""},"customerId":"gate-org"}"#
+            ),
+            ["'caller.jti': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
             dispatched("label", br#"{"label":"abc"}"#).0,
-            vec!["tagged:abc".to_owned()],
-            "one character longer and the same key is the newtype member instead"
+            vec!["tagged:abc".to_owned()]
+        );
+        assert_eq!(
+            refused_with("label", br#"{"label":"ab"}"#),
+            ["'label': too short: minimum length is 3, got 2"],
+            "the shape fits the newtype member, whose brand's bound refuses the value"
         );
     }
 

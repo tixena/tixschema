@@ -20,6 +20,8 @@ use super::omitted::{
 use crate::dart_integer_read::integer_read;
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+use crate::kotlin_thrown::THROWN;
 
 /// The write of `Gangway`'s `u32`, held to its range.
 #[cfg(feature = "dart")]
@@ -586,14 +588,13 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
              self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
              decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let \
              violations = validationIssues(); if !violations.isEmpty { throw \
-             GangwayRefusal(issues: { () -> [String] in let at = decoder.codingPath.map { \
-             $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: \".\"); return \
+             GangwayRefusal(issues: { () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { \
+             $0.intValue.map(String.init) ?? $0.stringValue }).joined(separator: \".\"); return \
              at.isEmpty ? violations : violations.map { said in guard said.hasPrefix(\"'\"), let \
              end = said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; \
              return \"'\\(at).\\(said[said.index(after: \
              said.startIndex)..<end])'\\(said[said.index(after: end)...])\" } }()) } }; public \
-             func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() \
-             -> [String] { [] }; ",
+             func validationIssues() -> [String] { [] }; ",
             swift_valid_free::validating_free("Gangway")
         )
     );
@@ -604,6 +605,7 @@ fn a_type_with_no_default_writes_the_swift_text_it_wrote() {
 fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
     assert_eq!(
         without_number_readers(&super::models::gangway_kotlin::kotlin_definition()),
+        [
         "class GangwayRefusal(val issues: List<String>) : \
          SerializationException(\"$issues\", \
          IllegalArgumentException(\"validate()\")) @OptIn(ExperimentalSerializationApi::class) \
@@ -633,12 +635,15 @@ fn a_type_with_no_default_writes_the_kotlin_text_it_wrote() {
          MissingFieldException(refused.missingFields, declared) else \
          SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
          refused.cause) }) } object GangwaySerializer : KSerializer<Gangway>, () -> \
-         KSerializer<Gangway> { override fun invoke(): KSerializer<Gangway> = GangwayUnjudged; \
+         KSerializer<Gangway> { ",
+        THROWN,
+        "override fun invoke(): KSerializer<Gangway> = GangwayUnjudged; \
          override val descriptor: SerialDescriptor = GangwayUnjudged.descriptor; override fun \
          serialize(encoder: Encoder, value: Gangway) = GangwayUnjudged.serialize(encoder, value); \
          override fun deserialize(decoder: Decoder): Gangway { val read = \
          GangwayUnjudged.deserialize(decoder); val violations = read.validationIssues(); if \
-         (violations.isNotEmpty()) throw GangwayRefusal(violations); return read } }"
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, GangwayRefusal(violations)); return read } }",
+    ].concat()
     );
 }
 
@@ -673,7 +678,7 @@ fn swift_reads_a_key_left_out_from_the_json_of_its_default() {
              forKey: .gate) } else { let gateDefaultPayload = try \
              JSONSerialization.jsonObject(with: Data(\"\\\"north\\\"\".utf8), options: \
              [.fragmentsAllowed]); self.gate = try SwiftSchemaPayload.read(String.self, from: \
-             gateDefaultPayload, at: container.codingPath + [CodingKeys.gate]) }; self.label = \
+             gateDefaultPayload, at: container.codingPath + [CodingKeys.gate], within: decoder) }; self.label = \
              try container.decode(String.self, forKey: .label) }"
         ),
         "{written}"

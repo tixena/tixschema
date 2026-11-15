@@ -15,10 +15,6 @@ use super::validate::{
     rating_dart, reference_dart, sleeve_dart,
 };
 
-/// The helper a variant asks a value it holds for the bound of its own with.
-const HELD_BOUND: &str = "static List<String> _heldBound(Object held) { try { return (held as \
-     dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const []; } }";
-
 /// A model with a bound.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -428,66 +424,51 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     );
 }
 
-/// An untagged enum takes the first variant whose payload decodes and whose members' own bounds
-/// hold. `_bounds()` lists them, with no check and nothing a held model reports.
+/// An untagged enum takes the first variant whose payload decodes. No bound of a member chooses
+/// one, and nothing a check or a held model reports does.
 #[test]
-fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
+fn an_untagged_enum_takes_the_first_variant_that_decodes() {
     let reference = reference_dart::dart_definition();
     assert_written(
         &reference,
         &format!(
-            "{}{{ try {{ final read = ReferenceNamed.fromJson(json as Map<String, \
-             dynamic>); if (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final \
-             read = ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; }} \
-             catch (_) {{}} throw FormatException('No variant of Reference matched'); }} dynamic \
-             toJson();",
+            "{}{{ try {{ return ReferenceNamed.fromJson(json as Map<String, dynamic>); }} catch \
+             (_) {{}} try {{ return ReferenceNumbered({numbered}); }} catch (_) {{}} throw \
+             FormatException('No variant of Reference matched'); }} dynamic toJson();",
             draft("ReferenceDraft", "dynamic json"),
             numbered = u32_held("json as int")
         ),
     );
     assert_written(
         &reference,
-        "Map<String, dynamic> toJson() => { 'name': name, }; List<String> _bounds() => [ if \
-         (name.runes.length < 1) \"too short: minimum length is 1, got ${name.runes.length}\", \
-         ]; @override List<String> validationIssues() =>",
+        "Map<String, dynamic> toJson() => { 'name': name, }; @override List<String> \
+         validationIssues() =>",
     );
     assert_written(
         &reference,
         &format!(
-            "@override dynamic toJson() => {}; List<String> _bounds() => [ if (value < 1) \"too \
-             small: minimum is 1, got ${{value}}\", ]; @override List<String> validationIssues() =>",
+            "@override dynamic toJson() => {}; @override List<String> validationIssues() =>",
             u32_held("value")
         ),
     );
+    assert!(!reference.contains("_bounds"), "got: {reference}");
 }
 
-/// A variant asks each declared type it holds for the bound of its own, through a list as
-/// through the value itself. A variant that holds none is taken by its shape alone.
+/// A variant that holds a declared type, through a list as through the value itself, is taken by
+/// its shape alone.
 #[test]
-fn a_variant_asks_what_it_holds_for_its_own_bound() {
+fn a_variant_that_holds_a_declared_type_is_taken_by_its_shape() {
     let shelfmark = shelfmark_dart::dart_definition();
     assert_written(
         &shelfmark,
-        "try { final read = ShelfmarkCoded(Slip.fromJsonUnjudged(json)); if \
-         (read._bounds().isEmpty) return read; } catch (_) {} try { final read = \
+        "try { return ShelfmarkCoded(Slip.fromJsonUnjudged(json)); } catch (_) {} try { return \
          ShelfmarkListed((json as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
-         Slip.fromJsonUnjudged(e.$2))).toList()); if (read._bounds().isEmpty) return read; } \
-         catch (_) {} try { return ShelfmarkShelved(json as bool); } catch (_) {} throw",
+         Slip.fromJsonUnjudged(e.$2))).toList()); } catch (_) {} try { return \
+         ShelfmarkShelved(json as bool); } catch (_) {} throw",
     );
-    assert_written(
-        &shelfmark,
-        &format!(
-            "List<String> _bounds() => [ ..._heldBound(value), ]; {HELD_BOUND} @override \
-             List<String> validationIssues() =>"
-        ),
-    );
-    assert_written(
-        &shelfmark,
-        &format!(
-            "List<String> _bounds() => [ for (final held in value) ..._heldBound(held), ]; \
-             {HELD_BOUND} @override List<String> validationIssues() =>"
-        ),
-    );
+    for asked in ["_bounds", "_heldBound", "validateBound"] {
+        assert!(!shelfmark.contains(asked), "{asked} is in: {shelfmark}");
+    }
     assert!(
         shelfmark.ends_with(
             "@override dynamic toJson() => value; @override List<String> validationIssues() => const []; }"

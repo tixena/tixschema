@@ -50,3 +50,13 @@ mod variants;
 #[cfg(feature = "kotlin")]
 #[path = "support/kotlin_numbers.rs"]
 mod kotlin_numbers;
+
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "support/kotlin_pathed.rs"]
+mod kotlin_pathed;
+
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "support/kotlin_thrown.rs"]
+mod kotlin_thrown;

@@ -2,8 +2,6 @@
 //! holds reports and the checks it names, in the order declared, then the type's own checks. The
 //! order and each message are the ones Rust's `validate()` writes.
 //!
-//! A brand with a bound, and a variant of an untagged enum, carry `kotlinSchemaBound()` beside
-//! it: what the bounds alone answer, which is what chooses the variant a payload is read as.
 
 extern crate alloc;
 
@@ -36,15 +34,6 @@ const LONG_LEAST: &str = "-9223372036854775808";
 /// The name a brand's value is bound to where its bounds read the value it holds.
 const FILLING: &str = "kotlinSchemaHeld";
 
-/// What a walk asks each value of a declared type it reaches for.
-#[derive(Clone, Copy)]
-enum Asked {
-    /// What its own bounds answer, the checks it names apart: `kotlinSchemaBound()`.
-    Bound,
-    /// Every message of the value: `validate()`.
-    Report,
-}
-
 /// A function a type's body carries beside `validate()`, for the statements that call it. Each is
 /// private to the type that writes it: emitted types are joined into one file.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -76,9 +65,6 @@ enum Helper {
     /// What a string answers where a declared type is asked for its text: itself. A brand
     /// answers with a member of its own, which is found ahead of this.
     Text,
-    /// What a held value answers for its own bounds where its type carries none: every type but
-    /// a brand with a bound, whose member is found ahead of it.
-    Unbounded,
     /// A violation under the place that holds the value it is about: written into the name the
     /// violation leads with, or in front of one that leads with none.
     Under,
@@ -135,9 +121,6 @@ struct Noted {
     /// The position of the type parameter a brand holds bare: the one whose argument its value is
     /// of.
     bare: Option<usize>,
-    /// Whether the type carries `kotlinSchemaBound()`, a brand with a bound of its own: `None`
-    /// for an alias, which is whatever it names.
-    bound: Option<bool>,
     /// Whether the type carries `kotlinSchemaAtFilling()`, a brand whose declared default is a
     /// list.
     filling: Answers,
@@ -153,11 +136,6 @@ struct Noted {
 
 /// The `validate()` of one Kotlin type, as it is written.
 pub struct Rules<'item> {
-    /// What the bounds alone add: a brand's own, and those that choose a variant of an untagged
-    /// enum. They are written into `kotlinSchemaBound()`.
-    bounds: Vec<String>,
-    /// Whether the members are those of a variant of an untagged enum, which its bounds choose.
-    chooses: bool,
     /// The serializers the overload takes where the base it overrides fixes them: every parameter
     /// a map of any variant is keyed by.
     declared: Vec<String>,
@@ -221,7 +199,6 @@ impl Helper {
                  java.math.BigDecimal(shown).stripTrailingZeros().toPlainString()"
             }
             Self::Text => "private fun String.kotlinSchemaText(): String = this",
-            Self::Unbounded => "private fun Any?.kotlinSchemaBound(): List<String> = emptyList()",
             Self::Under => {
                 "private fun kotlinSchemaUnder(place: String, violation: String): String { val \
                  end = violation.indexOf('\\'', 1); return if (violation.startsWith(\"'\") && end \
@@ -323,13 +300,7 @@ impl<'item> Rules<'item> {
             bound_name(VIOLATIONS, depth.saturating_add(1)),
         );
         let typed = kotlin_typename(argument);
-        let inside = self.held_statements(
-            argument,
-            &held,
-            None,
-            depth.saturating_add(1),
-            Asked::Report,
-        );
+        let inside = self.held_statements(argument, &held, None, depth.saturating_add(1));
         if inside.is_empty() {
             return format!("{{ _: {typed} -> emptyList() }}");
         }
@@ -373,11 +344,6 @@ impl<'item> Rules<'item> {
             .map_or_else(Vec::new, |text| text_statements(meta, &text, place))
     }
 
-    /// Whether the type answers what its bounds alone hold a value to.
-    pub const fn bounded(&self) -> bool {
-        !self.bounds.is_empty()
-    }
-
     /// What a brand's own bounds add, over the value it holds and under no place, after the repeat
     /// of a set it holds. `default` is the type declared for the parameter a brand holds bare: the
     /// bounds run where the value is of that type, and at no other filling.
@@ -389,7 +355,6 @@ impl<'item> Rules<'item> {
             let bound = self.bound_statements(member, &held, &read);
             behind(member, &read, &bound)
         };
-        self.bounds.extend(bounds.iter().cloned());
         let (held, read) = presented(member);
         let repeat = own_repeat_statements(&held, &read, member.place.as_deref());
         self.statements.extend(behind(member, &read, &repeat));
@@ -419,25 +384,6 @@ impl<'item> Rules<'item> {
                 self.collected(&answered, member.place.as_deref())
             })
             .collect()
-    }
-
-    /// The rules of a variant of an untagged enum: `validate()`, and the bounds that choose the
-    /// variant, which are each member's own and those of each brand it holds.
-    pub const fn choosing(serializable: &'item [String]) -> Self {
-        Self {
-            bounds: Vec::new(),
-            chooses: true,
-            declared: Vec::new(),
-            filled: None,
-            filling_statements: Vec::new(),
-            handing: false,
-            helpers: BTreeSet::new(),
-            keys: BTreeSet::new(),
-            nothing: false,
-            parameters: Vec::new(),
-            serializable,
-            statements: Vec::new(),
-        }
     }
 
     /// The statement that collects what `answered` lists, each message under `place`.
@@ -570,35 +516,29 @@ impl<'item> Rules<'item> {
         rules
     }
 
-    /// What the value `read` holds answers `asked`: each value of a declared type under it,
-    /// through a nullable, each level of a list, a map's values and a tuple's positions, and the
-    /// repeat of each set it reaches where every message is asked. `depth` numbers the names the
-    /// walk binds.
+    /// What the value `read` holds reports: each value of a declared type under it, through a
+    /// nullable, each level of a list, a map's values and a tuple's positions, and the repeat of
+    /// each set it reaches. `depth` numbers the names the walk binds.
     fn held_statements(
         &mut self,
         def: &FieldDef,
         read: &str,
         place: Option<&str>,
         depth: usize,
-        asked: Asked,
     ) -> Vec<String> {
         let below = depth.saturating_add(1);
         if def.is_optional() {
             let held = bound_name("held", depth);
-            let inside = self.held_statements(&present(def), &held, place, below, asked);
+            let inside = self.held_statements(&present(def), &held, place, below);
             return wrapped(&inside, |inner| {
                 format!("{read}?.let {{ {held} -> {inner} }}")
             });
         }
         if def.array_depth > 0 {
-            let mut found = if matches!(asked, Asked::Report) {
-                own_repeat_statements(def, read, place)
-            } else {
-                Vec::new()
-            };
+            let mut found = own_repeat_statements(def, read, place);
             let (index, held) = (bound_name("index", depth), bound_name("held", depth));
             let at = stepped(place, &format!("${index}"));
-            let inside = self.held_statements(&item_of(def), &held, Some(&at), below, asked);
+            let inside = self.held_statements(&item_of(def), &held, Some(&at), below);
             found.extend(wrapped(&inside, |inner| {
                 format!("{read}.forEachIndexed {{ {index}, {held} -> {inner} }}")
             }));
@@ -609,11 +549,11 @@ impl<'item> Rules<'item> {
                 && is_sequence_wrapper(name)
             {
                 let listed = def.collection_element_field(element);
-                return self.held_statements(&listed, read, place, depth, asked);
+                return self.held_statements(&listed, read, place, depth);
             }
-            self.named_statements((name, arguments), read, place, depth, asked)
+            self.named_statements((name, arguments), read, place, depth)
         } else if let FieldDefType::TypeParam(parameter) = &def.field_type {
-            if matches!(asked, Asked::Report) && self.parameters.contains(parameter) {
+            if self.parameters.contains(parameter) {
                 let called = format!("{}({read})", check_of(parameter));
                 vec![self.collected(&called, place)]
             } else {
@@ -626,7 +566,7 @@ impl<'item> Rules<'item> {
                 || place.map(ToOwned::to_owned),
                 |key_text| Some(stepped(place, key_text)),
             );
-            let inside = self.held_statements(value, &held, at.as_deref(), below, asked);
+            let inside = self.held_statements(value, &held, at.as_deref(), below);
             let bound = if written.is_some() {
                 entry.as_str()
             } else {
@@ -640,7 +580,7 @@ impl<'item> Rules<'item> {
             for (at, position) in positions.iter().enumerate() {
                 let slot = format!("{read}.slot{at}");
                 let under = stepped(place, &at.to_string());
-                found.extend(self.held_statements(position, &slot, Some(&under), depth, asked));
+                found.extend(self.held_statements(position, &slot, Some(&under), depth));
             }
             found
         } else if let FieldDefType::Range(kind, bound) = &def.field_type {
@@ -648,7 +588,7 @@ impl<'item> Rules<'item> {
             for member in kind.members() {
                 let held = format!("{read}.{member}");
                 let under = stepped(place, member);
-                found.extend(self.held_statements(bound, &held, Some(&under), depth, asked));
+                found.extend(self.held_statements(bound, &held, Some(&under), depth));
             }
             found
         } else if let FieldDefType::Result(ok, err) = &def.field_type {
@@ -660,7 +600,7 @@ impl<'item> Rules<'item> {
                     continue;
                 }
                 let under = stepped(place, arm);
-                let inside = self.held_statements(held_def, &held, Some(&under), below, asked);
+                let inside = self.held_statements(held_def, &held, Some(&under), below);
                 found.extend(wrapped(&inside, |inner| {
                     format!("if ({read} is {class}{arm}) {{ val {held} = {read}.value; {inner} }}")
                 }));
@@ -846,80 +786,50 @@ impl<'item> Rules<'item> {
     }
 
     /// What `member` adds: the repeat of a set it is, what the value it holds reports, its bounds,
-    /// then the checks it names. Where the bounds choose a variant, they are the member's own and
-    /// those of each brand it holds.
+    /// then the checks it names.
     pub fn member(&mut self, member: &Member<'_>) {
         let (held, read) = presented(member);
         let place = member.place.as_deref();
         let depth = usize::from(member.def.is_optional());
         let bounds = self.bound_statements(member, &held, &read);
-        if self.chooses {
-            let mut choosing = bounds.clone();
-            choosing.extend(self.held_statements(&held, &read, place, depth, Asked::Bound));
-            self.bounds.extend(behind(member, &read, &choosing));
-        }
         let mut statements = own_repeat_statements(&held, &read, place);
         let listed = held.without_own_set();
-        let below = self.held_statements(&listed, &read, place, depth, Asked::Report);
+        let below = self.held_statements(&listed, &read, place, depth);
         statements.extend(below);
         statements.extend(bounds);
         statements.extend(self.check_statements(member, &read));
         self.statements.extend(behind(member, &read, &statements));
     }
 
-    /// The method a value of the declared type `name` is asked through, and `None` where the
-    /// type is known to carry no bound of its own.
-    fn method_asked(&mut self, name: &str, asked: Asked) -> Option<&'static str> {
-        match asked {
-            Asked::Bound => {
-                let carried = carries_a_bound(name);
-                if carried.is_none() {
-                    self.helpers.insert(Helper::Unbounded);
-                }
-                (carried != Some(false)).then_some("kotlinSchemaBound")
-            }
-            Asked::Report => {
-                if !validates(name) {
-                    self.helpers.insert(Helper::Fallback);
-                }
-                Some("validationIssues")
-            }
-        }
-    }
-
-    /// What a value `read` of the declared type `name` filled with `arguments` answers `asked`:
-    /// what it reports, handed the check of each argument where it declares parameters, and what
-    /// it counts at the filling it is told.
+    /// What a value `read` of the declared type `name` filled with `arguments` answers: what it
+    /// reports, handed the check of each argument where it declares parameters, and what it counts
+    /// at the filling it is told.
     fn named_statements(
         &mut self,
         (name, arguments): (&str, &[FieldDef]),
         read: &str,
         place: Option<&str>,
         depth: usize,
-        asked: Asked,
     ) -> Vec<String> {
         let mut found = Vec::new();
-        if let Some(method) = self.method_asked(name, asked) {
-            let handed = if matches!(asked, Asked::Report) {
-                self.serializers_for(name, arguments)
-            } else {
-                String::new()
-            };
-            let called = if matches!(asked, Asked::Report) && !arguments.is_empty() {
-                if !validates(name) {
-                    self.helpers.insert(Helper::FallbackWith);
-                }
-                let mut passed: Vec<String> = arguments
-                    .iter()
-                    .map(|argument| self.argument_check(argument, depth))
-                    .collect();
-                passed.extend((!handed.is_empty()).then_some(handed));
-                format!("{read}.validationIssuesWith({})", passed.join(", "))
-            } else {
-                format!("{read}.{method}({handed})")
-            };
-            found.push(self.collected(&called, place));
+        if !validates(name) {
+            self.helpers.insert(Helper::Fallback);
         }
+        let handed = self.serializers_for(name, arguments);
+        let called = if arguments.is_empty() {
+            format!("{read}.validationIssues({handed})")
+        } else {
+            if !validates(name) {
+                self.helpers.insert(Helper::FallbackWith);
+            }
+            let mut passed: Vec<String> = arguments
+                .iter()
+                .map(|argument| self.argument_check(argument, depth))
+                .collect();
+            passed.extend((!handed.is_empty()).then_some(handed));
+            format!("{read}.validationIssuesWith({})", passed.join(", "))
+        };
+        found.push(self.collected(&called, place));
         if let Some(filling) = self.filling_told(name, arguments) {
             let counted = format!("{read}.kotlinSchemaAtFilling({})", kotlin_quoted(&filling));
             found.push(self.collected(&counted, place));
@@ -929,8 +839,6 @@ impl<'item> Rules<'item> {
 
     pub const fn of(serializable: &'item [String]) -> Self {
         Self {
-            bounds: Vec::new(),
-            chooses: false,
             declared: Vec::new(),
             filled: None,
             filling_statements: Vec::new(),
@@ -1065,8 +973,7 @@ impl<'item> Rules<'item> {
     }
 
     /// The members the type's body carries: `validate()`, written as `modifier` opens it,
-    /// `kotlinSchemaBound()` where the type answers its bounds alone, and each function their
-    /// statements call.
+    /// and each function their statements call.
     pub fn written(&mut self, modifier: &str) -> String {
         self.written_as("validate", modifier)
     }
@@ -1132,14 +1039,6 @@ impl<'item> Rules<'item> {
                  mutableListOf<String>(); {}; {VIOLATIONS} }} else emptyList()",
                 kotlin_quoted(declared),
                 counted.join("; ")
-            ));
-        }
-        let bounds = mem::take(&mut self.bounds);
-        if !bounds.is_empty() {
-            members.push(format!(
-                "fun kotlinSchemaBound(): List<String> {{ val {VIOLATIONS} = \
-                 mutableListOf<String>(); {}; return {VIOLATIONS} }}",
-                bounds.join("; ")
             ));
         }
         members.extend(
@@ -1350,12 +1249,6 @@ const fn bounds_a_text(meta: &ModelSchemaPropMeta) -> bool {
     meta.min_length.is_some() || meta.max_length.is_some() || meta.pattern.is_some()
 }
 
-/// Whether the type the emitter wrote under `rust_ident` carries `kotlinSchemaBound()`, and
-/// `None` where it wrote none under that name, or an alias.
-fn carries_a_bound(rust_ident: &str) -> Option<bool> {
-    NOTED.with(|seen| seen.borrow().get(rust_ident).and_then(|noted| noted.bound))
-}
-
 /// What `minLength` and `maxLength` add on a list, whose items they count.
 fn count_statements(meta: &ModelSchemaPropMeta, read: &str, place: Option<&str>) -> Vec<String> {
     let counted = format!("{read}.size");
@@ -1450,7 +1343,6 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
         rust_ident,
         Noted {
             bare: None,
-            bound: None,
             filling: Answers::No,
             length,
             text,
@@ -1460,12 +1352,11 @@ pub fn note_alias(rust_ident: &str, target: &FieldDef) {
 }
 
 /// Notes a brand, which carries `validate()`, `kotlinSchemaText()` where `text` says so,
-/// `kotlinSchemaLength()` where `length` does, `kotlinSchemaBound()` where `bound` does and
-/// `kotlinSchemaAtFilling()` where `filling` does, and holds the type parameter at `bare` as its
-/// value.
+/// `kotlinSchemaLength()` where `length` does and `kotlinSchemaAtFilling()` where `filling` does,
+/// and holds the type parameter at `bare` as its value.
 pub fn note_brand(
     rust_ident: &str,
-    (text, length, bound): (bool, bool, bool),
+    (text, length): (bool, bool),
     bare: Option<usize>,
     filling: bool,
 ) {
@@ -1473,7 +1364,6 @@ pub fn note_brand(
         rust_ident,
         Noted {
             bare,
-            bound: Some(bound),
             filling: Answers::of(filling),
             length: Answers::of(length),
             text,
@@ -1488,7 +1378,6 @@ pub fn note_model(rust_ident: &str) {
         rust_ident,
         Noted {
             bare: None,
-            bound: Some(false),
             filling: Answers::No,
             length: Answers::No,
             text: false,
@@ -1503,7 +1392,6 @@ pub fn note_plain_enum(rust_ident: &str) {
         rust_ident,
         Noted {
             bare: None,
-            bound: Some(false),
             filling: Answers::No,
             length: Answers::No,
             text: false,

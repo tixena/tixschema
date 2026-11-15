@@ -876,14 +876,16 @@ mod a_read_refuses_what_validate_refuses {
     }
 
     #[test]
-    fn a_member_of_an_untagged_enum_chooses_its_variant_by_its_bound() {
+    fn a_member_of_an_untagged_enum_does_not_choose_its_variant_by_its_bound() {
         assert_eq!(
             serde_json::from_str::<Reading>(r#""abc""#).ok(),
             Some(ReadingDraft::Short("abc".to_owned()).validate().unwrap())
         );
         assert_eq!(
-            serde_json::from_str::<Reading>(r#""abcd""#).ok(),
-            Some(ReadingDraft::Text("abcd".to_owned()).validate().unwrap())
+            serde_json::from_str::<Reading>(r#""abcd""#)
+                .unwrap_err()
+                .to_string(),
+            "too long: maximum length is 3, got 4"
         );
         // A model an untagged variant holds is read as that variant, and judged with the whole.
         let listed = serde_json::to_string(&StockDraft::Listed(vec![broken()])).unwrap();

@@ -195,7 +195,8 @@ a member of a variant under its name: read {\"Boxed\":{\"label\":\"A\"}}
 a slot of a variant under its name: read {\"Lone\":\"A\"}
 a member of an untagged variant: read {\"code\":\"ab\"}
 a slot of an untagged variant, within its bound: read \"a\"
-a slot of an untagged variant, past its bound: read \"  abc  \"
+a slot of an untagged variant, past its bound: refused
+    too long: maximum length is 2, got 3
 a slot of a tuple struct: read [\"A\",2]
 a member of a variant that reaches a parameter: read {\"kind\":\"Many\",\"detail\":{\"codes\":[\"x\"]}}
 a slot of a variant that reaches a parameter: read {\"kind\":\"One\",\"detail\":\"x\"}

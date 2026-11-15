@@ -53,6 +53,16 @@ A plain enum, whose variants hold no data, that names a `check` is the pair in R
 
 A plain enum also has `wire_name()`, the text serde writes for the value; see [Plain Enums](enums.md#plain-enums).
 
+**Every enum names its variants.** An enum has `model_schema_variant()`, the name of the variant a value is, as Rust declares it (not the name serde writes), and `MODEL_SCHEMA_VARIANTS`, the name of each variant in declaration order. Code that only needs to know which variant a value is reads the name and writes no `match`:
+
+```rust
+let fault: ShipFault = ShipFault::NotFound;
+assert_eq!(fault.model_schema_variant(), "NotFound");
+assert_eq!(ShipFault::MODEL_SCHEMA_VARIANTS, ["Closed", "NotFound"]);
+```
+
+A variant under `#[cfg(..)]` is named under the same `#[cfg(..)]`, and a generic enum has both over its own type parameters. An enum with a draft has `model_schema_variant()` on the draft, which the valid type reaches through `Deref`, and `MODEL_SCHEMA_VARIANTS` on the valid type. A hand-written item of either name stops the build with `error[E0592]: duplicate definitions`. The service macros read the variant a fault is by this name, so a fault is named the same where it is declared above its service, below it or in another crate: see [`error_status`](http-rest.md) and [asking the user](mcp.md).
+
 #### A Plain Enum With No Check Has No Draft
 
 A plain enum that names no `check` guards nothing with a draft: every value of it is valid. It is declared as written on every surface, as a brand is, and its variants are its values:
@@ -166,6 +176,7 @@ Whether a struct has `new` depends on how many parameters it would take, filled 
 - 8 or more: no `new` is written, so the struct is built through its draft or through a `new` the author writes, and clippy's `too_many_arguments` has nothing to flag.
 - `new = true` on the declaration writes it at any width, with `#[allow(clippy::too_many_arguments)]` on it when it takes 8 or more.
 - `new = false` writes none at any width.
+- A tuple struct with a slot under `#[cfg(..)]` gets no `new`, at any width: with no `new` setting, or `new = false`, none is written, and `new = true` stops the build with ``error: model_schema: `new = true` on `Reading`: slot 1 is under `#[cfg(unix)]`, and a tuple struct with a slot under `#[cfg]` gets no generated `new`. Write `new = false`.``, spanned on the `#[cfg]`. A struct with named fields keeps its `new` with a parameter under the same `#[cfg]` as its field.
 
 A struct that declares its own `fn new` in an `impl` stops the build with `error[E0592]: duplicate definitions with name `new`` unless it says `#[model_schema(new = false)]`, because the macro cannot see the author's `impl` blocks. Rename the hand-written `new`, or write `new = false` and keep it:
 

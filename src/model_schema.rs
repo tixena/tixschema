@@ -155,12 +155,10 @@ use crate::features::serde::parse_serde_field_hooks;
     )
 ))]
 use crate::features::serde::rename_direction_rejection;
-// `has_serde_read_hook` asks whether a field already reads itself through a function of the
-// author's own, which only matters where a generated reader might displace one.
 #[cfg(feature = "serde")]
 use crate::features::serde::{
     SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize, derives_serialize,
-    has_serde_read_hook, parse_read_renames, parse_written_renames, read_member_keys, struct_tag,
+    parse_read_renames, parse_written_renames, read_member_keys, struct_tag,
 };
 use crate::features::serde::{
     brand_field, carries_untagged, has_serde_default, member_steps, parse_serde_key_omission,
@@ -773,21 +771,6 @@ struct LiteralShape {
     #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
-}
-
-/// Where a field's constraints are enforced.
-///
-/// Both readings publish the same two helpers into the schema module. What differs is whether the
-/// field itself is hung with the `#[serde(deserialize_with = …)]` that runs the check as the
-/// payload is read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ConstraintGate {
-    /// The deserializer as well as the validator: on an untagged union's member, whether the member
-    /// is admissible is what chooses which variant the payload is.
-    Deserializer,
-    /// The validator alone: every position where a constraint decides only whether a value is
-    /// admissible, never what it is.
-    Validator,
 }
 
 /// What the end of a constraint walk does with a violation: `validate()` collects every one, a
@@ -2494,23 +2477,15 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Read in every feature combination: a transport, and a type that lists `"mongodb"` for the
     // keys of its maps, read it whether or not a surface is on.
     record_wire_form(&item);
-    // A member that holds any JSON value is no shape a target can describe, in any build.
-    if let Some(output) = refused(&any_json_errors(&item, &parsed_args)) {
-        return output;
-    }
-    // Nor is one that holds a primitive no surface has a type for, which the field walk would
-    // otherwise take for a type declared elsewhere.
-    if let Some(output) = refused(&undescribable_primitive_errors(&item)) {
-        return output;
-    }
-    // A `default_types` declaration is read against the item's own parameters, which the parser
-    // never sees, so both directions are answered here, ahead of every shape.
-    if let Some(output) = refused(&default_types_guard_errors(&item, &parsed_args)) {
-        return output;
-    }
-    // A map `validate()` names by its key, keyed by a parameter the item declares no `Serialize`
-    // for, could not be written into a message.
-    if let Some(output) = refused(&unwritable_map_key_errors(&item)) {
+    // A member that holds any JSON value, or a primitive no surface has a type for, is no shape a
+    // target can describe; a `default_types` declaration is read against the item's own
+    // parameters, which the parser never sees; and a map `validate()` names by its key, keyed by a
+    // parameter the item declares no `Serialize` for, could not be written into a message.
+    if let Some(output) = refused(&any_json_errors(&item, &parsed_args))
+        .or_else(|| refused(&undescribable_primitive_errors(&item)))
+        .or_else(|| refused(&default_types_guard_errors(&item, &parsed_args)))
+        .or_else(|| refused(&unwritable_map_key_errors(&item)))
+    {
         return output;
     }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
@@ -2583,6 +2558,10 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // `decode_with` generates methods on the type it is written on, and `"arky"` impls for it, so
     // a shape that cannot carry them is refused here rather than left with plain serde.
     if let Some(output) = refused(&enable_guard_errors(&item, &parsed_args)) {
+        return output;
+    }
+    // A tuple struct with a slot under `#[cfg]` has no `new` to write, which `new = true` asked for.
+    if let Some(output) = refused(&valid_type::new_refusals(&item, parsed_args.new_by)) {
         return output;
     }
     // A name another declaration already publishes is refused here, after every guard that refuses
@@ -3569,6 +3548,7 @@ where
         rule_less: is_rule_less(),
         serializes: declared.serializes,
         units: unit_values_of(parts.item, is_rule_less(), declared.checked),
+        variants: declared.variants,
         vis: parts.vis,
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, validate_method.is_some());
@@ -3794,7 +3774,12 @@ fn valid_items(
         return (
             proc_macro2::TokenStream::new(),
             proc_macro2::TokenStream::new(),
-            valid_type::undrafted_methods(issues, publishes_validate),
+            valid_type::undrafted_methods(
+                issues,
+                publishes_validate,
+                &valid.variants,
+                from_deserializer_of(valid, publishes_validate).as_ref(),
+            ),
         );
     }
     (
@@ -3802,6 +3787,25 @@ fn valid_items(
         valid.items(),
         proc_macro2::TokenStream::new(),
     )
+}
+
+/// `from_deserializer` of a type that is its own valid type, where this build reads serde's
+/// attributes.
+#[cfg(feature = "serde")]
+fn from_deserializer_of(
+    valid: &valid_type::ValidType<'_>,
+    publishes_validate: bool,
+) -> Option<proc_macro2::TokenStream> {
+    valid_type::own_from_deserializer(valid.generics, publishes_validate, &valid.deserializes)
+}
+
+/// Nothing, where no `serde` feature reads the attributes a read is written from.
+#[cfg(not(feature = "serde"))]
+const fn from_deserializer_of(
+    _valid: &valid_type::ValidType<'_>,
+    _publishes_validate: bool,
+) -> Option<proc_macro2::TokenStream> {
+    None
 }
 
 /// `method`, or the `validation_issues()` of a type with no rule to run.
@@ -12111,6 +12115,14 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
     let issues_with = parts.issues_with;
+    #[cfg(feature = "serde")]
+    let from_deserializer = valid_type::own_from_deserializer(
+        &item_struct.generics,
+        !validate_method.is_empty(),
+        &valid_type::declared().deserializes,
+    );
+    #[cfg(not(feature = "serde"))]
+    let from_deserializer = proc_macro2::TokenStream::new();
 
     let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
@@ -12154,6 +12166,7 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
                     #issues_with
                     #bound_alone
                     #bound_text_method
+                    #from_deserializer
                 }
 
                 #sealing_try_from
@@ -13281,6 +13294,7 @@ fn plain_enum_output(
         rule_less: is_rule_less(),
         serializes: declared.serializes,
         units: unit_values_of(item_enum, is_rule_less(), declared.checked),
+        variants: declared.variants,
         vis: &item_enum.vis,
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, added.validate.is_some());
@@ -15577,8 +15591,8 @@ const fn untagged_variant_context<'ctx>(
 ) -> FieldContext<'ctx> {
     FieldContext {
         container_defaulted: variant_defaulted,
-        // An untagged member's own reader is hung by the walk that collects it, where a member's
-        // bound decides which variant the payload is; nothing this context reaches hangs one.
+        // An untagged member is read as serde's derive reads it: nothing this context reaches
+        // hangs a reader on it.
         container_read_back: false,
         container_wire: walk.wire,
         // That walk holds the member to its enum's check as well, ahead of this context.
@@ -15594,10 +15608,9 @@ const fn untagged_variant_context<'ctx>(
 }
 
 /// Gives a member of an untagged variant the hook that reads the models it holds unjudged. The
-/// variant is then chosen as it was before a model judged itself as it was read, and the enum's
-/// own read judges what the member holds. A brand the member holds is held to its own bound
-/// there, so that bound still chooses the variant. A member its own bound reads, the last one
-/// `walked` holds attributes for, is read by that hook alone.
+/// variant is then chosen by shape alone, as serde's derive chooses it, and the enum's own read
+/// judges what the member holds, a brand included. A member whose own reader the macro hangs, the
+/// last one `walked` holds attributes for, is read by that hook alone.
 #[cfg(feature = "serde")]
 fn read_untagged_member_unjudged(
     ctx: &FieldContext<'_>,
@@ -15616,7 +15629,6 @@ fn read_untagged_member_unjudged(
         field,
         &shape,
         &judged_read::HookPlace {
-            choosing: true,
             container_defaulted: ctx.container_defaulted,
             index,
             variant: ctx.variant_ident,
@@ -15673,18 +15685,6 @@ fn untagged_member_field_def(
     (field_def, member_guard_errors)
 }
 
-/// The gate a member of an untagged variant is checked through: its read as well, the one
-/// position where a bound picks the variant, and `validate()` alone in a variant serde never
-/// reads, where a hook would ask a read of a type serde asks none of.
-#[cfg(feature = "serde")]
-fn untagged_member_gate(variant: &syn::Variant) -> ConstraintGate {
-    if variant_members_read(variant) {
-        ConstraintGate::Deserializer
-    } else {
-        ConstraintGate::Validator
-    }
-}
-
 /// Collects each untagged variant's union-member parts: the TypeScript member type, the Zod
 /// member schema, the JSON-schema value token, and the `compile_error!` tokens for any
 /// field-level guard violations. The first three are always returned regardless of features.
@@ -15699,7 +15699,7 @@ fn collect_untagged_variant_members(
     // Read as the discriminated walk reads it: no guard of the wire reads a variant serde neither
     // writes nor reads.
     let on_the_wire = variant_on_the_wire(variant);
-    let gate = untagged_member_gate(variant);
+    let reads_members = variant_members_read(variant);
     let variant_defaulted = has_serde_default(&variant.attrs);
     let serde_default = walk.serde_default;
     // An untagged variant has no name on the wire, so the rename the seam also resolves is unused
@@ -15744,14 +15744,7 @@ fn collect_untagged_variant_members(
         let new_attrs = declaration_attrs(field);
         let mut injected_attrs: Vec<syn::Attribute> = Vec::new();
         let (validation_fn, validate_body, field_validation_guard_error) =
-            generate_field_validation(
-                &member_ctx,
-                field,
-                index,
-                &prop_meta,
-                gate,
-                &mut injected_attrs,
-            );
+            generate_field_validation(&member_ctx, field, index, &prop_meta);
         field.attrs = new_attrs;
         if !is_flatten {
             walked.validation_fns.extend(validation_fn);
@@ -15786,7 +15779,7 @@ fn collect_untagged_variant_members(
                 nested_validate_body(field, &member_def, &place),
             ),
         };
-        if gate == ConstraintGate::Deserializer {
+        if reads_members {
             read_untagged_member_unjudged(&member_ctx, field, &member_def, index, &walked);
         }
         let named = held_member_checks(field, &member_def, &place);
@@ -21652,16 +21645,8 @@ fn process_field(
     let place = member_place(field, index, ctx.variant_ident.is_some(), ctx.steps(index));
 
     // Generate validation code and hold back the serde attribute it hangs on the field
-    let (bound_fns, validate_body, field_validation_guard_error) = generate_field_validation(
-        ctx,
-        field,
-        index,
-        &model_schema_prop_meta,
-        // A struct's field, or a tagged variant's: the shape of the payload says which type it
-        // is, so a constraint here decides only whether the value is admissible.
-        ConstraintGate::Validator,
-        &mut injected_attrs,
-    );
+    let (bound_fns, validate_body, field_validation_guard_error) =
+        generate_field_validation(ctx, field, index, &model_schema_prop_meta);
 
     field.attrs = new_attrs;
 
@@ -21807,7 +21792,6 @@ fn read_unjudged_below(ctx: &FieldContext<'_>, field: &Field, field_def: &FieldD
         field,
         &shape,
         &judged_read::HookPlace {
-            choosing: false,
             container_defaulted: ctx.container_defaulted,
             index,
             variant: ctx.variant_ident,
@@ -22219,11 +22203,9 @@ fn literal_validate_body(
 /// place among its container's.
 fn generate_literal_validation(
     ctx: &FieldContext<'_>,
-    (field, index): (&Field, usize),
+    field: &Field,
     member: &CheckedMember,
     literal: &LiteralValue,
-    gate: ConstraintGate,
-    injected_attrs: &mut Vec<syn::Attribute>,
 ) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
     let module_name = ctx.schema_module_name?;
     let shape = literal_shape(&field.ty)?;
@@ -22261,18 +22243,7 @@ fn generate_literal_validation(
     );
     let hook = literal_hook(&field.ty, &shape, &owned, &validator, &deserializer);
     let validate_body = literal_validate_body(member, &shape, &validator)?;
-    if gate == ConstraintGate::Validator {
-        record_field_validator(module_name, stem, named, items);
-    }
-    if gate == ConstraintGate::Deserializer {
-        hang_bound_hook(
-            ctx,
-            (field, index),
-            &format!("{module_name}::deserialize_{stem}"),
-            &shape.wraps,
-            injected_attrs,
-        );
-    }
+    record_field_validator(module_name, stem, named, items);
     let module_items = quote! {
         pub fn #validator(#param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
             #rendering
@@ -22319,58 +22290,14 @@ fn interior_mutability_constraint_guard_error(
     .to_compile_error()
 }
 
-/// Hangs the hook `path` names on the member at `index`, whose bound chooses the variant of an
-/// untagged enum, with the `default` that keeps an optional key optional under it, and records
-/// both for the item's read. A borrow publishes no hook, and a member its author reads through a
-/// function of their own keeps that one: serde admits one reader per field. Its bound is then the
-/// validator's alone.
-#[cfg(feature = "serde")]
-fn hang_bound_hook(
-    ctx: &FieldContext<'_>,
-    (field, index): (&Field, usize),
-    path: &str,
-    wraps: &[ConstraintWrap],
-    injected_attrs: &mut Vec<syn::Attribute>,
-) {
-    if ends_on_a_borrow(wraps) || has_serde_read_hook(&field.attrs) {
-        return;
-    }
-    let path_lit = syn::LitStr::new(path, proc_macro2::Span::call_site());
-    let mut hung: Vec<syn::Attribute> = vec![syn::parse_quote! {
-        #[serde(deserialize_with = #path_lit)]
-    }];
-    if needs_injected_default(wraps, has_serde_default(&field.attrs)) {
-        hung.push(syn::parse_quote! {
-            #[serde(default)]
-        });
-    }
-    judged_read::record_bound_hook(ctx.variant_ident, index, &hung);
-    injected_attrs.extend(hung);
-}
-
-/// Nothing, where no `serde` reads a member.
-#[cfg(not(feature = "serde"))]
-const fn hang_bound_hook(
-    _ctx: &FieldContext<'_>,
-    _member: (&Field, usize),
-    _path: &str,
-    _wraps: &[ConstraintWrap],
-    _injected_attrs: &mut Vec<syn::Attribute>,
-) {
-}
-
 /// Generates per-field serde validation code — the static validator and the `deserialize_with`
-/// hook, both published into the schema module either way — and, where `gate` says the read is
-/// also a gate, collects the `#[serde(deserialize_with = ...)]` attribute into `injected_attrs`,
-/// plus the `#[serde(default)]` that keeps an optional key optional under one. Each violation is
-/// reported under the steps serde writes on the way to the field.
+/// hook, both published into the schema module. Each violation is reported under the steps serde
+/// writes on the way to the field.
 fn generate_field_validation(
     ctx: &FieldContext<'_>,
     field: &Field,
     index: usize,
     model_schema_prop_meta: &ModelSchemaPropMeta,
-    gate: ConstraintGate,
-    injected_attrs: &mut Vec<syn::Attribute>,
 ) -> (
     Option<proc_macro2::TokenStream>,
     Option<proc_macro2::TokenStream>,
@@ -22396,17 +22323,10 @@ fn generate_field_validation(
                 interior_mutability_constraint_guard_error(field, &member.label, &wrapper, true);
             return (None, None, Some(refused));
         }
-        return generate_literal_validation(
-            ctx,
-            (field, index),
-            &member,
-            literal,
-            gate,
-            injected_attrs,
-        )
-        .map_or((None, None, None), |(items, body)| {
-            (Some(items), Some(body), None)
-        });
+        return generate_literal_validation(ctx, field, &member, literal)
+            .map_or((None, None, None), |(items, body)| {
+                (Some(items), Some(body), None)
+            });
     }
 
     let (Some(module_name), Some(shape)) = (ctx.schema_module_name, constrained_shape(&field.ty))
@@ -22453,18 +22373,7 @@ fn generate_field_validation(
     };
 
     let helper_stem = &member.stem;
-    if gate == ConstraintGate::Validator {
-        record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
-    }
-    if gate == ConstraintGate::Deserializer {
-        hang_bound_hook(
-            ctx,
-            (field, index),
-            &format!("{module_name}::deserialize_{helper_stem}"),
-            &shape.wraps,
-            injected_attrs,
-        );
-    }
+    record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
 
     (
         Some(validation_code.module_items),

@@ -48,7 +48,7 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      let whole = try SwiftSchemaPayload(from: decoder).value; \
      guard var members = whole as? [String: Any] else { value = whole; return }; \
      for key in taken { members.removeValue(forKey: key) }; value = members }; \
-     static func decoder(for payload: Any) -> JSONDecoder { func floated(_ value: Any, \
+     static func decoder(for payload: Any, outer: [String]) -> JSONDecoder { func floated(_ value: Any, \
      _ path: [String]) -> Set<[String]> { var found: Set<[String]> = []; \
      if let members = value as? [String: Any] { for (key, member) in members { \
      found.formUnion(floated(member, path + [key])) } } \
@@ -57,18 +57,21 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
      else if value is Double, !(value is Int64) { found.insert(path) }; return found }; \
      let reader = JSONDecoder(); \
      reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFloated\")!] = floated(payload, []); \
+     reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] = outer; \
      return reader }; \
      static func read<Read: Decodable>(_ type: Read.Type, from payload: Any, \
-     at path: [CodingKey]) throws -> Read { \
+     at path: [CodingKey], within held: Decoder) throws -> Read { \
      guard JSONSerialization.isValidJSONObject([payload]), \
      let written = try? JSONSerialization.data(withJSONObject: payload, \
      options: [.fragmentsAllowed]) else { \
      throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: path, \
      debugDescription: \"a preprocess answered a value that is not JSON\")) }; \
+     let outer = (held.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] \
+     ?? []) + path.map { $0.intValue.map(String.init) ?? $0.stringValue }; \
      func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
      DecodingError.Context(codingPath: path + context.codingPath, \
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
-     let reader = decoder(for: payload); \
+     let reader = decoder(for: payload, outer: outer); \
      reader.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] = true; \
      do { return try reader.decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
@@ -87,16 +90,18 @@ pub(super) const PAYLOAD: &str = "private struct SwiftSchemaPayload: Decodable {
 /// payload of its own: `read` with no `swiftSchemaFlat`, so the type refuses a key it does not
 /// declare.
 const REFUSING: &str = "static func readRefusing<Read: Decodable>(_ type: Read.Type, \
-     from payload: Any, at path: [CodingKey]) throws -> Read { \
+     from payload: Any, at path: [CodingKey], within held: Decoder) throws -> Read { \
      guard JSONSerialization.isValidJSONObject([payload]), \
      let written = try? JSONSerialization.data(withJSONObject: payload, \
      options: [.fragmentsAllowed]) else { \
      throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: path, \
      debugDescription: \"a preprocess answered a value that is not JSON\")) }; \
+     let outer = (held.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] \
+     ?? []) + path.map { $0.intValue.map(String.init) ?? $0.stringValue }; \
      func placed(_ context: DecodingError.Context) -> DecodingError.Context { \
      DecodingError.Context(codingPath: path + context.codingPath, \
      debugDescription: context.debugDescription, underlyingError: context.underlyingError) }; \
-     do { return try decoder(for: payload).decode(type, from: written) } \
+     do { return try decoder(for: payload, outer: outer).decode(type, from: written) } \
      catch DecodingError.typeMismatch(let asked, let context) { \
      throw DecodingError.typeMismatch(asked, placed(context)) } \
      catch DecodingError.valueNotFound(let asked, let context) { \
@@ -110,9 +115,9 @@ const REFUSING: &str = "static func readRefusing<Read: Decodable>(_ type: Read.T
 /// payload is the name of the one entry over `null` that reads as the type, where there is one, as
 /// a plain enum is written flattened, and the payload itself for any other type.
 const FLAT: &str = "static func flat<Read: Decodable>(_ type: Read.Type, _ payload: Any, \
-     at path: [CodingKey]) -> Any { guard let entries = payload as? [String: Any] else { \
+     at path: [CodingKey], within held: Decoder) -> Any { guard let entries = payload as? [String: Any] else { \
      return payload }; let named = entries.filter { $0.value is NSNull && \
-     (try? read(type, from: $0.key, at: path)).map { \
+     (try? read(type, from: $0.key, at: path, within: held)).map { \
      Mirror(reflecting: $0).children.first?.value is any RawRepresentable } == true }; \
      return named.count == 1 ? named.keys.first! : payload }; ";
 
@@ -886,7 +891,9 @@ fn value(
     );
     let read = |read_as: &str| {
         let from = if member.flat {
-            format!("SwiftSchemaPayload.flat({read_as}.self, {corrected}, at: {path})")
+            format!(
+                "SwiftSchemaPayload.flat({read_as}.self, {corrected}, at: {path}, within: decoder)"
+            )
         } else {
             corrected.clone()
         };
@@ -895,7 +902,9 @@ fn value(
         } else {
             "read"
         };
-        format!("try SwiftSchemaPayload.{reader}({read_as}.self, from: {from}, at: {path})")
+        format!(
+            "try SwiftSchemaPayload.{reader}({read_as}.self, from: {from}, at: {path}, within: decoder)"
+        )
     };
     let held = |value: &str| format!("self.value = {value}");
     let statements = if member.walked {

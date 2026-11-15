@@ -20,8 +20,9 @@ use super::wrapped_keys_models::{postmark_swift, regatta_swift, stowed_regatta_s
 
 /// The broken rules of a key's brand, each placed under the path of the key's entry.
 const KEY_PLACED: &str = concat!(
-    r#"{ () -> [String] in let at = (container.codingPath + [codingKey]).map { "#,
-    r#"$0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: "."); return at.isEmpty "#,
+    r#"{ () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: "#,
+    r#""swiftSchemaOuter")!] as? [String] ?? []) + (container.codingPath + [codingKey]).map { "#,
+    r#"$0.intValue.map(String.init) ?? $0.stringValue }).joined(separator: "."); return at.isEmpty "#,
     r#"? violations : violations.map { said in guard said.hasPrefix("'"), let end = "#,
     r#"said.dropFirst().firstIndex(of: "'") else { return "'\(at)': \(said)" }; return "#,
     r#""'\(at).\(said[said.index(after: said.startIndex)..<end])'\(said[said.index(after: "#,

@@ -3357,7 +3357,7 @@ fn a_table_less_http_group_publishes_no_completeness_check() {
         }",
     );
     assert!(
-        !table_less.contains("const _ : fn (& GateError)"),
+        !table_less.contains("MODEL_SCHEMA_VARIANTS"),
         "an empty table has nothing to be complete against. Got: {table_less}"
     );
 
@@ -3368,10 +3368,8 @@ fn a_table_less_http_group_publishes_no_completeness_check() {
         }",
     );
     assert!(
-        with_table.contains(
-            "const _ : fn (& GateError) -> u16 = | reported | match & * * reported \
-             { GateErrorDraft :: NotFound { .. } => 404u16 , } ;"
-        ),
+        with_table.contains("const NAMED : & [& str] = & [\"NotFound\"] ;")
+            && with_table.contains("< GateError > :: MODEL_SCHEMA_VARIANTS"),
         "got: {with_table}"
     );
 }
@@ -4038,11 +4036,8 @@ fn the_service_module_carries_one_completeness_check_per_http_error_status() {
         exec_service_schema(TokenStream::new(), declared(HTTP_SERVICE).to_token_stream());
     let body = module_body(expanded, "document_service_schema").to_string();
     assert!(
-        body.contains(
-            "const _ : fn (& GetVersionError) -> u16 = | reported | match & * * reported \
-             { GetVersionErrorDraft :: NotFound { .. } => 404u16 , GetVersionErrorDraft :: VersionGone \
-             { .. } => 410u16 , } ;"
-        ),
+        body.contains("const NAMED : & [& str] = & [\"NotFound\" , \"VersionGone\"] ;")
+            && body.contains("< GetVersionError > :: MODEL_SCHEMA_VARIANTS"),
         "got: {body}"
     );
 }
@@ -4053,7 +4048,7 @@ fn only_a_reply_operation_naming_a_non_empty_table_carries_a_completeness_check(
     let expanded =
         exec_service_schema(TokenStream::new(), declared(HTTP_SERVICE).to_token_stream());
     let body = module_body(expanded, "document_service_schema").to_string();
-    assert_eq!(body.matches("const _ : fn (&").count(), 1, "got: {body}");
+    assert_eq!(body.matches("const NAMED").count(), 1, "got: {body}");
     assert!(
         !body.contains("DocumentError"),
         "create_document's group declares no error_status, so it publishes no check at all. \
@@ -4062,7 +4057,7 @@ fn only_a_reply_operation_naming_a_non_empty_table_carries_a_completeness_check(
 }
 
 #[test]
-fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
+fn a_table_entry_naming_a_payload_variant_is_named_by_its_text() {
     let struct_variant = expanded(
         "pub trait ArchiveService<Ctx> {
             #[service_schema_op(http(
@@ -4074,11 +4069,7 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
         }",
     );
     assert!(
-        struct_variant.contains(
-            "const _ : fn (& ArchiveError) -> u16 = | reported | match & * * reported \
-             { ArchiveErrorDraft :: NotFound { .. } => 404u16 , ArchiveErrorDraft :: Locked { .. } => \
-             423u16 , } ;"
-        ),
+        struct_variant.contains("const NAMED : & [& str] = & [\"NotFound\" , \"Locked\"] ;"),
         "got: {struct_variant}"
     );
 
@@ -4093,10 +4084,7 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
         }",
     );
     assert!(
-        tuple_variant.contains(
-            "const _ : fn (& GoneError) -> u16 = | reported | match & * * reported \
-             { GoneErrorDraft :: Gone { .. } => 410u16 , } ;"
-        ),
+        tuple_variant.contains("const NAMED : & [& str] = & [\"Gone\"] ;"),
         "got: {tuple_variant}"
     );
 }

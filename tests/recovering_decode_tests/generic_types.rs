@@ -490,11 +490,7 @@ fn an_untagged_member_bounded_over_the_parameter_lists_its_count() {
     });
     assert_eq!(
         format!("{:?}", read.unwrap_err().issues),
-        "[NoVariant { path: Path([]), found: Object {\"pile\": Array [], \"tag\": Number(1)}, \
-         variants: [(\"Pile\", [Invalid { path: Path([Key(\"pile\")]), expected: \
-         Optional(Array(TypeParam(\"T\"))), found: Array [], reason: \"'pile': too short: minimum \
-         length is 1, got 0\" }]), (\"Text\", [Invalid { path: Path([]), expected: String, found: \
-         Object {\"pile\": Array [], \"tag\": Number(1)}, reason: \"invalid type: map, expected a \
-         string\" }])] }]"
+        "[Invalid { path: Path([Key(\"pile\")]), expected: Optional(Array(TypeParam(\"T\"))), \
+         found: Array [], reason: \"too short: minimum length is 1, got 0\" }]"
     );
 }

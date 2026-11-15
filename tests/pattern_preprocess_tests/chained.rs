@@ -259,8 +259,9 @@ fn a_key_the_payload_leaves_out_is_read_as_it_is_with_no_function() {
     );
 }
 
-/// The bound of each variant's member chooses the variant, on what the member's function
-/// answered: a code two letters long once trimmed, a list of one code once out of its envelope.
+/// The bound of each variant's member chooses no variant: the first variant whose shape reads what
+/// the member's function answered takes the payload, and the enum's read then holds the member to
+/// its bound, on the corrected payload.
 #[cfg(feature = "serde")]
 #[test]
 fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
@@ -285,21 +286,25 @@ fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
         picked(json!(" AB ")),
         PickedDraft::Short("AB".to_owned()).validate().unwrap()
     );
-    // Three letters once trimmed: the slot's bound refuses them, and the next variant reads the
+    // Three letters once trimmed: the slot's bound refuses them, and no later variant reads the
     // payload as it is.
-    assert_eq!(
-        picked(json!(" ABC ")),
-        PickedDraft::Whole(" ABC ".to_owned()).validate().unwrap()
-    );
-    for refused in [
-        json!({ "code": " A " }),
-        json!({ "codes": { "payload": [] } }),
+    for (refused, said) in [
+        (json!(" ABC "), "too long: maximum length is 2, got 3"),
+        (
+            json!({ "code": " A " }),
+            "too short: minimum length is 2, got 1",
+        ),
+        (
+            json!({ "codes": { "payload": [] } }),
+            "too short: minimum length is 1, got 0",
+        ),
     ] {
-        assert_eq!(
-            serde_json::from_value::<Picked>(refused)
-                .unwrap_err()
-                .to_string(),
-            "data did not match any variant of untagged enum Picked"
+        let refusal = serde_json::from_value::<Picked>(refused.clone())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains(said),
+            "{refused} is refused with: {refusal}"
         );
     }
 }

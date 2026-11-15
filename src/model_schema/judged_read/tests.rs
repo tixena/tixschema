@@ -296,26 +296,27 @@ fn an_enum_is_read_on_a_copy_that_keeps_what_serde_reads_of_each_variant() {
     assert!(read.contains(copy), "missing `{copy}` in: {read}");
 }
 
-/// A member of an untagged enum is held to the bound a brand carries as it is read, behind a
-/// trait that answers for a type with no such bound, and a struct's member is held to none.
+/// A member of an untagged enum that holds a brand reads it with no judgement and asks it for no
+/// bound, as a struct's member does: serde chooses the variant by shape alone.
 #[cfg(feature = "serde")]
 #[test]
-fn a_member_that_chooses_a_variant_is_held_to_the_bound_of_a_brand() {
+fn a_member_of_an_untagged_enum_reads_a_brand_by_shape_alone() {
     let chosen = expansion_under(
         "",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum ChosenMark { Labelled(ChosenLabel), \
-         Named(ChosenByShape) }",
+         Named(String) }",
     );
-    for written in [
-        "trait ChosenByShape2 { fn model_schema_validate_bound (& self) -> :: core :: result :: \
-         Result < () , :: std :: vec :: Vec < :: std :: string :: String >> { :: core :: result \
-         :: Result :: Ok (()) } } impl < T : ? :: core :: marker :: Sized > ChosenByShape2 for & \
-         T { }",
-        "let held = < ChosenLabel > :: model_schema_read_unjudged (deserializer) ? ; let chosen \
-         = & held ; chosen . model_schema_validate_bound () . map_err (",
-        ":: core :: result :: Result :: Ok (Unjudged (held))",
-    ] {
-        assert!(chosen.contains(written), "missing `{written}` in: {chosen}");
+    assert!(
+        chosen.contains(
+            "< ChosenLabel > :: model_schema_read_unjudged (deserializer) . map (Unjudged)"
+        ),
+        "got: {chosen}"
+    );
+    for unwritten in ["model_schema_validate_bound", "ChosenByShape"] {
+        assert!(
+            !chosen.contains(unwritten),
+            "found `{unwritten}` in: {chosen}"
+        );
     }
 
     let held = expansion_under(
@@ -445,12 +446,12 @@ fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
     }
 }
 
-/// The hook a bound of an untagged member is read through, and the `default` beside it, leave the
-/// read under the bounds serde's derive writes for the enum as it is written: `Deserialize<'de>`
-/// of the parameter the member names, and no `Default`.
+/// The read of an untagged enum with a parameter is written under the bounds serde's derive writes
+/// for the enum as it is written: `Deserialize<'de>` of the parameter the member names, and no
+/// `Default`.
 #[cfg(feature = "serde")]
 #[test]
-fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive() {
+fn an_untagged_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive() {
     let read = expansion_under(
         "default_types(Key = String)",
         "#[derive(Deserialize, Serialize)] #[serde(untagged)] pub enum CountedKeys<Key> { \
@@ -458,8 +459,6 @@ fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_de
          \"Option::is_none\")] listed: Option<Vec<Key>>, tag: u8 }, Text(String) }",
     );
     for written in [
-        "# [serde (deserialize_with = \"counted_keys_schema::deserialize_listed_listed\")] # \
-         [serde (default)] listed : Option < Vec < Key > >",
         "# [serde (bound (deserialize = \"Key : serde :: Deserialize < 'de >\"))]",
         "impl < 'de , Key > serde :: Deserialize < 'de > for CountedKeysDraft < Key > where Key : \
          serde :: Deserialize < 'de > {",
@@ -467,14 +466,17 @@ fn a_bound_hook_on_a_member_that_names_a_parameter_keeps_the_bounds_of_serdes_de
         assert!(read.contains(written), "missing `{written}` in: {read}");
     }
     assert!(
+        !read.contains("deserialize_with = \"counted_keys_schema::deserialize_listed_listed\""),
+        "got: {read}"
+    );
+    assert!(
         !read.contains("Key : :: core :: default :: Default"),
         "got: {read}"
     );
 }
 
 /// A member of a variant serde never reads, under `skip` or `skip_deserializing`, is read by no
-/// hook under any tagging, and a bound of a member of an untagged one hangs no hook on it, where a
-/// member of a variant serde reads keeps each of its own.
+/// hook under any tagging, where a member of a variant serde reads keeps its own.
 #[cfg(feature = "serde")]
 #[test]
 fn a_member_of_a_variant_serde_never_reads_is_read_by_no_hook() {
@@ -494,12 +496,6 @@ fn a_member_of_a_variant_serde_never_reads_is_read_by_no_hook() {
             assert!(
                 !read.contains(unwritten),
                 "found `{unwritten}` for {source}: {read}"
-            );
-        }
-        if tagging.contains("untagged") {
-            assert!(
-                read.contains("deserialize_with = \"unread_hooks_schema::deserialize_open_text\""),
-                "for {source}: {read}"
             );
         }
         assert!(

@@ -1426,7 +1426,7 @@ fn map_object(export_name: &str, key_read: KeyRead, thrown: &[String]) -> String
     let judged = format!(
         "val violations = key.validate(); if (violations.isNotEmpty()) {{ val at = \
          kotlinSchemaPlace(input, entry.key); throw {}(violations.map {{ \"'\" + at + \"': \" + \
-         it }}) }}",
+         it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}",
         refusals::refusal_name(export_name)
     );
     let placed = |read: &str| {
@@ -1438,7 +1438,7 @@ fn map_object(export_name: &str, key_read: KeyRead, thrown: &[String]) -> String
             .fold(format!("try {{ {read} }}"), |written, held| {
                 format!(
                     "{written} catch (refused: {held}) {{ val at = kotlinSchemaPlace(input, \
-                 entry.key); throw {held}(refused.issues.map {{ \"'\" + at + \"': \" + it }}) }}"
+                 entry.key); throw {held}(refused.issues.map {{ \"'\" + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}"
                 )
             })
     };
@@ -2091,12 +2091,12 @@ fn kotlin_module_tokens(
     defaults: &SerdeDefaults,
 ) -> TokenStream {
     let refused = refusal();
-    let declared = kotlin_source
-        .contains(&format!("throw {refused}("))
-        .then(|| {
-            record_refusals(rust_ident, vec![refused.clone()]);
-            refusal_class(&refused)
-        });
+    let declared = (kotlin_source.contains(&format!("throw {refused}("))
+        || kotlin_source.contains(&format!("kotlinSchemaThrown(decoder, {refused}(")))
+    .then(|| {
+        record_refusals(rust_ident, vec![refused.clone()]);
+        refusal_class(&refused)
+    });
     let full_source = declared
         .into_iter()
         .chain(kotlin_declarations_asking())
@@ -3448,7 +3448,7 @@ fn value_class_tokens(
     };
     validate::note_brand(
         &rust_ident,
-        (text.is_some(), length.is_some(), rules.bounded()),
+        (text.is_some(), length.is_some()),
         bare,
         rules.counts_at_filling(),
     );
@@ -4454,22 +4454,21 @@ fn enum_constants(item_enum: &ItemEnum, export_name: &str, args: &KotlinArgs<'_>
         })
 }
 
-/// The rules of a variant of an untagged enum that declares `type_parameters`, which its bounds
-/// choose.
-fn chosen_rules<'item>(
+/// The rules of a variant of an untagged enum that declares `type_parameters`.
+fn variant_rules_of<'item>(
     serializable: &'item [String],
     keyed: &[String],
     type_parameters: &[String],
     payload: &VariantPayload,
 ) -> Rules<'item> {
-    Rules::choosing(serializable)
+    Rules::of(serializable)
         .handed(keyed)
         .walking_variant(type_parameters, matches!(payload, VariantPayload::Unit))
 }
 
 /// The Kotlin tokens a `#[serde(untagged)]` enum earns: a plain `sealed interface`, the unjudged
-/// `KSerializer` that tries each variant's own serializer in turn and takes the first that decodes
-/// and whose bounds hold, as serde's read of the enum does, and the enum's own, which judges.
+/// `KSerializer` that tries each variant's own serializer in turn and takes the first that decodes,
+/// as serde's read of the enum does, and the enum's own, which judges.
 fn untagged_enum_kotlin_source(
     item_enum: &ItemEnum,
     export_name: &str,
@@ -4496,17 +4495,8 @@ fn untagged_enum_kotlin_source(
     for variant in &item_enum.variants {
         let subclass_name = format!("{export_name}{}", variant.ident);
         let payload = variant_payload(variant, fields_rule, &type_parameters, args, defaults);
-        let mut rules = chosen_rules(&serializable, &keyed, &type_parameters, &payload);
+        let mut rules = variant_rules_of(&serializable, &keyed, &type_parameters, &payload);
         variant_rules(&mut rules, &payload, Tagging::Unwrapped, "", args);
-        // A check and what a held model reports choose no variant: the enum's own read judges.
-        let held_to_its_bounds = if rules.bounded() {
-            format!(
-                ".also {{ chosen -> if (chosen.kotlinSchemaBound().isNotEmpty()) error(\"a bound \
-                 of {subclass_name} is broken\") }}"
-            )
-        } else {
-            String::new()
-        };
         let plugin = Plugin {
             owner: &subclass_name,
             type_parameters: &type_parameters,
@@ -4540,7 +4530,7 @@ fn untagged_enum_kotlin_source(
             )
         };
         deserialize_chain = format!(
-            "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, {handed}){held_to_its_bounds} as {draft}{generic_params} }}"
+            "{deserialize_chain}.recoverCatching {{ input.json.decodeFromJsonElement({subclass_serializer}, {handed}) as {draft}{generic_params} }}"
         );
     }
 

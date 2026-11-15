@@ -3274,47 +3274,13 @@ fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
     assert!(!serde_reads::<Contact>(&stored_row));
     let read = Contact::from_bson_with(stored_row, |_raw, _found| contact_schema::Verdict::Reject);
     let issues = read.unwrap_err().issues;
-    let tried = tried!(contact_schema, issues);
     assert_eq!(
-        tried,
-        [
-            ("Email", vec![invalid("address", "String", string("ab"))]),
-            (
-                "Phone",
-                vec![
-                    missing("country", "I32"),
-                    missing("digits", "String"),
-                    unknown("address", string("ab")),
-                ]
-            ),
-            (
-                "Versioned",
-                vec![missing("number", "I32"), unknown("address", string("ab"))]
-            ),
-        ]
+        told!(contact_schema, issues),
+        [invalid("address", "String", string("ab"))]
     );
-    let refusals: Vec<&str> = issues
-        .iter()
-        .filter_map(|issue| {
-            if let contact_schema::Issue::NoVariant {
-                path: _path,
-                found: _found,
-                variants,
-            } = issue
-            {
-                variants.first()
-            } else {
-                None
-            }
-        })
-        .flat_map(|(_variant, list)| reasons!(contact_schema, list))
-        .collect();
-    assert_eq!(refusals.len(), 1);
-    assert!(
-        refusals
-            .iter()
-            .all(|reason| reason.contains("too short: minimum length is 3, got 2")),
-        "got: {refusals:?}"
+    assert_eq!(
+        reasons!(contact_schema, issues),
+        ["too short: minimum length is 3, got 2"]
     );
 }
 

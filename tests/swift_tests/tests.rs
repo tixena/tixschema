@@ -642,13 +642,13 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
          self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
          decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = \
          validationIssues(); if !violations.isEmpty { throw ReservedMembersRefusal(issues: { () \
-         -> [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? \
-         $0.stringValue }.joined(separator: \".\"); return at.isEmpty ? violations : \
+         -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? \
+         $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \
          violations.map { said in guard said.hasPrefix(\"'\"), let end = \
          said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; return \
          \"'\\(at).\\(said[said.index(after: said.startIndex)..<end])'\\(said[said.index(after: \
          end)...])\" } }()) } }; public func validationIssues() -> [String] { [] }; public func \
-         swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> \
+         validate() throws -> \
          ReservedMembers { let found = validationIssues(); if !found.isEmpty { throw \
          ReservedMembersRefusal(issues: found) }; return ReservedMembers(draft: self) }; public \
          var valid: ReservedMembers { ReservedMembers(draft: self) } };"
@@ -658,8 +658,7 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
         format!(
             "{} public enum ReservedMember: String, Codable, Sendable {{ case `default` = \
              \"Default\"; case `in` = \"In\"; case other = \"Other\"; {} public func \
-             validate() -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> \
-             [String] {{ [] }} }}",
+             validate() -> [String] {{ [] }} }}",
             refusal("ReservedMember"),
             plain_enum_reads("ReservedMember"),
         )

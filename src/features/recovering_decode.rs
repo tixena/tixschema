@@ -1141,7 +1141,7 @@ impl Walker<'_> {
     }
 
     /// `listed` followed by what holds the value under `held`, read through `read` as `ty`, to the
-    /// bound `validator` checks: one `Invalid` at the value, its violations joined. `listed` alone
+    /// bound `validator` checks: one `Invalid` at the value for each violation. `listed` alone
     /// where the field has no validator, or its bound reaches nothing of `ty`.
     fn bounded(
         &self,
@@ -1785,7 +1785,7 @@ impl Walker<'_> {
     }
 
     /// What holds `found`, read whole with the type's own reader, to the bound `validator` checks
-    /// on its one slot, typed `ty`: one `Invalid` at the value, its violations joined. Nothing
+    /// on its one slot, typed `ty`: one `Invalid` at the value, for each violation. Nothing
     /// where the slot has no validator, or its bound reaches nothing of `ty`.
     fn lone_slot_bound(&self, validator: Option<&FieldValidator>, ty: &Type) -> TokenStream {
         let (module, bound) = (self.module, self.source.bound());
@@ -3023,9 +3023,9 @@ fn read_under(
 /// `value_bound`: what holds a JSON value serde read to the bound its field declares.
 fn bound_items() -> TokenStream {
     quote! {
-        /// What a field's bound refuses of one JSON value `read` reads: one issue whose reason is
-        /// every violation `check` answers, joined by `; `, and none where the value keeps the
-        /// bound or does not read.
+        /// What a field's bound refuses of one JSON value `read` reads: one issue per violation
+        /// `check` answers, each with its own reason, and none where the value keeps the bound or
+        /// does not read.
         pub fn value_bound<'a, T, I, R, C>(
             held: &'a serde_json::Value,
             read: R,
@@ -3045,7 +3045,10 @@ fn bound_items() -> TokenStream {
             if violations.is_empty() {
                 return ::std::vec::Vec::new();
             }
-            ::std::vec![issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(violations.join("; ")), ::std::vec::Vec::new())]
+            violations
+                .into_iter()
+                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
+                .collect()
         }
     }
 }
@@ -3054,9 +3057,9 @@ fn bound_items() -> TokenStream {
 #[cfg(feature = "bson")]
 fn bson_bound_items() -> TokenStream {
     quote! {
-        /// What a field's bound refuses of one BSON value `read` reads: one issue whose reason is
-        /// every violation `check` answers, joined by `; `, and none where the value keeps the
-        /// bound or does not read.
+        /// What a field's bound refuses of one BSON value `read` reads: one issue per violation
+        /// `check` answers, each with its own reason, and none where the value keeps the bound or
+        /// does not read.
         pub fn bson_bound<T, I, E, R, C>(
             held: &bson::Bson,
             read: R,
@@ -3076,7 +3079,10 @@ fn bson_bound_items() -> TokenStream {
             if violations.is_empty() {
                 return ::std::vec::Vec::new();
             }
-            ::std::vec![issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(violations.join("; ")), ::std::vec::Vec::new())]
+            violations
+                .into_iter()
+                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
+                .collect()
         }
     }
 }

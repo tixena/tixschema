@@ -345,11 +345,11 @@ private init(swiftSchemaCorrected decoder: Decoder) throws {
   self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes)
   self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)
   let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value
-  self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label])
+  self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label], within: decoder)
 }
 
 fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
-  self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath).value
+  self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath, within: decoder).value
 }
 
 fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {

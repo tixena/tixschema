@@ -71,7 +71,7 @@ where
 /// Each model a row is read as.
 fn models() -> Vec<Printer> {
     vec![
-        ("Compass", false, |row| printed::<Compass>(row, false)),
+        ("Compass", true, |row| printed::<Compass>(row, true)),
         ("Course", false, |row| printed::<Course<u32>>(row, false)),
         ("Detour", false, |row| printed::<Detour>(row, false)),
         ("Excursion", true, |row| printed::<Excursion>(row, true)),

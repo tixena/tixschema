@@ -29,15 +29,9 @@ const CLIENT_TEXT: [&str; 6] = [
 ];
 
 /// The functions, as the walk names the one a `join` is in, that join messages on purpose: serde's
-/// `Deserialize` answers serde's error, which holds one message; an example test's panic prints one
-/// line; and the recovering decode's `Invalid` issue holds one text, whose list form is decided
-/// apart.
-const JOINING: [&str; 4] = [
-    "refusal_from_violations",
-    "written_seen_from",
-    "value_bound",
-    "bson_bound",
-];
+/// `Deserialize` answers serde's error, which holds one message; and an example test's panic prints
+/// one line.
+const JOINING: [&str; 2] = ["refusal_from_violations", "written_seen_from"];
 
 const QUOTING: [&str; 4] = [
     "parse_quote",

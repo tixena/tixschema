@@ -72,9 +72,10 @@ pub const PLACE: &str = r#"@OptIn(ExperimentalSerializationApi::class) private f
 /// The private functions a serializer holds where it refuses a value it took off the decoder: kotlinx
 /// states its path only in an exception, so the refusal is rebased onto the path a second read of
 /// the decoder throws with, and the refusal of a part read apart onto that part's step.
-pub const PATHED: &str = "private fun kotlinSchemaRebased(refused: SerializationException, at: \
-     String): SerializationException { if (refused.cause?.message == \"validate()\") return \
-     refused; val said = \
+pub const PATHED: &str = concat!(
+    "private fun kotlinSchemaRebased(refused: SerializationException, at: String): \
+     SerializationException { if (refused.cause?.message == \"validate()\") return if \
+     (refused.suppressed.isNotEmpty()) refused else kotlinSchemaPlaced(refused, at, true); val said = \
      refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token at offset \\\\d+: \"), \
      \"\"); return \
      SerializationException(if (\" at path: \\$\" in said) said.replaceFirst(\" at path: \\$\", \" at \
@@ -84,9 +85,17 @@ pub const PATHED: &str = "private fun kotlinSchemaRebased(refused: Serialization
      { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: \
      JsonDecodingException) { probe.path } ?: throw refused; throw kotlinSchemaRebased(refused, \
      at) }; private inline fun \
-     <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): \
-     KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw \
-     kotlinSchemaRebased(refused, \"\\$\" + step) }; ";
+     <KotlinSchemaRead> kotlinSchemaUnder(step: String, read: () -> \
+     KotlinSchemaRead): KotlinSchemaRead = try { read() } catch (refused: SerializationException) { throw \
+     if (refused.cause?.message == \"validate()\") kotlinSchemaPlaced(refused, \"\\$\" + step, false) \
+     else kotlinSchemaRebased(refused, \"\\$\" + step) }; ",
+    r#"private fun kotlinSchemaPlaced(refused: SerializationException, at: String, held: Boolean): SerializationException { val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(if (place.isEmpty()) issues else issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; if (held) rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt }; "#,
+);
+
+/// The private functions the judged serializer of a type holds, which throws the refusal of the
+/// type placed at the path where it read the value: the steps of the path kotlinx states ahead of
+/// each issue, as Rust, Dart and Swift place it.
+pub const THROWN: &str = r#"@OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaThrown(input: Decoder, refused: SerializationException): SerializationException { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path } ?: return refused; val place = Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at).joinToString(".") { step -> step.groupValues.drop(1).joinToString("") }; if (place.isEmpty()) return refused; val issues = (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { said -> said as String }; val rebuilt = refused.javaClass.getConstructor(List::class.java).newInstance(issues.map { said -> if (said.startsWith("'") && said.indexOf("'", 1) > 0) "'" + place + "." + said.substring(1) else "'" + place + "': " + said }) as SerializationException; rebuilt.addSuppressed(IllegalStateException("placed")); return rebuilt }; "#;
 
 /// What a serializer reads a part of the element it took apart with: from its text, where
 /// kotlinx states the path of a value it refuses, rebased onto `step`.
@@ -539,12 +548,12 @@ fn judging(
         format!("when (read) {{ {arms}; else -> read.validate() }}")
     };
     format!(
-        "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}override fun \
+        "{opens} : KSerializer<{own}>, () -> KSerializer<{own}> {{ {property}{THROWN}override fun \
          invoke(): KSerializer<{own}> = {unjudged}; override val descriptor: SerialDescriptor = \
          {unjudged}.descriptor; override fun serialize(encoder: Encoder, value: {own}) = \
          {unjudged}.serialize(encoder, value); override fun deserialize(decoder: Decoder): {own} \
          {{ val read = {unjudged}.deserialize(decoder); val violations = {validated}; if \
-         (violations.isNotEmpty()) throw {}; return read }} }}",
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {}); return read }} }}",
         refused()
     )
 }

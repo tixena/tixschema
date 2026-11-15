@@ -87,7 +87,7 @@ section is the consumer's view; this is what a change has to keep.
   refused. `NOTED` is read for four things alone: whether the declared type a brand holds was
   written above and answers its text, whether a held type is known to carry `validationIssues()`,
   which spares its holder the fallback, and the two the read asks: whether the type has an
-  unjudged serializer a holder can name, and whether it carries `kotlinSchemaBound()`.
+  unjudged serializer a holder can name.
 - **A slot and a variant's member are named by the steps serde writes** (`Tagging`,
   `variant_body`, `slot_rules`): the variant's wire name where no tag is written, the content key
   under a tag and a content key, and nothing under a tag alone and under no tag; a slot's position
@@ -144,7 +144,7 @@ section is the consumer's view; this is what a change has to keep.
   value the class holds.
 - **A brand whose declared default is a list** counts its items in `kotlinSchemaAtFilling(filling)`,
   which counts only when `filling` is the Kotlin type of the default (`Rules::filled`); its
-  `validate()` and `kotlinSchemaBound()` count none. A holder whose member is the brand written
+  `validate()` counts none. A holder whose member is the brand written
   with one list argument calls it with the type it writes (`filling_told`), through the
   `Any?.kotlinSchemaAtFilling` fallback when the brand is declared below the holder, and the
   brand's serializer calls it with the default where the serializer handed for the parameter has
@@ -688,13 +688,10 @@ the consumer's view; this is what a change has to keep.
   its holder has declared names the wrapper of that declaration (`read::declared_serializer`): the
   lone value of a tagged variant, a variant of several slots among them, is read by the type
   `variant_subclass` declared it with.
-- **An untagged enum takes the first variant whose bounds hold.** `Rules::choosing` collects, per
-  variant, each member's own bound and `kotlinSchemaBound()` of each brand it holds
-  (`Asked::Bound`), and writes them into the variant's own `kotlinSchemaBound()`, which the chain
-  of `untagged_enum_kotlin_source` asks after the variant decodes. `Rules::brand` writes the
-  method on a brand with a bound. A check and what a held model reports choose nothing: the
-  enum's own serializer refuses them after the choice, as serde's read does. `Helper::Unbounded`
-  answers for a type the emitter has not written.
+- **An untagged enum takes the first variant that decodes.** The chain of
+  `untagged_enum_kotlin_source` tries each variant's serializer in turn: no bound, check or held
+  model chooses one, and the enum's own serializer refuses the value after the choice, as serde's
+  read does.
 - **A name serde reads beside the one it writes is read too.** `aliases::written_on` reads the
   `#[serde(alias)]` names of a variant and of a field, and `KotlinField::aliases` holds a member's,
   none for a flattened member or one serde never reads. `dispatched_tagged_variant` writes each

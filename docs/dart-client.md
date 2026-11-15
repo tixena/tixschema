@@ -213,8 +213,8 @@ consumer's view; this is what a change has to keep.
   which drops the path of its refusal but for the key a `missing field` or an unknown key names,
   so the holder's step is the place, as serde names the holder. A type's refusal a value read
   judged below the top throws keeps its class, and the helper places each of its issues under its
-  step: no refusal class is shared to name, so the helper reads `issues` through `dynamic`, as
-  `HELD_BOUND_HELPER` reads `validateBound()`, and rewrites the list in place. The `ws_rpc`
+  step: no refusal class is shared to name, so the helper reads `issues` through `dynamic` and
+  rewrites the list in place. The `ws_rpc`
   attachment and client list each issue of a refusal of a type the service reads, cut at the
   place it opens with, or the one refusal at the joined path (`refused_at_fn` in
   `dart_ws_client.rs`, which writes `_WsRefusedAt`, `_WsIssue`, `_WsRefusal` and
@@ -290,15 +290,10 @@ consumer's view; this is what a change has to keep.
 - **A tagged enum** dispatches in the base's unjudged read: to `fromJsonUnjudged` of a variant
   with named members, and to the constructor of a variant that holds a value or none, its
   payload read as a member is.
-- **An untagged enum takes the variant serde takes.** `variant_bounds` writes `_bounds()` ahead
-  of a variant's `validate()`, and the attempt takes the variant where it answers nothing.
-  `Asked` is what one walk is asked: `Rules` for `validate()`, and `Bound` for the member's own
-  bounds under no place, then `_heldBound(...)` of each declared type the walk reaches, with no
-  check. `_heldBound` calls `validateBound()` through `dynamic` and answers nothing for a value
-  with no such method. `brand_validate` writes that method on a brand that carries a bound: the
-  bound alone. So a brand's bound chooses a variant whether the brand is declared above the
-  enum, below it or in another file, and nothing a check or a model reports does. A variant
-  with nothing to ask keeps `try { return ...; } catch (_) {}`.
+- **An untagged enum takes the variant serde takes.** Each variant is tried as
+  `try { return ...; } catch (_) {}`, and the first whose payload decodes is taken: no bound, no
+  check and nothing a model reports chooses one, and `fromJson` then refuses the value.
+  `Asked` is what one walk is asked: `Rules` for `validate()`.
 - **A plain enum with no `check`** is `undrafted_plain_enum_dart_source`: the enhanced enum `{Name}` alone, with its `fromJson`, `fromJsonUnjudged`, `toJson` and `validationIssues()`.
 - **A plain enum that names a `check`** is `plain_enum_dart_source`: the enhanced enum `{Name}Draft`, whose static
   `fromJson` is the unjudged read and which declares `validationIssues()` and `validate_method`, and
@@ -306,8 +301,7 @@ consumer's view; this is what a change has to keep.
   draft. `{Name}.fromJson` judges through `judged_body_returning`, and `{Name}.fromJsonUnjudged`, the
   name a holder reads every declared type by, runs no check. A map key reads through
   `{Name}.fromJson` and writes through `toJson`.
-- **`validate()` stays the last member of a class**: `validateBound()` and `_bounds()` are
-  written ahead of it.
+- **`validate()` stays the last member of a class.**
 - **A member serde never writes is read and has no entry in `toJson`.** `DartField::never_written`
   is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`.
   `class_body_parts` writes no entry for it, a flattened one spreading nothing, a variant with

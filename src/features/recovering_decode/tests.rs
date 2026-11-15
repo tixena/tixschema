@@ -6727,3 +6727,23 @@ fn two_values_that_read_as_one_under_a_digit_led_tag_key_are_refused_by_the_name
         )]
     );
 }
+
+/// What holds a value to the bound its field declares answers one issue for each violation, with
+/// the reason of that violation alone, in a JSON read and in a BSON one.
+#[test]
+fn a_bound_lists_one_issue_for_each_violation() {
+    let written = [
+        super::bound_items().to_string(),
+        #[cfg(feature = "bson")]
+        super::bson_bound_items().to_string(),
+    ];
+    for items in written {
+        assert!(
+            items.contains(
+                "violations . into_iter () . map (| reason | issue (\"Invalid\" , path . clone () ,"
+            ),
+            "got: {items}"
+        );
+        assert!(!items.contains("join"), "got: {items}");
+    }
+}

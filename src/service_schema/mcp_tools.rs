@@ -6,7 +6,7 @@ use super::parse::{
     OperationOutcome, PathSegment, ServiceDef, is_unit_type, option_inner, tuple_elements,
     wire_key, written,
 };
-use super::support::matched_type;
+use super::support::variant_name_lookup;
 use super::transport::http_rest::openapi::message_type;
 use super::transport::mcp::prompts::prompt_entries;
 use super::transport::mcp::resource_entries;
@@ -693,6 +693,20 @@ fn arm_tag_methods(operation: &OperationDef, error: &Type, arm: &str) -> TokenSt
     }
 }
 
+/// The path of the draft of the model type `ty` names. The arm that asks with a link reads the
+/// members it holds, so its enum is no plain enum and has a draft, whatever order the declarations
+/// come in.
+fn draft_of(ty: &Type) -> TokenStream {
+    let Type::Path(path) = ty else {
+        return quote! { #ty };
+    };
+    let mut drafted = path.clone();
+    if let Some(last) = drafted.path.segments.last_mut() {
+        last.ident = format_ident!("{}Draft", last.ident, span = last.ident.span());
+    }
+    quote! { #drafted }
+}
+
 /// The names of the two methods that carry an interview's form, and the doc of its schema.
 fn form_names(operation: &OperationDef) -> (Ident, Ident, String) {
     (
@@ -703,6 +717,32 @@ fn form_names(operation: &OperationDef) -> (Ident, Ident, String) {
             operation.mcp_tool_name()
         ),
     )
+}
+
+/// The methods of an interview that asks the user to open a link, where the error is the arm.
+fn link_interview_methods(
+    operation: &OperationDef,
+    error: &Type,
+    arm: &Ident,
+    tagged: &TokenStream,
+) -> TokenStream {
+    let asks = method_ident(operation, "mcp_asks");
+    let drafted = draft_of(error);
+    let link_doc = format!(
+        " The link and the message of the arm `{}` asks the user with, where the error is it.",
+        operation.mcp_tool_name()
+    );
+    quote! {
+        #[doc = #link_doc]
+        pub fn #asks(error: &#error) -> ::core::option::Option<(&str, &str)> {
+            if let #drafted::#arm { url, message, .. } = &**error {
+                return ::core::option::Option::Some((url.as_str(), message.as_str()));
+            }
+            ::core::option::Option::None
+        }
+
+        #tagged
+    }
 }
 
 /// What the dispatcher asks of the types only the declaration can name: whether the declared error
@@ -724,24 +764,14 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         operation.mcp_tool_name()
     );
     let tagged = arm_tag_methods(operation, error, &arm.to_string());
-    let matched = matched_type(error);
-    let (drafted, scrutinee) = (matched.path(), matched.borrowed(&quote! { *error }));
+    let arm_text = written(arm);
+    let unknown_arm = format!(
+        "`interview(arm = \"{arm_text}\")` of the operation `{}` names `{arm_text}`, which is no variant of `{}`",
+        operation.mcp_tool_name(),
+        error.to_token_stream().to_string().replace(' ', "")
+    );
     let Some(answers) = interview.answers.as_ref() else {
-        let link_doc = format!(
-            " The link and the message of the arm `{}` asks the user with, where the error is it.",
-            operation.mcp_tool_name()
-        );
-        return Some(quote! {
-            #[doc = #link_doc]
-            pub fn #asks(error: &#error) -> ::core::option::Option<(&str, &str)> {
-                if let #drafted::#arm { url, message, .. } = #scrutinee {
-                    return ::core::option::Option::Some((url.as_str(), message.as_str()));
-                }
-                ::core::option::Option::None
-            }
-
-            #tagged
-        });
+        return Some(link_interview_methods(operation, error, arm, &tagged));
     };
     let OperationInputs::Generated(fields) = &operation.inputs else {
         return None;
@@ -751,6 +781,7 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
         .find(|(field, _)| written(field) == written(answers))?;
     let form = option_inner(ty)?;
     let (schema_name, read_name, schema_doc) = form_names(operation);
+    let lookup = variant_name_lookup();
     let run = run();
     let settled = settled_definitions();
     let in_place = form_in_place();
@@ -758,7 +789,13 @@ fn interview_methods(operation: &OperationDef) -> Option<TokenStream> {
     Some(quote! {
         #[doc = #doc]
         pub fn #asks(error: &#error) -> bool {
-            ::core::matches!(#scrutinee, #drafted::#arm { .. })
+            const {
+                #lookup
+                if !named(<#error>::MODEL_SCHEMA_VARIANTS, #arm_text) {
+                    ::core::panic!(#unknown_arm);
+                }
+            }
+            error.model_schema_variant() == #arm_text
         }
 
         #tagged

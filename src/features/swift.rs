@@ -239,10 +239,8 @@ struct EnumShape<'item> {
 
 /// What a struct of one `value` wraps.
 enum Wrapped {
-    /// The value of a brand, with the bounds the brand carries and the member it answers its text
-    /// with.
+    /// The value of a brand, with the members it answers its length and its text with.
     Brand {
-        bounds: Vec<String>,
         length_member: Option<String>,
         text_member: Option<String>,
     },
@@ -258,8 +256,6 @@ struct VariantPayload {
     /// The externally tagged enum the one slot of a variant under a tag alone holds, which serde
     /// writes beside the tag as it writes it flattened.
     beside: SlotEntries,
-    /// What chooses the variant in an untagged enum: the bounds of its own members, on `payload`.
-    bound: Vec<String>,
     /// The one slot of the variant, where it is read and written as the type it is written as, or
     /// read item by item to hold an array to its length.
     converted: Option<Shaped>,
@@ -855,8 +851,8 @@ fn refusal_of(rust_ident: &str) -> String {
 /// asked for.
 fn placed(path: &str, listed: &str) -> String {
     format!(
-        "{{ () -> [String] in let at = {path}.map {{ $0.intValue.map(String.init) ?? $0.stringValue \
-         }}.joined(separator: \".\"); return at.isEmpty ? {listed} : {listed}.map {{ said in guard \
+        "{{ () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] \
+         as? [String] ?? []) + {path}.map {{ $0.intValue.map(String.init) ?? $0.stringValue }}).joined(separator: \".\"); return at.isEmpty ? {listed} : {listed}.map {{ said in guard \
          said.hasPrefix(\"'\"), let end = said.dropFirst().firstIndex(of: \"'\") else {{ return \
          \"'\\(at)': \\(said)\" }}; return \"'\\(at).\\(said[said.index(after: \
          said.startIndex)..<end])'\\(said[said.index(after: end)...])\" }} }}()"
@@ -3947,27 +3943,6 @@ fn null_variant(case_name: &str, decode_attempts: &mut String, encode_arms: &mut
     .unwrap();
 }
 
-/// The call that holds a variant's payload to its bounds, with the function that runs them added
-/// to `choosers`, or `None` where the payload has none. `held` is the enum, the variant and the
-/// payload type.
-fn bound_check(
-    bound: &[String],
-    held: (&str, &str, &str),
-    choosers: &mut String,
-) -> Option<String> {
-    let (export_name, named, ty) = held;
-    (!bound.is_empty()).then(|| {
-        write!(
-            choosers,
-            "private static func swiftSchemaBound{named}(_ payload: {ty}) -> [String] \
-             {{ var errors: [String] = []; {}; return errors }}; ",
-            bound.join("; ")
-        )
-        .unwrap();
-        format!("{export_name}.swiftSchemaBound{named}(value).isEmpty")
-    })
-}
-
 /// The expression an untagged enum `owner` tries a variant's struct with, `read`: through the
 /// struct's own read alone, which refuses a key it does not read, where the enum is handed no keys,
 /// and otherwise through the read that takes them, after refusing a key that is neither one of the
@@ -4181,7 +4156,6 @@ fn brand_swift_tokens(
             args,
             &value_field,
             &Wrapped::Brand {
-                bounds,
                 length_member: validate::brand_length_member(&value_field),
                 text_member: validate::brand_text_member(&value_field),
             },
@@ -4557,9 +4531,7 @@ fn with_valid_struct(
          fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
          draft = try {draft}(swiftSchemaUnjudged: decoder) }}; {taking}\
          public func encode(to encoder: Encoder) throws {{ try draft.encode(to: encoder) }}; \
-         fileprivate func validate() -> [String] {{ draft.validationIssues() }}; {with}\
-         fileprivate func swiftSchemaValidateBound() -> [String] {{ \
-         draft.swiftSchemaValidateBound() }} }};",
+         fileprivate func validate() -> [String] {{ draft.validationIssues() }}; {with}}};",
         with = form.with
     )
 }
@@ -4608,10 +4580,9 @@ fn wrapper_validate(
     rules: &[String],
     valid: Option<&str>,
 ) -> String {
-    let mut validate = validate::rules_method(rules);
+    let mut validate = validate::method(rules);
     match wrapped {
         Wrapped::Brand {
-            bounds,
             length_member,
             text_member,
         } => {
@@ -4627,19 +4598,11 @@ fn wrapper_validate(
             if let Some(member) = text_member {
                 write!(validate, "; {member}").unwrap();
             }
-            if bounds.is_empty() {
-                write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
-            } else {
-                validate::note_bounded(rust_ident);
-                write!(validate, "; {}", validate::bound_member(bounds)).unwrap();
-            }
         }
         Wrapped::Slot | Wrapped::Tuple => {
             validate::note(rust_ident, None, !rules.is_empty());
             if let Some(draft_of) = valid {
                 validate = validate::draft_method(rules, draft_of);
-            } else {
-                write!(validate, "; {}", validate::EMPTY_BOUND).unwrap();
             }
         }
     }
@@ -5073,9 +5036,6 @@ fn alias_swift_tokens(item_type: &ItemType, name_override: Option<&str>) -> Toke
         validate::names_a_validated_type(&target),
     );
     validate::note_length(&item_type.ident.to_string(), validate::length_of(&target));
-    if validate::names_a_bounded_type(&target) {
-        validate::note_bounded(&item_type.ident.to_string());
-    }
     preprocess::note(
         &item_type.ident.to_string(),
         !target.is_optional() && preprocess::beside(&target),
@@ -5149,7 +5109,6 @@ fn resolve_variant_payload(
     within_variant(&variant.ident, || match variant_wire_kind(variant) {
         VariantKind::Unit => VariantPayload {
             beside: SlotEntries::default(),
-            bound: Vec::new(),
             converted: None,
             corrected: None,
             held: None,
@@ -5231,23 +5190,8 @@ fn named_payload(
     });
     let takes_keys = read::takes_keys(&declared);
     aux.push(declared);
-    let bound = fields
-        .iter()
-        .flat_map(|field| {
-            validate::bound_alone(
-                shape.declared,
-                &validate::Checked {
-                    real_type: None,
-                    access: format!("payload.{}", field.swift_name),
-                    def: &field.field_def,
-                    step: (!field.flatten).then(|| field.wire_name.clone()),
-                },
-            )
-        })
-        .collect();
     VariantPayload {
         beside: SlotEntries::default(),
-        bound,
         converted: None,
         corrected: None,
         held: Some(held_at(&struct_name, &generic_params)),
@@ -5284,7 +5228,6 @@ fn slot_payload(
         step: step.map(ToOwned::to_owned),
     };
     let rules = validate::member_rules(shape.declared, &checked);
-    let bound = validate::bound_alone(shape.declared, &checked);
     // Under a tag alone and under none, the slot is read from the decoder of the enum.
     let handed_keys = shape.tag_attrs.content.is_none()
         && (shape.tag_attrs.untagged || shape.tag_attrs.tag.is_some())
@@ -5314,7 +5257,6 @@ fn slot_payload(
     };
     VariantPayload {
         beside,
-        bound,
         converted: (slot.converts() || read::holds_a_length(&slot.def)).then_some(slot),
         corrected,
         held: Some(held),
@@ -5350,21 +5292,6 @@ fn slots_payload(
     // The type written for the slots walks no parameter of the enum.
     let checked =
         !validate::walking(&[], || validate::slot_rules(shape.declared, slots)).is_empty();
-    let bound = slots
-        .iter()
-        .enumerate()
-        .flat_map(|(position, slot)| {
-            validate::bound_alone(
-                shape.declared,
-                &validate::Checked {
-                    real_type: None,
-                    access: format!("payload.slot{position}"),
-                    def: slot,
-                    step: Some(position.to_string()),
-                },
-            )
-        })
-        .collect();
     let hint = format!("{export_name}{}", variant.ident);
     // The struct of a tuple of no slot reads and writes the `[]` serde writes for the variant.
     let held = if slots.is_empty() {
@@ -5374,7 +5301,6 @@ fn slots_payload(
     };
     VariantPayload {
         beside: SlotEntries::default(),
-        bound,
         converted: None,
         corrected: None,
         held: Some(held),
@@ -5909,8 +5835,8 @@ fn adjacent_tagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String
 }
 
 /// The Swift tokens a `#[serde(untagged)]` enum earns: its own read takes the first variant whose
-/// payload reads and whose bounds hold, the bound of a member and of a brand it holds. A check and
-/// a model a variant holds choose nothing: `init(from:)` judges the variant taken.
+/// payload reads, as serde's read of the enum does. A bound, a check and a model a variant holds
+/// choose nothing: `init(from:)` judges the variant taken.
 fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> String {
     let &EnumShape {
         args,
@@ -5963,17 +5889,7 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
             let tried = within_variant(&variant.ident, || {
                 checked_alone(payload.keys.as_ref(), &read, declared, &mut choosers)
             });
-            let check = bound_check(
-                &payload.bound,
-                (declared, &named.to_string(), ty),
-                &mut choosers,
-            );
-            decode_attempts.push_str(&untagged_attempt(
-                &case_name,
-                &tried,
-                check.as_deref(),
-                payload.optional,
-            ));
+            decode_attempts.push_str(&untagged_attempt(&case_name, &tried, payload.optional));
             write!(
                 encode_arms,
                 "case .{case_name}(let value): try {}.encode(to: encoder); ",
@@ -6010,18 +5926,14 @@ fn untagged_enum_swift_source(shape: &EnumShape<'_>, aux: &mut Vec<String>) -> S
 }
 
 /// The statement an untagged enum tries the variant `case_name` with: its payload read by `tried`,
-/// and the variant taken where `check`, the payload's own bounds, holds. A payload Swift holds as
-/// an optional is read in a `do`, where `try?` would take a read that answered `nil` for one that
-/// threw.
-fn untagged_attempt(case_name: &str, tried: &str, check: Option<&str>, optional: bool) -> String {
+/// and the variant taken where it reads. A payload Swift holds as an optional is read in a `do`,
+/// where `try?` would take a read that answered `nil` for one that threw.
+fn untagged_attempt(case_name: &str, tried: &str, optional: bool) -> String {
     let taken = format!("self = .{case_name}(value); return");
-    match (optional, check) {
-        (true, None) => format!("do {{ let value = try {tried}; {taken} }} catch {{}}; "),
-        (true, Some(holds)) => {
-            format!("do {{ let value = try {tried}; if {holds} {{ {taken} }} }} catch {{}}; ")
-        }
-        (false, None) => format!("if let value = try? {tried} {{ {taken} }}; "),
-        (false, Some(holds)) => format!("if let value = try? {tried}, {holds} {{ {taken} }}; "),
+    if optional {
+        format!("do {{ let value = try {tried}; {taken} }} catch {{}}; ")
+    } else {
+        format!("if let value = try? {tried} {{ {taken} }}; ")
     }
 }
 

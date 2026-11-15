@@ -990,7 +990,7 @@ pub(super) fn both(body: &str, written: &Written<'_>) -> String {
          init(from decoder: Decoder) throws {{ value = try {owner}(swiftSchemaCorrected: decoder) }} }}; \
          private init(swiftSchemaCorrected decoder: Decoder) throws {{ {untaken}{body} }}; \
          {reach} {TAKING} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
-         from: {corrected}, at: decoder.codingPath).value }}; {}; {judged}; ",
+         from: {corrected}, at: decoder.codingPath, within: decoder).value }}; {}; {judged}; ",
         alone(reach)
     )
 }

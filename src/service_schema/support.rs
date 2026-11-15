@@ -10,34 +10,10 @@ use super::parse::{
 };
 use super::transport::Transport;
 use crate::rename_rule::RenameRule;
-use crate::utils::{is_recorded_drafted_unit_struct_type, is_recorded_undrafted_enum_type};
+use crate::utils::is_recorded_drafted_unit_struct_type;
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote, quote_spanned};
+use quote::{ToTokens as _, format_ident, quote, quote_spanned};
 use syn::{Ident, Type, parse_quote};
-
-/// How a pattern over the variants and the members of the model type a declaration names is
-/// written: against the type's draft, which its valid type derefs to, or against the type itself
-/// where it has no draft.
-pub struct Matched {
-    path: TokenStream,
-    undrafted: bool,
-}
-
-impl Matched {
-    /// `value`, a place of the declared type, borrowed as what the patterns match.
-    pub fn borrowed(&self, value: &TokenStream) -> TokenStream {
-        if self.undrafted {
-            quote! { &#value }
-        } else {
-            quote! { &*#value }
-        }
-    }
-
-    /// The path the patterns of the type start with.
-    pub const fn path(&self) -> &TokenStream {
-        &self.path
-    }
-}
 
 /// The service's own module, holding everything either half of a service reads and nothing that
 /// belongs to one of them.
@@ -725,13 +701,12 @@ fn streamed_answer_type() -> TokenStream {
     }
 }
 
-/// One completeness probe per operation that declared `http(...)`: a closure built from exactly
-/// the declared `error_status` arms and no wildcard, coerced to a plain function pointer over the
-/// operation's own error type. Type-checking that closure is what runs rustc's exhaustiveness
-/// check — a variant `error_status` left unmapped is refused with rustc's own `E0004`, naming it,
-/// with no cross-item lookahead of our own: the operation's parser cannot see the error enum's
-/// declaration, that type being an ordinary sibling item, so the compiler is the only thing here
-/// that can answer for it.
+/// One completeness check per operation that declared `http(...)` with an `error_status`: an
+/// unnamed constant evaluated while the crate compiles, which compares the names the fault
+/// publishes in `MODEL_SCHEMA_VARIANTS` with the names `error_status` writes. A variant with no
+/// status, and a name that is no variant, each stop the build with a message that names it. The
+/// fault is read by the names it publishes, so it may be declared above the service, below it or
+/// in another crate.
 ///
 /// Emitted unconditionally wherever `http(...)` was written, regardless of whether the service
 /// also asked for the `http_rest` transport — the mapping is either complete or it is not, and
@@ -744,11 +719,12 @@ fn streamed_answer_type() -> TokenStream {
 /// `WidgetError` declares two variants; the mapping names only one:
 ///
 /// ```rust,compile_fail
-/// use tixschema::service_schema;
+/// use tixschema::{model_schema, service_schema};
 ///
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub struct WidgetResponse;
 ///
+/// #[model_schema()]
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub enum WidgetError {
 ///     Gone,
@@ -773,35 +749,16 @@ fn streamed_answer_type() -> TokenStream {
 /// fn main() {}
 /// ```
 ///
-/// A `compile_fail` doctest asserts only that *something* was refused, so the file above was
-/// compiled standalone and the diagnostic read off that run, verbatim, and it was the only error
-/// the file earned. Nothing here wrote this sentence — it is rustc's own exhaustiveness check,
-/// naming the variant the mapping left out:
+/// A `compile_fail` doctest asserts only that *something* was refused. The diagnostic of the same
+/// mistake, held to its text by `tests/error_status_refusals/no_status.rs`, names the variant the
+/// mapping left out:
 ///
 /// ```text
-/// error[E0004]: non-exhaustive patterns: `&WidgetError::Gone` not covered
-///   --> tests/zz_probe.rs:12:1
+/// error[E0080]: evaluation panicked: `error_status` of the operation `fetch` gives no status to the variant `VersionGone` of `DocumentError`: write `VersionGone = <status>` for it
+///   --> tests/error_status_refusals/no_status.rs:14:1
 ///    |
-/// 12 | #[service_schema()]
-///    | ^^^^^^^^^^^^^^^^^^^ pattern `&WidgetError::Gone` not covered
-///    |
-/// note: `WidgetError` defined here
-///   --> tests/zz_probe.rs:7:10
-///    |
-///  7 | pub enum WidgetError {
-///    |          ^^^^^^^^^^^
-///  8 |     Gone,
-///    |     ---- not covered
-///    = note: the matched value is of type `&WidgetError`
-///    = note: this error originates in the attribute macro `service_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
-/// help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
-///    |
-/// 12 ~ #[service_schema()],
-/// 13 + &WidgetError::Gone => todo!()
-///    |
-///
-/// For more information about this error, try `rustc --explain E0004`.
-/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// 14 | #[service_schema(transports = ["http_rest"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `documents_schema::_` failed here
 /// ```
 fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
     let checks = service.operations.iter().filter_map(|operation| {
@@ -818,21 +775,104 @@ fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
         };
         let error = error_declared_type(binding.error_header_out.len(), raw_error);
         let summary = http_binding_summary(binding);
-        let matched = matched_type(error);
-        let drafted = matched.path();
-        let scrutinee = matched.borrowed(&quote! { *reported });
-        let arms = binding
+        let named: Vec<String> = binding
             .error_status
             .iter()
-            .map(|(variant, code)| quote! { #drafted::#variant { .. } => #code, });
+            .map(|(variant, _)| written(variant))
+            .collect();
+        let shown = error.to_token_stream().to_string().replace(' ', "");
+        let operation_name = operation.wire_name.as_str();
+        let unknown = named.iter().map(|name| {
+            let message = format!(
+                "`error_status` of the operation `{operation_name}` names `{name}`, which is no variant of `{shown}`"
+            );
+            quote! {
+                if !named(<#error>::MODEL_SCHEMA_VARIANTS, #name) {
+                    ::core::panic!(#message);
+                }
+            }
+        });
+        let lookup = variant_name_lookup();
+        let before = format!("`error_status` of the operation `{operation_name}` gives no status to the variant `");
+        let between = format!("` of `{shown}`: write `");
+        let after = " = <status>` for it".to_owned();
         Some(quote! {
             #[doc = #summary]
-            const _: fn(&#error) -> u16 = |reported| match #scrutinee {
-                #(#arms)*
+            const _: () = {
+                const NAMED: &[&str] = &[#(#named),*];
+                #lookup
+                const fn without_status(variants: &[&'static str]) -> &'static str {
+                    let mut at = 0;
+                    while at < variants.len() {
+                        if !named(NAMED, variants[at]) {
+                            return variants[at];
+                        }
+                        at += 1;
+                    }
+                    ""
+                }
+                const fn said(variant: &str) -> ([u8; 1024], usize) {
+                    let parts: [&str; 5] = [#before, variant, #between, variant, #after];
+                    let mut buffer = [0_u8; 1024];
+                    let mut used = 0;
+                    let mut part = 0;
+                    while part < parts.len() {
+                        let bytes = parts[part].as_bytes();
+                        let mut at = 0;
+                        while at < bytes.len() {
+                            buffer[used] = bytes[at];
+                            used += 1;
+                            at += 1;
+                        }
+                        part += 1;
+                    }
+                    (buffer, used)
+                }
+                #(#unknown)*
+                let missing = without_status(<#error>::MODEL_SCHEMA_VARIANTS);
+                if !missing.is_empty() {
+                    let (buffer, used) = said(missing);
+                    let text = match ::core::str::from_utf8(buffer.split_at(used).0) {
+                        ::core::result::Result::Ok(text) => text,
+                        ::core::result::Result::Err(_) => "",
+                    };
+                    ::core::panic!("{}", text);
+                }
             };
         })
     });
     quote! { #(#checks)* }
+}
+
+/// The constant function `named(names, name)`, which finds `name` among `names` where a constant
+/// is evaluated, and the `same` it compares with.
+pub(super) fn variant_name_lookup() -> TokenStream {
+    quote! {
+        const fn same(left: &str, right: &str) -> bool {
+            let (left, right) = (left.as_bytes(), right.as_bytes());
+            if left.len() != right.len() {
+                return false;
+            }
+            let mut at = 0;
+            while at < left.len() {
+                if left[at] != right[at] {
+                    return false;
+                }
+                at += 1;
+            }
+            true
+        }
+        const fn named(names: &[&str], name: &str) -> bool {
+            let mut at = 0;
+            while at < names.len() {
+                if same(names[at], name) {
+                    return true;
+                }
+                at += 1;
+            }
+            false
+        }
+    }
 }
 
 /// One line describing the whole binding, folded into the completeness check's own doc comment
@@ -1189,31 +1229,6 @@ fn message_validation() -> TokenStream {
 pub fn message_validation_in_scope() -> TokenStream {
     quote! {
         use message_validation::MessageValidation;
-    }
-}
-
-/// The type a pattern over the model type `ty` names is written against: the last segment of its
-/// path with `Draft` after it, unless the type is an enum already declared with no draft.
-pub fn matched_type(ty: &Type) -> Matched {
-    let Type::Path(path) = ty else {
-        return Matched {
-            path: quote! { #ty },
-            undrafted: false,
-        };
-    };
-    if is_recorded_undrafted_enum_type(ty) {
-        return Matched {
-            path: quote! { #path },
-            undrafted: true,
-        };
-    }
-    let mut drafted = path.clone();
-    if let Some(last) = drafted.path.segments.last_mut() {
-        last.ident = format_ident!("{}Draft", last.ident, span = last.ident.span());
-    }
-    Matched {
-        path: quote! { #drafted },
-        undrafted: false,
     }
 }
 

@@ -146,7 +146,7 @@ fn the_swift_text_reads_and_writes_a_unit_variant_beside_the_tag_as_its_entry() 
          from: { () -> Any in let answer: Any = externalPayload; guard let entries = answer as? \
          [String: Any], entries.count == 1, let entry = entries.first, entry.value is NSNull else \
          { return answer }; switch entry.key { case \"Loose\": return \"Loose\"; default: return \
-         answer } }(), at: decoder.codingPath));",
+         answer } }(), at: decoder.codingPath, within: decoder));",
         "case .external(let payload): try container.encode(\"External\", forKey: \
          .swiftSchemaTag); switch payload.draft { case .loose: var entry = \
          encoder.container(keyedBy: SwiftSchemaAnyKey.self); try entry.encodeNil(forKey: \
@@ -220,7 +220,7 @@ fn the_swift_text_reads_and_writes_an_object_id_beside_the_tag() {
     for held in [
         "case \"Held\": let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
          [\"kind\"]).value; self = .held(try SwiftSchemaPayload.read(ObjectId.self, from: \
-         heldPayload, at: decoder.codingPath));",
+         heldPayload, at: decoder.codingPath, within: decoder));",
         "case .held(let payload): try container.encode(\"Held\", forKey: .swiftSchemaTag); try \
          payload.encode(to: encoder);",
     ] {

@@ -206,10 +206,10 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
     }
 }
 
-/// The bound of an untagged member chooses the variant as it reads the number, and a string of
-/// digits is the text of the variant that holds a `String`.
+/// The bound of an untagged member judges the number the shape read, and a string of digits is
+/// the text of the variant that holds a `String`.
 #[test]
-fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
+fn an_untagged_member_is_read_from_its_number_and_held_to_its_bound() {
     assert_eq!(written(&WideUntaggedDraft::Small(4)), "4", "a slot");
     assert_eq!(
         read::<WideUntagged>("4"),
@@ -218,7 +218,7 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
     );
     assert_eq!(
         read::<WideUntagged>("40"),
-        Err("data did not match any variant of untagged enum WideUntagged".to_owned()),
+        Err("too large: maximum is 9, got 40".to_owned()),
         "beyond the bound"
     );
     assert_eq!(

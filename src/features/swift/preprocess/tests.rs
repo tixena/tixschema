@@ -80,7 +80,7 @@ fn a_member_under_a_key_is_read_from_what_its_functions_answer() {
         concat!(
             "let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: container.codingPath + [CodingKeys.label])",
+            "at: container.codingPath + [CodingKeys.label], within: decoder)",
         )
     );
     assert!(twins.is_empty(), "got: {twins:?}");
@@ -101,7 +101,7 @@ fn a_member_whose_absent_key_is_nil_is_asked_for_its_key_first() {
             "if container.contains(.label) { ",
             "let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: container.codingPath + [CodingKeys.label]) } else { self.label = nil }",
+            "at: container.codingPath + [CodingKeys.label], within: decoder) } else { self.label = nil }",
         )
     );
 }
@@ -116,7 +116,9 @@ fn a_key_held_in_a_local_is_its_own_step_of_the_coding_path() {
     };
     let (read, _) = text_read(&named(&["trimmed"]), &source);
     assert!(
-        read.ends_with("from: trimmed(labelPayload), at: container.codingPath + [key])"),
+        read.ends_with(
+            "from: trimmed(labelPayload), at: container.codingPath + [key], within: decoder)"
+        ),
         "got: {read}"
     );
 }
@@ -132,7 +134,7 @@ fn a_slot_and_the_decoder_itself_each_hand_their_payload_and_their_path() {
             "let labelDecoder = try listed.superDecoder(); ",
             "let labelPayload = try SwiftSchemaPayload(from: labelDecoder).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: labelDecoder.codingPath)",
+            "at: labelDecoder.codingPath, within: decoder)",
         )
     );
     assert_eq!(
@@ -140,7 +142,7 @@ fn a_slot_and_the_decoder_itself_each_hand_their_payload_and_their_path() {
         concat!(
             "let labelPayload = try SwiftSchemaPayload(from: decoder).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: decoder.codingPath)",
+            "at: decoder.codingPath, within: decoder)",
         )
     );
     assert_eq!(
@@ -153,7 +155,7 @@ fn a_slot_and_the_decoder_itself_each_hand_their_payload_and_their_path() {
             "let labelPayload = try SwiftSchemaPayload(from: decoder, ",
             "without: taken + [\"dock\"]).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: decoder.codingPath)",
+            "at: decoder.codingPath, within: decoder)",
         )
     );
 }
@@ -187,7 +189,7 @@ fn a_walked_member_is_read_through_a_type_written_for_it() {
         concat!(
             "let heldListPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value; ",
             "self.heldList = try SwiftSchemaPayload.read(SwiftSchemaReadHeldList.self, ",
-            "from: unwrapped(heldListPayload), at: container.codingPath + [CodingKeys.label]).value",
+            "from: unwrapped(heldListPayload), at: container.codingPath + [CodingKeys.label], within: decoder).value",
         )
     );
     assert_eq!(
@@ -235,7 +237,7 @@ fn a_member_read_as_another_type_is_turned_into_its_own_from_the_local() {
         concat!(
             "let heldPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value; ",
             "let wireHeld = try SwiftSchemaPayload.read(HintKeyedMap.self, from: unwrapped(heldPayload), ",
-            "at: container.codingPath + [CodingKeys.label]); self.held = wireHeld.storage",
+            "at: container.codingPath + [CodingKeys.label], within: decoder); self.held = wireHeld.storage",
         )
     );
 }
@@ -435,7 +437,7 @@ fn an_optional_member_that_names_a_function_is_nil_where_the_object_holds_none_o
     let opened = concat!(
         "let heldPayload = try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; ",
         "do { self.held = try SwiftSchemaPayload.read(PreprocessOptionalHere.self, ",
-        "from: asGiven(heldPayload), at: decoder.codingPath) } catch { if ",
+        "from: asGiven(heldPayload), at: decoder.codingPath, within: decoder) } catch { if ",
     );
     assert_eq!(
         read(&["label".to_owned()]),
@@ -490,7 +492,7 @@ fn an_optional_member_that_names_a_function_beside_a_nonstrict_holder_is_nil_whe
          [\"note\"]).value; let heldPayload: Any = asNull(heldHandedPayload); if heldPayload is \
          NSNull { self.held = nil } else { self.held = try \
          SwiftSchemaPayload.readRefusing(PreprocessOptionalHere.self, from: heldPayload, at: \
-         decoder.codingPath) }"
+         decoder.codingPath, within: decoder) }"
     );
 }
 
@@ -498,12 +500,15 @@ fn an_optional_member_that_names_a_function_beside_a_nonstrict_holder_is_nil_whe
 /// the read every other type calls.
 #[test]
 fn the_payload_helper_declares_the_refusing_read_only_where_it_is_called() {
-    let refusing =
-        payload_for("try SwiftSchemaPayload.readRefusing(Held.self, from: payload, at: path)");
+    let refusing = payload_for(
+        "try SwiftSchemaPayload.readRefusing(Held.self, from: payload, at: path, within: decoder)",
+    );
     assert!(refusing.contains("static func readRefusing<Read: Decodable>"));
     assert!(refusing.contains("static func read<Read: Decodable>"));
     assert!(
-        !payload_for("try SwiftSchemaPayload.read(Held.self, from: payload, at: path)")
-            .contains("readRefusing")
+        !payload_for(
+            "try SwiftSchemaPayload.read(Held.self, from: payload, at: path, within: decoder)"
+        )
+        .contains("readRefusing")
     );
 }

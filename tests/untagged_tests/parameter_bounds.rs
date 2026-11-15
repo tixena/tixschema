@@ -95,13 +95,11 @@ fn a_counted_member_that_names_the_parameter_is_read_and_held_to_its_count() {
         read::<ProbeChosen<String>>(r#""a""#),
         Ok(ProbeChosenDraft::Text("a".to_owned()).validate().unwrap())
     );
-    // serde's untagged read drops each variant's own refusal, as it does for a member that names
-    // no parameter; the hook and `validate()` answer the count's sentence.
+    let count = "'listed': too short: minimum length is 1, got 0".to_owned();
     assert_eq!(
         read::<ProbeChosen<String>>(r#"{"listed":[]}"#),
-        Err("data did not match any variant of untagged enum ProbeChosen".to_owned())
+        Err(count.clone())
     );
-    let count = "'listed': too short: minimum length is 1, got 0".to_owned();
     assert_eq!(
         probe_chosen_schema::deserialize_listed_listed::<_, Vec<(u32, String)>>(
             &mut serde_json::Deserializer::from_str("[]")
@@ -116,7 +114,7 @@ fn a_counted_member_that_names_the_parameter_is_read_and_held_to_its_count() {
 }
 
 #[test]
-fn a_list_the_count_refuses_is_read_as_the_next_variant_as_with_no_parameter_named() {
+fn a_list_the_count_refuses_is_refused_whichever_variant_follows_as_with_no_parameter_named() {
     assert_eq!(
         read::<ProbeChosenOrOpen<String>>(r#"{"listed":[[7,"a"]]}"#),
         Ok(ProbeChosenOrOpenDraft::Listed {
@@ -127,9 +125,7 @@ fn a_list_the_count_refuses_is_read_as_the_next_variant_as_with_no_parameter_nam
     );
     assert_eq!(
         read::<ProbeChosenOrOpen<String>>(r#"{"listed":[]}"#),
-        Ok(ProbeChosenOrOpenDraft::Open { listed: vec![] }
-            .validate()
-            .unwrap())
+        Err("'listed': too short: minimum length is 1, got 0".to_owned())
     );
     assert_eq!(
         read::<ProbeChosenOrOpenText>(r#"{"listed":[[7,"a"]]}"#),
@@ -141,9 +137,7 @@ fn a_list_the_count_refuses_is_read_as_the_next_variant_as_with_no_parameter_nam
     );
     assert_eq!(
         read::<ProbeChosenOrOpenText>(r#"{"listed":[]}"#),
-        Ok(ProbeChosenOrOpenTextDraft::Open { listed: vec![] }
-            .validate()
-            .unwrap())
+        Err("'listed': too short: minimum length is 1, got 0".to_owned())
     );
     assert_eq!(
         read::<ProbeSlotted<ProbeUndefaulted>>("[7]"),
@@ -153,7 +147,7 @@ fn a_list_the_count_refuses_is_read_as_the_next_variant_as_with_no_parameter_nam
     );
     assert_eq!(
         read::<ProbeSlotted<ProbeUndefaulted>>("[]"),
-        Ok(ProbeSlottedDraft::Open(vec![]).validate().unwrap())
+        Err("too short: minimum length is 1, got 0".to_owned())
     );
 }
 
@@ -179,6 +173,6 @@ fn an_optional_counted_member_asks_no_default_of_the_parameter() {
     );
     assert_eq!(
         read::<ProbeMaybeListed<ProbeUndefaulted>>(r#"{"listed":[],"tag":1}"#),
-        Err("data did not match any variant of untagged enum ProbeMaybeListed".to_owned())
+        Err("'listed': too short: minimum length is 1, got 0".to_owned())
     );
 }

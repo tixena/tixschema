@@ -143,6 +143,8 @@ mod on_a_schema_surface {
 mod on_a_mobile_surface {
     #[cfg(feature = "kotlin")]
     use super::super::kotlin_pathed::PATHED;
+    #[cfg(feature = "kotlin")]
+    use super::super::kotlin_thrown::THROWN;
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
@@ -274,7 +276,7 @@ mod on_a_mobile_surface {
                  MissingFieldException) MissingFieldException(refused.missingFields, declared) \
                  else SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared \
                  + \"'\"), refused.cause) }}) }} object TaggedMobileSerializer : \
-                 KSerializer<TaggedMobile>, () -> KSerializer<TaggedMobile> {{ override fun \
+                 KSerializer<TaggedMobile>, () -> KSerializer<TaggedMobile> {{ {THROWN}override fun \
                  invoke(): KSerializer<TaggedMobile> = TaggedMobileUnjudged; override val \
                  descriptor: SerialDescriptor = TaggedMobileUnjudged.descriptor; override fun \
                  serialize(encoder: Encoder, value: TaggedMobile) = \
@@ -282,7 +284,7 @@ mod on_a_mobile_surface {
                  deserialize(decoder: Decoder): TaggedMobile {{ val read = \
                  TaggedMobileUnjudged.deserialize(decoder); val violations = \
                  read.validationIssues(); if (violations.isNotEmpty()) throw \
-                 TaggedMobileRefusal(violations); return read }} }}"
+                 kotlinSchemaThrown(decoder, TaggedMobileRefusal(violations)); return read }} }}"
             )
         );
     }

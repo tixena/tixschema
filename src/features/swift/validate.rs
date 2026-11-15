@@ -23,9 +23,6 @@ use crate::field_type::{
     is_sequence_wrapper,
 };
 
-/// The answer of a type with no bound of its own to the question of its bound.
-pub(super) const EMPTY_BOUND: &str = "public func swiftSchemaValidateBound() -> [String] { [] }";
-
 /// The helpers a statement of `validate()` calls, each with the text that calls it.
 const HELPERS: [(&str, &str); 3] = [
     ("swiftSchemaUnder(", UNDER_HELPER),
@@ -91,9 +88,6 @@ struct Noted {
     /// The position of the type parameter a brand holds bare: the one whose argument its value is
     /// of.
     bare: Option<usize>,
-    /// Whether the type is a brand with a bound of its own, which `swiftSchemaValidateBound`
-    /// answers for alone.
-    bounded: bool,
     /// How what a length counts is read off a value of the type, where it holds a string or a list.
     length: Option<Length>,
     /// How the string a bound measures is read off a value of the type, where it holds one.
@@ -144,8 +138,6 @@ pub(super) enum Length {
 /// What a walk below a member runs of each value of a named type it reaches.
 #[derive(Clone, Copy)]
 enum Walk {
-    /// The bound of a brand alone, which chooses a variant of an untagged enum.
-    Bound,
     /// Its `validate()`, and the repeat of each set the walk reaches.
     Reported,
     /// Its `validate()`, of what a read leaves to it: a map's key, which every read builds
@@ -264,7 +256,6 @@ pub(super) fn note(rust_ident: &str, text: Option<Text>, validates: bool) {
             rust_ident.to_owned(),
             Noted {
                 bare: None,
-                bounded: false,
                 length: None,
                 text,
                 validates,
@@ -301,15 +292,6 @@ pub(super) fn note_length(rust_ident: &str, length: Option<Length>) {
     });
 }
 
-/// Records that the name noted as `rust_ident` stands for a brand with a bound of its own.
-pub(super) fn note_bounded(rust_ident: &str) {
-    NOTED.with(|names| {
-        if let Some(seen) = names.borrow_mut().get_mut(rust_ident) {
-            seen.bounded = true;
-        }
-    });
-}
-
 /// What `rust_ident` was noted as, or `None` for a name the emitter has not written yet.
 fn noted(rust_ident: &str) -> Option<Noted> {
     NOTED.with(|names| names.borrow().get(rust_ident).copied())
@@ -339,21 +321,15 @@ pub(super) fn property_read(name: &str) -> String {
     }
 }
 
-/// `validate()` as a type declares it, with the helpers its statements call, and the empty answer
-/// to the question of its bound that an untagged enum asks of every named type it holds. A type
-/// with no rule answers an empty list.
+/// `validate()` as a type declares it, with the helpers its statements call. A type with no rule
+/// answers an empty list.
 pub(super) fn method(rules: &[String]) -> String {
-    format!("{}; {EMPTY_BOUND}", rules_method(rules))
-}
-
-/// `validate()` alone, for a brand that answers the question of its bound itself.
-pub(super) fn rules_method(rules: &[String]) -> String {
     listing("validate", rules)
 }
 
-/// What a draft declares in place of [`method`]: `validationIssues()` lists the rules, the
-/// bound is answered as any type answers it, and `validate()` makes the valid value `valid` names
-/// or throws the type's refusal holding the rules broken.
+/// What a draft declares in place of [`method`]: `validationIssues()` lists the rules, and
+/// `validate()` makes the valid value `valid` names or throws the type's refusal holding the rules
+/// broken.
 pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
     let converts = if is_rule_less() {
         format!("; public var valid: {valid} {{ {valid}(draft: self) }}")
@@ -361,7 +337,7 @@ pub(super) fn draft_method(rules: &[String], valid: &str) -> String {
         String::new()
     };
     format!(
-        "{}; {EMPTY_BOUND}; public func validate() throws -> {valid} {{ \
+        "{}; public func validate() throws -> {valid} {{ \
          let found = validationIssues(); if !found.isEmpty {{ throw {}(issues: found) }}; return \
          {valid}(draft: self) }}{converts}",
         listing("validationIssues", rules),
@@ -405,32 +381,6 @@ pub(super) fn helpers(called: &str, declared: &str) -> String {
             written.push_str(helper);
             written
         })
-}
-
-/// The member a brand answers for its bounds alone with, the checks it names apart: what chooses
-/// a variant of an untagged enum that holds the brand.
-pub(super) fn bound_member(bounds: &[String]) -> String {
-    format!(
-        "public func swiftSchemaValidateBound() -> [String] {{ var errors: [String] = []; {}; \
-         return errors }}",
-        bounds.join("; ")
-    )
-}
-
-/// What chooses a variant of an untagged enum, of one member: its own bounds, and the bound of a
-/// brand it holds. A check and a model choose nothing.
-pub(super) fn bound_alone(owner: &str, member: &Checked<'_>) -> Vec<String> {
-    let meta = member.def.model_schema_prop_meta.as_ref();
-    let mut rules = meta.map_or_else(Vec::new, |written| bound_rules(owner, member, written));
-    rules.extend(held_walk(
-        Walk::Bound,
-        owner,
-        member.def,
-        &member.access,
-        &written_step(member.step.as_deref()),
-        &mut Bindings::default(),
-    ));
-    rules
 }
 
 /// Whether `validate()` runs the `validate()` of a value a member of `def` holds: what the read
@@ -745,11 +695,6 @@ pub(super) fn names_a_validated_type(def: &FieldDef) -> bool {
     named_alone(def).is_some_and(validates)
 }
 
-/// Whether `def` names one brand with a bound of its own, as an alias of it does.
-pub(super) fn names_a_bounded_type(def: &FieldDef) -> bool {
-    named_alone(def).is_some_and(bounded)
-}
-
 /// The name `def` is written with where it names one type declared elsewhere, under no wrapper.
 fn named_alone(def: &FieldDef) -> Option<&str> {
     if def.is_list() || def.is_optional() {
@@ -773,12 +718,6 @@ fn declared_name(def: &FieldDef) -> Option<&str> {
 /// and one of a name the emitter has not written yet, a type declared below.
 pub(super) fn validates(rust_ident: &str) -> bool {
     noted(rust_ident).is_none_or(|seen| seen.validates)
-}
-
-/// Whether an untagged enum asks the type `rust_ident` names for its bound: a brand the emitter
-/// has written with one, and a name it has not written yet, a type declared below.
-fn bounded(rust_ident: &str) -> bool {
-    noted(rust_ident).is_none_or(|seen| seen.bounded)
 }
 
 /// What reads the string a bound measures off one value of `def`: nothing for a string and for an
@@ -1171,7 +1110,7 @@ pub(super) fn item_of(def: &FieldDef) -> FieldDef {
 }
 
 /// The statement that runs, of every value `def` holds that has it, what `walk` names: its
-/// `validate()`, or the bound of a brand alone. Each report is under `place` and what the walk
+/// `validate()`. Each report is under `place` and what the walk
 /// adds to it: the index of an item, the key of an entry, under which the entry's key is judged
 /// as its value is. `None` where it holds no such value. A value behind a type parameter is not
 /// reached.
@@ -1207,59 +1146,19 @@ fn held_walk(
     }
     if let FieldDefType::Tuple(slots) = &def.field_type {
         // A type written for the tuple walks no parameter of the type that holds it.
-        return (!matches!(walk, Walk::Bound)
-            && !walking(&[], || slot_rules(owner, slots)).is_empty())
-        .then(|| reporting(owner, place, &format!("{value}.validate()")));
+        return (!walking(&[], || slot_rules(owner, slots)).is_empty())
+            .then(|| reporting(owner, place, &format!("{value}.validate()")));
     }
     if let FieldDefType::Range(kind, bound) = &def.field_type {
-        if !matches!(walk, Walk::Bound) {
-            return (!walking(&[], || range_rules(owner, *kind, bound)).is_empty())
-                .then(|| reporting(owner, place, &format!("{value}.validate()")));
-        }
-        // What chooses a variant is asked of each bound in place, as Rust's read asks it.
-        let bounds: Vec<String> = kind
-            .members()
-            .iter()
-            .filter_map(|member| {
-                let mut at = place.to_vec();
-                at.push(Step::Written((*member).to_owned()));
-                held_walk(
-                    walk,
-                    owner,
-                    bound,
-                    &format!("{value}.{member}"),
-                    &at,
-                    bindings,
-                )
-            })
-            .collect();
-        return (!bounds.is_empty()).then(|| bounds.join("; "));
+        return (!walking(&[], || range_rules(owner, *kind, bound)).is_empty())
+            .then(|| reporting(owner, place, &format!("{value}.validate()")));
     }
     if let FieldDefType::Result(ok, err) = &def.field_type {
-        if !matches!(walk, Walk::Bound) {
-            return (!walking(&[], || result_rules(owner, ok, err)).is_empty())
-                .then(|| reporting(owner, place, &format!("{value}.validate()")));
-        }
-        // What chooses a variant is asked of the arm the value holds, in place.
-        let arms: Vec<String> = RESULT_ARMS
-            .into_iter()
-            .zip([ok, err])
-            .filter(|(_, held)| !held.is_unit())
-            .filter_map(|(arm, held)| {
-                let named = bindings.next_held();
-                let mut at = place.to_vec();
-                at.push(Step::Written(arm.to_owned()));
-                let below = held_walk(walk, owner, held, &named, &at, bindings)?;
-                Some(format!(
-                    "if case .{}(let {named}) = {value} {{ {below} }}",
-                    result_case(arm)
-                ))
-            })
-            .collect();
-        return (!arms.is_empty()).then(|| arms.join("; "));
+        return (!walking(&[], || result_rules(owner, ok, err)).is_empty())
+            .then(|| reporting(owner, place, &format!("{value}.validate()")));
     }
     if let FieldDefType::TypeParam(parameter) = &def.field_type {
-        return (!matches!(walk, Walk::Bound) && walks_parameter(parameter))
+        return walks_parameter(parameter)
             .then(|| reporting(owner, place, &format!("{}({value})", check_of(parameter))));
     }
     let FieldDefType::SiblingType(named, arguments) = &def.field_type else {
@@ -1277,14 +1176,10 @@ fn held_walk(
             bindings,
         );
     }
-    if !matches!(walk, Walk::Bound) && walked_with(named) && hands_on(arguments) {
+    if walked_with(named) && hands_on(arguments) {
         return Some(walked_with_checks(owner, arguments, value, place, bindings));
     }
-    let (asked, answers) = match walk {
-        Walk::Bound => ("swiftSchemaValidateBound", bounded(named)),
-        Walk::Reported | Walk::Rules => ("validate", validates(named)),
-    };
-    answers.then(|| reporting(owner, place, &format!("{value}.{asked}()")))
+    validates(named).then(|| reporting(owner, place, &format!("{value}.validate()")))
 }
 
 /// Whether a holder of a generic type filled with `arguments` hands it a check or a reader that

@@ -9,7 +9,7 @@ use super::{
 
 #[cfg(feature = "serde")]
 use super::{
-    CheckedMember, ConstraintGate, ConstraintLeaf, FieldContext, MemberAccess,
+    CheckedMember, ConstraintLeaf, FieldContext, MemberAccess,
     adjacent_collapsed_slot_guard_errors, branded_guard_errors, build_field_validation,
     cfg_attr_guard_error, check_nullable_field_serialization, check_omitted_key_is_readable,
     check_optional_field_serialization, checked_member, collect_untagged_members,
@@ -1245,7 +1245,7 @@ fn untagged_member_carries_its_constraint_to_the_surfaces() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn untagged_member_constraint_generates_the_validator_and_hangs_it_on_the_member() {
+fn untagged_member_constraint_generates_the_validator_and_hangs_nothing_on_the_member() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum Choice {
             Named {
@@ -1274,7 +1274,7 @@ fn untagged_member_constraint_generates_the_validator_and_hangs_it_on_the_member
     let attrs = &item.variants[0].fields.iter().next().unwrap().attrs;
     let rendered_attrs = quote::quote!(#(#attrs)*).to_string();
     assert!(
-        rendered_attrs.contains(r#"deserialize_with = "choice_schema::deserialize_named_name""#),
+        !rendered_attrs.contains("deserialize_with"),
         "got: {rendered_attrs}"
     );
 }
@@ -1337,7 +1337,7 @@ fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_slot() {
+fn untagged_newtype_member_constraint_is_named_by_its_position_and_hangs_nothing_on_the_slot() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum MimeType {
             Known(KnownMimeType),
@@ -1370,7 +1370,7 @@ fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_s
 
     let rendered_attrs = walked_field_attrs(item.variants[1].fields.iter());
     assert!(
-        rendered_attrs.contains(r#"deserialize_with = "choice_schema::deserialize_other_0""#),
+        !rendered_attrs.contains("deserialize_with"),
         "got: {rendered_attrs}"
     );
 
@@ -7812,10 +7812,10 @@ fn an_optional_struct_field_is_hung_with_neither_the_hook_nor_the_default_it_ans
     );
 }
 
-/// The untagged member is the other half: it earns the hook, and therefore earns the `default` too.
+/// The untagged member is read as serde's derive reads it: it earns no hook, and so no `default`.
 #[cfg(feature = "serde")]
 #[test]
-fn an_optional_untagged_member_is_hung_with_the_hook_and_the_default_it_answers_for() {
+fn an_optional_untagged_member_is_hung_with_no_hook_and_no_default() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum Choice {
             Named {
@@ -7837,12 +7837,9 @@ fn an_optional_untagged_member_is_hung_with_the_hook_and_the_default_it_answers_
         rendered,
         quote::quote! {
             #[serde(skip_serializing_if = "Option::is_none")]
-            #[serde(deserialize_with = "choice_schema::deserialize_named_name")]
-            #[serde(default)]
         }
         .to_string(),
-        "the declaration's own attribute, then the hook, then the `default` the hook needs. Got: \
-         {rendered}"
+        "the declaration's own attribute and nothing beside it. Got: {rendered}"
     );
 }
 
@@ -12971,24 +12968,23 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
+fn decode_with_reads_an_untagged_member_as_serde_reads_it_and_lists_its_bound() {
     let expanded = expansion_under(
         "enable = [\"decode_with\", \"mongodb\"]",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeReach { \
          Email { #[model_schema_prop(minLength = 3)] address: String }, Phone { digits: String } }",
     );
     for emitted in [
-        "# [serde (deserialize_with = \"decode_reach_schema::deserialize_email_address\")] address : String",
-        "pub fn deserialize_email_address < 'de , D > (deserializer : D)",
-        "decode_reach_schema :: value_leaf (held , decode_reach_schema :: deserialize_email_address , \
-         | read : & String | serde_json :: to_value (read) . ok () ,",
-        "decode_reach_schema :: value_leaf (held , < String as serde :: Deserialize > :: deserialize ,",
+        "decode_reach_schema :: value_leaf (held , < String as serde :: Deserialize > :: deserialize , \
+         | read | serde_json :: to_value (read) . ok () ,",
+        "decode_reach_schema :: value_bound (held , < String as serde :: Deserialize > :: deserialize ,",
     ] {
         assert!(
             expanded.contains(emitted),
             "missing `{emitted}`, got: {expanded}"
         );
     }
+    assert!(!expanded.contains("deserialize_with"), "got: {expanded}");
     assert_eq!(expanded.matches("pub mod decode_reach_schema {").count(), 1);
 }
 
@@ -18931,15 +18927,13 @@ fn a_variant_field_names_its_helpers_for_its_variant() {
 }
 
 /// The sole field of `item`, run through the constraint generator under `constraint` as the field
-/// of variant `One`, gated as `gate` says, returning (`module_items`, `validate_body`,
-/// `guard_error`, injected attribute count).
+/// of variant `One`, returning (`module_items`, `validate_body`, `guard_error`).
 #[cfg(feature = "serde")]
 fn generated_field_validation(
     item: &syn::ItemStruct,
     constraint: &ModelSchemaPropMeta,
-    gate: ConstraintGate,
-) -> (bool, bool, Option<String>, usize) {
-    generated_validation_under(item, constraint, gate, Some("One"))
+) -> (bool, bool, Option<String>) {
+    generated_validation_under(item, constraint, Some("One"))
 }
 
 /// [`generated_field_validation`] for the field of `variant`, or of a struct where there is none.
@@ -18947,11 +18941,9 @@ fn generated_field_validation(
 fn generated_validation_under(
     item: &syn::ItemStruct,
     constraint: &ModelSchemaPropMeta,
-    gate: ConstraintGate,
     variant: Option<&str>,
-) -> (bool, bool, Option<String>, usize) {
+) -> (bool, bool, Option<String>) {
     let field = item.fields.iter().next().unwrap();
-    let mut new_attrs = Vec::new();
     let steps = [vec!["member".to_owned()]];
     let ctx = FieldContext {
         container_defaulted: false,
@@ -18967,12 +18959,11 @@ fn generated_validation_under(
         variant_ident: variant,
     };
     let (module_items, validate_body, guard_error) =
-        generate_field_validation(&ctx, field, 0, constraint, gate, &mut new_attrs);
+        generate_field_validation(&ctx, field, 0, constraint);
     (
         module_items.is_some(),
         validate_body.is_some(),
         guard_error.map(|tokens| tokens.to_string()),
-        new_attrs.len(),
     )
 }
 
@@ -18997,22 +18988,13 @@ fn a_tuple_structs_slot_is_checked_where_a_named_field_of_the_struct_is() {
     );
 
     for ((positional, named), constraint) in [(&text, &min_length), (&number, &maximum)] {
-        let slot =
-            generated_validation_under(positional, constraint, ConstraintGate::Validator, None);
-        assert_eq!(slot, (true, true, None, 0), "a validator and no serde hook");
-        assert_eq!(
-            slot,
-            generated_validation_under(named, constraint, ConstraintGate::Validator, None)
-        );
+        let slot = generated_validation_under(positional, constraint, None);
+        assert_eq!(slot, (true, true, None), "a validator");
+        assert_eq!(slot, generated_validation_under(named, constraint, None));
     }
 
-    let unconstrained = generated_validation_under(
-        &text.0,
-        &ModelSchemaPropMeta::default(),
-        ConstraintGate::Validator,
-        None,
-    );
-    assert_eq!(unconstrained, (false, false, None, 0));
+    let unconstrained = generated_validation_under(&text.0, &ModelSchemaPropMeta::default(), None);
+    assert_eq!(unconstrained, (false, false, None));
 }
 
 #[cfg(feature = "serde")]
@@ -19026,25 +19008,18 @@ fn a_variants_slot_is_checked_where_a_named_member_of_the_variant_is() {
         ..ModelSchemaPropMeta::default()
     };
 
-    for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
-        assert_eq!(
-            generated_field_validation(&positional, &min_length, gate),
-            generated_field_validation(&named, &min_length, gate),
-            "gate {gate:?}"
-        );
-    }
     assert_eq!(
-        generated_field_validation(&borrowed, &min_length, ConstraintGate::Deserializer),
-        (true, true, None, 0),
-        "a borrowed slot publishes its validator and no hook"
+        generated_field_validation(&positional, &min_length),
+        generated_field_validation(&named, &min_length)
     );
     assert_eq!(
-        generated_field_validation(
-            &positional,
-            &ModelSchemaPropMeta::default(),
-            ConstraintGate::Deserializer
-        ),
-        (false, false, None, 0)
+        generated_field_validation(&borrowed, &min_length),
+        (true, true, None),
+        "a borrowed slot publishes its validator"
+    );
+    assert_eq!(
+        generated_field_validation(&positional, &ModelSchemaPropMeta::default()),
+        (false, false, None)
     );
 }
 
@@ -19064,13 +19039,12 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
             struct Probe { guarded: #ty }
         };
 
-        let (module_items, validate_body, guard_error, injected_attrs) = generated_field_validation(
+        let (module_items, validate_body, guard_error) = generated_field_validation(
             &item,
             &ModelSchemaPropMeta {
                 min_length: Some(3),
                 ..ModelSchemaPropMeta::default()
             },
-            ConstraintGate::Deserializer,
         );
         let error = guard_error.unwrap();
         assert!(error.contains("compile_error"), "for {spelling}: {error}");
@@ -19081,14 +19055,9 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
             !validate_body,
             "a refused field reached validate(): {error}"
         );
-        assert_eq!(injected_attrs, 0, "a refused field was given a serde hook");
 
-        let unconstrained = generated_field_validation(
-            &item,
-            &ModelSchemaPropMeta::default(),
-            ConstraintGate::Deserializer,
-        );
-        assert_eq!(unconstrained, (false, false, None, 0), "for {spelling}");
+        let unconstrained = generated_field_validation(&item, &ModelSchemaPropMeta::default());
+        assert_eq!(unconstrained, (false, false, None), "for {spelling}");
     }
 }
 
@@ -19281,26 +19250,23 @@ fn a_borrowed_str_member_is_hung_with_no_hook() {
         quote::quote! { #[serde(with = "trimmed")] note: &'a str },
     ] {
         let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'a> { #field } };
-        for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
-            assert_eq!(
-                generated_field_validation(&borrowed, &min_length, gate),
-                (true, true, None, 0),
-                "for {field} under {gate:?}"
-            );
-        }
+        assert_eq!(
+            generated_field_validation(&borrowed, &min_length),
+            (true, true, None),
+            "for {field}"
+        );
     }
 
     let owned: syn::ItemStruct = syn::parse_quote! { struct Probe { note: String } };
     assert_eq!(
-        generated_field_validation(&owned, &min_length, ConstraintGate::Deserializer),
-        (true, true, None, 1)
+        generated_field_validation(&owned, &min_length),
+        (true, true, None)
     );
     let owned_optional: syn::ItemStruct =
         syn::parse_quote! { struct Probe { note: Option<String> } };
     assert_eq!(
-        generated_field_validation(&owned_optional, &min_length, ConstraintGate::Deserializer),
-        (true, true, None, 2),
-        "the hook, and the default that keeps a missing key a `None` under it"
+        generated_field_validation(&owned_optional, &min_length),
+        (true, true, None)
     );
 }
 
@@ -19329,13 +19295,11 @@ fn a_member_read_through_any_reference_is_hung_with_no_hook() {
         (quote::quote! { count: Option<&'a f64> }, &minimum),
     ] {
         let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'a> { #field } };
-        for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
-            assert_eq!(
-                generated_field_validation(&borrowed, constraint, gate),
-                (true, true, None, 0),
-                "for {field} under {gate:?}"
-            );
-        }
+        assert_eq!(
+            generated_field_validation(&borrowed, constraint),
+            (true, true, None),
+            "for {field}"
+        );
     }
 }
 

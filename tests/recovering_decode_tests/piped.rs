@@ -210,9 +210,10 @@ fn a_broken_bound_is_handed_to_the_resolvers() {
     assert_eq!(refused.issues, [nameless]);
 }
 
-/// A value that breaks two bounds is handed to a resolver once, its reason both violations.
+/// A value that breaks two bounds is handed to a resolver once for each violation, each issue
+/// holding its own reason.
 #[test]
-fn a_resolver_is_handed_one_issue_for_a_value_that_breaks_two_bounds() {
+fn a_resolver_is_handed_one_issue_for_each_violation_of_a_value_that_breaks_two_bounds() {
     let stored = json!({
         "customer": { "name": "Acme", "openInvoices": 3_u32 },
         "number": "42",
@@ -229,31 +230,28 @@ fn a_resolver_is_handed_one_issue_for_a_value_that_breaks_two_bounds() {
     assert_eq!(read.unwrap().number, "INV-0042");
     assert_eq!(
         *handed.lock().unwrap(),
-        [(
-            json!("42"),
-            bare_number(
-                "too short: minimum length is 8, got 2; does not match pattern '^INV-[0-9]+$'"
-            )
-        )]
+        [
+            (
+                json!("42"),
+                bare_number("too short: minimum length is 8, got 2")
+            ),
+            (
+                json!("INV-0042"),
+                bare_number("does not match pattern '^INV-[0-9]+$'")
+            ),
+        ]
     );
 }
 
-/// A value that breaks two bounds is one issue, so a resolver that repairs it once settles the
-/// read.
+/// A value that breaks two bounds is two issues, so a resolver that repairs the value for the
+/// first one is handed the second and settles it too, and the read is settled.
 #[test]
-fn a_value_repaired_once_settles_the_read() {
+fn a_resolver_that_settles_each_issue_of_a_value_settles_the_read() {
     let stored = json!({
         "customer": { "name": "Acme", "openInvoices": 3_u32 },
         "number": "42",
     });
-    let while_bare = |raw: &mut Value, issue: &Issue<Value>| {
-        if raw["number"] == "42" {
-            number_without_prefix(raw, issue)
-        } else {
-            Resolution::NotTouched
-        }
-    };
-    let read = Invoice::from_value_piped(stored, &[&while_bare]);
+    let read = Invoice::from_value_piped(stored, &[&number_without_prefix]);
     assert_eq!(read.unwrap().number, "INV-0042");
 }
 

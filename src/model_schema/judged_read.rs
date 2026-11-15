@@ -65,14 +65,9 @@ const FALLBACK: &str = "ReadUnjudged";
 #[cfg(feature = "serde")]
 const HELD: &str = "Unjudged";
 
-/// What a brand's own bound answers of a value, the checks the brand names apart. A member of an
-/// untagged enum that holds the brand is held to it as it is read, so the bound chooses the
-/// variant, and so is the value a recovering read lists the brand from.
+/// What a brand's own bound answers of a value, the checks the brand names apart: the value a
+/// recovering read lists the brand from is held to it.
 pub const BOUND_ALONE: &str = "model_schema_validate_bound";
-
-/// The name of the trait that answers [`BOUND_ALONE`] for a type that carries no such bound.
-#[cfg(feature = "serde")]
-const CHOSEN_BY_SHAPE: &str = "ChosenByShape";
 
 /// What the name of the read of a corrected payload ends on, in place of [`UNJUDGED`].
 const CORRECTED: &str = "_corrected";
@@ -112,9 +107,6 @@ struct Hooked {
     /// The number of type arguments of each generic model a hook reads through readers.
     #[cfg(feature = "serde")]
     arities: Vec<usize>,
-    /// Whether a hook holds a brand to its own bound as it is read.
-    #[cfg(feature = "serde")]
-    choosing: bool,
     /// What answers the reads the hooks write for a type that has none of its own.
     fallbacks: TokenStream,
     functions: TokenStream,
@@ -163,8 +155,6 @@ struct MemberHook {
     /// The member's `#[cfg(...)]` attributes, written on its hook so a build without the member
     /// has no hook naming its type.
     cfgs: String,
-    /// Whether the member's read chooses the variant of an untagged enum.
-    choosing: bool,
     /// Whether a missing key is read as the member's default, as it is with no hook.
     defaulted: bool,
     /// The member's place among those of its struct, or of its variant.
@@ -181,9 +171,6 @@ struct MemberHook {
 /// Where a member sits in its item, as its hook is written and hung.
 #[cfg(feature = "serde")]
 pub(super) struct HookPlace<'item> {
-    /// Whether the member's read chooses the variant of an untagged enum: a brand it holds is
-    /// then held to its own bound as it is read.
-    pub choosing: bool,
     /// Whether the container answers a missing key itself, with `#[serde(default)]`.
     pub container_defaulted: bool,
     pub index: usize,
@@ -262,21 +249,10 @@ struct Reached {
     read_as: syn::Type,
 }
 
-/// The attributes the macro hangs on a member of the item being expanded to read the member's
-/// bound: the hook, and the `default` written beside it. Each is held as text, as a hook is.
-#[cfg(feature = "serde")]
-struct BoundHookHung {
-    attrs: Vec<String>,
-    index: usize,
-    variant: Option<String>,
-}
-
 #[cfg(feature = "serde")]
 thread_local! {
     /// The hooks of the item being expanded, in the order its members were walked.
     static MEMBER_HOOKS: RefCell<Vec<MemberHook>> = const { RefCell::new(Vec::new()) };
-    /// The attributes hung on the item's members to read their bounds, in the order walked.
-    static BOUND_HOOKS: RefCell<Vec<BoundHookHung>> = const { RefCell::new(Vec::new()) };
 }
 
 impl Corrects {
@@ -342,7 +318,7 @@ impl MemberHook {
         let taken = written_names(quote! { #ty #read_as });
         let held: TokenStream = leaves
             .iter()
-            .map(|written| self.held_type(written, unjudged, reader, &taken, arities))
+            .map(|written| Self::held_type(written, unjudged, reader, &taken, arities))
             .collect();
         let functions = corrects
             .named
@@ -380,10 +356,8 @@ impl MemberHook {
     }
 
     /// What answers the model the member holds, as `written.held_as`: its `unjudged` read, or the
-    /// read of a generic model handed a reader of each type argument, held to the bound a brand
-    /// carries where the member chooses a variant.
+    /// read of a generic model handed a reader of each type argument.
     fn held_leaf(
-        &self,
         written: &LeafWritten,
         unjudged: &Ident,
         reader: &Ident,
@@ -406,29 +380,18 @@ impl MemberHook {
                 quote! { (#read) }
             },
         );
-        if !self.choosing {
-            return quote! { #read.map(#held_as) };
-        }
-        let bound_alone = Ident::new(BOUND_ALONE, Span::call_site());
-        let refusal = refusal_from_violations();
-        quote! {
-            let held = #read?;
-            let chosen = &held;
-            chosen.#bound_alone().map_err(#refusal)?;
-            ::core::result::Result::Ok(#held_as(held))
-        }
+        quote! { #read.map(#held_as) }
     }
 
     /// The type a model the member holds is read as, and its `Deserialize`.
     fn held_type(
-        &self,
         written: &LeafWritten,
         unjudged: &Ident,
         reader: &Ident,
         taken: &[String],
         arities: &mut Vec<usize>,
     ) -> TokenStream {
-        let held_leaf = self.held_leaf(written, unjudged, reader, taken, arities);
+        let held_leaf = Self::held_leaf(written, unjudged, reader, taken, arities);
         held_type(written, &held_leaf, reader)
     }
 }
@@ -828,56 +791,9 @@ fn merged<'item>(predicates: impl Iterator<Item = &'item Predicate>) -> Vec<Toke
 #[cfg(feature = "serde")]
 pub fn forget_member_hooks() {
     MEMBER_HOOKS.with(|held| held.borrow_mut().clear());
-    BOUND_HOOKS.with(|held| held.borrow_mut().clear());
 }
 
-/// Records `attrs`, which the macro hangs on the member at `index` of `variant`, or of the
-/// struct, to read the member's bound.
-#[cfg(feature = "serde")]
-pub(super) fn record_bound_hook(variant: Option<&str>, index: usize, attrs: &[Attribute]) {
-    BOUND_HOOKS.with(|held| {
-        held.borrow_mut().push(BoundHookHung {
-            attrs: attrs
-                .iter()
-                .map(|attr| attr.to_token_stream().to_string())
-                .collect(),
-            index,
-            variant: variant.map(str::to_owned),
-        });
-    });
-}
-
-/// The bounds serde's derive writes on the `Deserialize` of `input` as its author wrote it. The
-/// hook the macro hangs to read a member's bound reads the member's type with its `Deserialize`,
-/// so it asks what serde asks of the member without it, and the `default` beside it asks nothing.
-#[cfg(feature = "serde")]
-pub fn authored_read_bounds(input: &DeriveInput) -> ReadBounds {
-    let mut authored = input.clone();
-    BOUND_HOOKS.with(|held| {
-        for hook in held.borrow().iter() {
-            let member = match &mut authored.data {
-                syn::Data::Struct(of_struct) if hook.variant.is_none() => {
-                    of_struct.fields.iter_mut().nth(hook.index)
-                }
-                syn::Data::Enum(of_enum) => of_enum
-                    .variants
-                    .iter_mut()
-                    .find(|variant| hook.variant.as_deref() == Some(&variant.ident.to_string()))
-                    .and_then(|variant| variant.fields.iter_mut().nth(hook.index)),
-                syn::Data::Struct(_) | syn::Data::Union(_) => None,
-            };
-            if let Some(field) = member {
-                field
-                    .attrs
-                    .retain(|attr| !hook.attrs.contains(&attr.to_token_stream().to_string()));
-            }
-        }
-    });
-    read_bounds(&authored)
-}
-
-/// No hook reads a member's bound in a build that reads no serde attribute.
-#[cfg(not(feature = "serde"))]
+/// The bounds serde's derive writes on the `Deserialize` of `input` as its author wrote it.
 pub fn authored_read_bounds(input: &DeriveInput) -> ReadBounds {
     read_bounds(input)
 }
@@ -1320,7 +1236,6 @@ pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookP
                 .filter(|attr| attr.path().is_ident("cfg"))
                 .map(|attr| attr.to_token_stream().to_string())
                 .collect(),
-            choosing: place.choosing,
             defaulted,
             index: place.index,
             leaves: read
@@ -1567,22 +1482,6 @@ fn held_fallback(named: &Ident, unjudged: &Ident) -> TokenStream {
     }
 }
 
-/// What a type answers of [`BOUND_ALONE`] where it carries no such bound: nothing, so its shape
-/// alone chooses the variant. An inherent method is found ahead of the one the trait gives a
-/// reference, so a brand that carries a bound answers with its own.
-#[cfg(feature = "serde")]
-fn chosen_by_shape(named: &Ident) -> TokenStream {
-    let bound_alone = Ident::new(BOUND_ALONE, Span::call_site());
-    quote! {
-        trait #named {
-            fn #bound_alone(&self) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
-                ::core::result::Result::Ok(())
-            }
-        }
-        impl<T: ?::core::marker::Sized> #named for &T {}
-    }
-}
-
 /// The name of the deserializer's type in every function written for `input`.
 fn reader_parameter(input: &DeriveInput) -> Ident {
     unclaimed_parameter("D", &written_names(input.to_token_stream()))
@@ -1619,12 +1518,10 @@ fn unjudged_hooks(
         if functions.is_empty() {
             return Hooked::default();
         }
-        let choosing = functions.iter().any(|(hook, _)| hook.choosing);
-        let fallbacks = hook_fallbacks(written, Some(unjudged), choosing, &arities);
+        let fallbacks = hook_fallbacks(written, Some(unjudged), &arities);
         let written_functions = functions.iter().map(|(_, function)| function);
         Hooked {
             arities,
-            choosing,
             fallbacks,
             functions: quote! { #(#written_functions)* },
             hung: functions
@@ -1641,20 +1538,14 @@ fn unjudged_hooks(
 }
 
 /// What answers the reads the hooks of an item's read write, where the type they read has none of
-/// its own: its unjudged read, where they call `unjudged`, the bound of a brand where a hook is
-/// `choosing`, and the read of a generic model by readers, for each of `arities`.
+/// its own: its unjudged read, where they call `unjudged`, and the read of a generic model by
+/// readers, for each of `arities`.
 #[cfg(feature = "serde")]
-fn hook_fallbacks(
-    written: &[String],
-    unjudged: Option<&Ident>,
-    choosing: bool,
-    arities: &[usize],
-) -> TokenStream {
+fn hook_fallbacks(written: &[String], unjudged: Option<&Ident>, arities: &[usize]) -> TokenStream {
     let fallback =
         unjudged.map(|read| held_fallback(&unclaimed_parameter(FALLBACK, written), read));
-    let chosen = choosing.then(|| chosen_by_shape(&unclaimed_parameter(CHOSEN_BY_SHAPE, written)));
     let by_readers = readers::reader_fallbacks(arities);
-    quote! { #fallback #chosen #by_readers }
+    quote! { #fallback #by_readers }
 }
 
 /// No hook is recorded in a build that reads no serde attribute: a model below judges itself.

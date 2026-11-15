@@ -186,8 +186,8 @@ pub struct Rack {
     pub tray: Tray,
 }
 
-/// An enum serde writes as the value of its variant: a member's own bound and a brand's own
-/// bound each choose a variant, and a model and a brand's check choose none.
+/// An enum serde writes as the value of its variant, read as the first variant its shape fits: a
+/// member's own bound and a brand's own bound choose none, and refuse what the variant holds.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -574,9 +574,8 @@ fn stuck(name: &'static str, payload: &str) -> (Case, String) {
     )
 }
 
-/// A payload that breaks the bound of the first variant it fits is the next one, as serde reads
-/// it: a member's own bound and a brand's own bound choose. A model that breaks its rule and a
-/// brand that breaks its check are the variant they fit, and the enum's read refuses them.
+/// A payload is read as the first variant its shape fits, as serde reads it, and a bound or a check
+/// that variant breaks is what the enum's read refuses it with.
 #[test]
 fn an_untagged_enum_takes_the_variant_serde_takes() {
     let rows = [
@@ -596,9 +595,11 @@ a labelled carton: StickerBoxed
 an unlabelled carton: refused (StickerRefusal)
     'label': too short: minimum length is 1, got 0
 a number the bound holds: StickerPositive
-a number the bound refuses: StickerWhole
+a number the bound refuses: refused (StickerRefusal)
+    too small: minimum is 1, got 0
 a tray: StickerTrayed
-a text the bound of a tray refuses: StickerWritten
+a text the bound of a tray refuses: refused (StickerRefusal)
+    too short: minimum length is 2, got 1
 a tray its check refuses: refused (StickerRefusal)
     a tray is known
 ",

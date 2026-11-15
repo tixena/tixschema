@@ -52,12 +52,6 @@ fn the_read_refuses_each_value_other_than_its_literal() {
                     for violation in refusal.split("; ") {
                         let _ = writeln!(printed, "    {violation}");
                     }
-                } else {
-                    assert_eq!(
-                        refusal, "data did not match any variant of untagged enum Ingot",
-                        "serde refuses {} in other words",
-                        row.name
-                    );
                 }
             }
         }
@@ -79,7 +73,7 @@ fn validate_refuses_a_value_built_with_another_value() {
     };
     let said: Vec<String> = match LITERAL_READS[2].answered {
         Answered::Refused(said) => said.iter().map(|line| (*line).to_owned()).collect(),
-        Answered::Read | Answered::Unmatched => Vec::new(),
+        Answered::Read => Vec::new(),
     };
     assert_eq!(other.validation_issues(), said);
 
@@ -102,18 +96,16 @@ fn validate_refuses_a_value_built_with_another_value() {
     );
 }
 
-/// The member of an untagged enum is held to its literal as it is read, which chooses the
-/// variant.
+/// The member of an untagged enum is held to its literal once the variant is chosen, and a literal
+/// chooses no variant: the first variant whose shape reads the payload takes it, and its literal
+/// refuses what it does not hold.
 #[test]
-fn a_literal_chooses_the_variant_of_an_untagged_enum() {
+fn a_literal_chooses_no_variant_of_an_untagged_enum() {
     assert_eq!(
-        serde_json::from_str::<Ingot>(r#"{"metal":"silver","weight":1}"#).unwrap(),
-        IngotDraft::Silver {
-            metal: "silver".to_owned(),
-            weight: 1,
-        }
-        .validate()
-        .unwrap()
+        serde_json::from_str::<Ingot>(r#"{"metal":"silver","weight":1}"#)
+            .unwrap_err()
+            .to_string(),
+        "'metal': not the literal \"gold\", got silver"
     );
     assert_eq!(
         serde_json::from_str::<Ingot>(r#"{"metal":"gold","weight":1}"#).unwrap(),

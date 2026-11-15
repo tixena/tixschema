@@ -214,7 +214,6 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
                 r#"return "'\(place).\(violation[violation.index(after: violation.startIndex)..<end])'"#,
                 r#"\(violation[violation.index(after: end)...])" }; "#,
                 r#"return "'\(place)': \(violation)" }; "#,
-                "public func swiftSchemaValidateBound() -> [String] { [] }; ",
             )
             .replace("@PLACED@", PLACED),
             swift_valid::validating("Parcel")

@@ -269,9 +269,8 @@ what a change has to keep.
   `nested_under` writes the name.
 - **`validate()` in every build.** It holds every bound and every check, whatever the features,
   and a type that derives `Deserialize` reads through `judged_read` in every build, so its read
-  refuses what `validate()` refuses. `serde` is the one switch: it adds the member hook
-  (`deserialize_with`), through which a member's bound chooses the variant of an untagged enum,
-  and without `serde` a member is reported under its Rust name.
+  refuses what `validate()` refuses. `serde` is the one switch: without `serde` a member is
+  reported under its Rust name.
 - **Every shape.** `process_struct`, `process_tuple_struct`, a unit struct, the three tagged enum
   processors and the untagged one (a member's check in its variant's arm, through
   `build_member_check_arms`, and the enum's own after the `match`), a plain enum, and a brand
@@ -358,8 +357,7 @@ keep.
 - **The clients** hold the member in its own type and compare there: Dart's `literal_elements`
   from `own_bound_elements`, Swift's `literal_rule` from `bound_rules`, Kotlin's
   `literal_statements` from `bound_statements`, each through an optional and each level of a list,
-  an item under its index. Each is a member's bound, so it chooses a variant of an untagged enum
-  (`_bounds()`, `swiftSchemaBound{Variant}`, `kotlinSchemaBound()`).
+  an item under its index. Each is a member's bound, which chooses no variant of an untagged enum.
 - **The tests.** `tests/model_schema_prop_tests/literal_models.rs` holds `LITERAL_READS`, what each
   payload reads as. `literals.rs` holds serde's read to it, and
   `type_check_a_literal_refuses_under_zod_what_serde_refuses` in
@@ -637,17 +635,14 @@ has to keep.
   reads a brand unjudged, and the holder's `validate()` names it: `'listed.1': too short: ...`.
 - `BrandBound` holds what a brand's own bound adds: the validator in the schema module, the call
   `validate()` makes, and `model_schema_validate_bound`, a method of the brand's own that
-  answers for the bound alone (`judged_read::BOUND_ALONE`). It has two readers. A member of an
-  untagged enum is held to it as the member is read (`HookPlace::choosing`,
-  `MemberHook::held_leaf`), behind the local `ChosenByShape` trait, which answers `Ok(())` for a
-  reference to any type with no such method: the bound of a brand chooses the variant, as it did
-  where the brand refused in a read of its own, and nothing of a model chooses one. And the read
-  a recovering decode lists a bounded brand from holds the value to it (`bounded_listed_read`,
-  through `brand_recovering_decode`), so the walker lists a broken bound as the refusal of the
-  value. A check a brand names chooses no variant: the enum's `validate()` refuses with it.
-- A rule of any other model a member of an untagged enum holds, its checks included, and the
-  bound on the slot of a struct of one slot, choose no variant, in serde's read and in the Dart,
-  Swift and Kotlin reads, by the owner's decision: the first variant whose shape reads is taken,
+  answers for the bound alone (`judged_read::BOUND_ALONE`). Its one reader is the read a recovering
+  decode lists a bounded brand from, which holds the value to it (`bounded_listed_read`, through
+  `brand_recovering_decode`), so the walker lists a broken bound as the refusal of the value. A
+  member of an untagged enum reads a brand unjudged (`MemberHook::held_leaf`), so no bound and no
+  check of a brand chooses a variant: the enum's `validate()` refuses with it.
+- No rule chooses a variant of an untagged enum, in serde's read and in the Dart, Swift and
+  Kotlin reads, by the owner's decision: a member's bound, its `literal`, a brand's bound, a rule
+  of a model it holds and its checks included. The first variant whose shape reads is taken,
   and the read then refuses the value. Zod's `z.union` and the JSON Schema's `anyOf` try the
   next variant there, and the guide states the limit with its `Picker`.
   `tests/untagged_tests/held_rules.rs` holds serde's answers, the JSON Schema's and the guide.

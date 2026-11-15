@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `error_status` of the operation `fetch` names `Missing`, which is no variant of `DocumentError`
+  --> tests/error_status_refusals/no_variant.rs:14:1
+   |
+14 | #[service_schema(transports = ["http_rest"])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `documents_schema::_` failed here

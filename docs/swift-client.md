@@ -22,9 +22,8 @@ section is the consumer's view; this is what a change to the emitter has to keep
   `init(from:)` that reads the draft, the `fileprivate` unjudged reads the draft declares
   (`init(swiftSchemaUnjudged:)`, and the one that takes the keys the types around it took where the
   draft has it), `encode(to:)` writing the draft, and `fileprivate` `validate()` and
-  `swiftSchemaValidateBound()` that answer what the draft's `validationIssues()` and
-  `swiftSchemaValidateBound()` answer, so a holder in the generated file runs a held model as it ran
-  it. The valid struct of a plain enum that names a `check` is `Hashable` and has a `fileprivate init?(rawValue:)`, and a tuple struct of one
+  `validate()` that answers what the draft's `validationIssues()` answers, so a holder in the
+  generated file runs a held model as it ran it. The valid struct of a plain enum that names a `check` is `Hashable` and has a `fileprivate init?(rawValue:)`, and a tuple struct of one
   slot a `fileprivate init(value:)`, for the map keyed by either (`ValidForm`).
 - **A name is the draft's wherever a static or a private member of the type is named.** Everything
   that is named at the type it is declared in is written under the draft's name: the owner of
@@ -507,14 +506,10 @@ to keep.
   is read from the enum's decoder. A slot whose type takes keys is read through its taking
   initializer, as before. `tests/swift_tests/flattened.rs` pins the text
   of `Grafting` and `Pointing`, and `run_swift_flattened.rs` runs both against serde.
-- **An untagged enum takes the variant serde takes.** `validate::bound_alone` is what chooses: a
-  member's own bounds, and `held_walk` under `Walk::Bound`, which asks each brand the member
-  holds for `swiftSchemaValidateBound()`, the member the wrapper of a bounded brand declares
-  (`bound_member`) and every other generated type declares as `[]` (`validate::method`). The enum writes one `swiftSchemaBound{Variant}` per variant that has such a
-  rule, and one `swiftSchemaRead{Variant}` where a slot is read in several statements. A check and
-  a model choose nothing. The registry says which name is a bounded brand (`note_bounded`); a name it
-  does not hold yet, a type declared below the enum, is asked as well, so a brand declared below
-  chooses as one declared above. A variant whose payload Swift holds as an optional
+- **An untagged enum takes the variant serde takes.** The enum writes one
+  `swiftSchemaRead{Variant}` where a slot is read in several statements, and takes the first
+  variant whose payload reads: no bound, check or model chooses one, and `init(from:)` refuses the
+  value. A variant whose payload Swift holds as an optional
   (`VariantPayload::optional`: an `Option`, or an alias `note_optional_alias` noted as one) is
   tried in `do { let value = try ...; ... } catch {}`, where `try?` would take a read that
   answered `nil` for one that threw, so `null` takes it, as serde reads it as `None`. Every other

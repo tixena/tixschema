@@ -66,7 +66,7 @@ fn models() -> Vec<Printer> {
         ("Attempted", false, |row| {
             printed::<Attempted<u32>>(row, false)
         }),
-        ("Bureau", false, |row| printed::<Bureau>(row, false)),
+        ("Bureau", true, |row| printed::<Bureau>(row, true)),
         ("Errand", false, |row| printed::<Errand>(row, false)),
         ("Errata", true, |row| printed::<Errata>(row, true)),
         ("Missive", true, |row| printed::<Missive>(row, true)),

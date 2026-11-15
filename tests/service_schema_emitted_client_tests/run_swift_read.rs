@@ -988,8 +988,8 @@ Depot, a key that is no number: refused at [byNumber]
 }
 
 /// What the Rust read of `payload` as `Read` answers, in the words the Swift side prints: the
-/// variant taken, by the name its `Debug` opens with, the messages of a refusal, which the Swift
-/// read refuses with `refusal`, or that no variant took the payload.
+/// variant taken, by the name its `Debug` opens with, or the messages of a refusal, which the
+/// Swift read refuses with `refusal`.
 fn rust_choice<Read>(payload: &str, refusal: &str) -> String
 where
     Read: DeserializeOwned + Debug,
@@ -1002,9 +1002,6 @@ where
             .to_owned(),
         Err(refused) => {
             let told = refused.to_string();
-            if told.contains("did not match any variant") {
-                return "mismatch at []: no untagged member matched".to_owned();
-            }
             let mut lines = format!("refused ({refusal})");
             for violation in told.split("; ") {
                 write!(lines, "\n    {violation}").unwrap();
@@ -1014,9 +1011,9 @@ where
     }
 }
 
-/// An untagged enum takes the variant serde takes. A member's own bound and the bound of a brand
-/// it holds take a variant out of the running, and a check and a model a variant holds take none
-/// out: the variant is chosen, and the enum's read refuses the value.
+/// An untagged enum takes the variant serde takes, the first one its shape fits. A bound, a check
+/// and a model a variant holds take none out: the variant is chosen, and the enum's read refuses
+/// the value.
 #[test]
 fn an_untagged_enum_takes_the_variant_serde_takes() {
     let sorted: [(&str, &str); 11] = [
@@ -1079,10 +1076,13 @@ fn an_untagged_enum_takes_the_variant_serde_takes() {
         expected,
         "\
 a slot within its bound: Brief
-a slot past its bound, a brand within its own: Coded
-a slot and a brand past their bounds: Wordy
+a slot past its bound, a brand within its own: refused (SortedRefusal)
+    too long: maximum length is 3, got 6
+a slot and a brand past their bounds: refused (SortedRefusal)
+    too long: maximum length is 3, got 6
 a member within its bound: Counted
-a member past its bound: mismatch at []: no untagged member matched
+a member past its bound: refused (SortedRefusal)
+    'sortedCount': too small: minimum is 1, got 0
 a model: Whole
 a model that breaks a rule: refused (SortedRefusal)
     'itemLabel': too short: minimum length is 1, got 0

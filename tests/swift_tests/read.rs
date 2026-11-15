@@ -635,25 +635,14 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
         judged_by_validate("Slug")
     );
     assert!(swift.contains(&unjudged), "{unjudged} is not in: {swift}");
-    holds(
-        &swift,
-        &[concat!(
-            "public func swiftSchemaValidateBound() -> [String] { var errors: [String] = []; ",
-            "if value.unicodeScalars.count < 2 { errors.append(",
-            r#""too short: minimum length is 2, got \(value.unicodeScalars.count)") }; "#,
-            "if value.unicodeScalars.count > 8 { errors.append(",
-            r#""too long: maximum length is 8, got \(value.unicodeScalars.count)") }; "#,
-            r#"if value.range(of: "^[a-z]+\\z", options: .regularExpression) == nil "#,
-            r#"{ errors.append("does not match pattern '^[a-z]+$'") }; return errors }"#,
-        )],
-    );
+    assert!(!swift.contains("swiftSchemaValidateBound"), "got: {swift}");
     let unbounded = correlation_id_swift::swift_definition();
     assert!(
         unbounded.contains(&unjudged.replace("SlugRefusal", "CorrelationIdRefusal")),
         "got: {unbounded}"
     );
     assert!(
-        unbounded.contains("public func swiftSchemaValidateBound() -> [String] { [] }"),
+        !unbounded.contains("swiftSchemaValidateBound"),
         "got: {unbounded}"
     );
     holds(
@@ -663,10 +652,6 @@ fn a_brand_has_both_reads_and_answers_for_its_bound_alone() {
              swiftSchemaReaderOfIdType(decoder) }; fileprivate init(swiftSchemaUnjudged decoder: \
              Decoder) throws { try self.init(swiftSchemaUnjudged: decoder, { try \
              SwiftSchemaFit<IdType>(from: $0).value }) }; ",
-            concat!(
-                "public func swiftSchemaValidateBound() -> [String] { var errors: [String] = []; ",
-                "if let held = value as? String { if held.unicodeScalars.count < 2 {",
-            ),
         ],
     );
 }
@@ -806,25 +791,25 @@ fn an_enum_with_no_tag_attribute_reads_an_object_of_one_key() {
     );
 }
 
-/// An untagged enum takes the first variant whose payload reads and whose own bounds hold: a
-/// member's, and that of a brand it holds. A check and a model a variant holds choose nothing.
+/// An untagged enum takes the first variant whose payload reads. A bound of a member, that of a
+/// brand it holds, a check and a model a variant holds choose nothing.
 #[test]
-fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
+fn an_untagged_enum_takes_the_first_variant_whose_payload_reads() {
     let swift = sorted_swift::swift_definition();
     let attempts = [
         concat!(
-            "if let value = try? String(from: decoder), ",
-            "SortedDraft.swiftSchemaBoundBrief(value).isEmpty { self = .brief(value); return }; ",
+            "if let value = try? String(from: decoder) ",
+            "{ self = .brief(value); return }; ",
         ),
         concat!(
-            "if let value = try? Slug(swiftSchemaUnjudged: decoder), ",
-            "SortedDraft.swiftSchemaBoundCoded(value).isEmpty { self = .coded(value); return }; ",
+            "if let value = try? Slug(swiftSchemaUnjudged: decoder) ",
+            "{ self = .coded(value); return }; ",
         ),
         concat!(
             "if let value = try? (taken.isEmpty ? SortedCountedPayload(swiftSchemaUnjudged: decoder) ",
             ": SortedDraft.swiftSchemaOnly(decoder, [\"sortedCount\"], taken, ",
-            "SortedCountedPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))), ",
-            "SortedDraft.swiftSchemaBoundCounted(value).isEmpty { self = .counted(value); return }; ",
+            "SortedCountedPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken))) ",
+            "{ self = .counted(value); return }; ",
         ),
         concat!(
             "if let value = try? SortedDraft.swiftSchemaReadListed(decoder) ",
@@ -844,23 +829,6 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
         &swift,
         &[
             concat!(
-                "private static func swiftSchemaBoundBrief(_ payload: String) -> [String] ",
-                "{ var errors: [String] = []; if payload.unicodeScalars.count > 3 { errors.append(",
-                r#""too long: maximum length is 3, got \(payload.unicodeScalars.count)") }; "#,
-                "return errors }; ",
-            ),
-            concat!(
-                "private static func swiftSchemaBoundCoded(_ payload: Slug) -> [String] ",
-                "{ var errors: [String] = []; errors += payload.swiftSchemaValidateBound(); ",
-                "return errors }; ",
-            ),
-            concat!(
-                "private static func swiftSchemaBoundCounted(_ payload: SortedCountedPayload) ",
-                "-> [String] { var errors: [String] = []; if payload.sortedCount < 1 ",
-                r#"{ errors.append("'sortedCount': too small: minimum is 1, "#,
-                r#"got \(payload.sortedCount)") }; return errors }; "#,
-            ),
-            concat!(
                 "private static func swiftSchemaReadListed(_ decoder: Decoder) throws -> [Parcel] ",
                 "{ var listed = try decoder.unkeyedContainer(); var items: [Parcel] = []; ",
                 "while !listed.isAtEnd { items.append(try Parcel(swiftSchemaUnjudged: ",
@@ -870,7 +838,7 @@ fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
             judged("Sorted").as_str(),
         ],
     );
-    for unwritten in ["swiftSchemaBoundWhole", "swiftSchemaBoundWordy"] {
+    for unwritten in ["swiftSchemaBound", "swiftSchemaValidateBound"] {
         assert!(!swift.contains(unwritten), "got: {swift}");
     }
     holds(

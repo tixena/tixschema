@@ -1276,7 +1276,6 @@ fn archive_name_rows() -> Vec<Row> {
 fn chosen_rows() -> Vec<Row> {
     [
         ("Cargo reads a text", "[\"a\"]"),
-        ("Cargo reads no item", "[]"),
         ("Cargo reads a number", "[1]"),
     ]
     .into_iter()

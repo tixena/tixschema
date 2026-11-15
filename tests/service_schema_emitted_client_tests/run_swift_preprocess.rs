@@ -946,8 +946,7 @@ fn a_date_is_read_from_what_its_function_answers() {
 }
 
 /// A payload the read refuses once a function has answered is reported at the coding path of the
-/// value: the field's own, under the path of whatever holds the type. A type's refusal thrown in
-/// the payload a function answered is placed from that payload down, without the steps above it.
+/// value: the field's own, under the path of whatever holds the type.
 #[test]
 fn a_payload_refused_after_the_correction_is_reported_at_its_coding_path() {
     let kept = r#"{"parcel":{"label":"A","itemCodeList":[]}}"#;
@@ -1016,7 +1015,7 @@ no key, in a held parcel: no key itemCodeList at [1, parcel]
 no key, in a member read from an envelope: no key label at [firstParcel]
 a number for a text, in a slot: mismatch at [0, 0]
 a parcel that judges itself, in a corrected type: refused
-    'codes.1.label': too short: minimum length is 1, got 0
+    '0.codes.1.label': too short: minimum length is 1, got 0
 an answer that is no JSON: refused at [stamp]
     a preprocess answered a value that is not JSON
 "
@@ -1158,13 +1157,13 @@ fn the_parcel_of_the_documents_is_written_with_its_two_functions() {
             "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
             "let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: container.codingPath + [CodingKeys.label]) }; ",
+            "at: container.codingPath + [CodingKeys.label], within: decoder) }; ",
         ),
         concat!(
             "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
             "self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, ",
             "from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), ",
-            "at: decoder.codingPath).value }; ",
+            "at: decoder.codingPath, within: decoder).value }; ",
             "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ",
             "try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
             "public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); ",
@@ -1186,7 +1185,7 @@ fn the_one_slot_of_a_struct_calls_its_function_on_the_structs_own_payload() {
         "fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { ",
         "let valuePayload = try SwiftSchemaPayload(from: decoder).value; ",
         "self.value = try SwiftSchemaPayload.read(String.self, from: trimmed(valuePayload), ",
-        "at: decoder.codingPath) }; ",
+        "at: decoder.codingPath, within: decoder) }; ",
     );
     assert!(swift.contains(written), "{written} is not in: {swift}");
     assert!(!swift.contains("LoneTuple"), "got: {swift}");
@@ -1201,7 +1200,7 @@ fn the_readme_shows_what_these_runs_compile_and_read() {
         "func trimmed(_ payload: Any) -> Any",
         "func withoutFragile(_ payload: Any) -> Any",
         "let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value",
-        "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label])",
+        "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label], within: decoder)",
         "error: cannot find 'trimmed' in scope",
         "a preprocess answered a value that is not JSON",
         "init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws",

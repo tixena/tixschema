@@ -80,17 +80,15 @@ const DART_ENUM_NAMES_TAKEN: [&str; 12] = [
 
 /// The members an emitted class declares beside those of an enum, which a function of the same name
 /// is called through a forwarder for: the holder of a brand's value and the static helpers.
-const DART_CLASS_MEMBERS: [&str; 11] = [
+const DART_CLASS_MEMBERS: [&str; 9] = [
     "_boundLength",
     "_boundText",
-    "_heldBound",
     "_number",
     "_readAt",
     "_readBuffered",
     "_readFlattened",
     "_repeats",
     "_under",
-    "validateBound",
     "value",
 ];
 
@@ -117,12 +115,6 @@ const DART_RESERVED: [&str; 33] = [
     "rethrow", "return", "super", "switch", "this", "throw", "true", "try", "var", "void", "while",
     "with",
 ];
-
-/// The helper a variant of an untagged enum asks a value it holds for the bound of its own with:
-/// a brand that carries one answers `validateBound()`, and any other value has none.
-const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { try { return \
-     (held as dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const \
-     []; } }";
 
 /// The text [`integer_read`] fills in, which the tests of the emitted text fill in the same way.
 const INTEGER_READ: &str = include_str!("dart/integer_read.txt");
@@ -419,12 +411,11 @@ impl<'held> Bounds<'held> {
     }
 }
 
-/// A helper a type's `validationIssues()` or the bounds of a variant call.
+/// A helper a type's `validationIssues()` calls.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Helper {
     BoundLength,
     BoundText,
-    HeldBound,
     Number,
     Repeats,
     Under,
@@ -453,9 +444,6 @@ impl Helpers {
 /// What a walk lists of the value a member holds.
 #[derive(Clone, Copy)]
 enum Asked {
-    /// What chooses a variant of an untagged enum: the member's own bounds and the bound of
-    /// each brand it holds, with no check and nothing a model reports.
-    Bound,
     /// What `validationIssues()` lists: the member's bounds, the `validationIssues()` of each declared type it
     /// holds, then its checks.
     Rules,
@@ -524,8 +512,6 @@ struct Corrects<'item> {
     own: &'item [FunctionName],
     /// What holds the payload as it is taken, where the type names a function.
     payload: String,
-    /// What holds the variant of an untagged enum whose bounds are asked.
-    read: String,
     /// What holds the tag of an enum.
     tag: String,
 }
@@ -538,7 +524,6 @@ impl<'item> Corrects<'item> {
             map: declared("map"),
             own,
             payload: declared("payload"),
-            read: declared("read"),
             tag: declared("tag"),
         }
     }
@@ -551,7 +536,6 @@ impl<'item> Corrects<'item> {
             map: self.map.clone(),
             own: &[],
             payload: self.payload.clone(),
-            read: self.read.clone(),
             tag: self.tag.clone(),
         }
     }
@@ -3663,7 +3647,6 @@ where
     let within = stepped(place, Step::Bound(index.clone()));
     let inner = of_item(&item, &within, depth.saturating_add(1));
     let walked = match asked {
-        Asked::Bound => format!("for (final {item} in {expr})"),
         Asked::Rules => format!("for (final ({index}, {item}) in {expr}.indexed)"),
     };
     guarded(&walked, inner)
@@ -3878,10 +3861,6 @@ fn named_element(
     helpers: &mut Helpers,
 ) -> String {
     match asked {
-        Asked::Bound => {
-            helpers.call(Helper::HeldBound);
-            format!("..._heldBound({expr})")
-        }
         Asked::Rules if arguments.is_empty() => {
             reported(&format!("{expr}.validationIssues()"), place, helpers)
         }
@@ -4162,18 +4141,13 @@ fn member_elements(
     asked: Asked,
     helpers: &mut Helpers,
 ) -> Vec<String> {
-    let named: &[Step] = match asked {
-        Asked::Bound => &[],
-        Asked::Rules => place,
-    };
     let (mut elements, walked) = match asked {
-        Asked::Bound => (Vec::new(), field.clone()),
         Asked::Rules => (
             own_repeat_elements(field, expr, place, depth, helpers),
             field.without_own_set(),
         ),
     };
-    let own = own_bound_elements(field, expr, named, depth, helpers);
+    let own = own_bound_elements(field, expr, place, depth, helpers);
     let held = held_elements(&walked, expr, place, depth, asked, helpers);
     elements.extend(held);
     elements.extend(own);
@@ -4339,9 +4313,7 @@ fn declared_default(parameter: &str, default_types: &[(Ident, syn::Type)]) -> Fi
 
 /// A brand's `validationIssues()`: a repeat of the set it wraps and its string check over the value, under
 /// no place, then the checks it names. A brand over one of its own parameters holds the declared
-/// default of that parameter and no other filling. A brand that carries a bound writes
-/// `validateBound()` ahead of it, the bound alone, which a variant of an untagged enum that holds
-/// the brand is chosen by.
+/// default of that parameter and no other filling.
 fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
     let mut helpers = Helpers::default();
     let bounds = Bounds {
@@ -4365,12 +4337,6 @@ fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
     } else {
         bound_elements(value_field, "value", &[], &bounds, 0, &mut helpers)
     };
-    let bound_alone = (!rules.is_empty()).then(|| {
-        format!(
-            "List<String> validateBound() => [ {}, ]; ",
-            rules.join(", ")
-        )
-    });
     let mut repeated = own_repeat_elements(value_field, "value", &[], 0, &mut helpers);
     repeated.append(&mut rules);
     rules = repeated;
@@ -4383,11 +4349,7 @@ fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
         rules.push(format!("...{}(value)", dart_check_of(parameter)));
     }
     rules.extend(own_check_elements(args.check));
-    format!(
-        "{}{}",
-        bound_alone.unwrap_or_default(),
-        validate_members(&rules, &helpers, false)
-    )
+    validate_members(&rules, &helpers, false)
 }
 
 /// A variant's `validationIssues()`: its members under `under`, the steps serde writes on the way to
@@ -4411,23 +4373,6 @@ fn variant_elements(
         VariantPayload::Unit => Vec::new(),
         VariantPayload::Value(held) => member_elements(held, "value", under, 0, asked, helpers),
     }
-}
-
-/// `_bounds()` of a variant of an untagged enum, written ahead of its `validationIssues()`: what chooses
-/// it once its payload decodes, as serde's read of the enum chooses it. `None` for a variant
-/// that holds nothing to ask.
-fn variant_bounds(payload: &VariantPayload) -> Option<String> {
-    let mut helpers = Helpers::default();
-    let rules = variant_elements(payload, &[], Asked::Bound, &mut helpers);
-    if rules.is_empty() {
-        return None;
-    }
-    let mut written = format!("List<String> _bounds() => [ {}, ]; ", rules.join(", "));
-    if helpers.calls(Helper::HeldBound) {
-        written.push_str(HELD_BOUND_HELPER);
-        written.push(' ');
-    }
-    Some(written)
 }
 
 /// The body of a judged read over `unjudged`, the call of the unjudged one: the value it
@@ -6321,8 +6266,8 @@ fn untagged_variant_class(
 
 /// The Dart tokens a `#[serde(untagged)]` enum earns: a `sealed` base class whose unjudged read
 /// tries each variant's own decode in turn (Dart has no runtime structural type inspection to
-/// dispatch on ahead of time, unlike Zod's `z.union`), returning the first that does not throw and
-/// whose `_bounds()` hold, and whose `fromJson` judges what that answers.
+/// dispatch on ahead of time, unlike Zod's `z.union`), returning the first that does not throw, and
+/// whose `fromJson` judges what that answers.
 fn untagged_enum_dart_source(
     item_enum: &ItemEnum,
     rust_ident: &str,
@@ -6337,7 +6282,6 @@ fn untagged_enum_dart_source(
     let codec = generic_codec(&type_parameters);
     let (base_name, form) = enum_base(export_name, !args.undrafted);
     let corrects = Corrects::of(args.preprocess);
-    let read = &corrects.read;
 
     let mut subclasses = Vec::new();
     let mut attempts = Vec::new();
@@ -6351,13 +6295,8 @@ fn untagged_enum_dart_source(
         reads_unit |= matches!(&payload, VariantPayload::Value(held) if reads_a_unit(held));
         enter_variant_core_scope(&subclass_name, &payload);
         variant_payloads.push(variant_keys(&payload, &corrects));
-        let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
-        let validate = format!(
-            "{}{}",
-            bounds.as_deref().unwrap_or_default(),
-            variant_validate(&payload, &[], args.check)
-        );
+        let validate = variant_validate(&payload, &[], args.check);
         let (class_text, from_json) = within_variant(&variant.ident, || {
             untagged_variant_class(
                 &VariantClass {
@@ -6375,14 +6314,7 @@ fn untagged_enum_dart_source(
             )
         });
         subclasses.push(format!("{}{class_text}", leave_core_scope()));
-        attempts.push(if bounds.is_some() {
-            format!(
-                "try {{ final {read} = {from_json}; if ({read}._bounds().isEmpty) return {read}; }} \
-                 catch (_) {{}}"
-            )
-        } else {
-            format!("try {{ return {from_json}; }} catch (_) {{}}")
-        });
+        attempts.push(format!("try {{ return {from_json}; }} catch (_) {{}}"));
     }
 
     note_reads_a_unit(rust_ident, reads_unit);

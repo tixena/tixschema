@@ -184,7 +184,7 @@ fn a_flattened_option_of_a_type_whose_keys_are_not_known_reads_nil_where_it_thro
     let ratline = ratline_swift::swift_definition();
     assert_written(
         &ratline,
-        r#"var nipperingFound: [String] = []; let nipperingGroups: [[String]] = []; let nipperingUnits: [String] = []; if nipperingGroups.isEmpty { do { let nipperingStanding: [String] = ["label"]; if !nipperingStanding.isEmpty { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { nipperingStanding.contains($0.stringValue) && !taken.contains($0.stringValue) }) { let nipperingPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.nippering = try SwiftSchemaPayload.read(SwiftSchemaReadNippering.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadNippering.self, nipperingPayload, at: decoder.codingPath), at: decoder.codingPath).value } else { self.nippering = nil } } else { do { let nipperingPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.nippering = try SwiftSchemaPayload.read(SwiftSchemaReadNippering.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadNippering.self, nipperingPayload, at: decoder.codingPath), at: decoder.codingPath).value } catch { self.nippering = nil } } } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
+        r#"var nipperingFound: [String] = []; let nipperingGroups: [[String]] = []; let nipperingUnits: [String] = []; if nipperingGroups.isEmpty { do { let nipperingStanding: [String] = ["label"]; if !nipperingStanding.isEmpty { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { nipperingStanding.contains($0.stringValue) && !taken.contains($0.stringValue) }) { let nipperingPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.nippering = try SwiftSchemaPayload.read(SwiftSchemaReadNippering.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadNippering.self, nipperingPayload, at: decoder.codingPath, within: decoder), at: decoder.codingPath, within: decoder).value } else { self.nippering = nil } } else { do { let nipperingPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; self.nippering = try SwiftSchemaPayload.read(SwiftSchemaReadNippering.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadNippering.self, nipperingPayload, at: decoder.codingPath, within: decoder), at: decoder.codingPath, within: decoder).value } catch { self.nippering = nil } } } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
     );
     assert_written(
         &ratline,
@@ -209,7 +209,7 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
              thimbleObject[thimbleKey] {{ do {{ let thimblePayload: Any; switch thimbleKey {{ case \
              \"Calm\" where thimbleHeld is NSNull: thimblePayload = \"Calm\"; default: \
              thimblePayload = [thimbleKey: thimbleHeld] }}; self.thimble = try \
-             SwiftSchemaPayload.read(Thimble.self, from: thimblePayload, at: decoder.codingPath) \
+             SwiftSchemaPayload.read(Thimble.self, from: thimblePayload, at: decoder.codingPath, within: decoder) \
              }} {CAUGHT} }} else {{ self.thimble = nil }} }}"
         ),
     );
@@ -240,12 +240,12 @@ fn a_flattened_option_of_an_enum_reads_nil_where_none_of_its_keys_is_there() {
         &heeling_swift::swift_definition(),
         "self.note = try container.decode(String.self, forKey: .note); do { let togglePayload = \
          try SwiftSchemaPayload(from: decoder, without: taken + [\"note\"]).value; self.toggle = \
-         try SwiftSchemaPayload.read(Toggle.self, from: togglePayload, at: decoder.codingPath) } \
+         try SwiftSchemaPayload.read(Toggle.self, from: togglePayload, at: decoder.codingPath, within: decoder) } \
          catch { self.toggle = nil } }",
     );
     assert_written(
         &pitching_swift::swift_definition(),
-        r#"self.note = try container.decode(String.self, forKey: .note); var shackleFound: [String] = []; let shackleGroups: [[String]] = [["Calm"], ["Round"]]; let shackleUnits: [String] = []; if shackleGroups.isEmpty { do { let shackleStanding: [String] = []; if !shackleStanding.isEmpty { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { shackleStanding.contains($0.stringValue) && !(taken + ["note"]).contains($0.stringValue) }) { let shacklePayload = try SwiftSchemaPayload(from: decoder, without: taken + ["note"]).value; self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: decoder.codingPath), at: decoder.codingPath).value } else { self.shackle = nil } } else { do { let shacklePayload = try SwiftSchemaPayload(from: decoder, without: taken + ["note"]).value; self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: decoder.codingPath), at: decoder.codingPath).value } catch { self.shackle = nil } } } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
+        r#"self.note = try container.decode(String.self, forKey: .note); var shackleFound: [String] = []; let shackleGroups: [[String]] = [["Calm"], ["Round"]]; let shackleUnits: [String] = []; if shackleGroups.isEmpty { do { let shackleStanding: [String] = []; if !shackleStanding.isEmpty { if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: { shackleStanding.contains($0.stringValue) && !(taken + ["note"]).contains($0.stringValue) }) { let shacklePayload = try SwiftSchemaPayload(from: decoder, without: taken + ["note"]).value; self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: decoder.codingPath, within: decoder), at: decoder.codingPath, within: decoder).value } else { self.shackle = nil } } else { do { let shacklePayload = try SwiftSchemaPayload(from: decoder, without: taken + ["note"]).value; self.shackle = try SwiftSchemaPayload.read(SwiftSchemaReadShackle.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadShackle.self, shacklePayload, at: decoder.codingPath, within: decoder), at: decoder.codingPath, within: decoder).value } catch { self.shackle = nil } } } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
     );
 }
 
@@ -284,7 +284,7 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
              [\"note\"]).value; let tholepinPayload: Any = {function}(tholepinHandedPayload); if \
              tholepinPayload is NSNull {{ self.tholepin = nil }} else {{ self.tholepin = try \
              SwiftSchemaPayload.readRefusing(Tholepin.self, from: tholepinPayload, at: \
-             decoder.codingPath) }} }} {CAUGHT} }};"
+             decoder.codingPath, within: decoder) }} }} {CAUGHT} }};"
         )
     };
     assert_written(
@@ -303,7 +303,7 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
              [\"note\"]).value; let tablingPayload: Any = asGiven(tablingHandedPayload); if \
              tablingPayload is NSNull {{ self.tabling = nil }} else {{ self.tabling = try \
              SwiftSchemaPayload.readRefusing(Tabling.self, from: tablingPayload, at: \
-             decoder.codingPath) }} }} {CAUGHT} }};"
+             decoder.codingPath, within: decoder) }} }} {CAUGHT} }};"
         ),
     );
     for holder in [
@@ -317,7 +317,7 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
                  taken + [\"note\"]).value; let frappedPayload: Any = \
                  asGiven(frappedHandedPayload); if frappedPayload is NSNull {{ self.frapped = nil \
                  }} else {{ self.frapped = try SwiftSchemaPayload.readRefusing(Frapped.self, from: \
-                 frappedPayload, at: decoder.codingPath) }} }} {CAUGHT}; self.note = try \
+                 frappedPayload, at: decoder.codingPath, within: decoder) }} }} {CAUGHT}; self.note = try \
                  container.decode(String.self, forKey: .note) }};"
             ),
         );
@@ -330,7 +330,7 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
              [\"note\"]).value; let tholepinPayload: Any = asNull(tholepinHandedPayload); if \
              tholepinPayload is NSNull {{ self.tholepin = nil }} else {{ self.tholepin = try \
              SwiftSchemaPayload.readRefusing(Tholepin.self, from: tholepinPayload, at: \
-             decoder.codingPath) }} }} {CAUGHT} }};"
+             decoder.codingPath, within: decoder) }} }} {CAUGHT} }};"
         ),
     );
     assert_written(
@@ -339,7 +339,7 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
             "do {{ let tholepinPayload = try SwiftSchemaPayload(from: decoder, without: taken + \
              [\"note\"]).value; self.tholepin = try \
              SwiftSchemaPayload.readRefusing(Tholepin.self, from: asGiven(tholepinPayload), at: \
-             decoder.codingPath) }} {CAUGHT} }};"
+             decoder.codingPath, within: decoder) }} {CAUGHT} }};"
         ),
     );
     assert_written(

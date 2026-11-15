@@ -55,9 +55,7 @@ fn a_struct_has_a_valid_struct_that_reads_through_its_draft() {
             "[String]) throws { draft = try WindowRequestDraft(swiftSchemaUnjudged: decoder, ",
             "swiftSchemaWithout: taken) }; ",
             "public func encode(to encoder: Encoder) throws { try draft.encode(to: encoder) }; ",
-            "fileprivate func validate() -> [String] { draft.validationIssues() }; ",
-            "fileprivate func swiftSchemaValidateBound() -> [String] { ",
-            "draft.swiftSchemaValidateBound() } };",
+            "fileprivate func validate() -> [String] { draft.validationIssues() }; };",
         )
     );
     assert!(

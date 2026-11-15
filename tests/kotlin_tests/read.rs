@@ -14,6 +14,8 @@ use super::fixed_arrays_models::{
 };
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
+#[cfg(feature = "serde")]
+use super::kotlin_thrown::THROWN;
 
 /// The function that names the place of a map key a brand's check refused: the steps of the path
 /// kotlinx states, then the key.
@@ -124,13 +126,13 @@ fn generated(named: &str) -> String {
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 pub fn judged(named: &str) -> String {
     format!(
-        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ override \
+        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ {THROWN}override \
          fun invoke(): KSerializer<{named}> = {named}Unjudged; override val descriptor: \
          SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
          deserialize(decoder: Decoder): {named} {{ val read = \
          {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }} }}"
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
     )
 }
 
@@ -139,13 +141,13 @@ pub fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> S
     format!(
         "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
          KSerializer<{named}<{parameter}>>, () -> KSerializer<{named}<{parameter}>> {{ private \
-         val kotlinSchemaUnjudged = {named}Unjudged({handed}); override fun invoke(): \
+         val kotlinSchemaUnjudged = {named}Unjudged({handed}); {THROWN}override fun invoke(): \
          KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
          SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
          Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); \
          override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
          kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw {named}Refusal(violations); return read }} }}"
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
     )
 }
 
@@ -435,7 +437,7 @@ pub fn mapped_over_a_brand(named: &str, inner: &str) -> String {
             "try {{ kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
              entry.key, \"\") }} catch (refused: {inner}Refusal) {{ val at = \
              kotlinSchemaPlace(input, entry.key); throw {inner}Refusal(refused.issues.map {{ \"'\" \
-             + at + \"': \" + it }}) }}"
+             + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}"
         ),
     )
 }
@@ -457,7 +459,7 @@ fn mapped_reading(named: &str, key: &str) -> String {
          an object, found \" + element)).entries.associate {{ entry -> val key = {key}; val \
          violations = key.validate(); if (violations.isNotEmpty()) {{ val at = \
          kotlinSchemaPlace(input, entry.key); throw {named}Refusal(violations.map {{ \"'\" + at + \
-         \"': \" + it }}) }}; key to kotlinSchemaDecoded(input.json, valueSerializer, entry.value, \
+         \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}; key to kotlinSchemaDecoded(input.json, valueSerializer, entry.value, \
          entry.key, \".\" + entry.key) }} }} }} }}"
     )
 }

@@ -1,0 +1,5 @@
+error: model_schema: `new = true` on `Reading`: slot 1 is under `#[cfg(unix)]`, and a tuple struct with a slot under `#[cfg]` gets no generated `new`. Write `new = false`.
+ --> tests/generated_new_refusals/tuple_slot_under_a_cfg.rs:9:24
+  |
+9 | pub struct Reading(u8, #[cfg(unix)] u8, u8);
+  |                        ^^^^^^^^^^^^

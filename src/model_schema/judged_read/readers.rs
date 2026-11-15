@@ -871,7 +871,7 @@ fn read_with_readers(
     declaring.arities.extend(hooks.arities);
     let functions = &hooks.functions;
     let called = writes(&quote! { #held_types #functions }, &unjudged).then_some(&unjudged);
-    let fallbacks = hook_fallbacks(&item.written, called, hooks.choosing, &declaring.arities);
+    let fallbacks = hook_fallbacks(&item.written, called, &declaring.arities);
     let copied_as = unclaimed_parameter(REMOTE, &declaring.taken);
     let read = copy_read(&copied_as, &scope, &corrects, &item.reader);
     let built = handed_back(input, &copied_as, &handed);

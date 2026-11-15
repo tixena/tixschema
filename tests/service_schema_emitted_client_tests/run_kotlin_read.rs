@@ -108,10 +108,12 @@ Freight, a parcel that breaks its bound: refused
 Haul, a label that breaks its bound: refused
     'held.haulLabel': too short: minimum length is 1, got 0
 Mark, within the bound of the first variant: read MarkBrief
-Mark, past the bound of the first variant: read MarkCoded
-Mark, past that bound and outside the bound of the brand: read MarkPlain
-Mark, refused by the check of the brand it holds: refused
-    a tag is not NONE
+Mark, past the bound of the first variant: refused
+    too long: maximum length is 3, got 4
+Mark, a text no brand admits: refused
+    too long: maximum length is 3, got 4
+Mark, a text the check of the brand would refuse: refused
+    too long: maximum length is 3, got 4
 Cargo, a pallet that breaks its bound: refused
     'label': too short: minimum length is 1, got 0
 Slip, a rating its check refuses: refused
@@ -124,13 +126,19 @@ Hitch, its own bound and the trailer's broken: refused
 ";
 
 /// What the read answers where it is not the text of the Rust read. A model judges itself as it
-/// is read behind a type parameter, and under a bound a member writes of its own on a brand: the
-/// first broken one ends the read with its own messages, under no place.
+/// is read behind a type parameter, in a list read item by item, and under a bound a member writes
+/// of its own on a brand: the first broken one ends the read with its own messages, each placed
+/// under the path the value was read at, as the fault the Rust dispatcher answers names it.
 const APART_FROM_RUST: &str = "\
 Crate<Parcel>, the second code broken: refused
-    'fragileItemCodes.1': y is outside of itemCodeList
+    'codes.1.fragileItemCodes.1': y is outside of itemCodeList
+[Manifest], the second broken: refused
+    '1.firstParcel.label': too short: minimum length is 1, got 0
+    '1.parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
+    '1.parcelsByDock.north.label': too short: minimum length is 1, got 0
+    '1.spareParcel.fragileItemCodes.1': y is outside of itemCodeList
 Crate<Code>, a code broken: refused
-    too short: minimum length is 2, got 1
+    'codes.1': too short: minimum length is 2, got 1
 Docket, a code that breaks its own bound: refused
     'code': too short: minimum length is 2, got 1
     'code': too short: minimum length is 3, got 1
@@ -146,7 +154,7 @@ Shipment: read ShipmentAir
 Route: read Route
 Freight: read FreightBoxed
 Haul: read HaulLoose
-Mark: read MarkCoded
+Mark: read MarkBrief
 Cargo: read CargoBoxed
 ";
 
@@ -761,13 +769,13 @@ fn enum_rows() -> Vec<Sample> {
             mark_class,
         ),
         sample(
-            "Mark, past that bound and outside the bound of the brand",
+            "Mark, a text no brand admits",
             "Mark",
             &mark("abcd"),
             mark_class,
         ),
         sample(
-            "Mark, refused by the check of the brand it holds",
+            "Mark, a text the check of the brand would refuse",
             "Mark",
             &mark("NONE"),
             mark_class,
@@ -810,7 +818,18 @@ fn apart_rows() -> Vec<Sample> {
             "Crate<Parcel>, the second code broken",
             "serializer<Crate<Parcel>>()",
             &sealed_crate(vec![held(), outside()], "A", "ab"),
-            Err(&["'fragileItemCodes.1': y is outside of itemCodeList"]),
+            Err(&["'codes.1.fragileItemCodes.1': y is outside of itemCodeList"]),
+        ),
+        pinned(
+            "[Manifest], the second broken",
+            "ListSerializer(serializer<Manifest>())",
+            &vec![manifest(held(), held(), held(), None), four_broken()],
+            Err(&[
+                "'1.firstParcel.label': too short: minimum length is 1, got 0",
+                "'1.parcelList.1.fragileItemCodes.1': y is outside of itemCodeList",
+                "'1.parcelsByDock.north.label': too short: minimum length is 1, got 0",
+                "'1.spareParcel.fragileItemCodes.1': y is outside of itemCodeList",
+            ]),
         ),
         pinned(
             "Crate<Code>, a code broken",
@@ -824,7 +843,7 @@ fn apart_rows() -> Vec<Sample> {
                 "A",
                 "ab",
             ),
-            Err(&["too short: minimum length is 2, got 1"]),
+            Err(&["'codes.1': too short: minimum length is 2, got 1"]),
         ),
         pinned(
             "Docket, a code that breaks its own bound",
@@ -879,7 +898,7 @@ fn unjudged_rows() -> Vec<Sample> {
             "Mark",
             "MarkUnjudged",
             &MarkDraft::Plain("NONE".to_owned()),
-            Ok("MarkCoded"),
+            Ok("MarkBrief"),
         ),
         pinned(
             "Cargo",
@@ -1052,6 +1071,15 @@ fn where_the_read_is_not_the_rust_reads_text_it_is_this() {
             "'code': too short: minimum length is 2, got 1; 'code': too short: minimum length is 3, got 1",
         ]
     );
+    // The path serde tracks, which the Rust dispatcher places each of those messages under.
+    let broken_crate = sealed_crate(vec![held(), outside()], "A", "ab");
+    let tracked = serde_path_to_error::deserialize::<_, Crate<Parcel>>(
+        &mut serde_json::Deserializer::from_str(&serde_json::to_string(&broken_crate).unwrap()),
+    )
+    .unwrap_err()
+    .path()
+    .to_string();
+    assert_eq!(tracked, "codes[1]");
     let body: Vec<String> = rows.iter().map(|row| row.kotlin.clone()).collect();
     let Some(printed) = ran_kotlin(&module(&[TOLD], &body)) else {
         return;
@@ -1077,12 +1105,12 @@ fn the_unjudged_serializer_of_a_type_reads_what_its_own_refuses() {
 fn a_value_that_keeps_every_rule_is_written_back_as_serde_wrote_it() {
     let kept = manifest(held(), held(), held(), None);
     let sealed = sealed_crate(vec![1_i32], "A", "ab");
-    let coded = MarkDraft::Coded(Tag::new("ABCD".to_owned()).unwrap());
+    let brief = MarkDraft::Brief("ab".to_owned());
     let body = vec![
         written_back("Route", &route_held()),
         written_back("Manifest", &kept),
         written_back("Crate<Int>", &sealed),
-        written_back("Mark", &coded),
+        written_back("Mark", &brief),
     ];
     let Some(printed) = ran_kotlin(&module(&[], &body)) else {
         return;
@@ -1093,7 +1121,7 @@ fn a_value_that_keeps_every_rule_is_written_back_as_serde_wrote_it() {
             serde_json::to_string(&route_held()).unwrap(),
             serde_json::to_string(&kept).unwrap(),
             serde_json::to_string(&sealed).unwrap(),
-            serde_json::to_string(&coded).unwrap(),
+            serde_json::to_string(&brief).unwrap(),
         ]
     );
 }
@@ -1199,13 +1227,11 @@ fn the_readme_shows_what_the_runs_answer() {
         "} catch (refusal: ParcelRefusal) {\n    println(refusal.issues)\n}\n// ['label': too short: \
          minimum length is 1, got 0, 'fragileItemCodes.1': y is outside of itemCodeList]\n",
         "| `\"ab\"` | `MarkBrief` |",
-        "| `\"ABCD\"` | `MarkCoded`: ",
-        "| `\"abcd\"` | `MarkPlain`: ",
-        "| `\"NONE\"` | refused with `a tag is not NONE`: ",
+        "| `\"ABCD\"` | refused with `too long: maximum length is 3, got 4`: ",
         "#[model_schema(pattern = \"^[A-Z]+$\", check = [\"unreserved\"])]",
         "    Brief(#[model_schema_prop(maxLength = 3)] String),\n    Coded(Tag),\n    \
          Plain(String),\n",
-        "with a broken parcel answers `'fragileItemCodes.1': y is outside of itemCodeList`",
+        "with a broken parcel answers `'codes.1.fragileItemCodes.1': y is outside of itemCodeList`",
         "`undeserializable-payload` from the `http_rest` client, and `failed-validation` from \
          the `ws_rpc` one",
         "Json.decodeFromString<ParcelDraft>(payload)",

@@ -358,7 +358,7 @@ fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
              forKey: .dock) } else { let dockDefaultPayload = try \
              JSONSerialization.jsonObject(with: Data(\"\\\"north\\\"\".utf8), options: \
              [.fragmentsAllowed]); self.dock = try SwiftSchemaPayload.read(String.self, from: \
-             dockDefaultPayload, at: container.codingPath + [CodingKeys.dock]) }"
+             dockDefaultPayload, at: container.codingPath + [CodingKeys.dock], within: decoder) }"
         ),
         "{written}"
     );
@@ -686,13 +686,12 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
              swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try \
              self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
              !violations.isEmpty { throw TideRefusal(issues: { () -> [String] in let at = \
-             decoder.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue \
-             }.joined(separator: \".\"); return at.isEmpty ? violations : violations.map { said \
+             ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue \
+             }).joined(separator: \".\"); return at.isEmpty ? violations : violations.map { said \
              in guard said.hasPrefix(\"'\"), let end = said.dropFirst().firstIndex(of: \"'\") \
              else { return \"'\\(at)': \\(said)\" }; return \"'\\(at).\\(said[said.index(after: \
              said.startIndex)..<end])'\\(said[said.index(after: end)...])\" } }()) } }; public \
-             func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> \
-             [String] { [] } };  public enum TideDraft: Codable, Sendable { case \
+             func validate() -> [String] { [] } };  public enum TideDraft: Codable, Sendable { case \
              ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: \
              String, CodingKey { case swiftSchemaTag = \"kind\" }; private struct \
              SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; \
@@ -735,8 +734,8 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
              self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
              decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let \
              violations = validationIssues(); if !violations.isEmpty { throw TideRefusal(issues: \
-             { () -> [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) \
-             ?? $0.stringValue }.joined(separator: \".\"); return at.isEmpty ? violations : \
+             { () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) \
+             ?? $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \
              violations.map { said in guard said.hasPrefix(\"'\"), let end = \
              said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; \
              return \"'\\(at).\\(said[said.index(after: \
@@ -745,8 +744,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
              SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try \
              container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: \
              encoder); case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } \
-             }; public func validationIssues() -> [String] { [] }; public func \
-             swiftSchemaValidateBound() -> [String] { [] }; ",
+             }; public func validationIssues() -> [String] { [] }; ",
             swift_valid_free::validating_free("Tide")
         )
     );
@@ -755,8 +753,12 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
+    use crate::kotlin_pathed::PATHED;
+    use crate::kotlin_thrown::THROWN;
+
     assert_eq!(
         without_number_readers(&tide_kotlin::kotlin_definition()),
+        [
         "class TideRefusal(val issues: List<String>) : SerializationException(\"$issues\", \
          IllegalArgumentException(\"validate()\")) @Serializable(with = \
          TideDraftUnjudged::class) sealed interface TideDraft { fun validationIssues(): \
@@ -772,20 +774,9 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          { is TideEbbing -> buildJsonObject { put(\"kind\", \"Ebbing\"); \
          output.json.encodeToJsonElement(serializer<TideEbbing>(), value).jsonObject.forEach { \
          (k, v) -> put(k, v) } }; is TideSlack -> buildJsonObject { put(\"kind\", \"Slack\") } }) \
-         }; private fun kotlinSchemaRebased(refused: SerializationException, at: String): \
-         SerializationException { if (refused.cause?.message == \"validate()\") return refused; \
-         val said = refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token at \
-         offset \\\\d+: \"), \"\"); return SerializationException(if (\" at path: \\$\" in said) \
-         said.replaceFirst(\" at path: \\$\", \" at path: \" + at) else said + \" at path: \" + \
-         at, refused) }; @OptIn(ExperimentalSerializationApi::class) private inline fun \
-         <KotlinSchemaRead> kotlinSchemaAt(input: Decoder, read: () -> KotlinSchemaRead): \
-         KotlinSchemaRead = try { read() } catch (refused: SerializationException) { val at = try \
-         { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: \
-         JsonDecodingException) { probe.path } ?: throw refused; throw \
-         kotlinSchemaRebased(refused, at) }; private inline fun <KotlinSchemaRead> \
-         kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { \
-         read() } catch (refused: SerializationException) { throw kotlinSchemaRebased(refused, \
-         \"\\$\" + step) }; private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: \
+         }; ",
+        PATHED,
+        "private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: \
          String, serializer: DeserializationStrategy<KotlinSchemaRead>, element: JsonElement): \
          KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
          element.toString()) }; private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: \
@@ -822,12 +813,15 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          MissingFieldException) MissingFieldException(refused.missingFields, declared) else \
          SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
          refused.cause) }) } object TideSerializer : KSerializer<Tide>, () -> KSerializer<Tide> { \
-         override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
+         ",
+        THROWN,
+        "override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
          SerialDescriptor = TideUnjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: Tide) = TideUnjudged.serialize(encoder, value); override fun deserialize(decoder: \
          Decoder): Tide { val read = TideUnjudged.deserialize(decoder); val violations = \
-         read.validationIssues(); if (violations.isNotEmpty()) throw TideRefusal(violations); \
-         return read } }"
+         read.validationIssues(); if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, TideRefusal(violations)); \
+         return read } }",
+    ].concat()
     );
 }
 

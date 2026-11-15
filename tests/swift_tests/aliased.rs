@@ -64,8 +64,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
             "{} public enum Swell: String, Codable, Sendable {{ case ebb = \"Ebb\"; case flood = \
              \"Flood\"; public init?(rawValue: String) {{ switch rawValue {{ case \"Ebb\", \"Low\", \
              \"Neap\": self = .ebb; case \"Flood\": self = .flood; default: return nil }} }}; {} \
-             public func validate() -> [String] {{ [] }}; public func \
-             swiftSchemaValidateBound() -> [String] {{ [] }} }}",
+             public func validate() -> [String] {{ [] }} }}",
             refusal("Swell"),
             plain_enum_reads("Swell"),
         ),
@@ -164,13 +163,13 @@ fn a_struct_with_no_alias_is_read_as_it_was() {
          self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
          decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = \
          validationIssues(); if !violations.isEmpty { throw PennonRefusal(issues: { () -> \
-         [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? \
-         $0.stringValue }.joined(separator: \".\"); return at.isEmpty ? violations : \
+         [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? \
+         $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \
          violations.map { said in guard said.hasPrefix(\"'\"), let end = \
          said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; return \
          \"'\\(at).\\(said[said.index(after: said.startIndex)..<end])'\\(said[said.index(after: \
          end)...])\" } }()) } }; public func validationIssues() -> [String] { [] }; public func \
-         swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> Pennon { \
+         validate() throws -> Pennon { \
          let found = validationIssues(); if !found.isEmpty { throw PennonRefusal(issues: found) \
          }; return Pennon(draft: self) }; public var valid: Pennon { Pennon(draft: self) } };",
         "the text of a struct with no alias"
@@ -190,10 +189,10 @@ fn each_read_of_a_member_under_its_key_takes_the_key_found() {
         "if aliased.contains(countKey) { self.count = try aliased.decode(SwiftSchemaFit<UInt32>.self, forKey: countKey).value } else { let countDefaultPayload = try JSONSerialization.jsonObject(with: \
          Data(\"0\".utf8), options: [.fragmentsAllowed]); self.count = try \
          SwiftSchemaPayload.read(UInt32.self, from: countDefaultPayload, at: aliased.codingPath + \
-         [countKey]) };",
+         [countKey], within: decoder) };",
         "let markPayload = try aliased.decode(SwiftSchemaPayload.self, forKey: markKey).value; \
          self.mark = try SwiftSchemaPayload.read(String.self, from: unpadded(markPayload), at: \
-         aliased.codingPath + [markKey]);",
+         aliased.codingPath + [markKey], within: decoder);",
         "if aliased.contains(spareKey), try !aliased.decodeNil(forKey: spareKey) { self.spare = \
          try Spud(swiftSchemaUnjudged: aliased.superDecoder(forKey: spareKey)) } else { \
          self.spare = nil };",

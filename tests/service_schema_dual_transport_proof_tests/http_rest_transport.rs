@@ -2,7 +2,6 @@
 //! names.
 
 use crate::shadowing::{Box, Clone, Default, Err, None, Ok, Send, Sized, Some, Sync};
-use crate::tests::{ArchiveErrorDraft, GetVersionErrorDraft, RangeErrorDraft, ThumbnailErrorDraft};
 
 document_service_http_rest_dispatcher!();
 

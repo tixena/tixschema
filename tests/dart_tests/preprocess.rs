@@ -749,10 +749,9 @@ fn an_untagged_enum_calls_its_function_ahead_of_every_attempt() {
     assert_written(
         &reference,
         &format!(
-            "{}{{ final json = unwrapped(payload); try {{ final read = \
-             ReferenceNamed.fromJson(json as Map<String, dynamic>); if \
-             (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final read = \
-             ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; \
+            "{}{{ final json = unwrapped(payload); try {{ return \
+             ReferenceNamed.fromJson(json as Map<String, dynamic>); }} catch (_) {{}} try {{ \
+             return ReferenceNumbered({numbered}); \
              }} catch (_) {{}} throw FormatException('No variant of Reference matched'); }} \
              dynamic toJson();",
             draft("ReferenceDraft", "dynamic", "payload", ""),
@@ -838,10 +837,9 @@ fn a_name_the_read_declares_is_numbered_where_a_function_is_called_under_it() {
     assert_written(
         &counted_dart::dart_definition(),
         &format!(
-            "{}{{ try {{ return CountedText(json as String); }} catch (_) {{}} try {{ final read2 \
-             = CountedWhole({whole}); if (read2._bounds().isEmpty) return read2; }} \
-             catch (_) {{}} throw FormatException('No variant of Counted matched'); }} dynamic \
-             toJson();",
+            "{}{{ try {{ return CountedText(json as String); }} catch (_) {{}} try {{ return \
+             CountedWhole({whole}); }} catch (_) {{}} throw FormatException('No variant of \
+             Counted matched'); }} dynamic toJson();",
             draft("CountedDraft", "dynamic", "json", ""),
             whole = u32_held("read(json) as int")
         ),

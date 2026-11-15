@@ -91,7 +91,7 @@ fn an_enum_read_of_each_tagging_refuses_its_members_broken_rule() {
             "'Email.address': too short: minimum length is 3, got 2",
             "'address': too short: minimum length is 3, got 2",
             "'contact.address': too short: minimum length is 3, got 2",
-            "data did not match any variant of untagged enum UntaggedContact",
+            "'address': too short: minimum length is 3, got 2",
         ]
     );
 }

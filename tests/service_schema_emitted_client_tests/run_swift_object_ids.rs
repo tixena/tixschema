@@ -110,7 +110,7 @@ fn the_swift_text_hands_a_flattened_object_id_its_key_alone() {
             docketing_swift::swift_definition(),
             format!(
                 "{}self.oid = try SwiftSchemaPayload.read(ObjectId.self, from: oidPayload, at: \
-                 decoder.codingPath)",
+                 decoder.codingPath, within: decoder)",
                 kept("oid")
             ),
         ),
@@ -118,7 +118,7 @@ fn the_swift_text_hands_a_flattened_object_id_its_key_alone() {
             sigiled_swift::swift_definition(),
             format!(
                 "{}self.mark = try SwiftSchemaPayload.read(Sigil.self, from: markPayload, at: \
-                 decoder.codingPath)",
+                 decoder.codingPath, within: decoder)",
                 kept("mark")
             ),
         ),
@@ -126,7 +126,7 @@ fn the_swift_text_hands_a_flattened_object_id_its_key_alone() {
             sigillary_swift::swift_definition(),
             format!(
                 "{}self.oid = try SwiftSchemaPayload.read(SigillumType.self, from: oidPayload, \
-                 at: decoder.codingPath)",
+                 at: decoder.codingPath, within: decoder)",
                 kept("oid")
             ),
         ),
@@ -135,7 +135,7 @@ fn the_swift_text_hands_a_flattened_object_id_its_key_alone() {
             format!(
                 "if try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys.contains(where: \
                  {{ [\"$oid\"].contains($0.stringValue) }}) {{ do {{ {}self.oid = try \
-                 SwiftSchemaPayload.read(ObjectId.self, from: oidPayload, at: decoder.codingPath) \
+                 SwiftSchemaPayload.read(ObjectId.self, from: oidPayload, at: decoder.codingPath, within: decoder) \
                  }} catch {{ self.oid = nil }} }} else {{ self.oid = nil }}",
                 kept("oid")
             ),

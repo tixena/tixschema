@@ -407,11 +407,11 @@ fn a_field_hands_on_the_storage_of_each_map_with_no_try() {
                 "let wireDefaultedDefault = try \
                  SwiftSchemaPayload.read([@heldDefaultedKeyedMap@p].self, \
                  from: defaultedDefaultPayload, at: container.codingPath + \
-                 [CodingKeys.defaulted]); self.defaulted = wireDefaultedDefault.map { $0.storage } }",
+                 [CodingKeys.defaulted], within: decoder); self.defaulted = wireDefaultedDefault.map { $0.storage } }",
                 "let wireVerbatimLists = try \
                  SwiftSchemaPayload.read([@heldVerbatimListsKeyedMap@p].self, \
                  from: verbatim(verbatimListsPayload), at: container.codingPath + \
-                 [CodingKeys.verbatimLists]); \
+                 [CodingKeys.verbatimLists], within: decoder); \
                  self.verbatimLists = wireVerbatimLists.map { $0.storage } }",
                 "let wireFlagListsOrNone = self.flagListsOrNone.map { $0.map { \
                  @heldFlagListsOrNoneKeyedMap@p(storage: $0) } }; ",

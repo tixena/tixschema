@@ -8,8 +8,8 @@ pub const ANY_KEY: &str = "private struct SwiftSchemaAnyKey: CodingKey { var str
 
 /// The broken rules `violations` names, each placed under the coding path the value was read at.
 pub const PLACED: &str = concat!(
-    r#"{ () -> [String] in let at = decoder.codingPath.map { $0.intValue.map(String.init) ?? "#,
-    r#"$0.stringValue }.joined(separator: "."); return at.isEmpty ? violations : violations.map { "#,
+    r#"{ () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaOuter")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? "#,
+    r#"$0.stringValue }).joined(separator: "."); return at.isEmpty ? violations : violations.map { "#,
     r#"said in guard said.hasPrefix("'"), let end = said.dropFirst().firstIndex(of: "'") else { "#,
     r#"return "'\(at)': \(said)" }; return "'\(at).\(said[said.index(after: "#,
     r#"said.startIndex)..<end])'\(said[said.index(after: end)...])" } }()"#,

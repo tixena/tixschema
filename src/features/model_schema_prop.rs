@@ -140,17 +140,16 @@ impl LiteralValue {
 ///
 /// A field still generates both helpers into the schema module — `validate_{field}_value()`, which
 /// `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of
-/// their own accord. Only one position is hung with that hook automatically: a member of an
-/// `#[serde(untagged)]` enum, where whether the member is admissible is what chooses which variant
-/// the payload is. There the check runs as the member is read, exactly as it does under `anyOf`
-/// and `z.union` on the two schema surfaces the same type publishes: the enum's `validate()` runs
-/// once the variant has been chosen.
+/// their own accord. No position is hung with that hook automatically: a member of an
+/// `#[serde(untagged)]` enum is read as serde's derive reads it, by shape alone, and the enum's
+/// `validate()` judges the value once the variant has been chosen.
 ///
 /// A constrained *brand* is judged the same way. A message holding a branded field publishes a
 /// `validate()` that runs the brand's own validator and reports what it said under the field that
 /// held it — `'slug': too short: …`, the name being the message's to supply since the brand names
-/// none of its own. A member of an `#[serde(untagged)]` enum that holds a brand is held to the
-/// brand's bound as it is read, the bound choosing the variant.
+/// none of its own. A member of an `#[serde(untagged)]` enum that holds a brand reads it with no
+/// judgement, so the brand's bound never chooses the variant, and the enum's `validate()` judges
+/// the brand once the variant has been chosen.
 ///
 /// The same reach applies to a field whose type is an ordinary `#[model_schema()]` type: the
 /// holder's `validation_issues()` runs the one that type published and writes its report under the

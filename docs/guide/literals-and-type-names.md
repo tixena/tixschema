@@ -90,7 +90,33 @@ assert_eq!(serde_json::from_str::<Fixed>(r#"{"value":214}"#).unwrap().value, 214
 
 - **Every position holds it**: a struct's field, a variant's member under every tagging, a slot of a tuple struct and of a tuple variant, and a member read through `Option`, `Box`, `Rc`, `Arc`, `Cow` or a reference. An `Option` is held to it where it holds a value, and `None` stays valid. A literal on a member read through `RefCell`, `Cell`, `Mutex` or `RwLock` is refused at expansion: none implements `Deref`, so the validator cannot reach the value.
 - **A literal on a list holds each item**, as the TypeScript type `Array<"x">` and the Zod schema `z.array(z.literal("x"))` say: `'tags.1': not the literal "x", got y`.
-- **A member of an `#[serde(untagged)]` enum is held to it as the member is read**, so a literal chooses the variant, as Zod's union chooses it: a payload whose literal is not one variant's is tried against the next.
+- **A member of an `#[serde(untagged)]` enum is held to it once the variant is chosen.** A literal chooses no variant: serde chooses the variant by shape alone, as its derive does, and the enum's read then refuses the value with the literal's sentence:
+
+```rust
+#[model_schema(nonstrict)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrueArm {
+    pub advanced: bool,
+    pub formula: String,
+    #[model_schema_prop(literal = true)]
+    pub is_calculated: bool,
+}
+
+#[model_schema(nonstrict)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", untagged)]
+pub enum Calculated {
+    Computed(TrueArm),
+    NotCalculated {
+        #[model_schema_prop(literal = false)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        is_calculated: Option<bool>,
+    },
+}
+```
+
+`{"isCalculated": false, "advanced": false, "formula": "a + b"}` is read as `Computed`, the variant whose shape it fits, and refused with `'isCalculated': not the literal true, got false`. A payload with no `formula` is read as `NotCalculated`.
 - **A [recovering decode](recovering-decode.md#recovering-decode-decode_with)** lists a broken literal as one `Invalid` at the value that breaks it, each item of a list at its index.
 - **The Dart, Swift and Kotlin clients** hold it too: their [`validate()`](dart.md#validate-in-dart) refuses another value with the same sentence, and so does each client's read. A numeric literal is compared in the field's own type: an integer field as an integer.
 - **A literal on an `i64` or a `u64` is the `bigint`**, as the field is: `214n` in TypeScript and `{"type": "integer", "const": 214}` in the JSON Schema. See [A `u64` and an `i64` are a `bigint` in TypeScript](models.md#a-u64-and-an-i64-are-a-bigint-in-typescript).

@@ -30,8 +30,8 @@ use crate::field_type::get_field_def;
 use crate::field_type::held_literal;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
+use crate::utils::written_names;
 use crate::utils::written_type;
-use crate::utils::{record_undrafted_enum, written_names};
 use crate::utils::{type_parameters_in_scope, unclaimed_parameter};
 
 /// The most parameters a `new` takes unless the author asks for it with `new = true`, which is
@@ -67,6 +67,8 @@ pub struct Declared {
     /// Whether the item is a struct with no braces and no parameter.
     #[cfg(feature = "typescript")]
     pub unit: bool,
+    /// The variants of an enum, each with the `cfg` attributes it is under, in declaration order.
+    pub variants: Vec<(Vec<Attribute>, Ident)>,
 }
 
 /// Whether, and under which `cfg`, an item derives a trait the valid type writes itself.
@@ -181,6 +183,7 @@ pub struct ValidType<'parts> {
     pub rule_less: bool,
     pub serializes: Gate,
     pub units: UnitValues,
+    pub variants: Vec<(Vec<Attribute>, Ident)>,
     pub vis: &'parts Visibility,
 }
 
@@ -381,6 +384,7 @@ impl ValidType<'_> {
         let (valid_impl_generics, _, valid_where) = valid_generics.split_for_impl();
         let (conversion, constants, constructor) =
             (self.conversion(), self.constants(), self.constructor());
+        let (variant_method, variant_names, variants_used) = self.variant_items();
         let parameters = type_parameters_in_scope(self.generics);
         let handed = (!parameters.is_empty()).then(|| {
             super::parameter_walk::issues_with_delegated(
@@ -393,6 +397,8 @@ impl ValidType<'_> {
 
             impl #impl_generics #draft #type_generics #where_clause {
                 #issues
+
+                #variant_method
 
                 /// Judges the draft, and answers the valid value it makes or every rule it
                 /// breaks.
@@ -413,6 +419,8 @@ impl ValidType<'_> {
             }
 
             impl #valid_impl_generics #name #type_generics #valid_where {
+                #variant_names
+
                 /// What the draft's `validate()` would refuse, listed again.
                 pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
                     <#draft #type_generics>::validation_issues(self)
@@ -432,6 +440,8 @@ impl ValidType<'_> {
             #read
 
             #reads
+
+            #variants_used
         }
     }
 
@@ -537,6 +547,27 @@ impl ValidType<'_> {
                         .map(Self::model_schema_wrap_unjudged)
                         .map_err(relabel)
                 }
+
+                /// Reads one value from `deserializer` and judges it once: every broken rule, one
+                /// entry each, or the deserializer's own error as the one entry.
+                pub fn from_deserializer<'de, #reader>(deserializer: #reader) -> ::core::result::Result<Self, ::std::vec::Vec<::std::string::String>>
+                where
+                    #reader: ::serde::Deserializer<'de>,
+                    #draft #type_generics: ::serde::Deserialize<'de>,
+                {
+                    let read = match Self::model_schema_read_unjudged(deserializer) {
+                        ::core::result::Result::Ok(read) => read,
+                        ::core::result::Result::Err(refused) => {
+                            return ::core::result::Result::Err(::std::vec![::std::string::ToString::to_string(&refused)]);
+                        }
+                    };
+                    let found = read.validation_issues();
+                    if found.is_empty() {
+                        ::core::result::Result::Ok(read)
+                    } else {
+                        ::core::result::Result::Err(found)
+                    }
+                }
             }
 
             impl #read_impl_generics ::serde::Deserialize<'de> for #name #type_generics #read_where_clause {
@@ -574,6 +605,44 @@ impl ValidType<'_> {
             bounded.where_clause = syn::parse2(rewritten).ok();
         }
         bounded
+    }
+
+    /// What an enum with a draft publishes of its variants: `model_schema_variant()` for the
+    /// draft, `MODEL_SCHEMA_VARIANTS` for the valid type, and the unnamed constant that reads both
+    /// where the enum takes no parameter, so a private enum draws no warning for either.
+    fn variant_items(
+        &self,
+    ) -> (
+        Option<TokenStream>,
+        Option<TokenStream>,
+        Option<TokenStream>,
+    ) {
+        if self.variants.is_empty() {
+            return (None, None, None);
+        }
+        let (arms, names) = variant_arms(&self.variants);
+        let (name, draft) = (self.name, &self.draft);
+        let method = quote! {
+            /// The name of the variant this value is, as Rust declares it.
+            pub fn model_schema_variant(&self) -> &'static str {
+                match self {
+                    #arms
+                }
+            }
+        };
+        let list = quote! {
+            /// The name of each variant of the enum, as Rust declares it, in declaration order.
+            pub const MODEL_SCHEMA_VARIANTS: &'static [&'static str] = &[#names];
+        };
+        let used = self.generics.params.is_empty().then(|| {
+            quote! {
+                const _: () = {
+                    let _: fn(&#draft) -> &'static str = #draft::model_schema_variant;
+                    let _: &[&str] = #name::MODEL_SCHEMA_VARIANTS;
+                };
+            }
+        });
+        (Some(method), Some(list), used)
     }
 
     /// The write of the valid type: the draft's.
@@ -722,6 +791,94 @@ fn settled_literal(literal: Literal, rule_less: bool) -> TokenTree {
 /// Whether rustc takes `name` as an upper case name for a constant: it holds no lower case letter.
 fn is_upper_case(name: &Ident) -> bool {
     !name.unraw().to_string().chars().any(char::is_lowercase)
+}
+
+/// The variants of `item`, where it is an enum, each with the `cfg` attributes it is under.
+fn variants_of(item: &syn::Item) -> Vec<(Vec<Attribute>, Ident)> {
+    let syn::Item::Enum(item_enum) = item else {
+        return Vec::new();
+    };
+    item_enum
+        .variants
+        .iter()
+        .map(|variant| {
+            let cfgs = variant
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"))
+                .cloned()
+                .collect();
+            (cfgs, variant.ident.clone())
+        })
+        .collect()
+}
+
+/// The arms of `model_schema_variant()`, and the names `MODEL_SCHEMA_VARIANTS` lists: each
+/// variant's name as Rust declares it, under the `cfg` attributes the variant is.
+fn variant_arms(variants: &[(Vec<Attribute>, Ident)]) -> (TokenStream, TokenStream) {
+    let mut arms = TokenStream::new();
+    let mut names = TokenStream::new();
+    for (cfgs, variant) in variants {
+        let text = variant.unraw().to_string();
+        arms.extend(quote! { #(#cfgs)* Self::#variant { .. } => #text, });
+        names.extend(quote! { #(#cfgs)* #text, });
+    }
+    (arms, names)
+}
+
+/// What every enum publishes of its variants, which a service reads to name one without matching
+/// on it: `model_schema_variant()`, the name of the variant a value is, and `MODEL_SCHEMA_VARIANTS`,
+/// the name of each variant in declaration order. Both are written on the type the enum is, where
+/// it has no draft; with a draft, the method is the draft's, which the valid type reaches through
+/// its `Deref`, and the list is the valid type's.
+pub fn undrafted_variants(variants: &[(Vec<Attribute>, Ident)]) -> TokenStream {
+    if variants.is_empty() {
+        return TokenStream::new();
+    }
+    let (arms, names) = variant_arms(variants);
+    quote! {
+        /// The name of each variant of the enum, as Rust declares it, in declaration order.
+        pub const MODEL_SCHEMA_VARIANTS: &'static [&'static str] = &[#names];
+
+        /// The name of the variant this value is, as Rust declares it.
+        pub fn model_schema_variant(&self) -> &'static str {
+            match self {
+                #arms
+            }
+        }
+    }
+}
+
+/// The refusal of `new = true` on a tuple struct with a slot under `#[cfg]`, which gets no `new`,
+/// spanned on the `#[cfg]` of the first such slot.
+pub fn new_refusals(item: &syn::Item, new_by: NewBy) -> Vec<TokenStream> {
+    let syn::Item::Struct(item_struct) = item else {
+        return Vec::new();
+    };
+    let syn::Fields::Unnamed(fields) = &item_struct.fields else {
+        return Vec::new();
+    };
+    if new_by != NewBy::Written {
+        return Vec::new();
+    }
+    fields
+        .unnamed
+        .iter()
+        .enumerate()
+        .find_map(|(slot, field)| {
+            let cfg = field.attrs.iter().find(|attr| attr.path().is_ident("cfg"))?;
+            let condition = cfg
+                .parse_args::<TokenStream>()
+                .map(|condition| condition.to_string())
+                .unwrap_or_default();
+            let message = format!(
+                "model_schema: `new = true` on `{}`: slot {slot} is under `#[cfg({condition})]`, and a tuple struct with a slot under `#[cfg]` gets no generated `new`. Write `new = false`.",
+                item_struct.ident
+            );
+            Some(syn::Error::new_spanned(cfg, message).to_compile_error())
+        })
+        .into_iter()
+        .collect()
 }
 
 /// The fields of `item`, read before the expansion strips the `literal` keys that fix some.
@@ -1059,13 +1216,11 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
         name,
         origin,
         serializes: gate_of(attrs, "Serialize"),
+        variants: variants_of(item),
         checked,
         #[cfg(feature = "typescript")]
         unit: matches!(item, syn::Item::Struct(item_struct) if item_struct.generics.params.is_empty() && matches!(item_struct.fields, syn::Fields::Unit)),
     };
-    if let Some(declared_name) = &declared.name {
-        record_undrafted_enum(&declared_name.to_string(), declared.origin == Origin::Plain);
-    }
     #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
     if let Some(declared_name) = &declared.name {
         record_drafted_type(
@@ -1149,8 +1304,59 @@ pub fn renames_the_container(attrs: &[Attribute]) -> bool {
         })
 }
 
+/// `from_deserializer` of a type that is its own valid type, a brand or an enum with no check:
+/// the value `deserializer` holds, or every rule it breaks, one entry each, where the type judges
+/// its read, or the deserializer's own error as the one entry. Nothing where the type derives no
+/// `Deserialize`. A type that takes parameters answers the read of its own `Deserialize`, with
+/// the one entry it refuses with.
+#[cfg(feature = "serde")]
+pub fn own_from_deserializer(
+    generics: &Generics,
+    judged: bool,
+    reads: &Gate,
+) -> Option<TokenStream> {
+    let reader = unclaimed_parameter("D", &written_names(quote!(#generics)));
+    let body = if judged && generics.params.is_empty() {
+        quote! {
+            let read = match Self::model_schema_read_unjudged(deserializer) {
+                ::core::result::Result::Ok(read) => read,
+                ::core::result::Result::Err(refused) => {
+                    return ::core::result::Result::Err(::std::vec![::std::string::ToString::to_string(&refused)]);
+                }
+            };
+            let found = read.validation_issues();
+            if found.is_empty() {
+                ::core::result::Result::Ok(read)
+            } else {
+                ::core::result::Result::Err(found)
+            }
+        }
+    } else {
+        quote! {
+            <Self as ::serde::Deserialize<'de>>::deserialize(deserializer)
+                .map_err(|refused| ::std::vec![::std::string::ToString::to_string(&refused)])
+        }
+    };
+    reads.guard(quote! {
+        /// Reads one value from `deserializer` and judges it once: every broken rule, one entry
+        /// each, or the deserializer's own error as the one entry.
+        pub fn from_deserializer<'de, #reader>(deserializer: #reader) -> ::core::result::Result<Self, ::std::vec::Vec<::std::string::String>>
+        where
+            #reader: ::serde::Deserializer<'de>,
+            Self: ::serde::Deserialize<'de>,
+        {
+            #body
+        }
+    })
+}
+
 /// The methods a type with no draft has: the rules it breaks, and `validate()` where it has rules.
-pub fn undrafted_methods(issues: &TokenStream, publishes: bool) -> TokenStream {
+pub fn undrafted_methods(
+    issues: &TokenStream,
+    publishes: bool,
+    variants: &[(Vec<Attribute>, Ident)],
+    from_deserializer: Option<&TokenStream>,
+) -> TokenStream {
     let validate = publishes.then(|| {
         quote! {
             /// Validates all constrained fields and returns all validation errors.
@@ -1164,10 +1370,15 @@ pub fn undrafted_methods(issues: &TokenStream, publishes: bool) -> TokenStream {
             }
         }
     });
+    let listed = undrafted_variants(variants);
     quote! {
         #issues
 
         #validate
+
+        #listed
+
+        #from_deserializer
     }
 }
 

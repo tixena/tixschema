@@ -166,7 +166,7 @@ fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
             "if container.contains(.moored) { self.moored = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .moored).map({ $0.value }) } else { let mooredDefaultPayload = try \
              JSONSerialization.jsonObject(with: Data(\"[]\".utf8), options: \
              [.fragmentsAllowed]); self.moored = try SwiftSchemaPayload.read([Moored].self, \
-             from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored]) }"
+             from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored], within: decoder) }"
         ),
         "{basin}"
     );
@@ -182,7 +182,7 @@ fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json(
             "else { let vecDefaultPayload = try JSONSerialization.jsonObject(with: \
              Data(\"[]\".utf8), options: [.fragmentsAllowed]); self.vec = try \
              SwiftSchemaPayload.read([Link<IdType>].self, from: vecDefaultPayload, at: \
-             container.codingPath + [CodingKeys.vec]) }"
+             container.codingPath + [CodingKeys.vec], within: decoder) }"
         ),
         "{fleet}"
     );
@@ -192,7 +192,7 @@ fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json(
             "else { let hashMapDefaultPayload = try JSONSerialization.jsonObject(with: \
              Data(\"{}\".utf8), options: [.fragmentsAllowed]); self.hashMap = try \
              SwiftSchemaPayload.read([String: Link<IdType>].self, from: hashMapDefaultPayload, \
-             at: container.codingPath + [CodingKeys.hashMap]) }"
+             at: container.codingPath + [CodingKeys.hashMap], within: decoder) }"
         ),
         "{logbook}"
     );

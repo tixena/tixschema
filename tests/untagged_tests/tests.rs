@@ -1725,7 +1725,7 @@ fn test_untagged_member_constraint_is_enforced_on_deserialize() {
 }
 
 #[test]
-fn test_untagged_member_constraint_decides_which_variant_is_read() {
+fn test_untagged_member_constraint_does_not_decide_which_variant_is_read() {
     assert_eq!(
         serde_json::from_str::<CheckedThenLooseUnion>(r#"{"name":"ab"}"#).unwrap(),
         CheckedThenLooseUnionDraft::Checked {
@@ -1735,12 +1735,11 @@ fn test_untagged_member_constraint_decides_which_variant_is_read() {
         .unwrap()
     );
     assert_eq!(
-        serde_json::from_str::<CheckedThenLooseUnion>(r#"{"name":"A"}"#).unwrap(),
-        CheckedThenLooseUnionDraft::Loose {
-            name: "A".to_owned()
-        }
-        .validate()
-        .unwrap()
+        serde_json::from_str::<CheckedThenLooseUnion>(r#"{"name":"A"}"#)
+            .unwrap_err()
+            .to_string(),
+        "'name': too short: minimum length is 2, got 1",
+        "the first variant the shape fits is the one read, and its bound refuses the value"
     );
 }
 
@@ -1777,8 +1776,8 @@ fn test_the_bound_runs_on_an_untagged_read_and_on_a_tagged_twins() {
         serde_json::from_str::<SoleConstrainedUnion>(r#"{"slug":"A"}"#)
             .unwrap_err()
             .to_string(),
-        "data did not match any variant of untagged enum SoleConstrainedUnion",
-        "no variant accepted the value, so the payload is not a message of this type at all"
+        "'slug': too short: minimum length is 2, got 1; 'slug': does not match pattern '^[a-z]+$'",
+        "the shape fits the one variant, so the payload is that variant and the bounds are what it failed"
     );
     assert_eq!(
         serde_json::from_str::<SoleConstrainedTagged>(r#"{"kind":"Slug","slug":"A"}"#)
@@ -1851,8 +1850,7 @@ fn read_mime_type(text: &str) -> Result<MimeType, String> {
 }
 
 #[test]
-fn test_untagged_slot_constraint_decides_which_variant_is_read() {
-    let no_variant = "data did not match any variant of untagged enum MimeType".to_owned();
+fn test_untagged_slot_constraint_does_not_decide_which_variant_is_read() {
     assert_eq!(
         read_mime_type("text/csv"),
         Ok(MimeTypeDraft::Other("text/csv".to_owned())
@@ -1863,13 +1861,22 @@ fn test_untagged_slot_constraint_decides_which_variant_is_read() {
         read_mime_type("application/pdf"),
         Ok(MimeTypeDraft::Known(KnownMimeType::Pdf).validate().unwrap())
     );
-    for refused in [
-        String::new(),
-        format!("a/{}", "b".repeat(126)),
-        "Text/CSV".to_owned(),
-    ] {
-        assert_eq!(read_mime_type(&refused), Err(no_variant.clone()));
-    }
+    assert_eq!(
+        read_mime_type(""),
+        Err(
+            "too short: minimum length is 1, got 0; does not match pattern \
+             '^[a-z]+/[a-z0-9.+-]+$'"
+                .to_owned()
+        )
+    );
+    assert_eq!(
+        read_mime_type(&format!("a/{}", "b".repeat(126))),
+        Err("too long: maximum length is 127, got 128".to_owned())
+    );
+    assert_eq!(
+        read_mime_type("Text/CSV"),
+        Err("does not match pattern '^[a-z]+/[a-z0-9.+-]+$'".to_owned())
+    );
 }
 
 #[test]
@@ -2048,12 +2055,15 @@ fn test_each_untagged_slot_check_reaches_zod_alone() {
 
 #[test]
 fn test_untagged_numeric_slot_is_held_to_its_range() {
-    for refused in ["0", "11"] {
+    for (refused, said) in [
+        ("0", "too small: minimum is 1, got 0"),
+        ("11", "too large: maximum is 10, got 11"),
+    ] {
         assert_eq!(
             serde_json::from_str::<CountArm>(refused)
                 .unwrap_err()
                 .to_string(),
-            "data did not match any variant of untagged enum CountArm"
+            said
         );
     }
     assert_eq!(
@@ -2184,8 +2194,7 @@ fn read_content_kind(text: &str) -> Result<ContentKind, String> {
 }
 
 #[test]
-fn test_an_untagged_enums_own_check_decides_which_variant_is_read() {
-    let no_variant = "data did not match any variant of untagged enum ContentKind".to_owned();
+fn test_an_untagged_enums_own_check_does_not_decide_which_variant_is_read() {
     assert_eq!(
         read_content_kind("text/csv"),
         Ok(ContentKindDraft::Other("text/csv".to_owned())
@@ -2196,9 +2205,14 @@ fn test_an_untagged_enums_own_check_decides_which_variant_is_read() {
         read_content_kind("application/pdf"),
         Ok(ContentKindDraft::Known(KnownKind::Pdf).validate().unwrap())
     );
-    for refused in [String::new(), "a".repeat(21)] {
-        assert_eq!(read_content_kind(&refused), Err(no_variant.clone()));
-    }
+    assert_eq!(
+        read_content_kind(""),
+        Err("too short: minimum length is 1, got 0".to_owned())
+    );
+    assert_eq!(
+        read_content_kind(&"a".repeat(21)),
+        Err("too long: maximum length is 20, got 21".to_owned())
+    );
 }
 
 #[test]
@@ -2474,11 +2488,9 @@ fn test_serde_writes_and_reads_the_same_null_for_a_declared_untagged_unit_varian
 }
 
 #[test]
-fn test_the_read_of_an_untagged_list_member_counts_it_to_choose_the_variant() {
+fn test_the_read_of_an_untagged_list_member_does_not_count_it_to_choose_the_variant() {
     for (stored, read) in [
         ("[1,2]", CountedUnionDraft::Exact(vec![1, 2])),
-        ("[1,2,3]", CountedUnionDraft::Loose(vec![1, 2, 3])),
-        ("[]", CountedUnionDraft::Loose(Vec::new())),
         (
             r#"{"items":["long enough"]}"#,
             CountedUnionDraft::Listed {
@@ -2493,10 +2505,22 @@ fn test_the_read_of_an_untagged_list_member_counts_it_to_choose_the_variant() {
             "for {stored}"
         );
     }
-    assert!(
-        serde_json::from_str::<CountedUnion>(r#"{"items":[]}"#).is_err(),
-        "an empty list breaks the one member an object could be"
-    );
+    for (stored, said) in [
+        ("[1,2,3]", "too long: maximum length is 2, got 3"),
+        ("[]", "too short: minimum length is 2, got 0"),
+        (
+            r#"{"items":[]}"#,
+            "'items': too short: minimum length is 1, got 0",
+        ),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<CountedUnion>(stored)
+                .unwrap_err()
+                .to_string(),
+            said,
+            "for {stored}"
+        );
+    }
 
     assert_eq!(
         serde_json::from_str::<OneOrMany<u32>>("[1,2]").unwrap(),
@@ -2506,14 +2530,23 @@ fn test_the_read_of_an_untagged_list_member_counts_it_to_choose_the_variant() {
         serde_json::from_str::<OneOrMany<u32>>("7").unwrap(),
         OneOrManyDraft::One(7).validate().unwrap()
     );
-    assert!(
-        serde_json::from_str::<OneOrMany<u32>>("[1]").is_err(),
-        "one item is too few to be many, and a list is no number"
+    assert_eq!(
+        serde_json::from_str::<OneOrMany<u32>>("[1]")
+            .unwrap_err()
+            .to_string(),
+        "too short: minimum length is 2, got 1"
     );
     assert_eq!(
         serde_json::from_str::<OneOrMany<Vec<u32>>>("[1]").unwrap(),
         OneOrManyDraft::One(vec![1]).validate().unwrap(),
-        "the count sends a short list on to the next member"
+        "a list of numbers is not the shape of a list of lists"
+    );
+    assert_eq!(
+        serde_json::from_str::<OneOrMany<Vec<u32>>>("[[1]]")
+            .unwrap_err()
+            .to_string(),
+        "too short: minimum length is 2, got 1",
+        "the shape fits the first member, whose count refuses the list"
     );
 }
 
