@@ -53,6 +53,26 @@ use crate::utils::{
 #[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
+/// The private function a map's wrapper writes a float key's text with, as serde does: the
+/// shortest digits of `shortest`, which a `Double` or a `Float` describes itself as, laid out
+/// plainly from `0.00001` to below `1e16` with `.0` where they hold no fraction, and as `d.ddde+N`
+/// or `e-N` outside that.
+const KEY_TEXT_WRITE: &str = "private static func swiftSchemaKeyText(_ shortest: String) -> String \
+     { let negative = shortest.hasPrefix(\"-\"); let unsigned = negative ? String(shortest.dropFirst()) \
+     : shortest; guard let first = unsigned.first, first.isNumber else { return shortest }; let \
+     parts = unsigned.split(separator: \"e\"); let mantissa = String(parts[0]); let point = \
+     mantissa.firstIndex(of: \".\").map { mantissa.distance(from: mantissa.startIndex, to: $0) } ?? \
+     mantissa.count; var digits = String(mantissa.filter { $0 != \".\" }); var at = point - 1 + \
+     (parts.count > 1 ? Int(parts[1]) ?? 0 : 0); let lead = digits.prefix { $0 == \"0\" }.count; \
+     let sign = negative ? \"-\" : \"\"; if lead == digits.count { return sign + \"0.0\" }; digits = \
+     String(digits.dropFirst(lead)); at -= lead; while digits.count > 1 && digits.hasSuffix(\"0\") \
+     { digits.removeLast() }; if at >= 0 && at <= 15 { let plain = digits + \
+     String(repeating: \"0\", count: max(0, at + 1 - digits.count)); let rest = \
+     String(digits.dropFirst(at + 1)); return sign + plain.prefix(at + 1) + \".\" + (rest.isEmpty ? \
+     \"0\" : rest) }; if at >= -5 && at < 0 { return sign + \"0.\" + String(repeating: \"0\", count: \
+     -at - 1) + digits }; return sign + digits.prefix(1) + (digits.count > 1 ? \".\" + \
+     digits.dropFirst() : \"\") + \"e\" + (at > 0 ? \"+\" : \"\") + String(at) }; ";
+
 /// Appended to a formatted date: chrono writes a date of whole seconds with no fraction.
 #[cfg(feature = "chrono")]
 pub const CHRONO_WHOLE_SECONDS: &str = ".replacingOccurrences(of: \".000Z\", with: \"Z\")";
@@ -339,6 +359,11 @@ enum LeafConversion {
     /// A map whose key is not written as a JSON object key can decode directly: `wrapper` names
     /// the per-field struct that carries the string round trip.
     MapWrapper(String),
+    /// A `DateTime<Tz>` field under `as_number`: the wire is the `Int64` of epoch milliseconds,
+    /// read through `SwiftSchemaMillis`, which refuses a float and a number serde cannot read as a
+    /// timestamp in the words serde uses for one.
+    #[cfg(feature = "chrono")]
+    Millis,
     /// The leaf reads and writes exactly as its own Swift type spells it.
     None,
     /// A text of one form: read as the Zod schema of the form reads it, and written in the form
@@ -1295,7 +1320,7 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
             let swift_type = swift_map_key_scalar(key);
             (
                 Some(format!("{swift_type}(number)")),
-                format!("\"\\({held})\""),
+                format!("Self.swiftSchemaKeyText(\"\\({held})\")"),
             )
         }
         FieldDefType::Char => (None, forms::sent_call(TextForm::Char, held)),
@@ -1418,6 +1443,9 @@ fn map_key_wrapper_struct(
     let mut helpers = read::helpers_for(&format!("{own_read}{entries}"));
     if bound_key.contains("swiftSchemaKeyNumber(") {
         helpers.push_str(&key_number_read());
+    }
+    if encode_key.contains("swiftSchemaKeyText(") {
+        helpers.push_str(KEY_TEXT_WRITE);
     }
     format!(
         "public struct {wrapper_name}{generic_params}: Codable, Sendable {{ \
@@ -1842,7 +1870,11 @@ fn direct_shape(swift_type: String) -> SwiftFieldShape {
 #[cfg(feature = "chrono")]
 fn datetime_shape(field: &FieldDef) -> SwiftFieldShape {
     if has_as_number(field) {
-        direct_shape("Int64".to_owned())
+        SwiftFieldShape {
+            leaf_conversion: LeafConversion::Millis,
+            real_leaf: "Int64".to_owned(),
+            wire_leaf: "SwiftSchemaMillis".to_owned(),
+        }
     } else {
         SwiftFieldShape {
             leaf_conversion: LeafConversion::DateTimePlain,
@@ -2541,6 +2573,8 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::DateTimePlain => {
             format!("try Self.swiftSchemaParseIso8601Date({expr}, codingPath: decoder.codingPath)")
         }
+        #[cfg(feature = "chrono")]
+        LeafConversion::Millis => format!("{expr}.value"),
         LeafConversion::Text(form) => forms::read_call(*form, expr, "decoder.codingPath"),
         LeafConversion::Values(value) => format!(
             "{}{expr}.mapValues {{ {} }}",
@@ -2558,6 +2592,8 @@ fn throws(conversion: &LeafConversion) -> bool {
         LeafConversion::DateTimePlain => true,
         LeafConversion::Text(_) => true,
         LeafConversion::Values(value) => throws(&value.shape.leaf_conversion),
+        #[cfg(feature = "chrono")]
+        LeafConversion::Millis => false,
         LeafConversion::MapWrapper(_) | LeafConversion::None => false,
     }
 }
@@ -2569,7 +2605,7 @@ fn writes_throw(conversion: &LeafConversion) -> bool {
         LeafConversion::Text(_) => true,
         LeafConversion::Values(value) => writes_throw(&value.shape.leaf_conversion),
         #[cfg(feature = "chrono")]
-        LeafConversion::DateTimePlain => false,
+        LeafConversion::DateTimePlain | LeafConversion::Millis => false,
         LeafConversion::MapWrapper(_) | LeafConversion::None => false,
     }
 }
@@ -2602,6 +2638,8 @@ fn encode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
         LeafConversion::MapWrapper(wrapper) => format!("{wrapper}(storage: {expr})"),
         #[cfg(feature = "chrono")]
         LeafConversion::DateTimePlain => format!("Self.swiftSchemaFormatIso8601Date({expr})"),
+        #[cfg(feature = "chrono")]
+        LeafConversion::Millis => format!("SwiftSchemaMillis(value: {expr})"),
         LeafConversion::Text(form) => forms::sent_call(*form, expr),
         LeafConversion::Values(value) => write_tried(
             shape,
@@ -3522,6 +3560,8 @@ fn reads_a_date(shape: &SwiftFieldShape) -> bool {
     match &shape.leaf_conversion {
         LeafConversion::DateTimePlain => true,
         LeafConversion::Values(value) => reads_a_date(&value.shape),
+        #[cfg(feature = "chrono")]
+        LeafConversion::Millis => false,
         LeafConversion::MapWrapper(_) | LeafConversion::None | LeafConversion::Text(_) => false,
     }
 }
@@ -3565,7 +3605,7 @@ fn text_forms_of(shape: &SwiftFieldShape, found: &mut Vec<TextForm>) {
         }
         LeafConversion::Values(value) => text_forms_of(&value.shape, found),
         #[cfg(feature = "chrono")]
-        LeafConversion::DateTimePlain => {}
+        LeafConversion::DateTimePlain | LeafConversion::Millis => {}
         LeafConversion::MapWrapper(_) | LeafConversion::None => {}
     }
 }

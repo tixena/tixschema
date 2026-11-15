@@ -2,7 +2,7 @@
 //! that builds a plain-terms request from the operation's own message and decodes the answer by
 //! status.
 
-use super::dart_ws_client::{signed_zeros_call, signed_zeros_fn};
+use super::dart_ws_client::{read_text_call, read_text_fn};
 use super::result::result_name;
 use super::{on_one_line, text_types};
 use crate::features::dart::{
@@ -97,11 +97,11 @@ const RESPONSE_RECORD_FIELDS: &str =
 const REQUEST_RECORD_FIELDS: &str = "{String method, String path, String query, \
      List<(String, String)> headers, List<int> body, List<(String, dynamic)> parts}";
 
-/// What a method reads the response's body as, its text passed through [`signed_zeros_fn`].
+/// What a method reads the response's body as, its text passed through [`read_text_fn`].
 fn response_json(fn_prefix: &str) -> String {
     format!(
-        "jsonDecode({}(utf8.decode(response.body)))",
-        signed_zeros_call(fn_prefix, "Http")
+        "{}(utf8.decode(response.body))",
+        read_text_call(fn_prefix, "Http")
     )
 }
 
@@ -1025,7 +1025,7 @@ fn fault_helpers(service: &ServiceDef, named: &str, fn_prefix: &str) -> Vec<Stri
         transport_failure_fn(named, fn_prefix),
         undeserializable_payload_fn(named, fn_prefix),
         fault_from_body_fn(named, fn_prefix),
-        signed_zeros_fn(&signed_zeros_call(fn_prefix, "Http")),
+        read_text_fn(&read_text_call(fn_prefix, "Http")),
     ]);
     if declares_header_in(service) {
         helpers.push(legal_header_value_fn(fn_prefix));
@@ -1195,14 +1195,14 @@ fn undeserializable_payload_fn(named: &str, fn_prefix: &str) -> String {
 
 fn fault_from_body_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
-    let signed_zeros = signed_zeros_call(fn_prefix, "Http");
+    let read_text = read_text_call(fn_prefix, "Http");
     format!(
         "/// Reads a fixed fault status's own body back into a `{fields}`, through the same\n\
          /// `fromJson` every other surface reads it with. A body that does not read as the fixed\n\
          /// fault shape is itself a defect, answered as one.\n\
          {fields} _{fn_prefix}HttpFaultFromBody(String operation, List<int> body) {{\n  \
          try {{\n    \
-         return {fields}.fromJson(jsonDecode({signed_zeros}(utf8.decode(body))));\n  \
+         return {fields}.fromJson({read_text}(utf8.decode(body)));\n  \
          }} catch (_) {{\n    \
          return _{fn_prefix}HttpUndeserializablePayload(\n      \
          operation,\n      \

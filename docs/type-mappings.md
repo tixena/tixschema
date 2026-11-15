@@ -109,7 +109,7 @@ which Dart, Kotlin and Swift read it as (Swift holds every integer key, an `isiz
 the same wrapper, and no key to a native `[Int: Value]`). Zod's own key grammar has no exponent,
 so `zod_number_keys_read` hands the record a float key written with one as the plain decimal text
 of its number (`ZOD_FLOAT_KEY_COLLECT`), and the record holds the key as the number it reads;
-every other key stays as written. A JavaScript object keeps no difference between `1000` and
+every other key stays as written. Dart, Kotlin and Swift write a float key in the text serde writes: the shortest digits, plainly from `0.00001` to below `1e16` with `.0` where they hold no fraction, and as `1e+39`, `1e-7` beyond (`float_key_text` in Dart, `FLOATING` in Kotlin, `KEY_TEXT_WRITE` in Swift), which the platform's own number text does not (Kotlin's `1.0E39`, Swift's `1e-07`, Dart's `10000000000000000.0`); `number_key_rows.rs` holds each client's write of every key of `F64_KEYS` and `F32_KEYS` to serde's. A JavaScript object keeps no difference between `1000` and
 `1000.0`, nor between `0` and `-0`, so the key a TypeScript attachment writes back is the number's
 own text.
 

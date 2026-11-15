@@ -188,7 +188,8 @@ fn a_core_type_a_member_takes_the_name_of_is_named_through_a_typedef() {
         "{measured}"
     );
     assert!(
-        measured.contains("(json['ratio'] as _Measured$num).toDouble()"),
+        measured.contains("(switch (json['ratio']) { final BigInt held => held.toDouble(), final _Measured$num held => \
+         held.toDouble(), final other => (other as _Measured$num).toDouble() })"),
         "{measured}"
     );
     assert!(

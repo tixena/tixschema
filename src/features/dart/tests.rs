@@ -137,7 +137,7 @@ fn a_u64_and_an_i64_are_ints_read_and_written_as_numbers() {
         assert!(dart.contains(expected), "missing `{expected}` in: {dart}");
     }
     assert!(
-        !dart.contains("BigInt"),
+        !dart.contains("BigInt big") && !dart.contains("BigInt signed"),
         "a `u64` is held as an `int`: {dart}"
     );
 }

@@ -292,7 +292,7 @@ to keep.
   written with `[0-9]` for `\d`: Foundation's `\d` takes a digit of any script. A `DateTime<Tz>`
   is a `Date`, read by a formatter with a fraction of a second or by one without
   (`swiftSchemaWholeIso8601Formatter`, `isoWholeFormatterForKeys`), and written by the first with the `.000Z` of a date of whole seconds written as `Z`, as chrono writes it (`CHRONO_WHOLE_SECONDS`; the formatter options are `FRACTIONAL_OPTIONS` and `WHOLE_OPTIONS`, shared by the field helpers, the key wrapper and `validate()`'s `key_text`). A wrapper of a date key refuses a second key that reads as the first, which Swift's millisecond makes one; under
-  `as_number` it is an `Int64` read and written as the number serde writes.
+  `as_number` it is an `Int64` read and written as the number serde writes, through `SwiftSchemaMillis` (`LeafConversion::Millis`, `MILLIS`), which words a float and an integer above an `i64` as serde does for a timestamp: ``expected a unix timestamp in milliseconds`` and ``value is not a legal timestamp: 9223372036854775808``.
   `run_swift_text_forms.rs` reads `TEXT_FORMS` under the toolchain, and `run_swift_wire_forms.rs`
   writes `WIRE_FORMS`.
 - **A member serde never writes is read and encoded under no key.** `SwiftField::never_written`

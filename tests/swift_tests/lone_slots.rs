@@ -544,9 +544,11 @@ fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
         &ticked_millis_swift::swift_definition(),
         &[
             "public var value: Int64; ",
-            "let container = try decoder.singleValueContainer(); \
-             self.value = try container.decode(SwiftSchemaFit<Int64>.self).value }; ",
-            WRITTEN,
+            "let container = try decoder.singleValueContainer(); self.value = try { \
+             let wireValue = try container.decode(SwiftSchemaMillis.self); \
+             return wireValue.value }() }; ",
+            "public func encode(to encoder: Encoder) throws { let written = \
+             SwiftSchemaMillis(value: value); try written.encode(to: encoder) }; ",
         ],
     );
     holds(

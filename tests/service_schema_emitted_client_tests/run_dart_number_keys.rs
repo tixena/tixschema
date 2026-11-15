@@ -8,10 +8,10 @@
 use core::fmt::Write as _;
 
 use super::number_key_rows::{
-    adjacent_pier_dart, anchor_dart, beacon_dart, burgee_dart, cutter_dart, depths_dart,
-    dinghy_dart, float_texts_serde_refuses, gauge_dart, hull_dart, ketch_dart, lanyard_dart,
-    moorings_dart, pennant_dart, pier_dart, rows, rudder_dart, shoal_dart, signal_dart, skiff_dart,
-    slips_dart, sloop_dart, soundings_dart, yawl_dart,
+    adjacent_pier_dart, anchor_dart, beacon_dart, buoy_dart, buoys_dart, burgee_dart, cutter_dart,
+    depths_dart, dinghy_dart, float_key_rows, float_texts_serde_refuses, gauge_dart, hull_dart,
+    ketch_dart, lanyard_dart, moorings_dart, pennant_dart, pier_dart, rows, rudder_dart,
+    shoal_dart, signal_dart, skiff_dart, slips_dart, sloop_dart, soundings_dart, yawl_dart,
 };
 use super::run_dart_validate::{dart, module};
 
@@ -41,6 +41,8 @@ fn definitions() -> Vec<String> {
     vec![
         adjacent_pier_dart::dart_definition(),
         beacon_dart::dart_definition(),
+        buoy_dart::dart_definition(),
+        buoys_dart::dart_definition(),
         rudder_dart::dart_definition(),
         anchor_dart::dart_definition(),
         burgee_dart::dart_definition(),
@@ -69,6 +71,7 @@ fn definitions() -> Vec<String> {
 fn a_map_keyed_by_a_number_brand_or_alias_is_read_and_written_back_by_dart_as_serde_does() {
     let mut rows = rows();
     rows.extend(float_texts_serde_refuses());
+    rows.extend(float_key_rows());
     let mut main = String::from("void main() {\n");
     let mut expected = String::new();
     for (at, row) in rows.iter().enumerate() {

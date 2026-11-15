@@ -9,7 +9,7 @@ use super::dart_http_client::{dart_call, dart_parameter, fault_said};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, guarded_call, has_one_way, header_call_args,
     header_out_push_stmt, header_refused_fault, message_dart_typename, message_decode,
-    message_encode, signed_zeros_call, signed_zeros_fn, split_reply_record, success_decode_block,
+    message_encode, read_text_call, read_text_fn, split_reply_record, success_decode_block,
 };
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
@@ -804,7 +804,7 @@ Future<({String? text, int status})> _@P@McpRespond(
       );
   final Object? parsed;
   try {
-    parsed = jsonDecode(_@P@WsSignedZeros(text), reviver: _@P@WsHeld);
+    parsed = _@P@WsReadText(text, _@P@WsHeld);
   } catch (_) {
     return failed(null, 400, -32600, 'Invalid Request');
   }
@@ -1028,7 +1028,7 @@ Future<({String? text, int status})> _@P@McpRespond(
 
 Map<String, dynamic>? _@P@McpMessage(String text) {
   try {
-    final parsed = jsonDecode(_@P@WsSignedZeros(text), reviver: _@P@WsHeld);
+    final parsed = _@P@WsReadText(text, _@P@WsHeld);
     return parsed is Map<String, dynamic> ? parsed : null;
   } catch (_) {
     return null;
@@ -1202,7 +1202,7 @@ Future<@N@McpHttpResponse?> @P@McpServeHttp<Ctx>(
   final ctx = admitted.ctx as Ctx;
   final Object? parsed;
   try {
-    parsed = jsonDecode(_@P@WsSignedZeros(utf8.decode(request.body)), reviver: _@P@WsHeld);
+    parsed = _@P@WsReadText(utf8.decode(request.body), _@P@WsHeld);
   } catch (_) {
     return respond(400, error(null, -32600, 'Invalid Request'));
   }
@@ -1349,7 +1349,7 @@ const CLIENT_CALL_METHOD: &str = "  int _nextId = 1;
     }
     final Object? parsed;
     try {
-      parsed = jsonDecode(_@P@McpSignedZeros(answer));
+      parsed = _@P@McpReadText(answer);
     } catch (rejected) {
       throw _@N@McpCallFault(_@P@McpReadFailed(operation, '$rejected'));
     }
@@ -1411,7 +1411,7 @@ const CLIENT_PROMPT_METHOD: &str = "  Future<Map<String, dynamic>> _prompt(
 const CLIENT_FAULT_OF: &str = "@F@ _@P@McpFaultOf(Map<String, dynamic> result, String operation) {
   final Object? parsed;
   try {
-    parsed = jsonDecode(_@P@McpSignedZeros(((result['content'] as List).first as Map<String, dynamic>)['text'] as String));
+    parsed = _@P@McpReadText(((result['content'] as List).first as Map<String, dynamic>)['text'] as String);
   } catch (rejected) {
     return _@P@McpReadFailed(operation, '$rejected');
   }
@@ -3530,7 +3530,7 @@ pub fn client_text(declared: &ServiceDef) -> String {
         return published.join("\n\n");
     }
     published.push(with_fields(CLIENT_CALL));
-    published.push(signed_zeros_fn(&signed_zeros_call(&prefix, "Mcp")));
+    published.push(read_text_fn(&read_text_call(&prefix, "Mcp")));
     if service.operations.iter().any(is_content_pair) {
         published.push(with_fields(CLIENT_PAIR));
     }
@@ -3780,7 +3780,7 @@ fn reply_method(
          final dynamic error = parsed is Map<String, dynamic> ? parsed['value'] : null;\n"
             .to_owned()
     };
-    let signed_zeros = signed_zeros_call(prefix, "Mcp");
+    let read_text = read_text_call(prefix, "Mcp");
     format!(
         "{doc}\n  \
          Future<{result}> {call}({parameters}) async {{\n\
@@ -3796,7 +3796,7 @@ fn reply_method(
          }}\n    \
          final Object? parsed;\n    \
          try {{\n      \
-         parsed = jsonDecode({signed_zeros}(((result['content'] as List).first as Map<String, dynamic>)['text'] as String));\n    \
+         parsed = {read_text}(((result['content'] as List).first as Map<String, dynamic>)['text'] as String);\n    \
          }} catch (rejected) {{\n      \
          return {result}Fault({read_failed}({wire}, '$rejected'));\n    \
          }}\n    \

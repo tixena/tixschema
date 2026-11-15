@@ -2145,9 +2145,19 @@ fn number_key_text(number: &FieldDefType, expr: &str, narrowed: bool) -> String 
 /// integer, naming it as `serde_json` spells it: its shortest digits laid out plainly from
 /// `0.00001` to below `1e16`, with `.0` where they hold no fraction, and as `1e+16` beyond.
 pub fn integer_read(integer: &FieldDefType, expr: &str) -> String {
-    let (int, double) = (dart_core("int"), dart_core("double"));
     let expected = integer.number_name().unwrap_or("an integer");
+    integer_read_as(expected, expr, |number| {
+        format!("invalid value: integer `${{{number}}}`, expected {expected}")
+    })
+}
+
+/// [`integer_read`] of a type serde words as `expected`, where `beyond` words, from the name of the
+/// `BigInt` it is bound to, an integer above an `i64` within a `u64`, which the text entry points
+/// keep the digits of.
+fn integer_read_as(expected: &str, expr: &str, beyond: impl FnOnce(&str) -> String) -> String {
+    let (int, double) = (dart_core("int"), dart_core("double"));
     let (held, number, spelled) = (declared("held"), declared("number"), declared("spelled"));
+    let worded = beyond(&number);
     [
         ("@EXPR@", expr),
         ("@DOUBLE@", &double),
@@ -2156,12 +2166,25 @@ pub fn integer_read(integer: &FieldDefType, expr: &str) -> String {
         ("@SPELLED@", &spelled),
         ("@HELD@", &held),
         ("@EXPECTED@", expected),
+        ("@BEYOND@", &worded),
         ("@OUT@", NUMBER_OUT_OF_RANGE),
     ]
     .into_iter()
     .fold(INTEGER_READ.to_owned(), |text, (from, to)| {
         text.replace(from, to)
     })
+}
+
+/// The `double` of the number `expr` holds, which a text entry point keeps the digits of an
+/// integer above an `i64` as a `BigInt` for.
+fn number_double(expr: &str) -> String {
+    let (held, other) = (declared("held"), declared("other"));
+    let num = dart_core("num");
+    format!(
+        "(switch ({expr}) {{ final {dart_core_big} {held} => {held}.toDouble(), final {num} \
+         {held} => {held}.toDouble(), final {other} => ({other} as {num}).toDouble() }})",
+        dart_core_big = "BigInt"
+    )
 }
 
 /// The float `taken` reads as, as serde reads an `f32` or an `f64`: an `f32` beyond its range as an
@@ -2311,6 +2334,27 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
     }
 }
 
+/// The text serde writes for the float `number`: its shortest digits, laid out plainly from
+/// `0.00001` to below `1e16`, with `.0` where they hold no fraction, and as `d.ddde+N` or `e-N`
+/// outside that.
+fn float_key_text(number: &str) -> String {
+    let (double, int) = (dart_core("double"), dart_core("int"));
+    format!(
+        "(({double} number) {{ if (!number.isFinite) return number.toString(); final sign = \
+         number.isNegative ? '-' : ''; if (number == 0) return '${{sign}}0.0'; final parts = \
+         number.abs().toString().split('e'); final point = parts[0].indexOf('.'); var digits = \
+         parts[0].replaceFirst('.', ''); var at = (point < 0 ? parts[0].length : point) - 1 + \
+         (parts.length > 1 ? {int}.parse(parts[1]) : 0); final lead = digits.length - \
+         digits.replaceFirst(RegExp(r'^0+'), '').length; digits = \
+         digits.substring(lead).replaceFirst(RegExp(r'0+$'), ''); at -= lead; if (at >= 0 && at \
+         <= 15) {{ final plain = digits.padRight(at + 1, '0'); return \
+         '$sign${{plain.substring(0, at + 1)}}.${{plain.length > at + 1 ? plain.substring(at + 1) : \
+         '0'}}'; }} if (at >= -5 && at < 0) return '${{sign}}0.${{''.padRight(-at - 1, \
+         '0')}}$digits'; return '$sign${{digits[0]}}${{digits.length > 1 ? \
+         '.${{digits.substring(1)}}' : ''}}e${{at > 0 ? '+' : ''}}$at'; }})({number})"
+    )
+}
+
 /// The expression that writes one `Map` key as the `String` JSON always carries it as — the
 /// counterpart of [`dart_map_key_decode`]. `expr` names a value of [`dart_map_key_typename`]'s own
 /// type.
@@ -2334,17 +2378,25 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
                 | FieldDefType::I32
                 | FieldDefType::I64
                 | FieldDefType::Usize
-                | FieldDefType::Isize
-                | FieldDefType::F32
-                | FieldDefType::F64 => format!(
+                | FieldDefType::Isize => format!(
                     "({}).toString()",
                     forms::number_held(&key.field_type, expr).unwrap_or_else(|| expr.to_owned())
+                ),
+                FieldDefType::F32 | FieldDefType::F64 => float_key_text(
+                    &forms::number_held(&key.field_type, expr).unwrap_or_else(|| expr.to_owned()),
                 ),
                 // The key is a `String` already, and the analyzer reports a cast of it.
                 FieldDefType::String | FieldDefType::StringLiteral(_) => expr.to_owned(),
                 FieldDefType::Char => forms::text_sent(TextForm::Char, expr),
                 FieldDefType::SiblingType(_, _) if number_leaf(key).is_some() => {
-                    format!("({expr}.toJson()).toString()")
+                    if matches!(
+                        number_leaf(key),
+                        Some(FieldDefType::F32 | FieldDefType::F64)
+                    ) {
+                        float_key_text(&format!("{expr}.toJson()"))
+                    } else {
+                        format!("({expr}.toJson()).toString()")
+                    }
                 }
                 FieldDefType::Boolean
                 | FieldDefType::BooleanLiteral(_)
@@ -2613,10 +2665,9 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             let taken = integer_read(&field.field_type, expr);
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
         }
-        FieldDefType::F32 | FieldDefType::F64 => float_read(
-            &field.field_type,
-            &format!("({expr} as {}).toDouble()", dart_core("num")),
-        ),
+        FieldDefType::F32 | FieldDefType::F64 => {
+            float_read(&field.field_type, &number_double(expr))
+        }
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("ObjectId.fromJson({expr})"),
         FieldDefType::Char => forms::text_read(TextForm::Char, &format!("{expr} as String")),
@@ -2630,7 +2681,9 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => {
             if has_as_number(field) {
-                format!("{expr} as {}", dart_core("int"))
+                integer_read_as("a unix timestamp in milliseconds", expr, |number| {
+                    format!("value is not a legal timestamp: ${{{number}}}")
+                })
             } else {
                 format!("DateTime.parse({expr} as String)")
             }

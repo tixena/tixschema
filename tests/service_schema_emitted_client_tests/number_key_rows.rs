@@ -31,6 +31,37 @@ const MOORINGS: [(&str, &str, &str); 13] = [
     ),
 ];
 
+/// The text serde writes for an `f64` key of each value, and the value.
+pub const F64_KEYS: [(f64, &str); 14] = [
+    (1e39, "1e+39"),
+    (1e7, "10000000.0"),
+    (12_345_678.0, "12345678.0"),
+    (1e-7, "1e-7"),
+    (0.1, "0.1"),
+    (1.5, "1.5"),
+    (-0.0, "-0.0"),
+    (0.0, "0.0"),
+    (1e300, "1e+300"),
+    (1e15, "1000000000000000.0"),
+    (1e16, "1e+16"),
+    (0.00001, "0.00001"),
+    (1e-6, "1e-6"),
+    (-1e39, "-1e+39"),
+];
+
+/// The text serde writes for an `f32` key of each value, and the value.
+pub const F32_KEYS: [(f32, &str); 9] = [
+    (1e10, "10000000000.0"),
+    (0.1, "0.1"),
+    (3.4e38, "3.4e+38"),
+    (1e-7, "1e-7"),
+    (16_777_216.0, "16777216.0"),
+    (1e16, "1e+16"),
+    (1.5, "1.5"),
+    (-0.0, "-0.0"),
+    (1.175_494_4e-38, "1.1754944e-38"),
+];
+
 const SOUND_BURGEE: &str = r#"{"1":1,"2":2}"#;
 const SOUND_SIGNAL: &str = r#"{"false":1,"true":2}"#;
 const BROKEN_BURGEE: &str = r#"{"x":1}"#;
@@ -98,6 +129,26 @@ impl Ord for Gauge {
     }
 }
 
+/// A brand over an `f32` a map is keyed by.
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Buoy(f32);
+
+impl Eq for Buoy {}
+
+impl PartialOrd for Buoy {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Buoy {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_inner().total_cmp(other.as_inner())
+    }
+}
+
 /// A brand over a flag a map is keyed by.
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -152,6 +203,13 @@ pub struct Moorings {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Soundings {
     pub gauge: BTreeMap<Gauge, u8>,
+}
+
+/// A map under a brand over an `f32`, as a field.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Buoys {
+    pub buoy: BTreeMap<Buoy, u8>,
 }
 
 /// A list, an optional and a map of maps, over a brand over an `f64`.
@@ -377,6 +435,17 @@ pub fn float_texts_serde_refuses() -> Vec<Row> {
     .collect()
 }
 
+/// A map of one entry under each float key serde writes, read and written back.
+pub fn float_key_rows() -> Vec<Row> {
+    let gauges = F64_KEYS
+        .iter()
+        .map(|&(_, text)| row::<Soundings>("Soundings", &format!(r#"{{"gauge":{{"{text}":1}}}}"#)));
+    let buoys = F32_KEYS
+        .iter()
+        .map(|&(_, text)| row::<Buoys>("Buoys", &format!(r#"{{"buoy":{{"{text}":1}}}}"#)));
+    gauges.chain(buoys).collect()
+}
+
 /// The payloads of a variant under one tagging: each member sound, each broken, and the tuple
 /// variant sound and broken.
 fn pier_rows<Held>(
@@ -394,4 +463,37 @@ fn pier_rows<Held>(
         row::<Held>(named, &moored(SOUND_BURGEE)),
         row::<Held>(named, &moored(BROKEN_BURGEE)),
     ]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BTreeMap, Buoy, F32_KEYS, F64_KEYS, Gauge, float_key_rows};
+
+    /// serde writes each float key in the text the table pins.
+    #[test]
+    fn serde_writes_each_float_key_in_the_pinned_text() {
+        for (value, text) in F64_KEYS {
+            let held =
+                BTreeMap::from([(serde_json::from_value::<Gauge>(value.into()).unwrap(), 1_u8)]);
+            assert_eq!(
+                serde_json::to_string(&held).unwrap(),
+                format!(r#"{{"{text}":1}}"#)
+            );
+        }
+        for (value, text) in F32_KEYS {
+            let held = BTreeMap::from([(
+                serde_json::from_value::<Buoy>(f64::from(value).into()).unwrap(),
+                1_u8,
+            )]);
+            assert_eq!(
+                serde_json::to_string(&held).unwrap(),
+                format!(r#"{{"{text}":1}}"#)
+            );
+        }
+        assert!(
+            float_key_rows()
+                .iter()
+                .all(|row| row.serde.starts_with("read "))
+        );
+    }
 }
