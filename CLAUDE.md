@@ -111,9 +111,9 @@ just all
 # Runs, with every feature on: one clippy lint and one test run
 ```
 
-A pull request merges once `just premerge` passes on its branch merged with master: the gate,
-`just check-mix` and `just test-emitted`, which together run what CI runs. A merge does not wait
-for CI. CI still runs on every pull request and on master, and a red CI on master is fixed at once.
+A pull request merges once `just all` passes on its branch merged with master. `just premerge` and
+CI then run on master after the merge, and neither blocks the next merge: a failure either one
+finds is fixed at once, with a patch pull request.
 
 The code is developed on Rust beta, which `rust-toolchain.toml` pins, and CI lints and tests on
 beta. The floor, `rust-version` in `Cargo.toml` (1.91.1), is checked by whoever runs the full runs:
