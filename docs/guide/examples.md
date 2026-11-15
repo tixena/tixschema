@@ -15,6 +15,8 @@ A block may use `?` on any `Result` whose error implements `Debug` (the `Vec<Str
 pub struct CorrelationId(String);
 ```
 
+`cargo test` also runs each block as a doctest of the type it is written on, and rustdoc wraps a doctest in a function that answers `()`. So the expansion writes hidden lines around each block it writes into the type's docs, which run the block in a closure that answers `Result`, as `schema_examples()` does: a `?` compiles in the doctest too, and a `?` that fails makes the doctest panic with the error's `Debug` text, `["'parcelCount': too large: maximum is 100, got 200"]`. Hidden lines do not show in the docs `cargo doc` renders, so the reader sees the block as written.
+
 ```rust
 /// User profile
 /// ```rust example
