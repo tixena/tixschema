@@ -659,16 +659,25 @@ the consumer's view; this is what a change has to keep.
   annotation can name as the class it needs. It reads through the held type's companion,
   `Type.kotlinSchemaUnjudged(serializer<Type>())`, and a type written with a type argument passes
   the serializer of each argument besides. `unjudged_member` writes that member into the companion
-  of each valid class (`valid_class`) and of each brand (`brand_factory`), where it answers the
-  type's `{Type}Unjudged`. A type that has none, an undrafted type among them, answers its own
-  serializer through `HELD_FALLBACK`, a private extension in the serializer's body: a member is
+  of each valid class (`valid_class`), of each brand (`brand_factory`) and of each type with no draft
+  whose own serializer judges (`undrafted_companion`: a plain enum that names a check, a struct
+  whose `validate()` reports anything), where it answers the type's `{Type}Unjudged`. A type that
+  has none, an undrafted type that judges nothing among them, answers its own serializer through
+  `HELD_FALLBACK`, a private extension in the serializer's body: a member is
   found ahead of an extension. A held name may be a `typealias` of a list or of a map, with or
   without a parameter, or a type of the consumer's, which has no companion to name: the read is a
   placeholder that `kotlin_definition()` fills (`held_filled`) from the hidden
   `__TIXSCHEMA_MODELLED` constant of the type's path, which only a `#[model_schema]` type
   publishes, read at the type arguments the member writes (`note_written`), with the companion's
-  read or with the type's own serializer. A member under a `cfg`, and a type argument that is a
-  type parameter of the holder, cannot be asked and keep the companion's read. A generic type at
+  read or with the type's own serializer. A member under a `cfg` is asked under the same
+  `cfg`, one statement for each distinct set (`note_cfgs`), so the flag of a type the `cfg` leaves
+  out stays `false` and a type named by a member under no `cfg` is asked unconditionally. A type
+  argument that is a type parameter of the holder is asked at `u8` (`as_stand_in`), so an alias of a
+  list or a map filled by the holder's parameter is read by its own serializer; a parameter that
+  carries a bound is not written as `u8`, which may not meet the bound of the held type, and
+  keeps the companion's read (`note_bounded`). A held type filled with a model beside a type
+  parameter of the holder is read by a class that fixes the unjudged serializer of each model
+  (`fixed_positions`), and takes only the serializers of the parameters from the plugin. A generic type at
   a filling that names no type parameter of the holder is read by an `object` of that filling
   (`held_filled_unjudged`): the type's unjudged read handed the unjudged serializer of each
   argument, beside the type's own serializer built from the judged one of each. Its walk is

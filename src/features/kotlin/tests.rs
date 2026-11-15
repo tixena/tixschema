@@ -1805,3 +1805,115 @@ fn a_plain_enum_with_an_alias_names_no_internal_serialization_api() {
         }
     }
 }
+
+/// A plain enum with no draft that names a check, and a struct with no draft that declares a rule,
+/// declare the member a holder reads them unjudged by; one that judges nothing declares none.
+#[test]
+fn a_type_with_no_draft_that_judges_declares_the_unjudged_member() {
+    let check = [FunctionName {
+        name: "even_turns".to_owned(),
+        written_at: Span::call_site(),
+    }];
+    let turn: ItemEnum = syn::parse_quote! {
+        enum Turn { Even, Odd }
+    };
+    let bolt: ItemStruct = syn::parse_quote! {
+        struct Bolt {
+            #[model_schema_prop(minLength = 1)]
+            name: String,
+        }
+    };
+    let plain: ItemStruct = syn::parse_quote! {
+        struct Nut {
+            name: String,
+        }
+    };
+    let member = "internal fun kotlinSchemaUnjudged(own: KSerializer<Turn>): KSerializer<Turn> = \
+                  TurnUnjudged";
+    let undrafted = |checks, type_name| KotlinArgs {
+        check: checks,
+        type_name,
+        undrafted: true,
+        ..plain_args()
+    };
+    let judging = definition(enum_kotlin_tokens(&turn, &undrafted(&check, "Turn")));
+    assert!(
+        judging.contains(&format!("companion object {{ {member} }}")),
+        "{judging}"
+    );
+    let judged_by_a_rule = definition(struct_kotlin_tokens(&bolt, &undrafted(&[], "Bolt")));
+    assert!(
+        judged_by_a_rule.contains(
+            "companion object { internal fun kotlinSchemaUnjudged(own: KSerializer<Bolt>): \
+             KSerializer<Bolt> = BoltUnjudged }"
+        ),
+        "{judged_by_a_rule}"
+    );
+    let unchecked = definition(enum_kotlin_tokens(&turn, &undrafted(&[], "Turn")));
+    let ruleless = definition(struct_kotlin_tokens(&plain, &undrafted(&[], "Nut")));
+    for written in [unchecked, ruleless] {
+        assert!(!written.contains("kotlinSchemaUnjudged(own"), "{written}");
+    }
+}
+
+/// A holder asks whether a held type is a model under the `cfg` of the member that names it, and
+/// at `()` where the type argument is a parameter of the holder that carries no bound.
+#[test]
+fn a_holder_asks_under_the_cfg_and_at_unit() {
+    let under_cfg: ItemStruct = syn::parse_quote! {
+        struct Shelf {
+            #[cfg(feature = "shelved")]
+            pairs: Pairs<Note>,
+            label: String,
+        }
+    };
+    let tokens = struct_kotlin_tokens(&under_cfg, &plain_args()).to_string();
+    let beside = &tokens[tokens.find("impl shelf_kotlin").unwrap_or(0)..];
+    assert!(
+        beside.contains("# [cfg (feature = \"shelved\")] { flags [0usize] = < Pairs < Note > > :: __TIXSCHEMA_MODELLED ; }"),
+        "{beside}"
+    );
+
+    let of_held: ItemStruct = syn::parse_quote! {
+        struct Shelf<Held> {
+            pairs: Pairs<Held>,
+            label: String,
+        }
+    };
+    let at_unit = struct_kotlin_tokens(&of_held, &plain_args()).to_string();
+    assert!(
+        at_unit.contains("< Pairs < u8 > > :: __TIXSCHEMA_MODELLED"),
+        "{at_unit}"
+    );
+
+    let bounded: ItemStruct = syn::parse_quote! {
+        struct Shelf<Held: Display> {
+            pairs: Pairs<Held>,
+            label: String,
+        }
+    };
+    let unasked = kotlin_schema_dispatch(&Item::Struct(bounded), &plain_args()).to_string();
+    assert!(!unasked.contains("< Pairs < u8 > >"), "{unasked}");
+}
+
+/// A holder that fills a generic type with a model beside its own parameter reads the model by its
+/// unjudged serializer, and only the parameter's serializer is the plugin's.
+#[test]
+fn a_mixed_filling_reads_the_concrete_argument_unjudged() {
+    let shelf: ItemStruct = syn::parse_quote! {
+        struct Shelf<Held> {
+            pair: Pair<Parcel, Held>,
+        }
+    };
+    let written = definition(struct_kotlin_tokens(&shelf, &plain_args()));
+    for present in [
+        "private class KotlinHeld",
+        "<KotlinSchemaArgument1: Any>(argument0Serializer: KSerializer<Parcel>, \
+         argument1Serializer: KSerializer<KotlinSchemaArgument1>) : \
+         KSerializer<Pair<Parcel, KotlinSchemaArgument1>>",
+        "Pair.kotlinSchemaUnjudged(Pair.serializer(argument0Serializer, argument1Serializer), ",
+        ", argument1Serializer)",
+    ] {
+        assert!(written.contains(present), "no `{present}` in: {written}");
+    }
+}

@@ -204,6 +204,23 @@ pub fn valid_class(
     )
 }
 
+/// The companion of a type with no draft whose own serializer judges, which holds the member a
+/// holder reads it unjudged by, after the `;` that ends the member before it.
+pub fn undrafted_companion(
+    rules: &Rules<'_>,
+    export_name: &str,
+    (generic_params, type_parameters): (&str, &[String]),
+    composed: bool,
+) -> String {
+    if drafted() || !rules.judges() {
+        return String::new();
+    }
+    format!(
+        "; companion object {{ {} }}",
+        read::unjudged_member(export_name, generic_params, type_parameters, composed)
+    )
+}
+
 /// The members of a model type's body that carry its rules: `validationIssues()` and `validate()`
 /// where it has a draft, and `validate()` alone where it has none.
 pub fn body(rules: &mut Rules<'_>, export_name: &str, generic_params: &str) -> String {

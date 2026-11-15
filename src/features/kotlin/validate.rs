@@ -149,6 +149,9 @@ pub struct Rules<'item> {
     handing: bool,
     /// The functions the statements call, each written once into the type's body.
     helpers: BTreeSet<Helper>,
+    /// Whether `validate()`, as last written, reports anything: the type's judged read differs
+    /// from its unjudged one.
+    judging: bool,
     /// The type parameters a map is keyed by, whose serializers the overload of `validate()` takes.
     keys: BTreeSet<String>,
     /// Whether the type is an `object` of the enum it implements, which fills each of the enum's
@@ -655,6 +658,11 @@ impl<'item> Rules<'item> {
         )
     }
 
+    /// Whether the `validate()` last written reports anything.
+    pub const fn judges(&self) -> bool {
+        self.judging
+    }
+
     /// The step the key of a map's entry adds to a place, as the text serde writes for the key,
     /// or `None` for a key typed with a parameter the item declares no `Serialize` for.
     fn key_step(&mut self, key: &FieldDef, entry: &str) -> Option<String> {
@@ -844,6 +852,7 @@ impl<'item> Rules<'item> {
             filling_statements: Vec::new(),
             handing: false,
             helpers: BTreeSet::new(),
+            judging: false,
             keys: BTreeSet::new(),
             nothing: false,
             parameters: Vec::new(),
@@ -980,6 +989,7 @@ impl<'item> Rules<'item> {
 
     fn written_as(&mut self, method: &str, modifier: &str) -> String {
         let statements = mem::take(&mut self.statements);
+        self.judging = !statements.is_empty();
         self.keys.retain(|key| {
             let name = kotlin_serializer_param_name(key);
             statements.iter().any(|statement| hands(statement, &name))

@@ -373,6 +373,13 @@ thread_local! {
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
 /// the item's own shape; an item this module has nothing to say about earns nothing.
 pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream {
+    if let Item::Struct(item_struct) = item {
+        read::note_bounded(&item_struct.generics);
+    } else if let Item::Enum(item_enum) = item {
+        read::note_bounded(&item_enum.generics);
+    } else {
+        // An alias holds no member to read.
+    }
     let tokens = if let Item::Struct(item_struct) = item {
         struct_kotlin_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
@@ -766,9 +773,7 @@ fn brand_value_field(held: &Field, type_parameters: &[String], args: &KotlinArgs
 fn field_def_with_prop_meta(name: &str, field: &Field, args: &KotlinArgs<'_>) -> FieldDef {
     let mut field_def = kotlin_field_def(name, &field.ty);
     read::note_written(&field.ty);
-    if field.attrs.iter().any(|attr| attr.path().is_ident("cfg")) {
-        read::note_uncertain(&field_def);
-    }
+    read::note_cfgs(&field_def, &field.attrs);
     field_def.model_schema_prop_meta = Some((args.member_meta)(field));
     field_def
 }
@@ -3188,12 +3193,19 @@ fn struct_rules<'item>(
     fields: &[KotlinField],
     args: &KotlinArgs<'_>,
     (export_name, generic_params, type_parameters): (&str, &str, &[String]),
+    composed: bool,
 ) -> (Rules<'item>, String) {
     let mut rules = Rules::handing(serializable).walking(type_parameters);
     named_member_rules(&mut rules, fields, None);
     rules.own(args.check);
     let validated = valid::body(&mut rules, export_name, generic_params);
-    (rules, validated)
+    let companion = valid::undrafted_companion(
+        &rules,
+        export_name,
+        (generic_params, type_parameters),
+        composed,
+    );
+    (rules, format!("{validated}{companion}"))
 }
 
 /// The declaration of the draft of a struct: Kotlin's own no-data `object` for a unit struct, a
@@ -3292,14 +3304,9 @@ fn struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -> Toke
     let (params, forwards, of_parameters) = data_class_members(&fields, held_by);
     let body = struct_body(item_struct, &fields, &draft, &params);
     let serializable = serialized_parameters(&item_struct.generics);
-    let (rules, validated) = struct_rules(
-        &serializable,
-        &fields,
-        args,
-        (&export_name, &generic_params, &type_parameters),
-    );
-    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let names = (&*export_name, &*generic_params, &*type_parameters);
+    let (rules, validated) = struct_rules(&serializable, &fields, args, names, written_by_hand);
+    validate::note_hands(&rust_ident, &type_parameters, &rules.handed_keys());
     let statics = struct_statics(item_struct, &draft, &fields, names, &of_parameters);
     let serializers = |composed: bool| {
         struct_serializers(
@@ -3567,7 +3574,16 @@ fn tuple_struct_kotlin_tokens(item_struct: &ItemStruct, args: &KotlinArgs<'_>) -
         "element",
     );
     let read_back = read::read_at("input", &payload, &read_slots);
-    let validated = valid::body(&mut rules, &export_name, &generic_params);
+    let validated = format!(
+        "{}{}",
+        valid::body(&mut rules, &export_name, &generic_params),
+        valid::undrafted_companion(
+            &rules,
+            &export_name,
+            (&generic_params, &type_parameters),
+            true
+        )
+    );
     let keyed = rules.handed_keys();
     validate::note_hands(&rust_ident, &type_parameters, &keyed);
     let alias = ident_typealias(&rust_ident, &export_name, &generic_params);
@@ -4694,10 +4710,9 @@ fn plain_enum_kotlin_source(
     } else {
         String::new()
     };
-    let body = format!(
-        "enum class {draft} {{ {members}; {} }}",
-        valid::body(&mut rules, export_name, "")
-    );
+    let validated = valid::body(&mut rules, export_name, "");
+    let companion = valid::undrafted_companion(&rules, export_name, ("", &[]), false);
+    let body = format!("enum class {draft} {{ {members}; {validated}{companion} }}");
     let correction = preprocess::corrected(args.preprocess, ELEMENT);
     let unjudged = aliases::plain_enum_serializer(&draft, &variants, &correction);
     if valid::drafted() {
