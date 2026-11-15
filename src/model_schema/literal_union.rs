@@ -13,6 +13,16 @@ use super::{ts_member_key, ts_member_name};
 use crate::field_type::{FieldDef, FieldDefType, format_number_literal};
 use crate::utils::{is_drafted_type, ts_quoted};
 
+/// The check a plain union of an untagged enum is read through. Zod answers the issues of the one
+/// alternative that neither refuses a value of the wrong kind nor misses a key, where serde names
+/// the enum none of whose variants it read: a list of unknown keys alone is marked with how deep
+/// inside the union each key sits, so a fault can name the union's own path. The issues stay
+/// `unrecognized_keys`, which a flattened member and a tagged variant's content read as before.
+const NAMES_ITSELF: &str = ".superRefine((_read, ctx) => { if (ctx.issues.length > 0 && \
+     !ctx.issues.some((issue) => issue.code !== \"unrecognized_keys\")) ctx.issues.splice(0, \
+     ctx.issues.length, ...ctx.issues.map((issue) => ({ ...issue, params: { union: \
+     issue.path?.length ?? 0 } }))); }, { when: () => true })";
+
 /// The literal a member is held to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Literal {
@@ -266,7 +276,7 @@ pub fn union_of(candidates: &[Candidate]) -> ZodUnion {
     let Some(plan) = plan(&shapes) else {
         return ZodUnion {
             code: format!(
-                "z.union([{}])",
+                "z.union([{}]){NAMES_ITSELF}",
                 candidates
                     .iter()
                     .map(|candidate| candidate.plain.as_str())

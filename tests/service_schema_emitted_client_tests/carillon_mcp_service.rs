@@ -23,10 +23,11 @@ use tixschema::{model_schema, service_schema};
 /// The cases of [`CASES`] each `mcp` server is called with and each `mcp` client is answered: the
 /// message read whole, a value of the wrong kind, the three refusals `serde_json` classifies as
 /// text that is not the document when it reads text, an integer written as a float in the
-/// arguments and in the result, and a key of a map keyed by a brand of a `u32` that serde refuses
-/// as text that is not the document past its first character, beside the keys it reads and the
-/// keys it refuses as a value of the wrong kind.
-pub const MCP_CASES: [&str; 28] = [
+/// arguments and in the result, and a key of a map keyed by a brand of a `u32` or by an `i64` that
+/// serde refuses as text that is not the document past its first character, beside the keys it
+/// reads and the keys it refuses as a value of the wrong kind, and an external enum or a `Result`
+/// that holds no variant or arm it names.
+pub const MCP_CASES: [&str; 35] = [
     "read whole",
     "a text for a number",
     "a Result of two arms",
@@ -51,10 +52,17 @@ pub const MCP_CASES: [&str; 28] = [
     "a brand key with a letter after it",
     "a brand key with a space after it",
     "a brand key beyond an f64",
+    "an i64 key with a leading zero",
+    "an i64 key of a minus alone",
+    "an i64 key with a letter after it",
+    "an i64 key with a space after it",
+    "an i64 key beyond an f64",
     "a brand key with an exponent",
     "a brand key of minus zero",
     "a brand key beyond a u32",
     "a brand key of zero",
+    "an unknown variant",
+    "an unknown arm of a Result",
 ];
 
 /// The answers each `mcp` client is handed as the answer of `toll`: a success and a declared
@@ -116,8 +124,7 @@ const VERSE_CASES: [(&str, &str); 4] = [
 ];
 
 /// The arguments of `chant` whose refrain holds a key, which the Rust dispatcher refuses at the
-/// refrain as serde names no variant it could have read: the Dart and Kotlin `mcp` servers name the
-/// same field.
+/// refrain as serde names no variant it could have read: every `mcp` server names the same field.
 const KEYED_VERSE_CASES: [(&str, &str); 3] = [
     ("a refrain of no key", r#"{"refrain":{}}"#),
     (
@@ -252,17 +259,15 @@ pub fn call(id: u32, arguments: &str) -> String {
 
 /// Every request a server is handed beside the Rust dispatcher, with its name: each case of
 /// [`MCP_CASES`] and [`SHAPE_CASES`] with the id `1`, each of [`VERSE_CASES`] to `chant`, and the
-/// message read whole with each id of [`ID_CASES`]; the Dart and Kotlin servers are also handed
-/// [`KEYED_VERSE_CASES`].
-pub fn server_cases(typescript: bool) -> Vec<(String, String)> {
+/// message read whole with each id of [`ID_CASES`], and each of [`KEYED_VERSE_CASES`].
+pub fn server_cases() -> Vec<(String, String)> {
     let strikes = MCP_CASES.into_iter().chain(SHAPE_CASES).map(|name| {
         let case = CASES.into_iter().find(|case| case.0 == name).unwrap();
         (name.to_owned(), call(1, &payload(case)))
     });
-    let keyed: &[(&str, &str)] = if typescript { &[] } else { &KEYED_VERSE_CASES };
     let verses = VERSE_CASES
         .into_iter()
-        .chain(keyed.iter().copied())
+        .chain(KEYED_VERSE_CASES)
         .map(|(name, arguments)| (name.to_owned(), tool_call(1_u32, "chant", arguments)));
     let ids = ID_CASES
         .into_iter()
@@ -485,11 +490,13 @@ fn measured() -> Vec<Value> {
     answers.push(json!("read"));
     answers.extend(repeat_n(
         json!({ "kind": "undeserializable-payload", "field": null }),
-        5,
+        10,
     ));
     answers.extend(repeat_n(refused("pitches"), 2));
     answers.push(refused("pitches.4294967296"));
     answers.push(json!("read"));
+    answers.push(refused("peal"));
+    answers.push(refused("tally"));
     answers
 }
 
@@ -602,11 +609,16 @@ fn the_rust_client_answers_every_success_it_cannot_read_with_no_field() {
     );
     expected[18] = json!("read");
     expected.extend(
-        [None; 8].map(
+        [None; 13].map(
             |field: Option<&str>| json!({ "kind": "undeserializable-payload", "field": field }),
         ),
     );
     expected.push(json!("read"));
+    expected.extend(
+        [None; 2].map(
+            |field: Option<&str>| json!({ "kind": "undeserializable-payload", "field": field }),
+        ),
+    );
     assert_eq!(rust_client_answers(), expected);
     let (_, sent) = rust_client_answer(reply(STRUCK));
     assert_eq!(sent.len(), 1, "{sent:?}");

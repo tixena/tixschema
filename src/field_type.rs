@@ -2771,6 +2771,13 @@ impl FieldDef {
         self.zod_base()
     }
 
+    /// [`Self::zod_type`] of a message, whose optional type is refused by the issues of the
+    /// type it holds, as serde names a value inside an `Option` by the path of the value.
+    #[cfg(feature = "zod")]
+    pub fn zod_message_type(&self) -> String {
+        self.zod_type_with(true)
+    }
+
     /// The field's length and pattern bounds as one `.check(…)` written onto a named type's
     /// schema, or nothing where none was written. `.check` is declared on every schema and returns
     /// the schema's own type, so a brand keeps its brand and a binding annotated `ZodType` takes it.
@@ -2963,36 +2970,7 @@ impl FieldDef {
     #[cfg(feature = "zod")]
     /// Generates the Zod schema string for this field (requires "zod" feature).
     pub fn zod_type(&self) -> String {
-        if self.is_optional() {
-            let calls = self.zod_handed_calls();
-            if self.has_nullable() {
-                let union = zod_union_around(&self.zod_checked_base(), &calls, |held| {
-                    format!("z.union([{held}, z.null()])")
-                });
-                self.zod_preprocess_wrap(union)
-            } else {
-                let refused_by_member = if self.reads_one_key() {
-                    ZOD_OPTION_ARM
-                } else {
-                    ""
-                };
-                zod_union_around(&self.zod_base(), &calls, |held| {
-                    format!(
-                        "z.union([z.null().transform(() => undefined), {held}, z.undefined()]){refused_by_member}.prefault(undefined)"
-                    )
-                })
-            }
-        } else {
-            let pre_result = self.zod_base();
-            if self.key_may_be_absent() {
-                format!("{pre_result}.optional()")
-            } else if let Some(index) = self.serde_default {
-                // Parsed as a payload is, so the default is held to the member's checks.
-                format!("{pre_result}.prefault({})", placeholder(index))
-            } else {
-                pre_result
-            }
-        }
+        self.zod_type_with(self.reads_one_key())
     }
 
     /// [`Self::zod_type`], with a map value, a list, an `Option` or a tuple that names a type
@@ -3015,6 +2993,36 @@ impl FieldDef {
             return format!("z.lazy(() => {})", self.zod_type());
         }
         self.zod_type()
+    }
+
+    #[cfg(feature = "zod")]
+    fn zod_type_with(&self, refused_by_held: bool) -> String {
+        if self.is_optional() {
+            let calls = self.zod_handed_calls();
+            if self.has_nullable() {
+                let union = zod_union_around(&self.zod_checked_base(), &calls, |held| {
+                    format!("z.union([{held}, z.null()])")
+                });
+                self.zod_preprocess_wrap(union)
+            } else {
+                let refused_by_member = if refused_by_held { ZOD_OPTION_ARM } else { "" };
+                zod_union_around(&self.zod_base(), &calls, |held| {
+                    format!(
+                        "z.union([z.null().transform(() => undefined), {held}, z.undefined()]){refused_by_member}.prefault(undefined)"
+                    )
+                })
+            }
+        } else {
+            let pre_result = self.zod_base();
+            if self.key_may_be_absent() {
+                format!("{pre_result}.optional()")
+            } else if let Some(index) = self.serde_default {
+                // Parsed as a payload is, so the default is held to the member's checks.
+                format!("{pre_result}.prefault({})", placeholder(index))
+            } else {
+                pre_result
+            }
+        }
     }
 
     /// [`Self::zod_union_members`] before the union's checks are written on each member.

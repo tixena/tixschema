@@ -800,8 +800,7 @@ type __p__McpIssue = {
   readonly message: string;
   readonly path: ReadonlyArray<PropertyKey>;
   readonly keys?: ReadonlyArray<string>;
-  readonly errors?: ReadonlyArray<ReadonlyArray<__p__McpIssue>>;
-  readonly params?: { readonly undeserializable?: unknown; readonly numberKey?: unknown };
+  readonly params?: { readonly undeserializable?: unknown; readonly numberKey?: unknown; readonly union?: unknown };
 };
 
 /** Whether `issue` keeps the arguments from reading. serde reads them out of a value, where a `Result` of other than one key is a value of the wrong kind. */
@@ -819,18 +818,14 @@ function __p__McpNoNumber(issue: __p__McpIssue): string | undefined {
   return issue.message === "__EXPECTED_QUOTE__" ? "__EXPECTED_NUMERIC_KEY__" : issue.message;
 }
 
-/** The path of an issue: below an `invalid_union`, the deepest path any of its alternatives reached; below `unrecognized_keys`, the first key. */
+/** The path of an issue: below `unrecognized_keys`, the first key, or the untagged enum that holds the key where the issue is marked as one; any other issue at its own path, as serde names an enum none of whose variants it chose. */
 function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
-  if (issue.code === "unrecognized_keys" && issue.keys !== undefined) return [...issue.path, issue.keys[0]];
-  if (issue.code !== "invalid_union" || issue.errors === undefined) return issue.path;
-  let deepest: ReadonlyArray<PropertyKey> = issue.path;
-  for (const alternative of issue.errors) {
-    for (const inner of alternative) {
-      const steps = [...issue.path, ...__p__McpSteps(inner)];
-      if (steps.length > deepest.length) deepest = steps;
-    }
+  if (issue.code === "unrecognized_keys" && issue.keys !== undefined) {
+    return typeof issue.params?.union === "number"
+      ? issue.path.slice(0, issue.path.length - issue.params.union)
+      : [...issue.path, issue.keys[0]];
   }
-  return deepest;
+  return issue.path;
 }
 
 /** Each issue at its dotted path, one per key of an `unrecognized_keys` issue. */
@@ -838,7 +833,7 @@ function __p__McpListed(
   issues: ReadonlyArray<__p__McpIssue & { readonly message: string }>,
 ): Array<{ detail: string; field: string | undefined }> {
   return issues.flatMap((issue) => {
-    if (issue.code === "unrecognized_keys" && issue.keys !== undefined) {
+    if (issue.code === "unrecognized_keys" && issue.keys !== undefined && typeof issue.params?.union !== "number") {
       return issue.keys.map((key) => ({ detail: `Unrecognized key: "${key}"`, field: [...issue.path, key].join(".") }));
     }
     const steps = __p__McpSteps(issue);

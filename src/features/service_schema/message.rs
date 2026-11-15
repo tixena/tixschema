@@ -342,12 +342,12 @@ pub fn commented(text: &str) -> String {
 /// pasting a suffix onto a name.
 pub fn schema(operation: &OperationDef) -> String {
     match &operation.inputs {
-        OperationInputs::Named(declared) => get_field_def("req", declared, "").zod_type(),
+        OperationInputs::Named(declared) => get_field_def("req", declared, "").zod_message_type(),
         OperationInputs::Empty | OperationInputs::Generated(_) => operation
             .generated_message_ident()
             .map_or_else(String::new, |declared| {
                 let named: syn::Type = syn::parse_quote! { #declared };
-                get_field_def("req", &named, "").zod_type()
+                get_field_def("req", &named, "").zod_message_type()
             }),
     }
 }

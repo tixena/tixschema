@@ -93,6 +93,10 @@ declare type ZodBuilder = ZodType<never> & {
   min(bound: number): ZodBuilder;
   prefault(value: unknown): ZodBuilder;
   readonly(): ZodBuilder;
+  superRefine(
+    check: (read: never, ctx: { issues: Array<{ code: string; params?: unknown; path?: ReadonlyArray<PropertyKey> }> }) => void,
+    params?: object,
+  ): ZodBuilder;
   transform(map: (value: never) => unknown): ZodBuilder;
 };
 
