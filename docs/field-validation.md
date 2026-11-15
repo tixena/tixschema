@@ -801,3 +801,7 @@ this is what a change has to keep.
   `validate()`.
 - A consumer's own `validation_issues` on one filling of the draft is a duplicate definition (E0592).
   `struct_validate_method`'s doc comment holds the run.
+
+## A message that is a list, a map or an optional of a model
+
+A transport validates each item with the model's own `validate()`. The `field` of a broken bound names the step to the item first, the list index or the map key joined by a dot, as the refusal of a value that does not read does: `{"value":[{"document_id":""}]}` names `0.document_id`, an entry `first` of a map names `first.document_id`, and an optional adds no step.

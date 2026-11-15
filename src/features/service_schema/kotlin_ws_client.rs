@@ -16,6 +16,7 @@ use crate::features::refusals;
 use crate::features::refusals::refusal_name;
 use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE};
 use crate::rename_rule::RenameRule;
+use crate::service_schema::message_shape::Shape;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
     option_inner, tuple_elements, written,
@@ -1056,6 +1057,7 @@ fn declared_arm(named: &str, result: &str, shape: &HttpShape, error: &Type) -> S
 fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> String {
     let wire = &kotlin_quoted(&operation.wire_name);
     let read_by = message_serializer(operation);
+    let placing = message_placing(operation, "payload");
     let shape = HttpShape::of(operation);
     let decode_fault = fault_reply_stmt(named, "fault");
     let (header_reads, header_idents) = header_in_read_stmt(named, fn_prefix, wire, &shape);
@@ -1066,7 +1068,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          val decoded = try {{\n        \
          Json.decodeFromString({read_by}, (payload ?: JsonNull).toString())\n      \
          }} catch (rejected: Throwable) {{\n        \
-         val fault = {fn_prefix}WsRefused({wire}, rejected)\n        \
+         val fault = {fn_prefix}WsRefused({wire}, rejected{placing})\n        \
          onFault(fault)\n\
 {decode_fault}        \
          return\n      \
@@ -1237,12 +1239,12 @@ fn refused_fn(named: &str, fn_prefix: &str, refusals: &[String]) -> String {
     });
     format!(
         "/// The fault a read's refusal answers: one in serde's words for text that is not the document names no field.\n\
-         private fun {fn_prefix}WsRefused(operation: String, rejected: Throwable): {fields} {{\n  \
+         private fun {fn_prefix}WsRefused(operation: String, rejected: Throwable, source: JsonElement? = null, layers: String = \"\", leaf: DeserializationStrategy<*>? = null): {fields} {{\n  \
          val said = (rejected as? SerializationException)?.message?.substringBefore(\" at path: \")\n  \
          return if (said != null && said in setOf({listed})) {{\n    \
          {fields}(detail = said, kind = {named}FaultKind.UndeserializablePayload, operation = operation)\n  \
          }} else {{\n    \
-         {fields}(issues = {fn_prefix}WsRefusedIssues(rejected), kind = {named}FaultKind.FailedValidation, operation = operation)\n  \
+         {fields}(issues = {fn_prefix}WsRefusedIssues(rejected, source, layers, leaf), kind = {named}FaultKind.FailedValidation, operation = operation)\n  \
          }}\n\
          }}\n\n\
          /// The broken rules a refusal of a type this service reads holds, or `null` for any other refusal.\n\
@@ -1259,10 +1261,32 @@ fn refused_fn(named: &str, fn_prefix: &str, refusals: &[String]) -> String {
          {issue}(detail = line.substring(closing + 1).removePrefix(\": \"), field = line.substring(1, closing))\n  \
          }}\n\
          }}\n\n\
-         /// The problems a read's refusal lists: each broken rule of a type's refusal, or the one at the path it states.\n\
-         private fun {fn_prefix}WsRefusedIssues(rejected: Throwable): List<{issue}> {{\n  \
+         /// Each broken rule of every element of a collection `source`, read by `leaf` below the layers (`o` an optional, `l` a list, `m` a map), at the step to its element, as the Rust dispatcher places them.\n\
+         private fun {fn_prefix}WsPlaced(source: JsonElement?, layers: String, leaf: DeserializationStrategy<*>, at: String = \"\"): List<String> {{\n  \
+         if (layers.isEmpty()) {{\n    \
+         return try {{\n      \
+         Json.decodeFromJsonElement(leaf, source ?: JsonNull)\n      \
+         emptyList()\n    \
+         }} catch (rejected: Throwable) {{\n      \
+         ({fn_prefix}WsRefusal(rejected) ?: emptyList()).map {{ line -> if (at.isEmpty() || !line.startsWith(\"'\")) line else \"'\" + at + \".\" + line.substring(1) }}\n    \
+         }}\n  \
+         }}\n  \
+         val rest = layers.substring(1)\n  \
+         fun step(key: Any): String = if (at.isEmpty()) key.toString() else at + \".\" + key\n  \
+         return when {{\n    \
+         layers[0] == 'o' -> if (source == null || source is JsonNull) emptyList() else {fn_prefix}WsPlaced(source, rest, leaf, at)\n    \
+         layers[0] == 'l' && source is JsonArray -> source.withIndex().flatMap {{ (index, item) -> {fn_prefix}WsPlaced(item, rest, leaf, step(index)) }}\n    \
+         layers[0] == 'm' && source is JsonObject -> source.entries.flatMap {{ (key, item) -> {fn_prefix}WsPlaced(item, rest, leaf, step(key)) }}\n    \
+         else -> emptyList()\n  \
+         }}\n\
+         }}\n\n\
+         /// The problems a read's refusal lists: each broken rule of a type's refusal, placed where `leaf` finds it in a collection `source`, or the one at the path it states.\n\
+         private fun {fn_prefix}WsRefusedIssues(rejected: Throwable, source: JsonElement? = null, layers: String = \"\", leaf: DeserializationStrategy<*>? = null): List<{issue}> {{\n  \
          val listed = {fn_prefix}WsRefusal(rejected)\n  \
-         if (listed != null) return listed.map(::{fn_prefix}WsIssue)\n  \
+         if (listed != null) {{\n    \
+         val placed = if (leaf == null) emptyList() else {fn_prefix}WsPlaced(source, layers, leaf)\n    \
+         return placed.ifEmpty {{ listed }}.map(::{fn_prefix}WsIssue)\n  \
+         }}\n  \
          val said = rejected.message\n  \
          if (said == null || !said.startsWith(\"'\") || \" at path: \" in said) {{\n    \
          return listOf({issue}(detail = rejected.toString(), field = {fn_prefix}WsRefusedAt(rejected)))\n  \
@@ -1381,6 +1405,22 @@ pub(super) fn message_serializer(operation: &OperationDef) -> String {
     } else {
         format!("serializer<{}>()", message_kotlin_typename(operation))
     }
+}
+
+/// The arguments that let a refusal of one element of a collection message be placed at the step to
+/// it: the payload, the layers that wrap the model and the serializer of the model alone, or
+/// nothing for a message that is no collection.
+pub(super) fn message_placing(operation: &OperationDef, payload: &str) -> String {
+    let OperationInputs::Named(declared) = &operation.inputs else {
+        return String::new();
+    };
+    Shape::of(declared).map_or_else(String::new, |shape| {
+        format!(
+            ", {payload}, \"{}\", {}",
+            shape.layers(),
+            read_serializer(shape.leaf())
+        )
+    })
 }
 
 /// [`message_serializer`] with each model it holds read by its unjudged serializer.

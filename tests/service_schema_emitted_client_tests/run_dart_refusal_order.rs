@@ -5,7 +5,10 @@
 #![cfg(feature = "dart")]
 
 use super::mcp_library_rows::request;
-use super::refusal_order_service::{BROKEN_LOAD, HoistServiceSchema, OPERATIONS, broken_issues};
+use super::refusal_order_service::{
+    BROKEN_LIST, BROKEN_LOAD, BROKEN_MAP, HoistServiceSchema, OPERATIONS, broken_issues,
+    collection_issues,
+};
 use super::refusal_order_service::{
     above_item_dart, above_load_dart, below_item_dart, below_load_dart, below_renamed_dart,
     hoist_error_dart, shipment_mcp_task_dart,
@@ -25,6 +28,8 @@ HoistServiceHandlers<void> handlers() => HoistServiceHandlers<void>(
   above: (ctx, load) async => load,
   apart: (ctx, load) async => load,
   below: (ctx, load) async => load,
+  keyed: (ctx, items) async => items.length,
+  listed: (ctx, items) async => items.length,
   moved: (ctx, load) async => load,
   shifted: (ctx, load) async => load,
   tasked: (ctx, load) async => load,
@@ -49,6 +54,23 @@ Future<List<Object?>> attached() async {
       'payload': broken,
     });
   }
+  await settled.future;
+  detach();
+  return written;
+}
+
+Future<List<Object?>> attachedCollections() async {
+  final written = <Map<String, dynamic>>[];
+  final served = StreamController<Map<String, dynamic>>();
+  final settled = Completer<void>();
+  final detach = attachHoistServiceWsDispatcher<void>(
+    (inbound: served.stream, send: (reply) { written.add(reply); if (written.length == 2) settled.complete(); }),
+    null,
+    handlers(),
+    onFault: (fault) {},
+  );
+  served.add(<String, dynamic>{'kind': 'request', 'id': 'listed', 'service': 'HoistService', 'operation': 'listed', 'payload': jsonDecode(brokenList)});
+  served.add(<String, dynamic>{'kind': 'request', 'id': 'keyed', 'service': 'HoistService', 'operation': 'keyed', 'payload': jsonDecode(brokenMap)});
   await settled.future;
   detach();
   return written;
@@ -113,7 +135,7 @@ Future<Map<String, Object?>> read() async {
 }
 
 void main() async {
-  print(jsonEncode(<String, Object?>{'attached': await attached(), 'served': await served(), 'read': await read()}));
+  print(jsonEncode(<String, Object?>{'attached': await attached(), 'collections': await attachedCollections(), 'served': await served(), 'read': await read()}));
 }
 ";
 
@@ -149,6 +171,8 @@ fn module() -> String {
         HoistServiceSchema::dart_ws_client(),
         HoistServiceSchema::dart_mcp_service(),
         format!("const brokenText = r'''{BROKEN_LOAD}''';"),
+        format!("const brokenList = r'''{BROKEN_LIST}''';"),
+        format!("const brokenMap = r'''{BROKEN_MAP}''';"),
         format!("const mcpRequests = r'''{}''';", Value::Object(requests)),
         DRIVER.to_owned(),
     ]
@@ -209,6 +233,36 @@ fn a_message_declared_above_below_or_in_another_crate_is_listed_issue_by_issue()
             told["read"][operation]["issues"],
             expected(),
             "{operation}: {told}"
+        );
+    }
+}
+
+#[test]
+fn a_list_and_a_map_message_name_the_step_to_the_broken_item_as_rust_does() {
+    let Some(wrote) = ran(
+        "dart-refusal-order-collections",
+        RUNTIME_VAR,
+        "dart",
+        "order.dart",
+        &module(),
+    ) else {
+        return;
+    };
+    let told: Value = serde_json::from_str(wrote.trim()).unwrap();
+    for (reply, (field, detail)) in told["collections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(collection_issues())
+    {
+        assert_eq!(
+            reply["error"]["fault"]["kind"], "failed-validation",
+            "{told}"
+        );
+        assert_eq!(
+            reply["error"]["fault"]["issues"],
+            json!([{ "detail": detail, "field": field }]),
+            "{told}"
         );
     }
 }

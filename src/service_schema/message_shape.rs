@@ -1,8 +1,6 @@
 //! A message that is a list, a map or an optional of a model: read element by element with no
 //! judgement, then validated element by element.
 
-#[cfg(all(feature = "typescript", feature = "zod"))]
-use super::parse::{OperationDef, OperationInputs};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{GenericArgument, PathArguments, Type};
@@ -24,17 +22,6 @@ pub struct Shape {
 }
 
 impl Shape {
-    #[cfg(all(feature = "typescript", feature = "zod"))]
-    /// How many lists and maps wrap the model: the leading steps of a path into the message that
-    /// are an index or a key, and no field of a model.
-    pub fn depth(&self) -> usize {
-        let beneath = self.below.as_ref().map_or(0, |layer| layer.depth());
-        match self.kind {
-            Kind::Option => beneath,
-            Kind::Map | Kind::Vec => 1 + beneath,
-        }
-    }
-
     /// The type each collection is read as, with `held` where an element sits.
     pub fn held_type(&self, held: &Type) -> Type {
         let placed = self
@@ -50,6 +37,21 @@ impl Shape {
             *slot = placed;
         }
         replaced
+    }
+
+    #[cfg(any(feature = "dart", feature = "kotlin"))]
+    /// One letter for each layer, outermost first: `o` an optional, `l` a list, `m` a map.
+    pub fn layers(&self) -> String {
+        let own = match self.kind {
+            Kind::Map => 'm',
+            Kind::Option => 'o',
+            Kind::Vec => 'l',
+        };
+        let mut layers = String::from(own);
+        if let Some(below) = &self.below {
+            layers.push_str(&below.layers());
+        }
+        layers
     }
 
     /// The innermost type, the one a model's own read is asked of.
@@ -90,13 +92,16 @@ impl Shape {
     }
 
     /// The statements that validate every element of `value`, a reference to the collection,
-    /// pushing what each reports onto `violations`.
+    /// pushing what each reports onto `violations`, each line placed at the element's list
+    /// index or map key. `path` is the place the collection itself sits at, a `String` in scope.
     pub fn validated(&self, value: &TokenStream) -> TokenStream {
         let element = quote! { item };
         let walked = self.below.as_ref().map_or_else(
             || {
                 quote! {
-                    violations.extend(item.validation_issues());
+                    violations.extend(
+                        item.validation_issues().iter().map(|line| place_line(&path, line)),
+                    );
                 }
             },
             |layer| layer.validated(&element),
@@ -108,25 +113,18 @@ impl Shape {
                 }
             },
             Kind::Vec => quote! {
-                for item in #value.iter() {
+                for (step, item) in #value.iter().enumerate() {
+                    let path = step_into(&path, &::std::string::ToString::to_string(&step));
                     #walked
                 }
             },
             Kind::Map => quote! {
-                for item in #value.values() {
+                for (step, item) in #value.iter() {
+                    let path = step_into(&path, &::std::string::ToString::to_string(step));
                     #walked
                 }
             },
         }
-    }
-}
-
-#[cfg(all(feature = "typescript", feature = "zod"))]
-/// How many lists and maps wrap the model of `operation`'s message.
-pub fn collection_depth(operation: &OperationDef) -> usize {
-    match &operation.inputs {
-        OperationInputs::Named(declared) => Shape::of(declared).map_or(0, |shape| shape.depth()),
-        OperationInputs::Empty | OperationInputs::Generated(_) => 0,
     }
 }
 
