@@ -2360,8 +2360,9 @@ fn a_list_a_map_and_an_optional_message_are_read_element_by_element_and_validate
         "let read : Vec < Held > =",
         "let read : HashMap < String , Held > =",
         "let read : Option < Held > =",
-        "for item in received . iter () { violations . extend (item . validation_issues ())",
-        "for item in received . values () {",
+        "for (step , item) in received . iter () . enumerate () {",
+        "for (step , item) in received . iter () {",
+        "violations . extend (item . validation_issues () . iter () . map (| line | place_line (& path , line)) ,) ;",
         "if let :: core :: option :: Option :: Some (item) = received . as_ref () {",
         "< CheckOneMessage > :: model_schema_read_unjudged (deserializer)",
     ] {

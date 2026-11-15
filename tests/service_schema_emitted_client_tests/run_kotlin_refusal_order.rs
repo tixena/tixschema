@@ -6,9 +6,9 @@
 
 use super::mcp_library_rows::request;
 use super::refusal_order_service::{
-    BROKEN_LOAD, HoistServiceSchema, OPERATIONS, above_item_kotlin, above_load_kotlin,
-    below_item_kotlin, below_load_kotlin, below_renamed_kotlin, broken_issues, hoist_error_kotlin,
-    hoist_service_schema, shipment_mcp_task_kotlin,
+    BROKEN_LIST, BROKEN_LOAD, BROKEN_MAP, HoistServiceSchema, OPERATIONS, above_item_kotlin,
+    above_load_kotlin, below_item_kotlin, below_load_kotlin, below_renamed_kotlin, broken_issues,
+    collection_issues, hoist_error_kotlin, hoist_service_schema, shipment_mcp_task_kotlin,
 };
 use super::runtime::ran_kotlin;
 use refusal_order_apart::{apart_item_kotlin, apart_load_kotlin, apart_renamed_kotlin};
@@ -44,6 +44,8 @@ object Handlers : HoistServiceHandlers {
     override suspend fun above(req: AboveLoad): HoistServiceAboveResult = HoistServiceAboveResult.Ok(req)
     override suspend fun apart(req: ApartLoad): HoistServiceApartResult = HoistServiceApartResult.Ok(req)
     override suspend fun below(req: BelowLoad): HoistServiceBelowResult = HoistServiceBelowResult.Ok(req)
+    override suspend fun keyed(req: Map<String, AboveItem>): HoistServiceKeyedResult = HoistServiceKeyedResult.Ok(req.size.toUInt())
+    override suspend fun listed(req: List<AboveItem>): HoistServiceListedResult = HoistServiceListedResult.Ok(req.size.toUInt())
     override suspend fun moved(req: PublishedBelow): HoistServiceMovedResult = HoistServiceMovedResult.Ok(req)
     override suspend fun shifted(req: PublishedApart): HoistServiceShiftedResult = HoistServiceShiftedResult.Ok(req)
     override suspend fun tasked(req: ShipmentMcpTask): HoistServiceTaskedResult = HoistServiceTaskedResult.Ok(req)
@@ -71,6 +73,15 @@ fun main() = runBlocking {
     val deadline = System.currentTimeMillis() + 5000
     while (socket.sent.size < 6 && System.currentTimeMillis() < deadline) delay(5)
     val attached = socket.sent.toList()
+
+    val collectionsSocket = ManualSocket()
+    val collectionsTransport = HoistServiceWsTransport(collectionsSocket, HoistServiceWsOptions(heartbeat = null))
+    attachHoistServiceWsDispatcher(collectionsTransport.frames, Handlers, onFault = { })
+    collectionsSocket.deliver("""{"kind":"request","id":"listed","service":"HoistService","operation":"listed","payload":$BROKEN_LIST}""")
+    collectionsSocket.deliver("""{"kind":"request","id":"keyed","service":"HoistService","operation":"keyed","payload":$BROKEN_MAP}""")
+    val collectionsDeadline = System.currentTimeMillis() + 5000
+    while (collectionsSocket.sent.size < 2 && System.currentTimeMillis() < collectionsDeadline) delay(5)
+    val collections = collectionsSocket.sent.toList()
 
     val dispatch = createHoistServiceMcpDispatcher { _ -> Handlers }
     val inFlight = HoistServiceMcpInFlight()
@@ -102,6 +113,7 @@ fun main() = runBlocking {
 
     println(buildJsonObject {
         put("attached", JsonArray(attached.map { JsonPrimitive(it) }))
+        put("collections", JsonArray(collections.map { JsonPrimitive(it) }))
         put("served", JsonObject(served))
         put("read", JsonObject(read))
     }.toString())
@@ -146,6 +158,8 @@ fn module() -> String {
         HoistServiceSchema::kotlin_ws_client(),
         HoistServiceSchema::kotlin_mcp_service(),
         format!("const val BROKEN = \"\"\"{BROKEN_LOAD}\"\"\""),
+        format!("const val BROKEN_LIST = \"\"\"{BROKEN_LIST}\"\"\""),
+        format!("const val BROKEN_MAP = \"\"\"{BROKEN_MAP}\"\"\""),
         format!("const val MCP_REQUESTS = \"{literal}\""),
         DRIVER.to_owned(),
     ]
@@ -205,6 +219,35 @@ fn a_message_declared_above_below_or_in_another_crate_is_listed_issue_by_issue()
             told["read"][operation]["issues"],
             expected(),
             "{operation}: {told}"
+        );
+    }
+}
+
+#[test]
+fn a_list_and_a_map_message_name_the_step_to_the_broken_item_as_rust_does() {
+    let Some(wrote) = ran_kotlin(&module()) else {
+        return;
+    };
+    let told: Value = serde_json::from_str(wrote.trim()).unwrap();
+    let replies: Vec<Value> = told["collections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|frame| serde_json::from_str(frame.as_str().unwrap()).unwrap())
+        .collect();
+    for (operation, (field, detail)) in ["listed", "keyed"].into_iter().zip(collection_issues()) {
+        let reply = replies
+            .iter()
+            .find(|reply| reply["id"] == operation)
+            .unwrap();
+        assert_eq!(
+            reply["error"]["fault"]["kind"], "failed-validation",
+            "{told}"
+        );
+        assert_eq!(
+            reply["error"]["fault"]["issues"],
+            json!([{ "detail": detail, "field": field }]),
+            "{told}"
         );
     }
 }

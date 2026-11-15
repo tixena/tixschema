@@ -400,12 +400,12 @@ fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal
     );
     let refused = body_from(
         &written,
-        "private fun conversationClientServiceWsRefused(operation: String, rejected: Throwable)",
+        "private fun conversationClientServiceWsRefused(operation: String, rejected: Throwable,",
     );
     assert!(
         refused.contains("kind = ConversationClientServiceFaultKind.UndeserializablePayload")
             && refused.contains("\"expected value\"")
-            && refused.contains("ConversationClientServiceFaultFields(issues = conversationClientServiceWsRefusedIssues(rejected), kind = ConversationClientServiceFaultKind.FailedValidation, operation = operation)"),
+            && refused.contains("ConversationClientServiceFaultFields(issues = conversationClientServiceWsRefusedIssues(rejected, source, layers, leaf), kind = ConversationClientServiceFaultKind.FailedValidation, operation = operation)"),
         "a refusal in serde's words for text that is not the document is `UndeserializablePayload`, \
          as the Rust dispatcher answers it, and every other lists each problem. Got: {refused}"
     );

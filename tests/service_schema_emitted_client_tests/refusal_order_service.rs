@@ -3,6 +3,7 @@
 //! issue per broken rule whichever way the message is placed.
 
 use super::tests::poll_once;
+use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
 use refusal_order_apart::{ApartLoad, ApartRenamed, apart_load_schema, apart_renamed_schema};
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,12 @@ use tixschema::{model_schema, service_schema};
 
 /// The operations of the service, each the place or the name its message is declared under.
 pub const OPERATIONS: [&str; 6] = ["above", "apart", "below", "moved", "shifted", "tasked"];
+
+/// The payload of a list message whose second item breaks the bound of its tag.
+pub const BROKEN_LIST: &str = r#"[{"tag":"ok"},{"tag":""}]"#;
+
+/// The payload of a map message whose entry `second` breaks the bound of its tag.
+pub const BROKEN_MAP: &str = r#"{"first":{"tag":"ok"},"second":{"tag":""}}"#;
 
 /// The payload of a load of each place that breaks all three rules: the label, the weight and the
 /// tag of its first item.
@@ -66,6 +73,13 @@ pub trait HoistService<Ctx> {
     /// Lifts a load declared below the service.
     async fn below(&self, ctx: &Ctx, load: BelowLoad) -> Result<BelowLoad, HoistError>;
 
+    /// Counts a map of items.
+    async fn keyed(&self, ctx: &Ctx, items: BTreeMap<String, AboveItem>)
+    -> Result<u32, HoistError>;
+
+    /// Counts a list of items.
+    async fn listed(&self, ctx: &Ctx, items: Vec<AboveItem>) -> Result<u32, HoistError>;
+
     /// Lifts a load published under another name, declared below the service.
     async fn moved(&self, ctx: &Ctx, load: BelowRenamed) -> Result<BelowRenamed, HoistError>;
 
@@ -103,6 +117,22 @@ impl HoistService<()> for Hoist {
         load: BelowLoad,
     ) -> impl Future<Output = Result<BelowLoad, HoistError>> {
         ready(Ok(load))
+    }
+
+    fn keyed(
+        &self,
+        _ctx: &(),
+        items: BTreeMap<String, AboveItem>,
+    ) -> impl Future<Output = Result<u32, HoistError>> {
+        ready(Ok(u32::try_from(items.len()).unwrap_or(u32::MAX)))
+    }
+
+    fn listed(
+        &self,
+        _ctx: &(),
+        items: Vec<AboveItem>,
+    ) -> impl Future<Output = Result<u32, HoistError>> {
+        ready(Ok(u32::try_from(items.len()).unwrap_or(u32::MAX)))
     }
 
     fn moved(
@@ -158,6 +188,21 @@ pub struct BelowRenamed {
     pub label: String,
     #[model_schema_prop(maximum = 100)]
     pub weight: u32,
+}
+
+/// The field and detail the Rust `ws_rpc` dispatcher answers for each of the two payloads above:
+/// the step to the broken item, then the field the item's own validator names.
+pub fn collection_issues() -> [(String, String); 2] {
+    let (field, detail) = issues_of(
+        &serde_json::from_str::<AboveItem>(r#"{"tag":""}"#)
+            .unwrap_err()
+            .to_string(),
+    )
+    .remove(0);
+    [
+        (format!("1.{field}"), detail.clone()),
+        (format!("second.{field}"), detail),
+    ]
 }
 
 /// The field and the words of each rule a read of [`BROKEN_LOAD`] refuses, as Rust words them.
@@ -225,6 +270,14 @@ fn rust_lists_one_issue_per_broken_rule_whichever_place_declares_the_load() {
     ] {
         assert_eq!(issues_of(&refused), expected);
     }
+    assert!(matches!(
+        poll_once(Hoist.listed(&(), Vec::new())),
+        Some(Ok(0))
+    ));
+    assert!(matches!(
+        poll_once(Hoist.keyed(&(), BTreeMap::new())),
+        Some(Ok(0))
+    ));
     let sound: AboveLoad = serde_json::from_str(r#"{"items":[],"label":"a","weight":1}"#).unwrap();
     assert!(matches!(poll_once(Hoist.above(&(), sound)), Some(Ok(_))));
     let apart: ApartLoad = serde_json::from_str(r#"{"items":[],"label":"a","weight":1}"#).unwrap();

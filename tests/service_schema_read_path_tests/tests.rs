@@ -6,6 +6,7 @@
 use crate::amqp_transport;
 use crate::http_rest_transport;
 use crate::ws_transport;
+use alloc::collections::BTreeMap;
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
@@ -135,6 +136,22 @@ pub trait DocumentService<Ctx> {
     /// Counts the drafts.
     async fn check_drafts(&self, ctx: &Ctx, req: DraftBatch) -> Result<Tally, TallyError>;
 
+    /// Reads a list of structs.
+    async fn check_many(&self, ctx: &Ctx, req: Vec<Struct>) -> Result<Tally, TallyError>;
+
+    /// Reads an optional struct.
+    async fn check_maybe(&self, ctx: &Ctx, req: Option<Struct>) -> Result<Tally, TallyError>;
+
+    /// Reads structs by name.
+    async fn check_named(
+        &self,
+        ctx: &Ctx,
+        req: BTreeMap<String, Struct>,
+    ) -> Result<Tally, TallyError>;
+
+    /// Reads lists of lists of structs.
+    async fn check_nested(&self, ctx: &Ctx, req: Vec<Vec<Struct>>) -> Result<Tally, TallyError>;
+
     /// Reads a struct.
     async fn read_adjacently_tagged(
         &self,
@@ -193,6 +210,10 @@ impl DocumentService<()> for Back {
     }
 
     reads!(
+        check_many: Vec<Struct>,
+        check_maybe: Option<Struct>,
+        check_named: BTreeMap<String, Struct>,
+        check_nested: Vec<Vec<Struct>>,
         read_adjacently_tagged: AdjacentlyTagged,
         read_flattened: Flattened,
         read_internally_tagged: InternallyTagged,
@@ -687,5 +708,51 @@ fn every_operation_is_routed_at_a_post_of_its_wire_name() {
         assert_eq!(route.path(), format!("/{}", route.operation()));
         assert_eq!(route.ok_status(), 200);
         assert_eq!(route.error_statuses(), &[422_u16]);
+    }
+}
+
+#[test]
+fn a_broken_bound_in_an_element_names_the_step_to_it_the_way_a_refusal_does_on_every_transport() {
+    let rows = [
+        (
+            "check-many",
+            json!([{ "label": "a" }, { "label": 5_u8 }]),
+            json!([{ "label": "a" }, { "label": "" }]),
+            "1.label",
+        ),
+        (
+            "check-named",
+            json!({ "first": { "label": 5_u8 } }),
+            json!({ "first": { "label": "" } }),
+            "first.label",
+        ),
+        (
+            "check-named",
+            json!({ "label": { "label": 5_u8 } }),
+            json!({ "label": { "label": "" } }),
+            "label.label",
+        ),
+        (
+            "check-nested",
+            json!([[{ "label": "a" }], [{ "label": "a" }, { "label": 5_u8 }]]),
+            json!([[{ "label": "a" }], [{ "label": "a" }, { "label": "" }]]),
+            "1.1.label",
+        ),
+        (
+            "check-maybe",
+            json!({ "label": 5_u8 }),
+            json!({ "label": "" }),
+            "label",
+        ),
+    ];
+    for (operation, refused, broken, expected) in rows {
+        let (by_serde, by_validate) = named(operation, &refused, &broken);
+        assert_eq!(by_serde.as_deref(), Some(expected), "{operation} {refused}");
+        assert_eq!(by_validate, by_serde, "{operation} {broken}");
+        let fault = faults_everywhere(operation, &broken);
+        assert_eq!(
+            fault["issues"][0]["detail"], "too short: minimum length is 1, got 0",
+            "{fault}"
+        );
     }
 }

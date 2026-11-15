@@ -79,7 +79,7 @@ pub const FAULT_CASES: [FaultCase; 20] = [
     },
     FaultCase {
         arguments: r#"{"value":[{"document_id":""}]}"#,
-        field: Some("document_id"),
+        field: Some("0.document_id"),
         issues: &[],
         kind: "failed-validation",
         operation: "check-many",
@@ -95,7 +95,7 @@ pub const FAULT_CASES: [FaultCase; 20] = [
     },
     FaultCase {
         arguments: r#"{"first":{"document_id":""}}"#,
-        field: Some("document_id"),
+        field: Some("first.document_id"),
         issues: &[],
         kind: "failed-validation",
         operation: "check-named",

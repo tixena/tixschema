@@ -307,13 +307,13 @@ fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal
     );
     let refused = body_from(
         &written,
-        "_ledgerWsRefused(String operation, Object rejected)",
+        "_ledgerWsRefused(String operation, Object rejected,",
     );
     assert!(
         refused.contains("kind: LedgerFaultKind.undeserializablePayload")
             && refused.contains("'expected value'")
             && refused
-                .contains("_ledgerWsFailedValidation(operation, _ledgerWsRefusedIssues(rejected))"),
+                .contains("_ledgerWsFailedValidation(operation, _ledgerWsRefusedIssues(rejected, source, layers, leaf))"),
         "a refusal in serde's words for text that is not the document is `undeserializablePayload`, \
          as the Rust dispatcher answers it, and every other lists each problem. Got: {refused}"
     );

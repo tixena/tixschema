@@ -1393,6 +1393,7 @@ fn message_validators(service: &ServiceDef) -> TokenStream {
                 let walked = shape.validated(&quote! { received });
                 quote! {
                     let mut violations = ::std::vec::Vec::new();
+                    let path = ::std::string::String::new();
                     #walked
                     if violations.is_empty() {
                         ::core::result::Result::Ok(())
@@ -1707,6 +1708,22 @@ fn violation_readers() -> TokenStream {
         /// Every line of a violation report as a fault lists it, one problem each, in order.
         pub fn violation_issues(reported: &[::std::string::String]) -> ::std::vec::Vec<ServiceFaultIssue> {
             reported.iter().map(|line| violation_issue(line)).collect()
+        }
+
+        /// `step` added to `path`, the dotted place serde tracks.
+        pub fn step_into(path: &str, step: &str) -> ::std::string::String {
+            if path.is_empty() { step.to_owned() } else { ::std::format!("{path}.{step}") }
+        }
+
+        /// One line of a validator's report with the field it names placed under `path`.
+        pub fn place_line(path: &str, line: &str) -> ::std::string::String {
+            match named_field(line) {
+                ::core::option::Option::Some(named) if !path.is_empty() => ::std::format!(
+                    "'{path}.{named}'{}",
+                    line.strip_prefix(&::std::format!("'{named}'")).unwrap_or_default()
+                ),
+                _ => line.to_owned(),
+            }
         }
 
         /// The problems of a refusal serde raised at `path`, the place it tracked, where `said`

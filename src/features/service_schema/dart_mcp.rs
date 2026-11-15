@@ -9,7 +9,8 @@ use super::dart_http_client::{dart_call, dart_parameter, fault_said};
 use super::dart_ws_client::{
     dart_type_of, declared_error_decode_stmts, guarded_call, has_one_way, header_call_args,
     header_out_push_stmt, header_refused_fault, message_dart_typename, message_decode,
-    message_encode, read_text_call, read_text_fn, split_reply_record, success_decode_block,
+    message_encode, message_placing, read_text_call, read_text_fn, split_reply_record,
+    success_decode_block,
 };
 use super::mcp_scopes::{ReadUri, ScopeTable};
 use super::result::result_name;
@@ -2264,6 +2265,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
     let source = source_expr(prefix, operation, &shape);
     let (wrapped, missing_value) = wrapped_check(named, prefix, operation, &shape);
     let decode = message_decode(operation, "source");
+    let placing = message_placing(operation, "source");
     let kind = format!("{named}FaultKind");
     let mut text = format!(
         "Future<{named}McpAnswer> _{prefix}McpCall{op}<Ctx>(\n  \
@@ -2292,7 +2294,7 @@ fn server_call(named: &str, prefix: &str, operation: &OperationDef) -> String {
          final listed = _{prefix}WsRefusal(rejected);\n    \
          if (listed != null) {{\n      \
          return _{prefix}McpFaultResult(\n        \
-         _{prefix}McpFailedValidation({tool}, [for (final line in listed) _{prefix}WsIssue(line)]),\n      \
+         _{prefix}McpFailedValidation({tool}, _{prefix}WsRefusedIssues(rejected{placing})),\n      \
          );\n    \
          }}\n    \
          return _{prefix}McpFaultResult(_{prefix}McpUnreadFault({tool}, rejected, _{prefix}McpMessageSchema({tool}, {wrapped}), source, {every}));\n  \

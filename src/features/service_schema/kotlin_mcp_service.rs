@@ -17,6 +17,7 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
     answers_key, is_content_list, is_content_pair, is_prompt_messages, read_apart, wrapped_ident,
 };
+use crate::service_schema::message_shape::Shape;
 use crate::service_schema::parse::{
     HttpShape, McpCompletesKind, McpResourceUri, OperationDef, OperationInputs, OperationOutcome,
     PathSegment, ServiceDef, is_unit_type, option_inner, wire_key, written,
@@ -817,6 +818,8 @@ private fun <T> @P@McpReceive(
   schema: JsonElement? = null,
   passed: Set<String> = emptySet(),
   every: Boolean = false,
+  layers: String = "",
+  leaf: DeserializationStrategy<*>? = null,
   refuse: (kind: String, detail: String?, issues: List<Pair<String?, String>>?) -> Nothing =
     { kind, detail, issues -> @P@McpRefuse(kind, tool, detail, issues) },
 ): T {
@@ -824,7 +827,10 @@ private fun <T> @P@McpReceive(
     return Json.decodeFromJsonElement(serializer, source)
   } catch (refused: IllegalArgumentException) {
     val listed = @P@WsRefusal(refused)
-    if (listed != null) refuse("failed-validation", null, listed.map(::@P@McpIssue))
+    if (listed != null) {
+      val placed = if (leaf == null) emptyList() else @P@WsPlaced(source, layers, leaf)
+      refuse("failed-validation", null, placed.ifEmpty { listed }.map(::@P@McpIssue))
+    }
     val twin = (serializer as? Function0<*>)?.invoke() as? DeserializationStrategy<*> ?: unjudged
     val detail = refused.message ?: refused.toString()
     if (detail.startsWith("invalid type: floating point")) {
@@ -3252,6 +3258,21 @@ fn prompt_dispatch(prompts: &[&OperationDef], prefix: &str, named: &str) -> Stri
     text
 }
 
+/// The arguments that let a refusal of one element of a collection message be placed at the step to
+/// it, or nothing for a message that is no collection.
+fn tool_placing(operation: &OperationDef) -> String {
+    let OperationInputs::Named(declared) = &operation.inputs else {
+        return String::new();
+    };
+    Shape::of(declared).map_or_else(String::new, |shape| {
+        format!(
+            ", layers = {}, leaf = {}",
+            kotlin_quoted(&shape.layers()),
+            read_serializer(shape.leaf())
+        )
+    })
+}
+
 fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> String {
     let tool = kotlin_quoted(operation.mcp_tool_name());
     let shape = HttpShape::of(operation);
@@ -3284,8 +3305,9 @@ fn arm(operation: &OperationDef, prefix: &str, named: &str, fields: &str) -> Str
          {prefix}McpWrapped.getValue({tool}))\n      \
          val decoded = {prefix}McpReceive({tool}, {read_by}, {unjudged_by}, mcpSource, \
          {prefix}McpToolSchema({tool}, {prefix}McpWrapped.getValue({tool})), \
-         passed = setOf({}), every = true)\n",
-        passed.join(", ")
+         passed = setOf({}), every = true{})\n",
+        passed.join(", "),
+        tool_placing(operation),
     );
     let mut call_arguments = vec!["decoded".to_owned()];
     for header in &shape.header_in {

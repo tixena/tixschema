@@ -13,6 +13,7 @@ use crate::features::refusals;
 use crate::features::refusals::refusal_name;
 use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE, get_field_def};
 use crate::rename_rule::RenameRule;
+use crate::service_schema::message_shape::Shape;
 use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, is_unit_type,
     option_inner, tuple_elements,
@@ -161,10 +162,35 @@ fn refused_at_fn(named: &str, fn_prefix: &str, refusals: &[String]) -> String {
          {arms}  \
          _ => null,\n\
          }};\n\n\
-         /// The problems a read's refusal lists: each broken rule of a type's refusal, or the one at the path it carries.\n\
-         List<{issue}> _{fn_prefix}WsRefusedIssues(Object rejected) {{\n  \
+         /// Each broken rule of every element of a collection `source`, read by `leaf` below the layers (`o` an optional, `l` a list, `m` a map), at the step to its element, as the Rust dispatcher places them.\n\
+         List<String> _{fn_prefix}WsPlaced(Object? source, String layers, void Function(dynamic) leaf, [String at = '']) {{\n  \
+         if (layers.isEmpty) {{\n    \
+         try {{\n      \
+         leaf(source);\n    \
+         }} catch (rejected) {{\n      \
+         final lines = _{fn_prefix}WsRefusal(rejected);\n      \
+         if (lines == null) return const <String>[];\n      \
+         return [for (final line in lines) at.isEmpty || !line.startsWith(\"'\") ? line : \"'$at.${{line.substring(1)}}\"];\n    \
+         }}\n    \
+         return const <String>[];\n  \
+         }}\n  \
+         final rest = layers.substring(1);\n  \
+         String step(Object? key) => at.isEmpty ? '$key' : '$at.$key';\n  \
+         return switch ((layers[0], source)) {{\n    \
+         ('o', null) => const <String>[],\n    \
+         ('o', _) => _{fn_prefix}WsPlaced(source, rest, leaf, at),\n    \
+         ('l', final List<Object?> items) => [for (var index = 0; index < items.length; index++) ..._{fn_prefix}WsPlaced(items[index], rest, leaf, step(index))],\n    \
+         ('m', final Map<Object?, Object?> entries) => [for (final entry in entries.entries) ..._{fn_prefix}WsPlaced(entry.value, rest, leaf, step(entry.key))],\n    \
+         _ => const <String>[],\n  \
+         }};\n\
+         }}\n\n\
+         /// The problems a read's refusal lists: each broken rule of a type's refusal, placed where `leaf` finds it in a collection `source`, or the one at the path it carries.\n\
+         List<{issue}> _{fn_prefix}WsRefusedIssues(Object rejected, [Object? source, String layers = '', void Function(dynamic)? leaf]) {{\n  \
          final listed = _{fn_prefix}WsRefusal(rejected);\n  \
-         if (listed != null) return [for (final line in listed) _{fn_prefix}WsIssue(line)];\n  \
+         if (listed != null) {{\n    \
+         final placed = leaf == null ? const <String>[] : _{fn_prefix}WsPlaced(source, layers, leaf);\n    \
+         return [for (final line in placed.isEmpty ? listed : placed) _{fn_prefix}WsIssue(line)];\n  \
+         }}\n  \
          return switch (rejected) {{\n    \
          FormatException(:final Object? source, :final String message)\n        \
          when (source is! List || source.isEmpty) && message.startsWith(\"'\") =>\n      \
@@ -215,10 +241,10 @@ fn refused_fn(named: &str, fn_prefix: &str) -> String {
     let listed = NOT_A_DOCUMENT.map(|said| format!("'{said}'")).join(", ");
     format!(
         "/// The fault a read's refusal answers: one in serde's words for text that is not the document names no field.\n\
-         {fields} _{fn_prefix}WsRefused(String operation, Object rejected) => switch (rejected) {{\n  \
+         {fields} _{fn_prefix}WsRefused(String operation, Object rejected, [Object? source, String layers = '', void Function(dynamic)? leaf]) => switch (rejected) {{\n  \
          FormatException(:final String message) when const <String>{{{listed}}}.contains(message) =>\n    \
          {fields}(detail: message, kind: {named}FaultKind.undeserializablePayload, operation: operation),\n  \
-         _ => _{fn_prefix}WsFailedValidation(operation, _{fn_prefix}WsRefusedIssues(rejected)),\n\
+         _ => _{fn_prefix}WsFailedValidation(operation, _{fn_prefix}WsRefusedIssues(rejected, source, layers, leaf)),\n\
          }};"
     )
 }
@@ -1139,6 +1165,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
     let call = dart_call(operation);
     let req_ty = message_dart_typename(operation);
     let received = message_decode(operation, "frame['payload']");
+    let placing = message_placing(operation, "frame['payload']");
     let mut arm = format!(
         "      case {wire}:\n        \
          {{\n          \
@@ -1146,7 +1173,7 @@ fn dispatch_arm(named: &str, fn_prefix: &str, operation: &OperationDef) -> Strin
          try {{\n            \
          decoded = {received};\n          \
          }} catch (rejected) {{\n            \
-         final fault = _{fn_prefix}WsRefused({wire}, rejected);\n            \
+         final fault = _{fn_prefix}WsRefused({wire}, rejected{placing});\n            \
          onFault(fault);\n"
     );
     arm.push_str(&reply_write_stmt(
@@ -1429,6 +1456,22 @@ pub(super) fn message_encode(operation: &OperationDef) -> String {
         || "req.toJson()".to_owned(),
         |ty| dart_json_encode(&ty, "req", true),
     )
+}
+
+/// The arguments that let a refusal of one element of a collection message be placed at the step to
+/// it: the payload, the layers that wrap the model and the read of the model alone, or nothing for
+/// a message that is no collection.
+pub(super) fn message_placing(operation: &OperationDef, payload: &str) -> String {
+    let OperationInputs::Named(declared) = &operation.inputs else {
+        return String::new();
+    };
+    Shape::of(declared).map_or_else(String::new, |shape| {
+        format!(
+            ", {payload}, '{}', (item) => {}",
+            shape.layers(),
+            dart_json_decode(shape.leaf(), "item")
+        )
+    })
 }
 
 /// The message decoded out of a frame's dynamically typed `payload`.

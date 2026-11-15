@@ -191,9 +191,14 @@ fn a_list_a_map_and_an_optional_message_are_refused_for_the_item_that_breaks_a_b
         )),
         fault_of(block_on(client.check_maybe(Some(broken())))),
     ];
-    for fault in refusals {
+    let placed = ["0.document_id", "first.document_id", "document_id"];
+    for (fault, field) in refusals.iter().zip(placed) {
         assert_eq!(fault.kind(), ServiceFaultKind::FailedValidation);
-        assert_eq!(fault.issues()[0].field(), Some("document_id"));
+        assert_eq!(fault.issues()[0].field(), Some(field));
+        assert_eq!(
+            fault.issues()[0].detail(),
+            "too short: minimum length is 1, got 0"
+        );
     }
     assert_eq!(taken(&client.transport().sent), Vec::<Sent>::new());
     let read = block_on(client.check_many(vec![GetVersionRequestDraft {
