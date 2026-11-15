@@ -27,7 +27,7 @@ use syn::{Ident, Type};
 
 /// The locals and parameters an emitted method writes around an operation's own argument: the
 /// REST client's, the `ws_rpc` client's and dispatcher's, and the `mcp` client's and route's.
-const TAKEN_BY_A_METHOD: [&str; 54] = [
+const TAKEN_BY_A_METHOD: [&str; 53] = [
     "answered",
     "arguments",
     "assigned",
@@ -77,7 +77,6 @@ const TAKEN_BY_A_METHOD: [&str; 54] = [
     "shared",
     "status",
     "thrown",
-    "transport",
     "uncarried",
     "unexpected",
     "unwritten",
@@ -797,7 +796,7 @@ fn multipart_parts_build_stmt(
 fn send_expr(named: &str, method_str: &str, has_multipart: bool) -> String {
     let parts_arg = if has_multipart { ", parts = parts" } else { "" };
     format!(
-        "transport.send({named}HttpRequest(method = \"{method_str}\", path = path, query = query, headers = headers, body = body{parts_arg}))"
+        "this.transport.send({named}HttpRequest(method = \"{method_str}\", path = path, query = query, headers = headers, body = body{parts_arg}))"
     )
 }
 

@@ -491,7 +491,7 @@ fn client_method(
              suspend fun {call}({params}) {{\n\
 {headers_build}    \
              try {{\n      \
-             transport.notify({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
+             this.transport.notify({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
              }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
              throw cancelled\n    \
              }} catch (uncarried: Throwable) {{\n      \
@@ -507,7 +507,7 @@ fn client_method(
                  suspend fun {call}({params}): {result} {{\n\
 {headers_build}    \
                  val reply = try {{\n      \
-                 transport.request({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
+                 this.transport.request({wire}, Json.encodeToJsonElement({sent}, req){headers_arg})\n    \
                  }} catch (cancelled: kotlinx.coroutines.CancellationException) {{\n      \
                  throw cancelled\n    \
                  }} catch (uncarried: Throwable) {{\n      \

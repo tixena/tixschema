@@ -18,12 +18,12 @@ use super::tests::{LookupBackEnd, LookupClientServiceSchema};
 #[cfg(feature = "kotlin")]
 use super::tests::{
     for_request_kotlin, import_request_kotlin, lookup_error_kotlin, lookup_found_kotlin,
-    lookup_thing_kotlin, shadow_request_kotlin,
+    lookup_thing_kotlin, relay_request_kotlin, shadow_request_kotlin,
 };
 #[cfg(feature = "swift")]
 use super::tests::{
     for_request_swift, import_request_swift, lookup_error_swift, lookup_found_swift,
-    lookup_thing_swift, shadow_request_swift,
+    lookup_thing_swift, relay_request_swift, shadow_request_swift,
 };
 #[cfg(feature = "dart")]
 use super::tests::{lookup_error_dart, lookup_found_dart, lookup_thing_dart};
@@ -31,7 +31,7 @@ use core::future::Future;
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};
 
-/// Records each request and answers `200`, then makes the three calls.
+/// Records each request and answers `200`, then makes the calls.
 #[cfg(feature = "dart")]
 const DART_DRIVER: &str = "
 class _LookupRecorder implements LookupClientServiceHttpTransport {
@@ -64,6 +64,7 @@ void main() async {
   await client.for_(ForRequest(in_: 'i', final_: 'f'), 't', 'n');
   await client.object(LookupThingDraft(class_: 'c', var_: 'w').validate());
   await client.shadow(ShadowRequest(message: 'm', sending: 's'), 'b', 'p', 't');
+  await client.relay(RelayRequest(label: 'l', note: 'n'), 'r');
   print(jsonEncode(recorder.sent));
 }
 ";
@@ -86,6 +87,7 @@ fun main() = runBlocking {
     client.`for`(ForRequest(`in` = "i", final = "f"), "t", "n")
     client.`object`(LookupThingDraft(`class` = "c", `var` = "w").validate())
     client.shadow(ShadowRequest(message = "m", sending = "s"), body = "b", path = "p", status = "t")
+    client.relay(RelayRequest(label = "l", note = "n"), transport = "r")
     val report = buildJsonArray {
         for (request in transport.sent) {
             add(buildJsonObject {
@@ -129,6 +131,7 @@ await client.import({ class: "k", object: "o", default: "d", var: "v" });
 await client.for({ in: "i", final: "f" }, "t", "n");
 await client.object({ class: "c", var: "w" });
 await client.shadow({ message: "m", sending: "s" }, "b", "p", "t");
+await client.relay({ label: "l", note: "n" }, "r");
 console.log(JSON.stringify(sent));
 "#;
 
@@ -143,6 +146,7 @@ const ImportRequest$Schema = pass;
 const LookupError$Schema = pass;
 const LookupFound$Schema = pass;
 const LookupThing$Schema = pass;
+const RelayRequest$Schema = pass;
 const ShadowRequest$Schema = pass;
 ";
 
@@ -178,6 +182,7 @@ _ = await client.`import`(ImportRequest(`class`: "k", object: "o", `default`: "d
 _ = await client.`for`(ForRequest(`in`: "i", final: "f"), type: "t", `default`: "n")
 _ = await client.object(try LookupThingDraft(`class`: "c", `var`: "w").validate())
 _ = await client.shadow(ShadowRequest(message: "m", sending: "s"), body: "b", path: "p", status: "t")
+_ = await client.relay(RelayRequest(label: "l", note: "n"), transport: "r")
 let sent = await recorder.sent
 print(String(data: try! JSONEncoder().encode(sent), encoding: .utf8)!)
 "##;
@@ -257,6 +262,7 @@ fn every_argument_read() -> Vec<String> {
         r#"200 {"name":"i|f|t|n"}"#,
         r#"200 {"name":"c|w"}"#,
         r#"200 {"name":"m|s|b|p|t"}"#,
+        r#"200 {"name":"l|n|r"}"#,
     ]
     .map(str::to_owned)
     .to_vec()
@@ -293,6 +299,7 @@ fn the_kotlin_client_calls_a_service_named_after_reserved_words() {
         lookup_thing_kotlin::kotlin_definition(),
         import_request_kotlin::kotlin_definition(),
         for_request_kotlin::kotlin_definition(),
+        relay_request_kotlin::kotlin_definition(),
         shadow_request_kotlin::kotlin_definition(),
         lookup_client_service_fault_fields_kotlin::kotlin_definition(),
         lookup_client_service_fault_kind_kotlin::kotlin_definition(),
@@ -329,6 +336,7 @@ fn the_swift_client_calls_a_service_named_after_reserved_words() {
         lookup_thing_swift::swift_definition(),
         import_request_swift::swift_definition(),
         for_request_swift::swift_definition(),
+        relay_request_swift::swift_definition(),
         shadow_request_swift::swift_definition(),
         lookup_client_service_fault_fields_swift::swift_definition(),
         lookup_client_service_fault_kind_swift::swift_definition(),
@@ -374,6 +382,13 @@ fn the_rust_dispatcher_reads_each_argument_from_where_its_name_puts_it() {
             "headers": [["x-body", "b"], ["x-path", "p"], ["x-status", "t"]],
             "body": r#"{"sending":"s"}"#,
         },
+        {
+            "method": "POST",
+            "path": "/relays/l",
+            "query": "",
+            "headers": [["x-transport", "r"]],
+            "body": r#"{"note":"n"}"#,
+        },
     ]);
     assert_eq!(
         read_by_rust(&sent.to_string()),
@@ -382,6 +397,7 @@ fn the_rust_dispatcher_reads_each_argument_from_where_its_name_puts_it() {
             r#"200 {"name":"k|o|d|v"}"#,
             r#"200 {"name":"c|w"}"#,
             r#"200 {"name":"m|s|b|p|t"}"#,
+            r#"200 {"name":"l|n|r"}"#,
         ]
     );
 }
@@ -407,6 +423,7 @@ fn the_route_table_names_each_placeholder_as_the_path_writes_it() {
             ("POST", "/items/{in}", "for", 200, declared),
             ("GET", "/classes/{class}/{object}", "import", 200, declared),
             ("PUT", "/things/{class}", "object", 200, declared),
+            ("POST", "/relays/{label}", "relay", 200, declared),
             ("POST", "/shadows/{message}", "shadow", 200, declared),
         ]
     );

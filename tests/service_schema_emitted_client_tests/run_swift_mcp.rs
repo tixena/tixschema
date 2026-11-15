@@ -105,7 +105,7 @@ case .failure(let failure):
   case .fault(let fault): lines.append("fault \(fault.kind.rawValue)")
   }
 }
-switch await client.archiveDocument(ArchiveDocumentRequest(documentId: "doc-1", reason: "stale"), exchange: "reviewer-7") {
+switch await client.archiveDocument(ArchiveDocumentRequest(documentId: "doc-1", reason: "stale"), exchange: "reviewer-7", transport: "t") {
 case .success: lines.append("ok unit")
 case .failure(let failure):
   switch failure {

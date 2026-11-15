@@ -196,7 +196,7 @@ pub fn client_calls() -> Vec<ClientCall> {
         ),
         rust(
             "archive-document",
-            json!({ "documentId": "doc-1", "reason": "stale", "x-exchange": "reviewer-7" }),
+            json!({ "documentId": "doc-1", "reason": "stale", "x-exchange": "reviewer-7", "x-transport": "t" }),
         ),
         rust("touch-document", touching.clone()),
         rust(
