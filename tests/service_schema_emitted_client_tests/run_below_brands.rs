@@ -17,7 +17,7 @@ mod dart {
 void told(int at, String payload) {
   try {
     print('$at: ${Fastening.fromJson(jsonDecode(payload)).toDraft().runtimeType}');
-  } on FormatException {
+  } on Exception {
     print('$at: refused');
   }
 }

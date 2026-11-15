@@ -1237,11 +1237,11 @@ fn parsed_fn(named: &str, prefix: &str) -> String {
 
 fn fault_from_body_fn(named: &str, prefix: &str) -> String {
     let members = format!(
-        "      detail: parsed.detail,\n      \
-         field: parsed.field as string | undefined,\n      \
+        "      detail: failed ? undefined : detail,\n      \
+         field: undefined,\n      \
+         ...(failed ? {{ issues: listed ?? [] }} : {{}}),\n      \
          kind: parsed.kind as {named}FaultKind,\n      \
-         operation: parsed.operation,\n      \
-         ...(listed === undefined ? {{}} : {{ issues: listed }}),"
+         operation: parsed.operation,"
     );
     format!(
         "/** The problems a fault body lists, `undefined` where one of them is no problem. */\n\
@@ -1272,7 +1272,9 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          kind?: unknown;\n      \
          operation?: unknown;\n    \
          }};\n    \
-         const listed = parsed.issues === undefined ? undefined : {prefix}HttpIssuesOf(parsed.issues);\n    \
+         const failed = parsed.kind === \"failed-validation\";\n    \
+         const detail = typeof parsed.detail === \"string\" ? parsed.detail : undefined;\n    \
+         const listed = failed ? {prefix}HttpIssuesOf(parsed.issues) : undefined;\n    \
          const knownKinds: ReadonlyArray<unknown> = [\n      \
          \"failed-validation\",\n      \
          \"handler-panic\",\n      \
@@ -1281,9 +1283,7 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          \"unknown-operation\",\n    \
          ];\n    \
          if (\n      \
-         typeof parsed.detail === \"string\" &&\n      \
-         (parsed.field === undefined || typeof parsed.field === \"string\") &&\n      \
-         (parsed.issues === undefined || listed !== undefined) &&\n      \
+         (failed ? listed !== undefined : detail !== undefined) &&\n      \
          typeof parsed.kind === \"string\" &&\n      \
          knownKinds.includes(parsed.kind) &&\n      \
          typeof parsed.operation === \"string\"\n    \
@@ -1326,9 +1326,10 @@ fn refused_fn(named: &str, prefix: &str) -> String {
          */\n\
          function {prefix}HttpRefused(fault: {named}Fault): {named}HttpRefusal {{\n  \
          return Object.assign(\n    \
-         new Error(`${{fault.kind}} in operation \\`${{fault.operation}}\\`: ${{fault.detail}}`),\n    \
+         new Error(`${{fault.kind}} in operation \\`${{fault.operation}}\\`: ${{{said}}}`),\n    \
          {{ fault }},\n  \
          );\n\
-         }}"
+         }}",
+        said = fault::said("fault")
     )
 }

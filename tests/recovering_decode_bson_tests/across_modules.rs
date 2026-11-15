@@ -31,8 +31,7 @@ fn settled() -> Invoice {
         .unwrap(),
         number: "INV-1".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Settles a count of open invoices an older writer stored as text, wherever it sits: one

@@ -57,15 +57,14 @@ fn every_fixture_is_written_as_serde_writes_it() {
     );
     assert_eq!(
         serde_json::from_str::<Strapping>("{}").unwrap(),
-        StrappingDraft { pair: (0, 0) }.validate().unwrap()
+        StrappingDraft { pair: (0, 0) }.into()
     );
     assert_eq!(
         serde_json::to_string(&BundlingDraft {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             pair: (1, 2)
         })
         .unwrap(),
@@ -88,8 +87,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             pair: (north(), 2)
         })
         .unwrap(),
@@ -126,8 +124,7 @@ fn every_fixture_holding_a_tuple_further_in_is_written_as_serde_writes_it() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             maybe: Some((north(), 3)),
             pairs: vec![(north(), 2)]
         })
@@ -407,8 +404,8 @@ fn a_tuple_in_a_position_of_a_tuple_is_declared_and_read_by_one_wrapper() {
 fn reads_the_model_unjudged(definition: &str, wrapper: &str) {
     for held in [
         format!("data class {wrapper}(val slot0: Stencil, val slot1: UByte)"),
-        "add(output.json.encodeToJsonElement(StencilUnjudged, value.slot0))".to_owned(),
-        "kotlinSchemaDecoded(input.json, StencilUnjudged, array[0], \"0\", \"[0]\")".to_owned(),
+        "add(output.json.encodeToJsonElement(KotlinHeld1, value.slot0))".to_owned(),
+        "kotlinSchemaDecoded(input.json, KotlinHeld1, array[0], \"0\", \"[0]\")".to_owned(),
     ] {
         assert!(definition.contains(&held), "no `{held}` in: {definition}");
     }

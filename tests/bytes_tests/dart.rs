@@ -1,19 +1,28 @@
 //! What the Dart emitter writes for a `Vec<u8>` and for each sequence that is not one.
 
+use super::dart_integer_read::integer_read;
 use super::models::{
     bytes_counted_dart, bytes_either_dart, bytes_holder_dart, bytes_image_dart,
     bytes_lookalikes_dart, bytes_optional_dart, bytes_payload_dart,
 };
 
 /// The Dart read of a `Vec<u8>` member: the items held to a `u8`, then built as a `Uint8List`.
-const READ: &str = "Uint8List.fromList((json['data'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => (switch (e.$2 as int) { final number when number >= 0 && number <= 255 => number, final number => throw FormatException('expected an integer from 0 to 255, found $number') }))).toList())";
+fn read() -> String {
+    format!(
+        "Uint8List.fromList((json['data'] as List<dynamic>).indexed.map((e) => _readAt(null, \
+         e.$1, () => (switch ({}) {{ final number when number >= 0 && number <= 255 => number, \
+         final number => throw FormatException('expected an integer from 0 to 255, found \
+         $number') }}))).toList())",
+        integer_read("e.$2", "u8")
+    )
+}
 
 #[test]
 fn a_vec_of_u8_is_a_uint8list() {
     let emitted = bytes_image_dart::dart_definition();
     assert!(emitted.contains("final Uint8List data;"), "{emitted}");
     assert!(
-        emitted.contains(&format!("data: _readAt(json, 'data', () => {READ}),")),
+        emitted.contains(&format!("data: _readAt(json, 'data', () => {}),", read())),
         "{emitted}"
     );
     assert!(

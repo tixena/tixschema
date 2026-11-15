@@ -276,8 +276,8 @@ impl TallyingClientService<()> for TallyingBackEnd {
         ready(()).await;
         req.tally
             .checked_add(1)
-            .map(|sum| TallyCountDraft { tally: sum }.validate().unwrap())
-            .ok_or_else(|| TallyErrorDraft::Refused.validate().unwrap())
+            .map(|sum| TallyCountDraft { tally: sum }.into())
+            .ok_or(TallyError::Refused)
     }
 
     async fn fetch(
@@ -291,8 +291,8 @@ impl TallyingClientService<()> for TallyingBackEnd {
         tally
             .checked_add(limit.unwrap_or(0))
             .and_then(|sum| sum.checked_add(ledger))
-            .map(|sum| TallyCountDraft { tally: sum }.validate().unwrap())
-            .ok_or_else(|| TallyErrorDraft::Refused.validate().unwrap())
+            .map(|sum| TallyCountDraft { tally: sum }.into())
+            .ok_or(TallyError::Refused)
     }
 }
 
@@ -339,7 +339,7 @@ impl TallyingBareService<()> for TallyingBareBackEnd {
         ready(()).await;
         let shifted = entry
             .checked_add(offset.unwrap_or(0))
-            .ok_or_else(|| TallyErrorDraft::Refused.validate().unwrap())?;
+            .ok_or(TallyError::Refused)?;
         Ok((shifted, shifted.checked_mul(2)))
     }
 
@@ -558,9 +558,10 @@ fn carried() -> Value {
                     "error": {
                         "isServiceFault": true,
                         "fault": {
-                            "detail": "'tally': Too big: expected bigint to be \
-                                       <=9223372036854775807",
-                            "field": "tally",
+                            "issues": [{
+                                "detail": "Too big: expected bigint to be <=9223372036854775807",
+                                "field": "tally",
+                            }],
                             "kind": "failed-validation",
                             "operation": "count",
                         },
@@ -688,7 +689,7 @@ fn without_raw_json_a_bigint_beyond_a_number_is_refused_and_any_other_is_sent_as
                         "error": {
                             "isServiceFault": true,
                             "fault": {
-                                "detail": format!("9007199254740993 {unwritten}"),
+                                "issues": [{ "detail": format!("9007199254740993 {unwritten}") }],
                                 "kind": "failed-validation",
                                 "operation": "count",
                             },

@@ -118,21 +118,21 @@ fn read_rows() -> Vec<Row> {
             "a u32 that fits",
             "Mooring",
             &MooringDraft {
-                inner: TetherDraft { held: 4 }.validate().unwrap(),
+                inner: TetherDraft { held: 4 }.into(),
             },
         ),
         read_row(
             "a u32 at its ceiling",
             "Mooring",
             &MooringDraft {
-                inner: TetherDraft { held: u32::MAX }.validate().unwrap(),
+                inner: TetherDraft { held: u32::MAX }.into(),
             },
         ),
         read_row(
             "an i64 at its floor",
             "WideMooring",
             &WideMooringDraft {
-                inner: TetherDraft { held: i64::MIN }.validate().unwrap(),
+                inner: TetherDraft { held: i64::MIN }.into(),
             },
         ),
         read_row(
@@ -143,11 +143,9 @@ fn read_rows() -> Vec<Row> {
                     held: KnotDraft {
                         label: "a".to_owned(),
                     }
-                    .validate()
-                    .unwrap(),
+                    .into(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         read_row(
@@ -159,8 +157,7 @@ fn read_rows() -> Vec<Row> {
                     listed: vec![0, 1],
                     maybe: Some(7),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         read_row(
@@ -172,29 +169,28 @@ fn read_rows() -> Vec<Row> {
                     listed: Vec::new(),
                     maybe: None,
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         read_row(
             "a u16 in a variant's one slot",
             "Wharf",
             &WharfDraft {
-                cleat: CleatDraft::Bare(u16::MAX).validate().unwrap(),
+                cleat: CleatDraft::Bare(u16::MAX).into(),
             },
         ),
         read_row(
             "a u16 in a variant of two",
             "Wharf",
             &WharfDraft {
-                cleat: CleatDraft::Paired(0, "a".to_owned()).validate().unwrap(),
+                cleat: CleatDraft::Paired(0, "a".to_owned()).into(),
             },
         ),
         read_row(
             "an i8 in a tuple struct",
             "Quay",
             &QuayDraft {
-                fender: FenderDraft(i8::MIN).validate().unwrap(),
+                fender: FenderDraft(i8::MIN).into(),
             },
         ),
     ]

@@ -27,6 +27,17 @@ pub fn minted(service: &str, members: &str) -> String {
     )
 }
 
+/// The TypeScript expression of what the fault held under `fault` says, for the message of the
+/// error it is thrown on: its detail, or the list of every problem a failed validation found,
+/// each as the validator words it, as the Rust `Display` of the fault writes it.
+#[cfg(feature = "zod")]
+pub fn said(fault: &str) -> String {
+    format!(
+        "{fault}.detail ?? `[${{({fault}.issues ?? []).map((issue) => JSON.stringify(issue.field \
+         === undefined ? issue.detail : `'${{issue.field}}': ${{issue.detail}}`)).join(\", \")}}]`"
+    )
+}
+
 /// The symbol the brand is keyed on. `declare const` rather than a value, so nothing is emitted for
 /// it and no fault gains a key on the wire; `unique symbol` so the property it keys is one no other
 /// declaration can spell.

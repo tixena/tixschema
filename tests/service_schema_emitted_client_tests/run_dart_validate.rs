@@ -82,6 +82,14 @@ List<String> knownParcels(List<Parcel> value) =>
     value.isNotEmpty && value.first.label == 'unknown' ? const ["'0': the first parcel is known"] : const [];
 "#;
 
+/// What a harness reads the messages of a refusal with: the `issues` of a type's refusal, which
+/// shares no class with another type's, or the message of a refusal of shape.
+pub const ISSUES_OF: &str = "
+List<String> issuesOf(Exception refused) => refused is FormatException
+    ? refused.message.split('; ')
+    : (refused as dynamic).issues as List<String>;
+";
+
 /// The 13 lines of the shared table, a member's lines in the order the parcel declares it.
 const TABLE: &str = "\
 case 1: passes
@@ -1079,10 +1087,7 @@ nothing held: passes
 #[test]
 fn a_nested_place_and_a_members_order_are_rusts() {
     let yard = YardDraft {
-        by_dock: BTreeMap::from([
-            (DockDraft::North.validate().unwrap(), unlabelled()),
-            (DockDraft::South.validate().unwrap(), sound()),
-        ]),
+        by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
         by_number: BTreeMap::from([(7, unlabelled())]),
         code_list: Some(texts(&["a", "b", "c"])),
         grid: vec![vec![sound(), unlabelled()]],
@@ -1200,16 +1205,14 @@ pub fn counted_name_cases() -> Vec<Case> {
             entries: texts(entries),
             owner_id: "o".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let archived_by_number = ArchiveDraft {
         casket: CasketDraft {
             entries: Vec::new(),
             owner_id: 7_u32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     let poster = |slogans: usize, mottos: usize, some: usize, carried: usize| PosterDraft {
         slogans: Slogans::new(texts(&vec!["w"; slogans])).unwrap(),
@@ -1389,7 +1392,7 @@ Poster, too many items: refused
     );
     cases.push(pinned(
         "Dock, which names no check",
-        &DockDraft::North,
+        &Dock::North,
         &[],
         "Dock.fromJsonUnjudged(@)",
     ));

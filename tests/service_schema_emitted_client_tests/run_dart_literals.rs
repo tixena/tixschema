@@ -11,7 +11,7 @@ use super::literal_models::{
     ingot_dart, literal_report, names_each_violation, serde_read, tagged_assay_dart,
     touchmark_dart,
 };
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 
 /// What prints a row: its name and whether it is read, then each violation the read refused it
 /// with, where `named` asks for them.
@@ -20,10 +20,10 @@ void told(String name, bool named, Object? Function() read) {
   try {
     read();
     print('$name: read');
-  } on FormatException catch (refusal) {
+  } on Exception catch (refusal) {
     print('$name: refused');
     if (named) {
-      for (final violation in refusal.message.split('; ')) {
+      for (final violation in issuesOf(refusal)) {
         print('    $violation');
       }
     }
@@ -65,7 +65,7 @@ fn a_literal_refuses_in_dart_what_serde_refuses() {
         );
     }
     main.push_str("}\n");
-    let source = module(&definitions(), &[TOLD], &main);
+    let source = module(&definitions(), &[TOLD, ISSUES_OF], &main);
     let Some((ran, printed)) = dart("literals", &[], &source) else {
         return;
     };
@@ -82,7 +82,7 @@ fn a_literal_refuses_in_dart_what_serde_refuses() {
 fn the_emitted_literal_types_have_no_issue() {
     let source = module(
         &definitions(),
-        &[TOLD],
+        &[TOLD, ISSUES_OF],
         "void main() => told('bullion', true, () => Bullion.fromJson(jsonDecode('[\"bar\",400]')));",
     );
     let Some((clean, said)) = dart("literals-analyze", &["analyze"], &source) else {

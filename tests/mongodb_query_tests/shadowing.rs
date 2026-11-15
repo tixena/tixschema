@@ -137,8 +137,7 @@ fn search() -> Search {
         model: ModelDraft { name: named("d") }.validate().unwrap(),
         update: UpdateDraft { name: named("e") }.validate().unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -206,10 +205,10 @@ fn a_type_named_like_what_nest_is_declared_with_is_read_as_the_authors() {
         "nests": { "name": "d" },
     };
     let marked = MarkedDraft {
-        as_filter: AsFilterDraft { name: named("a") }.validate().unwrap(),
-        as_update: AsUpdateDraft { name: named("b") }.validate().unwrap(),
-        nested: NestedDraft { name: named("c") }.validate().unwrap(),
-        nests: NestsDraft { name: named("d") }.validate().unwrap(),
+        as_filter: AsFilterDraft { name: named("a") }.into(),
+        as_update: AsUpdateDraft { name: named("b") }.into(),
+        nested: NestedDraft { name: named("c") }.into(),
+        nests: NestsDraft { name: named("d") }.into(),
     };
     assert_eq!(
         Marked::from_bson_piped(stored, &[]),
@@ -250,8 +249,7 @@ fn a_type_named_like_what_an_arm_is_declared_with_is_read_as_the_authors() {
         ArmDraft {
             name: named("left"),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     );
     assert_eq!(
         Limb::from_bson_piped(stored, &[]),

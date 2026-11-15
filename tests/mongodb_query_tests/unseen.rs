@@ -56,8 +56,7 @@ fn tag(name: &str) -> Tag {
     TagDraft {
         name: name.to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]

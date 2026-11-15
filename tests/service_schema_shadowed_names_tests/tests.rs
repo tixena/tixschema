@@ -60,23 +60,20 @@ impl ShadowService<()> for ShadowBackEnd {
     ) -> Result<ShadowAnswer, ShadowFailure> {
         ready(()).await;
         if req.customer_id == 0 {
-            return Result::Err(ShadowFailureDraft::DbError.validate().unwrap());
+            return Result::Err(ShadowFailure::DbError);
         }
         Result::Ok(
             ShadowAnswerDraft {
                 invoices: req.customer_id,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
     }
 }
 
 /// Nothing above suspends, so one poll answers it.
 fn balance_of(customer_id: u32) -> Poll<Result<ShadowAnswer, ShadowFailure>> {
-    let call = pin!(
-        ShadowBackEnd.read_balance(&(), ShadowRequestDraft { customer_id }.validate().unwrap())
-    );
+    let call = pin!(ShadowBackEnd.read_balance(&(), ShadowRequestDraft { customer_id }.into()));
     call.poll(&mut PollContext::from_waker(Waker::noop()))
 }
 
@@ -84,13 +81,11 @@ fn balance_of(customer_id: u32) -> Poll<Result<ShadowAnswer, ShadowFailure>> {
 fn the_service_declared_beside_them_answers() {
     assert_eq!(
         balance_of(7),
-        Poll::Ready(Result::Ok(
-            ShadowAnswerDraft { invoices: 7 }.validate().unwrap()
-        ))
+        Poll::Ready(Result::Ok(ShadowAnswerDraft { invoices: 7 }.into()))
     );
     assert_eq!(
         balance_of(0),
-        Poll::Ready(Result::Err(ShadowFailureDraft::DbError.validate().unwrap()))
+        Poll::Ready(Result::Err(ShadowFailure::DbError))
     );
 }
 

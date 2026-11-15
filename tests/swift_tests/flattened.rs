@@ -40,7 +40,7 @@ const CAREEN_READ: &str = "let careenPayload: Any; switch careenKey { \
      case \"Quay\": careenPayload = [\"Dock\": careenHeld]; \
      default: careenPayload = [careenKey: careenHeld] }; \
      self.careen = try SwiftSchemaPayload.read(SwiftSchemaReadCareen.self, from: careenPayload, \
-     at: decoder.codingPath).value";
+     at: decoder.codingPath, within: decoder).value";
 
 /// The entry found, where the payload must hold one.
 const CAREEN_HELD: &str = "guard let careenKey = careenFound.first, \
@@ -76,7 +76,7 @@ fn handed(property: &str, taken: &str) -> String {
     flat(&format!(
         "let {property}Payload = try SwiftSchemaPayload(from: decoder, without: {taken}).value; \
          self.{property} = try SwiftSchemaPayload.readRefusing(Counting.self, \
-         from: withItsKeys({property}Payload), at: decoder.codingPath)"
+         from: withItsKeys({property}Payload), at: decoder.codingPath, within: decoder)"
     ))
 }
 
@@ -238,7 +238,7 @@ fn a_map_that_names_a_function_hands_it_the_keys_the_types_around_took() {
         &snaking_swift::swift_definition(),
         "let restPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; \
          self.rest = try SwiftSchemaPayload.readRefusing([String: String].self, \
-         from: asGiven(restPayload), at: decoder.codingPath)",
+         from: asGiven(restPayload), at: decoder.codingPath, within: decoder)",
     );
 }
 

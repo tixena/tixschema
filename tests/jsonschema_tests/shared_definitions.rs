@@ -339,8 +339,7 @@ fn storefront() -> Storefront {
         shipping: address.validate().unwrap(),
         stock: counted(12).validate().unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -629,8 +628,7 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
         a: BoxedDraft {
             item: sensors::ProbeDraft { depth: 1 }.validate().unwrap(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         b: looped::ProbeDraft {
             held: sensors::ProbeDraft { depth: 2 }.validate().unwrap(),
             kids: vec![
@@ -642,8 +640,7 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
                     .validate()
                     .unwrap(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ],
         }
         .validate()
@@ -651,8 +648,7 @@ fn a_generic_filled_with_each_of_two_types_of_one_name_describes_each_one() {
         c: BoxedDraft {
             item: sensors::ProbeDraft { depth: 4 }.validate().unwrap(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     })
     .unwrap();
     assert!(validator.is_valid(&written), "{written:#}");

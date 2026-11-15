@@ -104,8 +104,7 @@ fn read_cased() -> ReadCased {
         kept_note: String::new(),
         last_name: "Lovelace".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -116,8 +115,7 @@ fn a_record_under_the_keys_serde_reads_lists_no_issue() {
         one_way: 1_u32,
         plain: 3_u32,
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(
         serde_json::from_value::<ReadRenamed>(stored.clone()).unwrap(),
         renamed
@@ -164,8 +162,7 @@ fn a_wrong_value_under_a_read_key_is_listed_at_that_key_and_fixed_there() {
             one_way: 1_u32,
             plain: 3_u32,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -260,24 +257,21 @@ fn a_tag_names_a_variant_by_the_name_serde_reads() {
             HaulageDraft::Air {
                 flight_code: "IB6500".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         (
             json!({ "mode": "over-land", "roadName": "DR-1" }),
             HaulageDraft::OverLand {
                 road_name: "DR-1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         (
             json!({ "mode": "sea", "SHIP_NAME": "Caribe" }),
             HaulageDraft::Sea {
                 ship_name: "Caribe".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     ] {
         assert_eq!(
@@ -334,19 +328,15 @@ fn a_variant_is_under_the_key_serde_reads_it_as() {
             RelayDraft::Courier {
                 badge_number: 7_u32,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         (
             json!({ "relay": { "drop-box": 12_u32 } }),
-            RelayDraft::DropBox(12_u32).validate().unwrap(),
+            RelayDraft::DropBox(12_u32).into(),
         ),
-        (
-            json!({ "relay": "not-sent" }),
-            RelayDraft::NotSent.validate().unwrap(),
-        ),
+        (json!({ "relay": "not-sent" }), Relay::NotSent),
     ] {
-        let dispatch = DispatchDraft { relay }.validate().unwrap();
+        let dispatch = DispatchDraft { relay }.into();
         assert_eq!(
             serde_json::from_value::<Dispatch>(stored.clone()).unwrap(),
             dispatch

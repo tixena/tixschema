@@ -8,17 +8,21 @@ pub const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodab
      let value: SwiftSchemaLeaf; \
      init(from decoder: Decoder) throws { let single = try decoder.singleValueContainer(); do { \
      value = try single.decode(SwiftSchemaLeaf.self) } catch let refused where \
-     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) { do { value = \
-     Float(try single.decode(Double.self)) as! SwiftSchemaLeaf } catch let wider where !(wider is \
-     DecodingError) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
-     decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: wider)) } } \
-     catch let refused where !(refused is DecodingError) { throw \
+     SwiftSchemaLeaf.self == Float.self && !(refused is DecodingError) && \
+     !Self.breaksARule(refused) { do { value = Float(try single.decode(Double.self)) as! \
+     SwiftSchemaLeaf } catch let wider where !(wider is DecodingError) && \
+     !Self.breaksARule(wider) { throw DecodingError.dataCorrupted(DecodingError.Context(\
+     codingPath: decoder.codingPath, debugDescription: Self.refusal(wider), underlyingError: \
+     wider)) } } catch let refused where !(refused is DecodingError) && \
+     !Self.breaksARule(refused) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.refusal(refused), underlyingError: refused)) }; \
      if let integer = value as? any FixedWidthInteger, Self.fractional(decoder, integer) || \
      Self.floated(decoder) { throw \
      DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
      debugDescription: Self.floating(try single.decode(Double.self)))) } }; \
+     private static func breaksARule(_ refused: Error) -> Bool { Mirror(reflecting: \
+     refused).children.contains { $0.label == \"issues\" } }; \
      fileprivate static func fractional(_ decoder: Decoder, _ integer: any FixedWidthInteger) \
      -> Bool { guard let written = written(decoder) else { return false }; return \
      written.exponent || written.count != \"\\(integer)\".utf8.count }; \

@@ -52,7 +52,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         South,
     }
 
-    impl fmt::Display for DockDraft {
+    impl fmt::Display for Dock {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.write_str(match *self {
                 Self::North => "the north dock",
@@ -291,10 +291,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     fn keyed_yard() -> Yard {
         Yard::model_schema_wrap_unjudged(YardDraft {
             by_brand: BTreeMap::from([(Bay::new("b2".to_owned()).unwrap(), unlabelled())]),
-            by_dock: BTreeMap::from([
-                (DockDraft::North.validate().unwrap(), unlabelled()),
-                (DockDraft::South.validate().unwrap(), sound()),
-            ]),
+            by_dock: BTreeMap::from([(Dock::North, unlabelled()), (Dock::South, sound())]),
             by_flag: BTreeMap::from([(true, unlabelled())]),
             by_letter: BTreeMap::from([('q', unlabelled())]),
             by_number: BTreeMap::from([(7, unlabelled())]),
@@ -325,8 +322,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             rows_by_dock: BTreeMap::new(),
             spares_by_dock: None,
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     #[test]
@@ -424,7 +420,7 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
                 unlabelled_at("byNumber.7.itemLabel"),
             ]
         );
-        assert_eq!(DockDraft::North.to_string(), "the north dock");
+        assert_eq!(Dock::North.to_string(), "the north dock");
         let written = serde_json::to_value(&yard).unwrap();
         for (field, key) in [
             ("byBrand", "b2"),

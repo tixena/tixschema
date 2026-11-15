@@ -271,7 +271,7 @@ pub fn unread_writes() -> Vec<String> {
         said(serde_json::to_string(&LighterageDraft::Closed {
             reason: "r".to_owned(),
         })),
-        said(serde_json::to_string(&KeelageDraft::Green)),
+        said(serde_json::to_string(&Keelage::Green)),
         said(serde_json::to_string(&CartageDraft::Bulk("b".to_owned()))),
         said(serde_json::to_string(&DockageDraft::Closed {
             reason: "r".to_owned(),

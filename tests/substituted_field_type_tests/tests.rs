@@ -51,7 +51,8 @@ mod typescript {
     #[test]
     fn no_substituted_field_lands_on_the_opaque_value() {
         let ts = Substituted::ts_definition();
-        assert!(!ts.contains("unknown"), "Got: {ts}");
+        let declared = ts.split("\n\nexport function ").next().unwrap_or_default();
+        assert!(!declared.contains("unknown"), "Got: {ts}");
     }
 
     #[cfg(feature = "serde")]

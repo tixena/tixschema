@@ -46,7 +46,7 @@ impl QuotaClientService<()> for QuotaBackEnd {
     async fn ask(&self, _ctx: &(), req: QuotaAsk) -> Result<(QuotaAsk, Quota), QuotaError> {
         ready(()).await;
         if req.label.is_empty() {
-            return Err(QuotaErrorDraft::Missing.validate().unwrap());
+            return Err(QuotaError::Missing);
         }
         Ok((req, Quota::new(usize::MAX).unwrap()))
     }
@@ -68,5 +68,5 @@ fn the_quota_backend_answers_the_widest_value() {
     );
     let refused =
         super::tests::poll_once(QuotaBackEnd.ask(&(), ask("").validate().unwrap())).unwrap();
-    assert_eq!(refused, Err(QuotaErrorDraft::Missing.validate().unwrap()));
+    assert_eq!(refused, Err(QuotaError::Missing));
 }

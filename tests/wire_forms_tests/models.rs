@@ -260,7 +260,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
         r#"read, written back as {"keyed":{"2024-01-05T10:20:30Z":true},"value":"2024-01-05T10:20:30Z","values":["2024-01-05T10:20:30Z"]}"#,
         Clients {
             dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
-            kotlin: Sends::Handed,
+            kotlin: Sends::As(r#""2024-01-05T10:20:30Z""#),
             swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
             typescript: Sends::Apart(r#""2024-01-05T10:20:30Z""#, r#""2024-01-05T10:20:30.000Z""#),
         },
@@ -288,7 +288,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
         r#"read, written back as {"keyed":{"2024-01-05T08:20:30Z":true},"value":"2024-01-05T08:20:30Z","values":["2024-01-05T08:20:30Z"]}"#,
         Clients {
             dart: Sends::As(r#""2024-01-05T08:20:30Z""#),
-            kotlin: Sends::Handed,
+            kotlin: Sends::As(r#""2024-01-05T08:20:30Z""#),
             swift: Sends::As(r#""2024-01-05T08:20:30Z""#),
             typescript: Sends::Apart(
                 r#""2024-01-05T08:20:30Z""#,

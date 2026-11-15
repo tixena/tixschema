@@ -590,32 +590,27 @@ mod a_brand_is_read_as_a_model_is {
         );
     }
 
-    /// The bound of a brand chooses the variant of an untagged enum, as it did where the brand
-    /// refused in a read of its own. A check chooses none: the enum's read refuses with it.
+    /// No bound of a brand and no check of one chooses the variant of an untagged enum: the first
+    /// variant whose shape reads the payload takes it, and the enum's read refuses the value.
     #[test]
-    fn the_bound_of_a_brand_chooses_the_variant_of_an_untagged_enum_and_its_check_none() {
+    fn no_bound_of_a_brand_chooses_the_variant_of_an_untagged_enum() {
         assert_eq!(
             serde_json::from_str::<Marked>(r#""AB""#).ok(),
-            Some(MarkedDraft::Labelled(label("AB")).validate().unwrap())
-        );
-        assert_eq!(
-            serde_json::from_str::<Marked>(r#""a""#).ok(),
-            Some(MarkedDraft::Loose("a".to_owned()).validate().unwrap())
+            Some(MarkedDraft::Labelled(label("AB")).into())
         );
         assert_eq!(
             serde_json::from_str::<Marked>(r#"["AB","CD"]"#).ok(),
-            Some(
-                MarkedDraft::Listed(vec![label("AB"), label("CD")])
-                    .validate()
-                    .unwrap()
-            )
+            Some(MarkedDraft::Listed(vec![label("AB"), label("CD")]).into())
         );
-        assert_eq!(
-            serde_json::from_str::<Marked>(r#"["AB","c"]"#)
+        for refused in [r#""a""#, r#"["AB","c"]"#] {
+            let said = serde_json::from_str::<Marked>(refused)
                 .unwrap_err()
-                .to_string(),
-            "data did not match any variant of untagged enum Marked"
-        );
+                .to_string();
+            assert!(
+                said.contains("too short: minimum length is 2, got 1"),
+                "{refused} is refused with: {said}"
+            );
+        }
         for held in [
             MarkedDraft::Labelled(label("ab")),
             MarkedDraft::Listed(vec![label("AB"), label("cd")]),

@@ -167,10 +167,7 @@ fn every_declared_type_is_constructible() {
     let cargo = draft(3).validate().unwrap();
     assert_eq!(cargo.parcel_count, 3);
     assert_eq!(CargoPairDraft("a".to_owned(), 1).validate().unwrap().1, 1);
-    assert!(matches!(
-        &*CargoMoveDraft::Held.validate().unwrap(),
-        CargoMoveDraft::Held
-    ));
+    assert!(matches!(&*CargoMove::Held, CargoMoveDraft::Held));
     let shelf = CargoShelfDraft { cargo }.validate().unwrap();
     assert_eq!(shelf.cargo.parcel_count, 3);
 }
@@ -236,7 +233,7 @@ fn a_draft_validates_into_the_value_its_getters_and_its_write_agree_on() {
         .unwrap_err()
         .to_string();
     assert!(read_broken.starts_with(&broken), "{read_broken}");
-    let user = "import 'dart:convert';\nimport 'holders.dart';\nimport 'models.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  }\n  return 'built';\n}\n\nvoid main() {\n  final cargo = CargoDraft(label: CargoLabel.of('Shipping'), parcel_count: 3).validate();\n  print(cargo.parcel_count);\n  print(cargo.label.value);\n  print(jsonEncode(cargo.toJson()));\n  print(jsonEncode(cargo.toJson()) == jsonEncode(cargo.toDraft().toJson()));\n  final changed = CargoDraft(label: cargo.label, parcel_count: 200);\n  print(changed.validationIssues().join('; '));\n  print(refused(() => changed.validate()));\n  print(refused(() => Cargo.fromJson(jsonDecode('{\"label\":\"Shipping\",\"parcelCount\":200}'))));\n  print(Cargo.fromJsonUnjudged(jsonDecode('{\"label\":\"Shipping\",\"parcelCount\":200}')).validationIssues().join('; '));\n  print(refused(() => CargoShelf.fromJson(jsonDecode('{\"cargo\":{\"label\":\"Shipping\",\"parcelCount\":200}}'))));\n  print(CargoPairDraft(('a', 1)).validate().value.$2);\n  final held = CargoMove.fromJson(jsonDecode('{\"kind\":\"Held\"}'));\n  print(held.toDraft() is CargoMoveHeld);\n  print(jsonEncode(held.toJson()));\n  print(refused(() => CargoMoveLoaded(parcel_count: 0).validate()));\n}\n";
+    let user = "import 'dart:convert';\nimport 'holders.dart';\nimport 'models.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  } on Exception catch (e) {\n    return ((e as dynamic).issues as List<String>).join('; ');\n  }\n  return 'built';\n}\n\nvoid main() {\n  final cargo = CargoDraft(label: CargoLabel.of('Shipping'), parcel_count: 3).validate();\n  print(cargo.parcel_count);\n  print(cargo.label.value);\n  print(jsonEncode(cargo.toJson()));\n  print(jsonEncode(cargo.toJson()) == jsonEncode(cargo.toDraft().toJson()));\n  final changed = CargoDraft(label: cargo.label, parcel_count: 200);\n  print(changed.validationIssues().join('; '));\n  print(refused(() => changed.validate()));\n  print(refused(() => Cargo.fromJson(jsonDecode('{\"label\":\"Shipping\",\"parcelCount\":200}'))));\n  print(Cargo.fromJsonUnjudged(jsonDecode('{\"label\":\"Shipping\",\"parcelCount\":200}')).validationIssues().join('; '));\n  print(refused(() => CargoShelf.fromJson(jsonDecode('{\"cargo\":{\"label\":\"Shipping\",\"parcelCount\":200}}'))));\n  print(CargoPairDraft(('a', 1)).validate().value.$2);\n  final held = CargoMove.fromJson(jsonDecode('{\"kind\":\"Held\"}'));\n  print(held.toDraft() is CargoMoveHeld);\n  print(jsonEncode(held.toJson()));\n  print(refused(() => CargoMoveLoaded(parcel_count: 0).validate()));\n}\n";
     let Some((ran, printed)) = dart_files(
         "valid-run",
         &[],
@@ -284,7 +281,7 @@ fn the_analyzer_passes_a_second_library_that_builds_through_the_draft() {
 
 #[test]
 fn a_second_library_cannot_build_a_valid_plain_enum() {
-    let user = "import 'tiers.dart';\n\nvoid main() {\n  CargoTier(CargoTierDraft.standard);\n  const CargoTier(CargoTierDraft.standard);\n  CargoTier._(CargoTierDraft.standard);\n  CargoTier.standard;\n  final CargoSpeed fast = CargoSpeedDraft.fast;\n}\n";
+    let user = "import 'tiers.dart';\n\nvoid main() {\n  CargoTier(CargoTierDraft.standard);\n  const CargoTier(CargoTierDraft.standard);\n  CargoTier._(CargoTierDraft.standard);\n  CargoTier.standard;\n}\n";
     let Some((clean, said)) = dart_files(
         "valid-tier",
         &["analyze"],
@@ -299,7 +296,6 @@ fn a_second_library_cannot_build_a_valid_plain_enum() {
         "The class 'CargoTier' doesn't have an unnamed constant constructor.",
         "The class 'CargoTier' doesn't have a constructor named '_'.",
         "The getter 'standard' isn't defined for the type 'CargoTier'.",
-        "A value of type 'CargoSpeedDraft' can't be assigned to a variable of type 'CargoSpeed'.",
     ] {
         assert!(said.contains(printed), "no `{printed}` in: {said}");
     }
@@ -309,14 +305,11 @@ fn a_second_library_cannot_build_a_valid_plain_enum() {
 fn a_plain_enum_validates_through_its_draft_and_keeps_its_wire() {
     let refused = CargoTierDraft::Retired.validation_issues().join("; ");
     let rust = serde_json::to_string(&CargoTiersDraft {
-        by_speed: BTreeMap::from([
-            (CargoSpeedDraft::Fast.validate().unwrap(), 2),
-            (CargoSpeedDraft::Slow.validate().unwrap(), 1),
-        ]),
+        by_speed: BTreeMap::from([(CargoSpeed::Fast, 2), (CargoSpeed::Slow, 1)]),
         tier: CargoTierDraft::Standard.validate().unwrap(),
     })
     .unwrap();
-    let user = "import 'dart:convert';\nimport 'tiers.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  }\n  return 'built';\n}\n\nvoid main() {\n  final standard = CargoTierDraft.standard.validate();\n  print(standard.toDraft() == CargoTierDraft.standard);\n  print(jsonEncode(standard.toJson()));\n  print(refused(() => CargoTierDraft.retired.validate()));\n  print(refused(() => CargoTier.fromJson('Retired')));\n  print(CargoTier.fromJsonUnjudged('Retired').validationIssues().join('; '));\n  print(standard == CargoTier.fromJson('Standard'));\n  print(standard.hashCode == CargoTier.fromJson('Standard').hashCode);\n  print(<CargoTier>{standard, CargoTier.fromJson('Standard')}.length);\n  final held = CargoTiers.fromJson(jsonDecode('{\"bySpeed\":{\"Fast\":2,\"Slow\":1},\"tier\":\"Standard\"}'));\n  print(jsonEncode(held.toJson()));\n  print(held.by_speed[CargoSpeed.fromJson('Fast')]);\n  print(refused(() => CargoTiers.fromJson(jsonDecode('{\"bySpeed\":{},\"tier\":\"Retired\"}'))));\n}\n";
+    let user = "import 'dart:convert';\nimport 'tiers.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  } on Exception catch (e) {\n    return ((e as dynamic).issues as List<String>).join('; ');\n  }\n  return 'built';\n}\n\nvoid main() {\n  final standard = CargoTierDraft.standard.validate();\n  print(standard.toDraft() == CargoTierDraft.standard);\n  print(jsonEncode(standard.toJson()));\n  print(refused(() => CargoTierDraft.retired.validate()));\n  print(refused(() => CargoTier.fromJson('Retired')));\n  print(CargoTier.fromJsonUnjudged('Retired').validationIssues().join('; '));\n  print(standard == CargoTier.fromJson('Standard'));\n  print(standard.hashCode == CargoTier.fromJson('Standard').hashCode);\n  print(<CargoTier>{standard, CargoTier.fromJson('Standard')}.length);\n  final held = CargoTiers.fromJson(jsonDecode('{\"bySpeed\":{\"Fast\":2,\"Slow\":1},\"tier\":\"Standard\"}'));\n  print(jsonEncode(held.toJson()));\n  print(held.by_speed[CargoSpeed.fromJson('Fast')]);\n  print(refused(() => CargoTiers.fromJson(jsonDecode('{\"bySpeed\":{},\"tier\":\"Retired\"}'))));\n}\n";
     let Some((ran, printed)) = dart_files(
         "valid-tier-run",
         &[],

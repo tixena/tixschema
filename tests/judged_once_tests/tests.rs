@@ -152,7 +152,7 @@ fn a_container_default_does_not_keep_a_member_from_the_unjudged_read() {
         BROKEN_ENTRIES
     );
     let defaulted = serde_json::from_str::<DefaultedPair<String, String>>("{}").unwrap();
-    assert_eq!(defaulted, DefaultedPairDraft::default().validate().unwrap());
+    assert_eq!(defaulted, DefaultedPairDraft::default().into());
 }
 
 #[test]

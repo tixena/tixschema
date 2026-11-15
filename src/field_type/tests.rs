@@ -1,7 +1,7 @@
 //! Unit tests of `FieldDef`: how a written type is read, and what it renders as in TypeScript and
 //! Zod.
 
-use super::{FieldDef, FieldDefType, MissingKey, Scope};
+use super::{FieldDef, FieldDefType, MissingKey, Scope, Zone};
 
 use crate::utils::claim_published_name;
 
@@ -34,6 +34,7 @@ fn field(field_type: FieldDefType) -> FieldDef {
         set_levels: Vec::new(),
         scope: Scope::default(),
         type_span: proc_macro2::Span::call_site(),
+        zone: Zone::Utc,
     }
 }
 

@@ -28,8 +28,8 @@ use self::aliases::Reach;
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
-    Direction, NAMED_READ_HOOK_PREFIX, SerdeFieldHooks, Tagging, has_serde_default,
-    has_serde_read_hook, has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
+    Direction, SerdeFieldHooks, Tagging, has_serde_default, has_serde_read_hook,
+    has_serde_skip_serializing, has_serde_transparent, parse_read_renames,
     parse_serde_field_attributes, parse_serde_field_hooks, parse_serde_key_omission,
     parse_serde_type_attributes, parse_written_renames, transparent_field,
 };
@@ -46,7 +46,8 @@ use crate::rename_rule::resolve_rename_rule;
 use crate::utils::{
     Declared, asked_of, asked_trait, asking_more, asks_one_of, declared,
     field_validator_judges_items, field_validator_name, holds_field_validator,
-    ident_schema_module_name, to_snake_case, type_parameters_in_scope, written_names, written_type,
+    ident_schema_module_name, to_snake_case, type_parameters_in_scope, unclaimed_parameter,
+    written_names, written_type,
 };
 
 #[cfg(not(feature = "mongodb"))]
@@ -282,17 +283,12 @@ impl<'item> Flattened<'item> {
         matches!(self, Self::Model(_) | Self::Optional(_, _))
     }
 
-    fn of(
-        field: &'item Field,
-        module_name: &str,
-        parameters: &[String],
-        corrected: &[FunctionName],
-    ) -> Self {
+    fn of(field: &'item Field, parameters: &[String], corrected: &[FunctionName]) -> Self {
         // serde reads nothing into the field, and the keys it wrote for it are still in the object.
         if parse_serde_key_omission(&field.attrs).skips_deserializing {
             return Self::Unwalked(None);
         }
-        let Walk { step, ty } = member_walk(field, module_name, parameters, corrected);
+        let Walk { step, ty } = member_walk(field, parameters, corrected);
         match step {
             Step::Entries(values) => Self::Entries(*values),
             // Flattened, serde reads an `Option` as absent where the type's own reader refuses, and
@@ -495,7 +491,7 @@ impl<'item> Shape<'item> {
             && let Some(only) = transparent_field(&item_struct.fields, Direction::Read)
         {
             // The slot of a brand names no function: a `preprocess` there is refused.
-            return Self::Held(held_walk(only, module_name, parameters, &[]));
+            return Self::Held(held_walk(only, parameters, &[]));
         }
         let named_on = preprocess::named();
         let defaulted = has_serde_default(&item_struct.attrs);
@@ -525,12 +521,7 @@ impl<'item> Shape<'item> {
             Fields::Unnamed(slots) => {
                 let mut written = slots.unnamed.iter();
                 if let (Some(only), None) = (written.next(), written.next()) {
-                    return Self::Held(held_walk(
-                        only,
-                        module_name,
-                        parameters,
-                        named_on.of_member(None, 0),
-                    ));
+                    return Self::Held(held_walk(only, parameters, named_on.of_member(None, 0)));
                 }
                 Self::Slots(
                     slots
@@ -542,7 +533,6 @@ impl<'item> Shape<'item> {
                             walked_slot(
                                 slot,
                                 defaulted,
-                                module_name,
                                 parameters,
                                 validator,
                                 named_on.of_member(None, index),
@@ -593,7 +583,6 @@ impl<'item> Shape<'item> {
                     }
                     return Self::Held(member_walk(
                         only,
-                        module_name,
                         parameters,
                         named_on.of_member(Some(&named), 0),
                     ));
@@ -608,7 +597,6 @@ impl<'item> Shape<'item> {
                             walked_slot(
                                 slot,
                                 false,
-                                module_name,
                                 parameters,
                                 validator,
                                 named_on.of_member(Some(&named), index),
@@ -1153,7 +1141,7 @@ impl Walker<'_> {
     }
 
     /// `listed` followed by what holds the value under `held`, read through `read` as `ty`, to the
-    /// bound `validator` checks: one `Invalid` at the value, its violations joined. `listed` alone
+    /// bound `validator` checks: one `Invalid` at the value for each violation. `listed` alone
     /// where the field has no validator, or its bound reaches nothing of `ty`.
     fn bounded(
         &self,
@@ -1797,7 +1785,7 @@ impl Walker<'_> {
     }
 
     /// What holds `found`, read whole with the type's own reader, to the bound `validator` checks
-    /// on its one slot, typed `ty`: one `Invalid` at the value, its violations joined. Nothing
+    /// on its one slot, typed `ty`: one `Invalid` at the value, for each violation. Nothing
     /// where the slot has no validator, or its bound reaches nothing of `ty`.
     fn lone_slot_bound(&self, validator: Option<&FieldValidator>, ty: &Type) -> TokenStream {
         let (module, bound) = (self.module, self.source.bound());
@@ -3035,9 +3023,9 @@ fn read_under(
 /// `value_bound`: what holds a JSON value serde read to the bound its field declares.
 fn bound_items() -> TokenStream {
     quote! {
-        /// What a field's bound refuses of one JSON value `read` reads: one issue whose reason is
-        /// every violation `check` answers, joined by `; `, and none where the value keeps the
-        /// bound or does not read.
+        /// What a field's bound refuses of one JSON value `read` reads: one issue per violation
+        /// `check` answers, each with its own reason, and none where the value keeps the bound or
+        /// does not read.
         pub fn value_bound<'a, T, I, R, C>(
             held: &'a serde_json::Value,
             read: R,
@@ -3057,7 +3045,10 @@ fn bound_items() -> TokenStream {
             if violations.is_empty() {
                 return ::std::vec::Vec::new();
             }
-            ::std::vec![issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(violations.join("; ")), ::std::vec::Vec::new())]
+            violations
+                .into_iter()
+                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
+                .collect()
         }
     }
 }
@@ -3066,9 +3057,9 @@ fn bound_items() -> TokenStream {
 #[cfg(feature = "bson")]
 fn bson_bound_items() -> TokenStream {
     quote! {
-        /// What a field's bound refuses of one BSON value `read` reads: one issue whose reason is
-        /// every violation `check` answers, joined by `; `, and none where the value keeps the
-        /// bound or does not read.
+        /// What a field's bound refuses of one BSON value `read` reads: one issue per violation
+        /// `check` answers, each with its own reason, and none where the value keeps the bound or
+        /// does not read.
         pub fn bson_bound<T, I, E, R, C>(
             held: &bson::Bson,
             read: R,
@@ -3088,7 +3079,10 @@ fn bson_bound_items() -> TokenStream {
             if violations.is_empty() {
                 return ::std::vec::Vec::new();
             }
-            ::std::vec![issue("Invalid", path, expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(violations.join("; ")), ::std::vec::Vec::new())]
+            violations
+                .into_iter()
+                .map(|reason| issue("Invalid", path.clone(), expected, ::core::option::Option::Some(held.clone()), ::core::option::Option::Some(reason), ::std::vec::Vec::new()))
+                .collect()
         }
     }
 }
@@ -4016,13 +4010,12 @@ fn held_in<'ty>(
 /// then one value whatever its type holds.
 fn held_walk<'item>(
     slot: &'item Field,
-    module_name: &str,
     parameters: &[String],
     corrected: &[FunctionName],
 ) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&slot.attrs);
     // A slot that names a `preprocess` is read through a hook of the type's own reader as well.
-    if corrected.is_empty() && hooked_leaf(&slot.ty, &hooks, module_name, parameters).is_none() {
+    if corrected.is_empty() && hooked_leaf(&slot.ty, &hooks, parameters).is_none() {
         return walk_of(&slot.ty, parameters);
     }
     Walk {
@@ -4050,16 +4043,10 @@ fn holds_an_id(ty: &Type) -> bool {
 
 /// The functions a field is read and written back through when its author's serde attributes
 /// name any, and `None` for a field its own type reads.
-fn hooked_leaf(
-    ty: &Type,
-    hooks: &SerdeFieldHooks,
-    module_name: &str,
-    parameters: &[String],
-) -> Option<Step<'static>> {
-    let generated = format!("{module_name}::{NAMED_READ_HOOK_PREFIX}");
+fn hooked_leaf(ty: &Type, hooks: &SerdeFieldHooks, parameters: &[String]) -> Option<Step<'static>> {
     let named = |hook: Option<&LitStr>| {
-        let path = hook.filter(|path| !path.value().starts_with(&generated))?;
-        path.parse::<syn::ExprPath>()
+        hook?
+            .parse::<syn::ExprPath>()
             .ok()
             .map(resolved_at_the_mixed_site)
     };
@@ -4115,12 +4102,11 @@ fn is_off_the_wire(field: &Field) -> bool {
 /// name answer for what is stored, through the hook it carries or with its own type's reader.
 fn member_walk<'item>(
     member: &'item Field,
-    module_name: &str,
     parameters: &[String],
     corrected: &[FunctionName],
 ) -> Walk<'item> {
     let hooks = parse_serde_field_hooks(&member.attrs);
-    let hooked = hooked_leaf(&member.ty, &hooks, module_name, parameters);
+    let hooked = hooked_leaf(&member.ty, &hooks, parameters);
     if corrected.is_empty() {
         return hooked.map_or_else(
             || walk_of(&member.ty, parameters),
@@ -4878,19 +4864,6 @@ fn unclaimed(base: &str, taken: &[String]) -> String {
     name
 }
 
-/// A name for a type parameter of a method's own: `base`, numbered where the item writes that
-/// name. The method's parameter would hide a type of its name wherever the method's body writes
-/// one, and be refused beside a parameter of the type's own.
-fn unclaimed_parameter(base: &str, written: &[String]) -> Ident {
-    let mut name = base.to_owned();
-    let mut number = 1_u32;
-    while written.contains(&name) {
-        number += 1;
-        name = format!("{base}{number}");
-    }
-    Ident::new(&name, Span::call_site())
-}
-
 /// What lists every key of `object`, held at `segments`, that is none of `declared` as `Unknown`.
 fn undeclared_keys(object: &Ident, declared: &[String], segments: &[TokenStream]) -> TokenStream {
     let here = path_expression(&under(
@@ -4991,8 +4964,7 @@ fn walked_field<'item>(
     };
     let key = renamed
         .unwrap_or_else(|| resolve_rename_rule(rule).apply_to_field(&ident.unraw().to_string()));
-    let walk = (!omission.skips_deserializing)
-        .then(|| member_walk(field, module_name, parameters, corrected));
+    let walk = (!omission.skips_deserializing).then(|| member_walk(field, parameters, corrected));
     // With a read hook on the field, serde's derive no longer reads a missing key as `None`. The
     // hook a `preprocess` is called from is hung with the `default` that reads it so.
     let optional = !has_serde_read_hook(&field.attrs)
@@ -5035,7 +5007,7 @@ fn walked_fields<'item>(
         } else if is_off_the_wire(field) {
             // serde neither writes nor reads the field, so no key in the object is its own.
         } else {
-            flattened.push(Flattened::of(field, module_name, parameters, corrected));
+            flattened.push(Flattened::of(field, parameters, corrected));
         }
     }
     let declared = fields
@@ -5055,7 +5027,6 @@ fn walked_fields<'item>(
 fn walked_slot<'item>(
     slot: &'item Field,
     container_defaulted: bool,
-    module_name: &str,
     parameters: &[String],
     validator: Option<FieldValidator>,
     corrected: &[FunctionName],
@@ -5065,7 +5036,7 @@ fn walked_slot<'item>(
         absence_is_read: omission.defaulted || container_defaulted,
         ty: &slot.ty,
         validator,
-        walk: member_walk(slot, module_name, parameters, corrected),
+        walk: member_walk(slot, parameters, corrected),
     })
 }
 

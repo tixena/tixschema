@@ -55,13 +55,12 @@ impl BalanceService<()> for BalanceBackEnd {
     ) -> Result<BalanceAnswer, BalanceFailure> {
         ready(()).await;
         if req.customer_id == 0 {
-            return Err(BalanceFailureDraft::DbError.validate().unwrap());
+            return Err(BalanceFailure::DbError);
         }
         Ok(BalanceAnswerDraft {
             invoices: req.customer_id,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -113,10 +112,7 @@ fn the_modules_in_scope_are_the_ones_declared_here() {
 fn the_service_declared_beside_them_answers() {
     assert_eq!(
         balance_of(7),
-        Poll::Ready(Ok(BalanceAnswerDraft { invoices: 7 }.validate().unwrap()))
+        Poll::Ready(Ok(BalanceAnswerDraft { invoices: 7 }.into()))
     );
-    assert_eq!(
-        balance_of(0),
-        Poll::Ready(Err(BalanceFailureDraft::DbError.validate().unwrap()))
-    );
+    assert_eq!(balance_of(0), Poll::Ready(Err(BalanceFailure::DbError)));
 }

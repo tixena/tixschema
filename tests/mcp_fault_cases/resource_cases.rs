@@ -47,8 +47,9 @@ pub const RESOURCE_FAULT_CASES: [ResourceFaultCase; 5] = [
     },
 ];
 
-/// One `resources/read` or `completion/complete` and the fault it must answer. `issues` is the
-/// field of each problem the fault lists, in order, and empty where it lists none.
+/// One `resources/read` or `completion/complete` and the fault it must answer. `field` is the
+/// field of the first problem a failed validation lists, and `issues` the field of each problem
+/// it lists, in order, empty where it lists that one problem alone.
 pub struct ResourceFaultCase {
     pub field: Option<&'static str>,
     pub issues: &'static [&'static str],
@@ -67,19 +68,28 @@ impl ResourceFaultCase {
         let fault = &carried["fault"];
         assert_eq!(fault["kind"], self.kind, "{}: {reply:#}", self.params);
         assert_eq!(fault["operation"], self.operation, "{reply:#}");
+        assert!(fault.get("field").is_none(), "{reply:#}");
+        let Some(issues) = fault.get("issues").and_then(Value::as_array) else {
+            assert_ne!(self.kind, "failed-validation", "{reply:#}");
+            assert_eq!(self.field, None, "{reply:#}");
+            assert_eq!(self.issues, &[] as &[&str], "{reply:#}");
+            return;
+        };
+        assert!(fault.get("detail").is_none(), "{reply:#}");
         assert_eq!(
-            fault.get("field").and_then(Value::as_str),
+            issues.first().and_then(|issue| issue["field"].as_str()),
             self.field,
             "{reply:#}"
         );
-        let fields: Vec<&str> = fault
-            .get("issues")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(|issue| issue["field"].as_str().unwrap())
+        let fields: Vec<&str> = issues
+            .iter()
+            .filter_map(|issue| issue["field"].as_str())
             .collect();
-        assert_eq!(fields, self.issues, "{reply:#}");
+        if self.issues.is_empty() {
+            assert_eq!(issues.len(), 1, "{reply:#}");
+        } else {
+            assert_eq!(fields, self.issues, "{reply:#}");
+        }
     }
 
     /// The params of the request, as a JSON value.

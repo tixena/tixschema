@@ -276,8 +276,7 @@ fn the_http_rest_client_reads_the_blocks_and_the_messages_the_dispatcher_writes(
             ShelfWireRequestDraft {
                 shelf: "history".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
     assert_eq!(described, Ok(blocks()));
@@ -303,8 +302,7 @@ fn the_amqp_rpc_dispatcher_and_client_carry_the_blocks_and_the_messages() {
             ShelfWireRequestDraft {
                 shelf: "history".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
     assert_eq!(described, Ok(blocks()));
@@ -326,8 +324,7 @@ fn the_ws_rpc_client_reads_the_blocks_and_the_messages_the_dispatcher_writes() {
             ShelfWireRequestDraft {
                 shelf: "history".to_owned(),
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let context = &mut Context::from_waker(Waker::noop());
@@ -608,7 +605,7 @@ fn a_task_operation_starts_and_reports_on_every_transport() {
     let counted = || {
         Ok(shelf_wire_service_schema::McpTaskState::Completed {
             task: task(),
-            result: ShelfCountDraft { books: 11 }.validate().unwrap(),
+            result: ShelfCountDraft { books: 11 }.into(),
         })
     };
     let request = || ShelfWireRequestDraft {

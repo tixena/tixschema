@@ -57,7 +57,7 @@ pub struct Greeting<'text> {
     pub name: &'text str,
 }
 
-GreetingDraft { name: "al" }.validate();
+Greeting::new("al");
 // Err(["'name': too short: minimum length is 3, got 2"])
 ```
 
@@ -190,7 +190,7 @@ pub struct Document {
     pub name_config: Vec<Part>,
 }
 
-DocumentDraft { name_config: Vec::new() }.validate();
+Document::new(Vec::new());
 // Err(["'nameConfig': too short: minimum length is 1, got 0"])
 ```
 
@@ -238,7 +238,7 @@ pub struct Article {
     pub tags: Tags,
 }
 
-ArticleDraft { tags: Tags::new(Vec::new()).unwrap() }.validate();
+Article::new(Tags::new(Vec::new()).unwrap());
 // Err(["'tags': too short: minimum length is 1, got 0"])
 ```
 
@@ -376,9 +376,44 @@ DepotDraft {
 // Err(["'numbered.label': too short: minimum length is 1, got 0", "'named.label': too short: minimum length is 1, got 0"])
 ```
 
-A [branded newtype](generics-and-brands.md#branded-newtype-validation-constraints) that declares a parameter has `validate()` at every filling as well, and runs its string checks where the filling is its declared default.
+A [branded newtype](generics-and-brands.md#branded-newtype-validation-constraints) that declares a parameter has `validate()` at every filling as well, and runs its string checks where the filling is its declared default. A holder that writes what fills the brand's parameter judges the value the brand wraps as well, as below.
 
-**`validate()` reads nothing behind a type parameter.** The `validate()` of a `Crate<CodeType>` runs nothing on its `codes`, whatever fills `CodeType`, a type that has a `validate()` of its own included. A read of the same payload is refused: what fills the parameter is read by its own `Deserialize`, and judges itself [as it is read](#a-read-refuses-what-validate-refuses), with its own messages and no place of the holder in front of them:
+**The holder that writes what fills a type parameter judges what fills it.** A type that declares type parameters has `model_schema_issues_with{n}`, `n` its number of type parameters, which takes one check per parameter, `&dyn Fn(&CodeType) -> Vec<String>`, and runs it on every value behind that parameter, each message under the place of the value. Its `validation_issues()` is that function with checks that report nothing, since the type alone does not know what fills its parameters. A holder that writes the filling, `first_page: Page<Parcel>`, hands the check of a `Parcel`, so its `validate()` names each broken parcel at its full path. Its read reads every parcel with no judgement and judges the whole value once:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parcel {
+    #[model_schema_prop(minLength = 1)]
+    pub item_label: String,
+}
+
+#[model_schema(default_types(Item = String))]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Page<Item> {
+    pub items: Vec<Item>,
+    #[model_schema_prop(minLength = 1)]
+    pub page_title: String,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shelf {
+    pub first_page: Page<Parcel>,
+}
+
+serde_json::from_str::<Shelf>(r#"{"firstPage":{"items":[{"itemLabel":""},{"itemLabel":"a"},{"itemLabel":""}],"pageTitle":"t"}}"#);
+// Err: 'firstPage.items.0.itemLabel': too short: minimum length is 1, got 0; 'firstPage.items.2.itemLabel': too short: minimum length is 1, got 0
+```
+
+The check is handed on through every generic model the filling passes: a `binder: Page<Page<Parcel>>` names `'binder.items.0.items.1.itemLabel'`, a `lists: Page<Vec<Parcel>>` both indices, `'lists.items.0.1.itemLabel'`, a generic enum the variant and the member, `'slot.filled.held.itemLabel'`, a type that holds itself as `Self` each level, and a brand over its own parameter, `wrapped: Wrapper<Parcel>`, the parcel it wraps at the brand's place, `'wrapped.itemLabel'`. A generic type no `#[model_schema()]` was written on is read by its own `Deserialize`, so what it holds judges itself as it is read. An `#[serde(untagged)]` generic enum is read as serde's derive reads it, with what fills its parameter read with no judgement, and the holder judges the variant it chose: with `Either<Item> { Labelled(Item), Plain(String) }` held as `Either<Label>`, `Label` a brand under `minLength = 2`, `"a"` reads as `Labelled`, and the holder refuses it with `'either': too short: minimum length is 2, got 1`.
+
+**An alias that rearranges the parameters of a generic model stops the build.** With `type PagesOf<Item> = Page<Page<Item>>`, a member written `pages: PagesOf<Parcel>` hands `Page` a filling the member's type does not write, so its holder cannot name what fills each parameter of `Page`. Where the alias is declared above the holder with `#[model_schema]`, the macro answers ``error: model_schema: field `pages`: `PagesOf<Parcel>` is the alias `type PagesOf<Item> = Page<Page<Item>>`, which rearranges the parameters of the generic model it names, and a holder hands a generic model what fills each of its own parameters. Write `Page<Page<Parcel>>` in place of `PagesOf<Parcel>`.``; anywhere else the compiler answers ``error[E0277]: model_schema: ... fills a type parameter of the generic model this member holds, where the member's type writes ...``, with the note ``for `type PagesOf<Item> = Page<Page<Item>>`, a member that holds `PagesOf<Parcel>` is written `Page<Page<Parcel>>` ``. Write the model the alias names, `pages: Page<Page<Parcel>>`.
+
+Read by itself, or validated by itself, a generic type knows no filling: its `validate()` runs nothing on what fills a parameter, and its read reads what fills one with that type's own `Deserialize`, which judges itself [as it is read](#a-read-refuses-what-validate-refuses), with its own messages and no place of the holder in front of them:
 
 ```rust
 let outer = CrateDraft {
@@ -392,10 +427,12 @@ serde_json::from_str::<Crate<Crate<u32>>>(r#"{"codes":[{"codes":[],"label":""}],
 // Err: 'label': too short: minimum length is 1, got 0 at line 1 column 34
 ```
 
+A service that reads such a value lists each message under the path serde tracked, `'codes.0.label'` for the read above, and the Dart, Swift and Kotlin clients place the messages of a refusal under the path the value was read at in the same way: [each client's guide](kotlin.md#the-read-in-the-kotlin-client) holds the run.
+
 **A `validation_issues` of your own on one filling does not build.** A type has one inherent function under a name, and the generated one is there at every filling:
 
 ```rust,compile_fail
-impl CrateDraft<u32> {
+impl Crate<u32> {
     pub fn validation_issues(&self) -> Vec<String> {
         if self.codes.contains(&0) {
             return vec!["'codes': no code is zero".to_owned()];
@@ -431,7 +468,7 @@ Each message opens with where the broken value sits in the payload, in single qu
 
   The one slot holds a `Parcel` in each row, and the variant's step is the name serde writes it under: the variant's own `rename`, or the enum's `rename_all`. A slot that holds a string is named by the variant alone, `'Stamped': too short: minimum length is 1, got 0` for the payload `{"Stamped":""}`.
 - **A `#[serde(flatten)]` member and an `Option`** write no key and add no step.
-- **A value serde reads from a buffer** is named by no path below the buffered value: under `tag` alone, under `untagged` and below a `#[serde(flatten)]` member, a payload serde refuses answers `failed-validation` with serde's own sentence and no field. `{"kind":"Loose","label":5}` under `tag = "kind"` answers `invalid type: integer \`5\`, expected a string`, and `{"label":5}` under `untagged` answers `data did not match any variant of untagged enum`.
+- **A value serde reads from a buffer** is named by no path below the buffered value: under `tag` alone, under `untagged` and below a `#[serde(flatten)]` member, a payload serde refuses answers a `failed-validation` fault whose one issue is serde's own sentence, with no field. `{"kind":"Loose","label":5}` under `tag = "kind"` answers `invalid type: integer \`5\`, expected a string`, and `{"label":5}` under `untagged` answers `data did not match any variant of untagged enum`.
 
 ```rust
 #[model_schema(minLength = 2)]
@@ -510,7 +547,7 @@ A slot of a tuple variant takes the five constraints as a named member of the va
 
 | The slot of | The read | `validate()` reports a violation |
 |---|---|---|
-| a newtype variant of an `#[serde(untagged)]` enum, such as the `Other(String)` arm of [`MimeType`](untagged-enums.md#untagged-enums-serdeuntagged) | checks it, which is what chooses the variant | under no name: `too short: minimum length is 1, got 0` |
+| a newtype variant of an `#[serde(untagged)]` enum, such as the `Other(String)` arm of [`MimeType`](untagged-enums.md#untagged-enums-serdeuntagged) | checks it, once the variant is chosen by shape | under no name: `too short: minimum length is 1, got 0` |
 | a tuple variant of a tagged enum | reads it, and the enum's read refuses the value once it is whole | at [the path serde writes the slot at](#the-path-a-message-names): `'Code': ...` for the one slot of a variant, and `'Pair.0': ...` and `'Pair.1': ...` for two slots |
 
 ```rust
@@ -546,7 +583,7 @@ pub struct Pair(
     #[model_schema_prop(minimum = 1)] pub u32,
 );
 
-PairDraft(String::new(), 0).validate();
+Pair::new(String::new(), 0);
 // Err(["'0': too short: minimum length is 1, got 0", "'1': too small: minimum is 1, got 0"])
 ```
 
@@ -628,12 +665,13 @@ The messages come in the order `validate()` reports them: member by member as de
 - **A payload that keeps every rule** is read to the value it was read to before, and written back to the same text. Writing judges nothing: `Serialize` is still serde's derive, and a broken value built in code is written as it is.
 - **A type that publishes no `validate()`** is left as it was written, with serde's own `Deserialize`, unless it names a [`preprocess`](preprocess.md#preprocessing-preprocess), on itself or on a member: its `Deserialize` is written too, and calls each function ahead of the read. A type that derives `Serialize` alone is left as it was written.
 
-**Where a held model is judged.** A holder reads a model unjudged where `validate()` walks it: held itself, or under `Option`, `Vec`, `Box`, `Rc`, `Arc`, a fixed array, a set, a deque, a heap, as a map's value and as a position of a tuple, in any nesting of those, in a named field, a slot or a `#[serde(flatten)]` member. That holds where the member's type is written with the holder's own type parameters, `entries: Vec<Entry<IdType>>` in a `Ledger<IdType>`, and where it is written with `Self`, `children: Vec<Self>`. A model held any other way judges itself as it is read, and the payload is refused there too, with that model's own messages, the first broken model ending the read:
+**Where a held model is judged.** A holder reads a model unjudged where `validate()` walks it: held itself, or under `Option`, `Vec`, `Box`, `Rc`, `Arc`, a fixed array, a set, a deque, a heap, as a map's value and as a position of a tuple, in any nesting of those, in a named field, a slot or a `#[serde(flatten)]` member. That holds where the member's type is written with the holder's own type parameters, `entries: Vec<Entry<IdType>>` in a `Ledger<IdType>`, where it is written with `Self`, `children: Vec<Self>`, and where the model fills a type parameter of a generic model the member holds, `first_page: Page<Parcel>`, through any number of generic models. A model held any other way judges itself as it is read, and the payload is refused there too, with that model's own messages, the first broken model ending the read:
 
 | Held | Judged |
 |---|---|
 | in a field, an `Option`, a `Vec`, a `Box`, an `Rc`, an `Arc`, a fixed array, a set, a deque, a heap, a position of a tuple, a map's value, whether its type is written with a concrete filling, with the holder's own type parameter (`Vec<Entry<IdType>>`) or as `Self` | once, with its holder, each message at its full path |
-| filling one of the holder's own type parameters, as what fills `Held` in `held: Vec<Held>` | by itself, as it is read |
+| filling a type parameter of a generic model the member holds, as `Parcel` in `first_page: Page<Parcel>`, `binder: Page<Page<Parcel>>` and `slot: Slot<Parcel>` | once, with its holder, each message at its full path |
+| filling one of the holder's own type parameters, as what fills `Held` in `held: Vec<Held>` | once, with the type that holds the holder and writes the filling; by itself, as it is read, where the holder is read by itself |
 | in a member whose type names a lifetime | by itself, as it is read |
 | in a member written with a type parameter that a bound of the holder ties to another of its parameters or to a lifetime (`where IdType: From<Held>`), or with one of a holder read at `'static` | by itself, as it is read |
 | in a field read through a `deserialize_with` or a `with` of your own | by whatever that function calls |
@@ -674,6 +712,20 @@ serde_json::from_str::<Listing>(r#"{"listed":["/a","/etc","/b"]}"#);
 
 A brand that carries no bound and names no check publishes no `validate()`, and keeps the `Deserialize` serde's derive writes it. One position reads a brand held to its bound while the members are still being read: [a member of an `#[serde(untagged)]` enum](#what-is-checked-while-the-members-are-read).
 
+**`from_deserializer` reads over any deserializer and hands every broken rule as a list.** The valid type of every model type and brand has `from_deserializer`, which reads one value from a serde `Deserializer` with no judgement, judges the whole value once, and answers the value, every rule it breaks as one entry each, or the deserializer's own error as the one entry. The caller picks the format, and the generated code names none: a crate with a model type lists no `serde_json`.
+
+```rust
+let shipment = Shipment::from_deserializer(&mut serde_json::Deserializer::from_str(
+    r#"{"label":"","parcelCount":200}"#,
+));
+assert_eq!(shipment, Err(vec![
+    "'label': too short: minimum length is 1, got 0".to_owned(),
+    "'parcelCount': too large: maximum is 100, got 200".to_owned(),
+]));
+```
+
+The entries are what `validation_issues()` answers of the same value. A type with a draft reads the draft with no judgement, as the read of a holder does, and a type that is its own valid type (a plain enum, a brand) reads as its own read does. A generic type read at the top level reads what fills a parameter with that type's own `Deserialize`, and a plain enum has no rule to break, so a payload it refuses is the one entry the deserializer words. `from_deserializer` is a name of the type's own: a function of yours under that name is a duplicate definition (E0592), as a hand-written `new` is.
+
 **What `validate()` is for.** A value built in code, and a value changed after it was read:
 
 ```rust
@@ -687,7 +739,7 @@ draft.validate();
 **What the macro writes.** `#[derive(Deserialize)]` is taken off the item, and serde's derive runs on a private copy of it, declared inside a function the type gains: `model_schema_read_unjudged`, the read alone, public so that a holder in another module can call it. The `Deserialize` of the type calls it and then `validate()`. The copy keeps the item's `serde` and `cfg` attributes and no other, so an attribute of another macro written on the item or on a member is not on the copy.
 
 - `model_schema_read_unjudged` is a name of the type's own: a function of yours under that name on the same type is a duplicate definition (E0592). A type whose [`enable` list](recovering-decode.md#opting-in) holds `"decode_with"` gains `decode_with_read_unjudged` beside it.
-- A brand that carries a `pattern`, a `minLength` or a `maxLength` gains `model_schema_validate_bound` beside `validate()`: what the bound alone answers of the value, the checks the brand names apart. A member of an `#[serde(untagged)]` enum is held to it as it is read, and the recovering decode lists the brand from a read held to it. It is a name of the type's own as well.
+- A brand that carries a `pattern`, a `minLength` or a `maxLength` gains `model_schema_validate_bound` beside `validate()`: what the bound alone answers of the value, the checks the brand names apart. The recovering decode lists the brand from a read held to it. It is a name of the type's own as well.
 - The `Deserialize` is written under the bounds serde's derive writes. A container `#[serde(bound = ...)]` is used as written. Without one, each type parameter a read field names is asked `Deserialize<'de>`, a parameter used only in `PhantomData`, in a skipped field or in a field read through `with` or `deserialize_with` is asked nothing to read, a `default` asks `Default` of what it builds, and `'de` outlives each lifetime serde borrows for: a `&'a str`, a `&'a [u8]`, and what a `#[serde(borrow)]` names. A type that borrows for `'static` is read at `'static`. The bounds are those of the type as you wrote it: the hook the macro hangs on a constrained member of an `#[serde(untagged)]` enum, and the `default` it writes beside one, ask nothing more. So `listed: Vec<(u32, Key)>` under a `minLength`, in an enum that declares `Key`, asks `Key: Deserialize<'de>`, and `Option<Vec<Key>>` asks no `Default` of `Key`.
 - A unit struct with a check gains the `validate()` call in the `Deserialize` the macro already writes for it.
 - `#[serde(remote = ...)]`, `from`, `try_from` and `into` on a type that publishes `validate()` and derives `Deserialize` are refused, the macro having no place to put a judgement behind a conversion it does not write:
@@ -698,12 +750,12 @@ error: model_schema: type `Sealed`: `#[serde(try_from = ...)]` puts a conversion
 
 #### What is checked while the members are read
 
-A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A field read through a reference generates the validator alone. Two positions are checked while the members are read, ahead of the type's `validate()`, and both have to be:
+A field still generates both helpers into its schema module: `validate_{field}_value()`, which `validate()` calls, and `deserialize_{field}`, a serde hook an author may hang on a field of their own accord. A field read through a reference generates the validator alone. No position is checked while the members are read: every member, a member of an `#[serde(untagged)]` enum included, is read as serde's derive reads it, and the value is judged once it is whole.
 
-- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, where whether the member is admissible is what chooses which variant the payload is. The check is part of reading the value rather than part of judging it, so the member's own bound chooses the variant as it does under `anyOf` and `z.union` on the two schema surfaces the same type publishes, and `validate()` cannot stand in for it, since by the time it runs the variant has already been chosen. A wrapped member's hook deserializes the member's own declared type and then runs the same walk `validate()` runs over it; the two differ in that `validate()` answers with every violation in the instance while a `Deserializer` answers with one line, so the read stops at the first value that broke a bound and hands serde that value's violations joined by `; `. A member read through a reference, a borrowed `&str` or a borrowed list among them, and a member its author reads through a `deserialize_with` or a `with` of their own, serde admitting one reader per field, are the constrained members that choose no variant: each is read with no bound written, the first variant whose shape fits taking the payload, and the enum's read then refuses the value where it breaks the bound.
-- **A constrained brand held by a member of an `#[serde(untagged)]` enum**, where the same reasoning applies: the member is held to the brand's `pattern`, `minLength` and `maxLength` as it is read, so a value the brand's bound refuses takes that variant out of the running. A [check](checks.md#checks-check) the brand names chooses no variant, as no check does: the variant is chosen first, and the enum's read then refuses the value with the check's messages. Held anywhere else, a brand is read with no judgement, as a model is, and the holder's `validate()` judges it.
+- **A member of an `#[serde(untagged)]` enum**, a struct variant's named member and a newtype variant's slot alike, chooses no variant by its bound or its `literal`. The first variant whose shape reads the payload takes it, and the enum's `validate()` refuses the value with the member's message, as it refuses it for a member of any other enum.
+- **A constrained brand held by a member of an `#[serde(untagged)]` enum** is read with no judgement, as it is held anywhere else, and the enum's `validate()` judges it. With `Either { Labelled(Label), Plain(String) }` and `Label` under `minLength = 2`, `"a"` is read as `Labelled` and refused with `too short: minimum length is 2, got 1`, where it used to be read as `Plain`.
 
-A rule of a model a member holds, its checks included, chooses no variant. The first variant whose shape reads the payload takes it, and the enum's read then refuses the value where the model breaks its rule. Zod's `z.union` and the JSON Schema's `anyOf` try the next variant there instead, so each of the two schema surfaces reads a payload serde refuses:
+A rule of a model a member holds, its checks included, chooses no variant either. The first variant whose shape reads the payload takes it, and the enum's read then refuses the value where the model breaks its rule. Zod's `z.union` and the JSON Schema's `anyOf` try the next variant there instead, as they try it where a bound or a `literal` of a member is broken, so each of the two schema surfaces reads a payload serde refuses:
 
 ```rust
 #[model_schema()]
@@ -730,7 +782,7 @@ pub enum Picker {
 
 `{"label":""}` read as `Picker` is `Picker::A`, the first variant whose shape reads it, and serde refuses it with `'label': too short: minimum length is 1, got 0`. `Picker$Schema.safeParse({ label: "" })` answers `{"success":true,"data":{"label":""}}`, the payload read as `B`, and the second branch of the JSON Schema's `anyOf` admits it. serde writes `Picker::B(Loose { label: String::new() })` as that payload, and does not read it back. A struct of one slot is such a model too: serde writes it as the slot's value, as it writes a brand, but a bound on its slot chooses no variant, so `0` read as `#[serde(untagged)] pub enum Chooser { A(Count), B(u32) }`, over `pub struct Count(#[model_schema_prop(minimum = 1)] pub u32);`, is refused with `too small: minimum is 1, got 0`, where Zod reads it as `B`. The [Dart](dart.md#the-dart-read-refuses-what-validate-refuses), [Swift](swift.md#a-swift-read-refuses-what-validate-refuses) and [Kotlin](kotlin.md#the-read-in-the-kotlin-client) reads take the variant serde takes, and refuse the value as serde does.
 
-The [recovering decode](recovering-decode.md#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list the violations of each value as one issue, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](mongodb-operations.md#rows-that-do-not-read-as-the-type) of a type that lists `"mongodb"` read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](recovering-decode.md#what-each-shape-reports). A [service's dispatcher](services.md#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault with its field.
+The [recovering decode](recovering-decode.md#recovering-decode-decode_with) lists what a plain read refuses. `from_value_with` and `from_value_piped`, `from_bson_with` and `from_bson_piped` read with the type's read alone, run each field's validator on the value serde read, and the validator of each slot of a tuple struct and of a tagged tuple variant, and list the violations of each value as one issue, which is what lets a callback or a resolver repair a stored value. The [MongoDB reads](mongodb-operations.md#rows-that-do-not-read-as-the-type) of a type that lists `"mongodb"` read each row the same way, so a row that breaks a bound is refused until a resolver repairs it. See [What each shape reports](recovering-decode.md#what-each-shape-reports). A [service's dispatcher](services.md#service-validation) reads a request with the read alone as well and calls `validate()` next, so a broken bound is a `failed-validation` fault that lists each broken bound as an issue at its field.
 
 A field whose key may be left out keeps that reading. Where a member is read through a hook -- an untagged variant's, and a member whose model is read unjudged -- an `Option` written outermost (under any number of transparent wrappers) is given `#[serde(default)]` alongside it, since a `deserialize_with` otherwise turns a missing key into an error; a field that writes its own `default` keeps the one it wrote. Off the hook there is nothing to put back and no `default` is written, so a required key that goes missing is still the error it always was.
 
@@ -752,7 +804,7 @@ pub struct Enrolment {
 ```
 
 ```rust
-EnrolmentDraft { slug: Slug::model_schema_read_unjudged(serde_json::json!("a")).unwrap() }.validate();
+Enrolment::new(Slug::model_schema_read_unjudged(serde_json::json!("a")).unwrap());
 // Err(["'slug': too short: minimum length is 3, got 1"])
 ```
 
@@ -803,7 +855,7 @@ TerminalDraft {
 .validate();
 // Err(["'parcelsByDock.north.itemLabel': too short: minimum length is 1, got 0"])
 
-ConsignmentDraft(String::new(), unlabelled()).validate();
+Consignment::new(String::new(), unlabelled());
 // Err(["'0': too short: minimum length is 1, got 0", "'1.itemLabel': too short: minimum length is 1, got 0"])
 ```
 

@@ -25,14 +25,17 @@ const KOTLIN_IMPORTS: &str = "import kotlinx.serialization.*\n\
 /// What prints a row: the value read and written back, or `refused`, with each message of what
 /// the read refused where the row compares them.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun <T> row(name: String, serializer: KSerializer<T>, payload: String, judged: Boolean) {
     try {
         val read = Json.decodeFromString(serializer, payload)
         println("$name: read ${Json.encodeToString(serializer, read)}")
     } catch (refused: Exception) {
         println("$name: refused")
-        if (judged && refused::class == SerializationException::class) {
-            (refused.message ?: "").split("; ").forEach { println("    $it") }
+        if (judged && (refused::class == SerializationException::class || refused.cause?.message == "validate()")) {
+            issuesOf(refused).forEach { println("    $it") }
         }
     }
 }

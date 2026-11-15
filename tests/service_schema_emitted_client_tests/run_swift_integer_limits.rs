@@ -35,6 +35,10 @@ extension LimitMixed: ReadUnjudged {}
 extension LimitEnds: ReadUnjudged {}
 extension LimitWide: ReadUnjudged {}
 
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 fileprivate func report<Read: ReadUnjudged>(_ name: String, _ type: Read.Type, _ payload: String) throws {
   let data = Data(payload.utf8)
   let answered = try JSONDecoder().decode(Unjudged<Read>.self, from: data).held.validate()
@@ -47,6 +51,10 @@ fileprivate func report<Read: ReadUnjudged>(_ name: String, _ type: Read.Type, _
   do {
     _ = try JSONDecoder().decode(type, from: data)
     if !answered.isEmpty { print("    the read passed it") }
+  } catch let refused where issuesOf(refused) != nil {
+    if issuesOf(refused)! != answered {
+      print("    the read said \(refused)")
+    }
   } catch DecodingError.dataCorrupted(let context) {
     if context.debugDescription != answered.joined(separator: "; ") {
       print("    the read said \(context.debugDescription)")

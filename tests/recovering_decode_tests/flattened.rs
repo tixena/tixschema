@@ -442,8 +442,7 @@ fn sheet(extra: Option<Extra>, paint: Paint) -> Sheet {
         paint,
         title: "t".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// What serde writes for a type that flattens fields carries no key the walker does not know.
@@ -456,14 +455,12 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
                 note: "n".to_owned(),
                 weight: 2,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         PaintDraft::Solid {
             color: "red".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     );
     let written = serde_json::to_value(&whole).unwrap();
     assert_eq!(
@@ -488,13 +485,11 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
             created_by: "ada".to_owned(),
             revision: 1_i32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
         origin: OriginDraft {
             source: "import".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         title: "t".to_owned(),
     };
     let filed_written = serde_json::to_value(&filed).unwrap();
@@ -504,7 +499,7 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
     );
 
     let notice = NoticeDraft {
-        channel: ChannelDraft::Pager { number: 7_i32 }.validate().unwrap(),
+        channel: ChannelDraft::Pager { number: 7_i32 }.into(),
         subject: "s".to_owned(),
     };
     let notice_written = serde_json::to_value(&notice).unwrap();
@@ -529,14 +524,14 @@ fn what_serde_wrote_for_a_type_that_flattens_is_read_and_the_decider_never_runs(
 #[test]
 fn a_flattened_optional_type_that_is_absent_is_no_issue() {
     let mut calls = 0_u32;
-    let written = serde_json::to_value(sheet(None, PaintDraft::Clear.validate().unwrap())).unwrap();
+    let written = serde_json::to_value(sheet(None, Paint::Clear)).unwrap();
     assert_eq!(
         written,
         json!({ "createdBy": "ada", "kind": "Clear", "revision": 1_i32, "title": "t" })
     );
     assert_eq!(
         read_counting!(Sheet, sheet_schema, written, calls),
-        Ok(sheet(None, PaintDraft::Clear.validate().unwrap()))
+        Ok(sheet(None, Paint::Clear))
     );
     assert_eq!(calls, 0);
 }
@@ -623,8 +618,7 @@ fn a_decider_repairs_a_flattened_types_value_by_the_path_it_is_handed() {
             .unwrap(),
             text: "hello".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -639,7 +633,7 @@ fn a_flattened_optional_type_half_there_is_mistyped_at_the_object() {
     });
     assert_eq!(
         serde_json::from_value::<Sheet>(stored.clone()).unwrap(),
-        sheet(None, PaintDraft::Clear.validate().unwrap())
+        sheet(None, Paint::Clear)
     );
     let read = Sheet::from_value_with(stored.clone(), |_raw, _found| sheet_schema::Verdict::Reject);
     assert_eq!(
@@ -683,7 +677,7 @@ fn a_decider_takes_out_the_half_of_an_optional_type_the_object_holds() {
         }
         sheet_schema::Verdict::Fixed
     });
-    assert_eq!(read, Ok(sheet(None, PaintDraft::Clear.validate().unwrap())));
+    assert_eq!(read, Ok(sheet(None, Paint::Clear)));
 }
 
 #[test]
@@ -701,8 +695,7 @@ fn a_flattened_optional_type_that_is_there_lists_its_own_issues() {
             stamp: None,
             title: "t".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         listed!(Proof, proof_schema, refused),
@@ -739,9 +732,9 @@ fn a_flattened_tagged_enum_reads_its_tag_in_the_outer_object() {
 fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys() {
     let mut calls = 0_u32;
     let framed = FramedDraft {
-        edge: EdgeDraft::Curved { radius: 1.5_f64 }.validate().unwrap(),
+        edge: EdgeDraft::Curved { radius: 1.5_f64 }.into(),
         title: "t".to_owned(),
-        trim: TrimDraft::Dotted { gap: 2_i32 }.validate().unwrap(),
+        trim: TrimDraft::Dotted { gap: 2_i32 }.into(),
     };
     let written = serde_json::to_value(&framed).unwrap();
     assert_eq!(
@@ -758,9 +751,9 @@ fn a_flattened_externally_or_adjacently_tagged_enum_is_walked_under_its_own_keys
         Ok(framed.validate().unwrap())
     );
     let units = FramedDraft {
-        edge: EdgeDraft::Straight.validate().unwrap(),
+        edge: Edge::Straight,
         title: "t".to_owned(),
-        trim: TrimDraft::Solid.validate().unwrap(),
+        trim: Trim::Solid,
     };
     let units_written = serde_json::to_value(&units).unwrap();
     assert_eq!(
@@ -897,10 +890,7 @@ fn a_flattened_map_takes_every_key_nothing_else_declares() {
 fn a_flattened_map_of_model_types_walks_each_value_at_its_key() {
     let mut calls = 0_u32;
     let releases = ReleasesDraft {
-        by_name: BTreeMap::from([(
-            "first".to_owned(),
-            VersionDraft { number: 1_i32 }.validate().unwrap(),
-        )]),
+        by_name: BTreeMap::from([("first".to_owned(), VersionDraft { number: 1_i32 }.into())]),
     };
     let written = serde_json::to_value(&releases).unwrap();
     assert_eq!(written, json!({ "first": { "number": 1_i32 } }));
@@ -1112,8 +1102,7 @@ fn a_hook_named_like_the_keys_a_flattening_walker_keeps_is_the_authors_function(
         Ok(MarkedDraft {
             rest: HashMap::from([("x".to_owned(), 1_i32)]),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
     let negative = json!({ "x": -1_i32 });
@@ -1134,8 +1123,7 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
             title: "t".to_owned(),
             trace: TraceDraft::Pending { cached: 0 }.validate().unwrap(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let stored = json!({ "legacy": true, "title": "t" });
     assert!(!serde_reads::<Traced>(&stored));
@@ -1151,9 +1139,7 @@ fn a_flattened_untagged_variant_with_no_field_declares_no_key() {
 fn a_flattened_untagged_enum_is_handed_no_key_of_the_outer_type() {
     let scoreboard = ScoreboardDraft {
         id: "i".to_owned(),
-        scores: ScoresDraft::Pointed(PointedDraft { a: 1_i32 }.validate().unwrap())
-            .validate()
-            .unwrap(),
+        scores: ScoresDraft::Pointed(PointedDraft { a: 1_i32 }.into()).into(),
     };
     let written = serde_json::to_value(&scoreboard).unwrap();
     assert_eq!(written, json!({ "a": 1_i32, "id": "i" }));
@@ -1229,8 +1215,7 @@ fn an_absent_flattened_optional_enum_beside_another_flattened_type_is_no_issue()
             created_by: "ada".to_owned(),
             revision: 1_i32,
         }
-        .validate()
-        .unwrap(),
+        .into(),
         paint: None,
         title: "t".to_owned(),
     };
@@ -1268,8 +1253,7 @@ fn an_absent_flattened_optional_enum_leaves_the_objects_keys_to_the_outer_type()
             channel: None,
             own: "x".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         listed!(Reached, reached_schema, no_variant),
@@ -1286,8 +1270,7 @@ fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
             PaintDraft::Solid {
                 color: "red".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     };
     let painted_written = serde_json::to_value(&painted).unwrap();
@@ -1305,11 +1288,9 @@ fn a_flattened_optional_enum_that_is_there_is_walked_as_the_variant_it_names() {
                 ByMailDraft {
                     address: "a@b".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             )
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         own: "x".to_owned(),
     };
@@ -1351,8 +1332,7 @@ fn a_flattened_optional_enum_named_and_not_read_is_mistyped_at_the_object() {
                 own: "x".to_owned(),
                 paint: None,
             }
-            .validate()
-            .unwrap()
+            .into()
         );
         let read = Painted::from_value_with(stored.clone(), |_raw, _found| {
             painted_schema::Verdict::Reject
@@ -1387,7 +1367,7 @@ fn an_absent_flattened_optional_externally_tagged_enum_lists_nothing() {
         Ok(absent.validate().unwrap())
     );
     let there = EdgedDraft {
-        edge: Some(EdgeDraft::Curved { radius: 1.5_f64 }.validate().unwrap()),
+        edge: Some(EdgeDraft::Curved { radius: 1.5_f64 }.into()),
         own: "x".to_owned(),
     };
     let there_written = serde_json::to_value(&there).unwrap();
@@ -1423,7 +1403,7 @@ fn an_absent_flattened_optional_adjacently_tagged_enum_lists_nothing() {
     );
     let there = TrimmedDraft {
         own: "x".to_owned(),
-        trim: Some(TrimDraft::Dotted { gap: 2_i32 }.validate().unwrap()),
+        trim: Some(TrimDraft::Dotted { gap: 2_i32 }.into()),
     };
     let there_written = serde_json::to_value(&there).unwrap();
     assert_eq!(

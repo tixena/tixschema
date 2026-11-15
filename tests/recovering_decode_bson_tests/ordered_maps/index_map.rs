@@ -145,7 +145,7 @@ fn a_fixed_row_keeps_each_maps_keys_in_the_order_it_stored_them() {
     assert_eq!(fixed, piped);
     assert_eq!(
         piped.by_name.get("zeta"),
-        Some(&TrackedDraft { number: 1_i32 }.validate().unwrap())
+        Some(&TrackedDraft { number: 1_i32 }.into())
     );
     let back = written(&piped);
     assert_eq!(keys_under(&back, "aliased"), ["zeta", "alpha"]);

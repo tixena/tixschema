@@ -236,8 +236,7 @@ fn serde_reads_the_member_and_never_writes_it() {
             label: "north".to_owned(),
             spare: Some(3),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         reefing,
@@ -249,8 +248,7 @@ fn serde_reads_the_member_and_never_writes_it() {
             .unwrap(),
             spare: Some(3),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(serde_json::to_string(&furling).unwrap(), WRITTEN);
     assert_eq!(serde_json::to_string(&reefing).unwrap(), WRITTEN);
@@ -275,8 +273,7 @@ fn serde_reads_a_flattened_member_and_never_writes_it() {
             ),
             note: "n".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         "serde reads the flattened struct"
     );
     assert_eq!(
@@ -284,8 +281,7 @@ fn serde_reads_a_flattened_member_and_never_writes_it() {
         BraidingDraft {
             label: "north".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         "serde reads the flattened struct that is no `Option`"
     );
     assert_eq!(
@@ -293,8 +289,7 @@ fn serde_reads_a_flattened_member_and_never_writes_it() {
         RangingDraft {
             counts: BTreeMap::from([("north".to_owned(), 2)]),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         "serde reads the flattened map"
     );
     assert_eq!(

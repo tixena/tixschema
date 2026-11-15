@@ -53,8 +53,7 @@ fn fixed_array_fields() -> FixedArrayFields {
         set_of_ids: [HashSet::from([1]), HashSet::from([2])],
         slice_ids: vec![1, 2].into_boxed_slice(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn fixed_array_slots() -> FixedArraySlots {
@@ -62,8 +61,7 @@ fn fixed_array_slots() -> FixedArraySlots {
         by_key: HashMap::from([("k".to_owned(), [1, 2, 3])]),
         entry: ("t".to_owned(), [1, 2, 3]),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]

@@ -38,8 +38,7 @@ fn a_field_written_with_the_name_is_read_as_the_type_declared_here() {
             .validate()
             .unwrap(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     let mut calls = 0_u32;
     let walked = Holder::from_value_with(stored, |_raw, _found| {

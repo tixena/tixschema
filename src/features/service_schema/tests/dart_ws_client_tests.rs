@@ -4,6 +4,9 @@
 //! tests read structure, the same way `dart_http_client_tests` reads the `http_rest` sibling's own
 //! output: a substring that must appear, and a name that must not.
 
+use crate::features::dart::integer_read;
+use crate::field_type::FieldDefType;
+
 use super::{
     DART_HEADER_TUPLE_SERVICE, DART_PRIMITIVE_SERVICE, DART_UNIT_SUCCESS_HTTP_SERVICE,
     DART_WS_SERVICE, MIXED_SERVICE, RESERVED_WORD_SERVICE, SHADOWED_LOCAL_SERVICE,
@@ -309,9 +312,10 @@ fn a_reply_decode_failure_is_answered_as_the_rust_dispatcher_answers_the_refusal
     assert!(
         refused.contains("kind: LedgerFaultKind.undeserializablePayload")
             && refused.contains("'expected value'")
-            && refused.contains("_ledgerWsFailedValidation(operation, '$rejected', field: _ledgerWsRefusedAt(rejected))"),
+            && refused
+                .contains("_ledgerWsFailedValidation(operation, _ledgerWsRefusedIssues(rejected))"),
         "a refusal in serde's words for text that is not the document is `undeserializablePayload`, \
-         as the Rust dispatcher answers it, and every other names the field. Got: {refused}"
+         as the Rust dispatcher answers it, and every other lists each problem. Got: {refused}"
     );
 }
 
@@ -532,7 +536,10 @@ fn a_primitive_message_and_success_ride_the_frame_as_their_own_json_values() {
         "got: {method}"
     );
     assert!(
-        method.contains("return ShelvesTallyResultOk(reply['value'] as int);"),
+        method.contains(&format!(
+            "return ShelvesTallyResultOk({});",
+            integer_read(&FieldDefType::I64, "reply['value']")
+        )),
         "got: {method}"
     );
     let arm = body_from(&written, "case 'tally':");
@@ -614,21 +621,20 @@ fn a_client_method_splits_a_header_tuple_reply_and_names_the_header_on_a_bad_dec
         method.contains("final replyHeaders = reply['headers'] as Map<String, dynamic>?;")
             && method.contains("value = Document.fromJson(reply['value']);")
             && method.contains("headerOut0 = replyHeaders?['etag'] as String;")
-            && method.contains(
-                "headerOut1 = (replyHeaders?['x-age'] == null ? null : (switch \
-                 (replyHeaders?['x-age'] as int) { final number when number >= 0 && number <= \
-                 4294967295 => number, final number => throw FormatException('expected an integer \
-                 from 0 to 4294967295, found $number') }));"
-            )
+            && method.contains(&format!(
+                "headerOut1 = (replyHeaders?['x-age'] == null ? null : (switch ({}) {{ final \
+                 number when number >= 0 && number <= 4294967295 => number, final number => throw \
+                 FormatException('expected an integer from 0 to 4294967295, found $number') }}));",
+                integer_read(&FieldDefType::U32, "replyHeaders?['x-age']")
+            ))
             && method
                 .contains("return VersionServiceGetResultOk((value, headerOut0, headerOut1));"),
         "the response decodes alone, and each `header_out` element decodes off the reply's own \
          `headers`, in declaration order. Got: {method}"
     );
     assert!(
-        method.contains("_versionServiceWsFailedValidation('get', '$rejected', field: 'etag')")
-            && method
-                .contains("_versionServiceWsFailedValidation('get', '$rejected', field: 'x-age')"),
+        method.contains("_versionServiceWsFailedAt('get', 'etag', rejected)")
+            && method.contains("_versionServiceWsFailedAt('get', 'x-age', rejected)"),
         "a header element that will not decode faults naming that header. Got: {method}"
     );
     assert!(
@@ -640,9 +646,7 @@ fn a_client_method_splits_a_header_tuple_reply_and_names_the_header_on_a_bad_dec
             && method.contains(
                 "return VersionServiceGetResultOperation((declaredHead, errorHeaderOut0));"
             )
-            && method.contains(
-                "_versionServiceWsFailedValidation('get', '$rejected', field: 'x-reason')"
-            ),
+            && method.contains("_versionServiceWsFailedAt('get', 'x-reason', rejected)"),
         "the declared error's own head decodes off `error` alone, and its `error_header_out` \
          element decodes off the reply's own `headers`, faulting under its own name. Got: {method}"
     );
@@ -663,18 +667,19 @@ fn a_handler_takes_a_header_in_value_per_binding_read_off_the_request_frame() {
     assert!(
         arm.contains("final headersIn = frame['headers'] as Map<String, dynamic>?;")
             && arm.contains("tenant = headersIn?['x-tenant'] as String;")
-            && arm.contains(
-                "trace = (headersIn?['x-trace'] == null ? null : (switch (headersIn?['x-trace'] \
-                 as int) { final number when number >= 0 && number <= 4294967295 => number, final \
-                 number => throw FormatException('expected an integer from 0 to 4294967295, found \
-                 $number') }));"
-            )
+            && arm.contains(&format!(
+                "trace = (headersIn?['x-trace'] == null ? null : (switch ({}) {{ final number \
+                 when number >= 0 && number <= 4294967295 => number, final number => throw \
+                 FormatException('expected an integer from 0 to 4294967295, found $number') }}));",
+                integer_read(&FieldDefType::U32, "headersIn?['x-trace']")
+            ))
             && arm.contains("await handlers.get(ctx, decoded, tenant, trace);"),
         "each header_in value decodes off the request frame's own `headers` and is passed \
          straight through to the handler. Got: {arm}"
     );
     assert!(
-        arm.contains("field: 'x-tenant'") && arm.contains("field: 'x-trace'"),
+        arm.contains("WsFailedAt('get', 'x-tenant', rejected)")
+            && arm.contains("WsFailedAt('get', 'x-trace', rejected)"),
         "a header_in value that will not decode faults naming that header. Got: {arm}"
     );
 }

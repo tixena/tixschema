@@ -9,8 +9,7 @@ use super::stamp_client_service_schema::{CallError, ServiceFaultKind};
 use super::stamp_ws_rpc_client::{FrameSession, FrameWriter, StampClientServiceClient, ping_frame};
 use super::stamp_ws_rpc_transport;
 use super::tests::{
-    StampBackEnd, StampClientServiceSchema, StampError, StampErrorDraft, StampReceipt,
-    StampReceiptDraft,
+    StampBackEnd, StampClientServiceSchema, StampError, StampReceipt, StampReceiptDraft,
 };
 use alloc::sync::Arc;
 use core::future::{Future, Ready, ready};
@@ -227,14 +226,22 @@ fn parsed(text: &str) -> Value {
     serde_json::from_str(text).unwrap()
 }
 
-/// A reply frame with its fault's `detail` taken out: the words are each side's own decoder's,
-/// and everything else about the fault is the contract.
+/// A reply frame with the `detail` of its fault and of each issue taken out: the words are each
+/// side's own decoder's, and everything else about the fault is the contract.
 fn without_fault_detail(mut reply: Value) -> Value {
     if let Some(fault) = reply
         .pointer_mut("/error/fault")
         .and_then(Value::as_object_mut)
     {
         fault.remove("detail");
+        for issue in fault
+            .get_mut("issues")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            issue.as_object_mut().unwrap().remove("detail");
+        }
     }
     reply
 }
@@ -402,7 +409,10 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
     };
     assert_eq!(answered["marked"], json!(["m acme"]));
     assert_eq!(answered["faults"][0]["kind"], json!("failed-validation"));
-    assert_eq!(answered["faults"][0]["field"], json!("x-tenant"));
+    assert_eq!(
+        answered["faults"][0]["issues"][0]["field"],
+        json!("x-tenant")
+    );
 
     let backend = StampBackEnd::default();
     let written: Vec<String> = answered["written"]
@@ -437,8 +447,7 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
             label: label.to_owned(),
             tenant: "acme".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     };
     assert_eq!(
         poll_by_hand(first.as_mut()),
@@ -451,16 +460,13 @@ fn the_typescript_attachment_answers_the_rust_client_the_way_the_rust_dispatcher
     assert_eq!(
         poll_by_hand(third.as_mut()),
         Poll::Ready(Err(CallError::Operation((
-            StampErrorDraft::Refused.validate().unwrap(),
+            StampError::Refused,
             Some("refused at 3".to_owned())
         ))))
     );
     assert_eq!(
         poll_by_hand(fourth.as_mut()),
-        Poll::Ready(Err(CallError::Operation((
-            StampErrorDraft::Refused.validate().unwrap(),
-            None
-        ))))
+        Poll::Ready(Err(CallError::Operation((StampError::Refused, None))))
     );
 }
 
@@ -558,7 +564,11 @@ fn the_generic_client_reads_a_stub_amqp_transport_s_headers() {
             json!("failed-validation"),
             "{called}: {results}"
         );
-        assert_eq!(results[called]["fault"]["field"], json!(field), "{called}");
+        assert_eq!(
+            results[called]["fault"]["issues"][0]["field"],
+            json!(field),
+            "{called}"
+        );
         assert_eq!(
             results[called]["fault"]["operation"],
             json!("stamp"),
@@ -590,5 +600,8 @@ fn closing_the_session_fails_a_stamp_still_waiting_with_a_transport_failure_faul
     }
     .unwrap();
     assert_eq!(fault.kind(), ServiceFaultKind::TransportFailure);
-    assert_eq!(fault.detail(), "the socket closed before the reply arrived");
+    assert_eq!(
+        fault.detail(),
+        Some("the socket closed before the reply arrived")
+    );
 }

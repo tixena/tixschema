@@ -46,7 +46,7 @@ Object? told(CarillonHttpServiceStrikeResult answered) => switch (answered) {
   CarillonHttpServiceStrikeResultOk() => 'read',
   CarillonHttpServiceStrikeResultFault(:final fault) => <String, dynamic>{
     'kind': fault.kind.toJson(),
-    'field': fault.field,
+    'field': fault.issues?.firstOrNull?.field,
   },
   _ => 'declared',
 };
@@ -86,7 +86,7 @@ fun told(answered: CarillonHttpServiceStrikeResult): JsonElement = when (answere
     is CarillonHttpServiceStrikeResult.Ok -> JsonPrimitive("read")
     is CarillonHttpServiceStrikeResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<CarillonHttpServiceFaultKind>(), answered.fault.kind))
-        put("field", answered.fault.field?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("field", answered.fault.issues?.firstOrNull()?.field?.let { JsonPrimitive(it) } ?: JsonNull)
     }
     else -> JsonPrimitive("declared")
 }
@@ -124,7 +124,7 @@ func told(_ answered: Result<CarillonChime, CarillonHttpServiceStrikeFailure>) -
   case .success:
     return "\"read\""
   case .failure(.fault(let fault)):
-    let field = fault.field.map { "\"\($0)\"" } ?? "null"
+    let field = fault.issues?.first?.field.map { "\"\($0)\"" } ?? "null"
     return "{\"kind\":\"\(fault.kind.rawValue)\",\"field\":\(field)}"
   case .failure:
     return "\"declared\""
@@ -165,16 +165,27 @@ fn assert_read_as(read: &Value, rust: &[Value]) {
 }
 
 /// Holds what a server answered to each request, as [`summed`] tells it, and how many strikes
-/// reached its handler, to what the Rust dispatcher answers.
+/// reached its handler, to what the Rust dispatcher answers, the detail of a refusal among them
+/// where `with_detail`.
 #[cfg(any(feature = "dart", feature = "kotlin"))]
-fn assert_served_as_rust(report: &Value) {
+fn assert_served_as_rust(report: &Value, with_detail: bool) {
+    let without_detail = |mut answer: Value| {
+        if !with_detail && let Some(held) = answer.as_object_mut() {
+            held.remove("detail");
+        }
+        answer
+    };
     let answered: Vec<Value> = report["served"]
         .as_array()
         .unwrap()
         .iter()
         .map(|text| summed(&serde_json::from_str(text.as_str().unwrap()).unwrap()))
+        .map(without_detail)
         .collect();
-    let rust = rust_number_server_answers();
+    let rust: Vec<Value> = rust_number_server_answers()
+        .into_iter()
+        .map(without_detail)
+        .collect();
     let differing = apart(&answered, &rust);
     assert!(differing.is_empty(), "{differing:#?}");
     let struck: Vec<Value> = rust
@@ -266,7 +277,7 @@ fn the_dart_server_and_client_read_and_write_each_number_as_the_rust_dispatcher_
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report);
+    assert_served_as_rust(&report, true);
     assert_read_as(&report["read"], &rust_number_client_answers());
 }
 
@@ -341,7 +352,7 @@ fn the_kotlin_server_and_client_read_and_write_each_number_as_the_rust_dispatche
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report);
+    assert_served_as_rust(&report, false);
     assert_read_as(&report["read"], &rust_number_client_answers());
 }
 

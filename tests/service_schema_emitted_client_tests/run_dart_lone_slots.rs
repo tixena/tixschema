@@ -17,7 +17,7 @@ use super::lone_slots_models::{
 };
 #[cfg(feature = "chrono")]
 use super::lone_slots_models::{stowed_stamp_dart, ticked_dart, ticked_millis_dart};
-use super::run_dart_validate::{dart, module};
+use super::run_dart_validate::{ISSUES_OF, dart, module};
 
 /// What a run reads a payload with, and prints the answer with: the value written back, or each
 /// message of a refusal.
@@ -25,9 +25,9 @@ const HARNESS: &str = "
 void row(String name, Object? Function() read) {
   try {
     print('$name: read ${jsonEncode(read())}');
-  } on FormatException catch (refused) {
+  } on Exception catch (refused) {
     print('$name: refused');
-    for (final line in refused.message.split('; ')) {
+    for (final line in issuesOf(refused)) {
       print('    $line');
     }
   } catch (error) {
@@ -117,7 +117,7 @@ fn a_struct_of_one_slot_reads_and_writes_in_dart_as_serde_does_wherever_it_is_he
         );
     }
     main.push_str("}\n");
-    let source = module(&definitions(), &[HARNESS], &main);
+    let source = module(&definitions(), &[HARNESS, ISSUES_OF], &main);
     let Some((ran, printed)) = dart("lone-slots", &[], &source) else {
         return;
     };

@@ -6,6 +6,11 @@
 ))]
 
 #[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "support/dart_integer_read.rs"]
+mod dart_integer_read;
+
+#[cfg(test)]
 #[path = "mobile_rename_direction_tests/tests.rs"]
 mod tests;
 

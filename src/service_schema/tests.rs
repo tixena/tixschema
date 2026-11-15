@@ -1911,8 +1911,8 @@ fn every_generated_name_the_ws_rpc_dispatcher_body_reaches_is_written_through_cr
         "ServiceFault",
         "Answered",
         "named_field",
-        "violated_field",
-        "violation_detail",
+        "violation_issues",
+        "refused_at",
         "GetOpenBalanceMessage",
     ] {
         assert!(
@@ -2186,8 +2186,8 @@ fn every_generated_name_the_macro_body_reaches_is_written_through_crate() {
         "ServiceFault",
         "Answered",
         "named_field",
-        "violated_field",
-        "violation_detail",
+        "violation_issues",
+        "refused_at",
         "GetOpenBalanceMessage",
         "VoidInvoiceMessage",
         "SweepMessage",
@@ -2515,10 +2515,11 @@ fn a_refusal_and_a_violation_are_read_for_a_field_name_by_the_same_reader() {
     );
     assert!(
         emitted.contains(
-            "fn violated_field (reported : & [:: std :: string :: String]) -> :: core :: option \
-             :: Option < & str > { named_field (reported . first () ?) }"
+            "fn violation_issue (reported : & str) -> ServiceFaultIssue { let :: core :: option \
+             :: Option :: Some (field) = named_field (reported) else"
         ),
-        "a violation report's field is the first line's, read by the one reader. Got: {emitted}"
+        "each line of a violation report is listed at the field it names, read by the one \
+         reader. Got: {emitted}"
     );
     assert!(
         emitted.contains("if $ crate :: billing_service_schema :: named_field (said) . is_some ()")
@@ -2686,8 +2687,8 @@ fn a_transport_failure_is_a_kind_the_fault_publishes_and_the_mirror_reads_back()
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
         emitted.contains(
-            "FaultKindOnTheWire :: TransportFailure => { $ crate :: billing_service_schema :: \
-             ServiceFault :: transport_failure"
+            "Self :: TransportFailure { detail , operation } => { $ crate :: \
+             billing_service_schema :: ServiceFault :: transport_failure"
         ),
         "the mirror is what reads a fault back off the wire, so a kind it does not spell is a \
          fault that arrives and will not deserialize. Got: {emitted}"
@@ -2702,7 +2703,7 @@ fn a_transport_failure_is_a_kind_the_fault_publishes_and_the_mirror_reads_back()
 fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fault() {
     let emitted = expanded_over_amqp_rpc(MIXED_SERVICE);
     assert!(
-        emitted.contains("struct FaultOnTheWire") && !emitted.contains("pub struct FaultOnTheWire"),
+        emitted.contains("enum FaultOnTheWire") && !emitted.contains("pub enum FaultOnTheWire"),
         "the mirror is the seam, and it is private to wherever the client was placed. Got: \
          {emitted}"
     );
@@ -2712,11 +2713,11 @@ fn a_fault_is_read_back_through_a_private_mirror_rather_than_by_widening_the_fau
         "got: {emitted}"
     );
     for minted in [
-        "ServiceFault :: failed_validation (& self . operation",
-        "ServiceFault :: handler_panic (& self . operation",
-        "ServiceFault :: transport_failure (& self . operation",
-        "ServiceFault :: undeserializable_payload (& self . operation",
-        "ServiceFault :: unknown_operation (& self . operation)",
+        "ServiceFault :: failed_validation (& operation",
+        "ServiceFault :: handler_panic (& operation",
+        "ServiceFault :: transport_failure (& operation",
+        "ServiceFault :: undeserializable_payload (& operation",
+        "ServiceFault :: unknown_operation (& operation)",
     ] {
         assert!(
             emitted.contains(minted),
@@ -3078,8 +3079,8 @@ fn every_published_function_answering_a_result_says_under_errors_what_the_failur
 #[test]
 fn the_fault_mirror_and_the_answer_reader_are_emitted_only_where_an_operation_answers() {
     let reading = [
-        "struct FaultOnTheWire",
-        "enum FaultKindOnTheWire",
+        "enum FaultOnTheWire",
+        "struct IssueOnTheWire",
         "struct TaggedFault",
         "enum ReportedError",
         "fn into_fault",
@@ -3356,7 +3357,7 @@ fn a_table_less_http_group_publishes_no_completeness_check() {
         }",
     );
     assert!(
-        !table_less.contains("const _ : fn (& GateError)"),
+        !table_less.contains("MODEL_SCHEMA_VARIANTS"),
         "an empty table has nothing to be complete against. Got: {table_less}"
     );
 
@@ -3367,10 +3368,8 @@ fn a_table_less_http_group_publishes_no_completeness_check() {
         }",
     );
     assert!(
-        with_table.contains(
-            "const _ : fn (& GateError) -> u16 = | reported | match & * * reported \
-             { GateErrorDraft :: NotFound { .. } => 404u16 , } ;"
-        ),
+        with_table.contains("const NAMED : & [& str] = & [\"NotFound\"] ;")
+            && with_table.contains("< GateError > :: MODEL_SCHEMA_VARIANTS"),
         "got: {with_table}"
     );
 }
@@ -4037,11 +4036,8 @@ fn the_service_module_carries_one_completeness_check_per_http_error_status() {
         exec_service_schema(TokenStream::new(), declared(HTTP_SERVICE).to_token_stream());
     let body = module_body(expanded, "document_service_schema").to_string();
     assert!(
-        body.contains(
-            "const _ : fn (& GetVersionError) -> u16 = | reported | match & * * reported \
-             { GetVersionErrorDraft :: NotFound { .. } => 404u16 , GetVersionErrorDraft :: VersionGone \
-             { .. } => 410u16 , } ;"
-        ),
+        body.contains("const NAMED : & [& str] = & [\"NotFound\" , \"VersionGone\"] ;")
+            && body.contains("< GetVersionError > :: MODEL_SCHEMA_VARIANTS"),
         "got: {body}"
     );
 }
@@ -4052,7 +4048,7 @@ fn only_a_reply_operation_naming_a_non_empty_table_carries_a_completeness_check(
     let expanded =
         exec_service_schema(TokenStream::new(), declared(HTTP_SERVICE).to_token_stream());
     let body = module_body(expanded, "document_service_schema").to_string();
-    assert_eq!(body.matches("const _ : fn (&").count(), 1, "got: {body}");
+    assert_eq!(body.matches("const NAMED").count(), 1, "got: {body}");
     assert!(
         !body.contains("DocumentError"),
         "create_document's group declares no error_status, so it publishes no check at all. \
@@ -4061,7 +4057,7 @@ fn only_a_reply_operation_naming_a_non_empty_table_carries_a_completeness_check(
 }
 
 #[test]
-fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
+fn a_table_entry_naming_a_payload_variant_is_named_by_its_text() {
     let struct_variant = expanded(
         "pub trait ArchiveService<Ctx> {
             #[service_schema_op(http(
@@ -4073,11 +4069,7 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
         }",
     );
     assert!(
-        struct_variant.contains(
-            "const _ : fn (& ArchiveError) -> u16 = | reported | match & * * reported \
-             { ArchiveErrorDraft :: NotFound { .. } => 404u16 , ArchiveErrorDraft :: Locked { .. } => \
-             423u16 , } ;"
-        ),
+        struct_variant.contains("const NAMED : & [& str] = & [\"NotFound\" , \"Locked\"] ;"),
         "got: {struct_variant}"
     );
 
@@ -4092,10 +4084,7 @@ fn a_table_entry_naming_a_payload_variant_is_matched_with_braces() {
         }",
     );
     assert!(
-        tuple_variant.contains(
-            "const _ : fn (& GoneError) -> u16 = | reported | match & * * reported \
-             { GoneErrorDraft :: Gone { .. } => 410u16 , } ;"
-        ),
+        tuple_variant.contains("const NAMED : & [& str] = & [\"Gone\"] ;"),
         "got: {tuple_variant}"
     );
 }

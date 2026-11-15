@@ -1,0 +1,11 @@
+[package]
+name = "no_serde_json_apart"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# No `serde_json`: the generated read of a model type names no format.
+[dependencies]
+# No feature of its own: the build that compiles this crate decides tixschema's.
+tixschema = { path = "../../..", default-features = false }
+serde = { version = "1", features = ["derive"] }

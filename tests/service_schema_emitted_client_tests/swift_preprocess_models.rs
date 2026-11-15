@@ -356,7 +356,7 @@ impl ShippingClientService<()> for ShippingBackEnd {
     async fn shipped(&self, _ctx: &(), parcel_label: String) -> Result<Parcel, ShippingError> {
         ready(()).await;
         if parcel_label.is_empty() {
-            return Err(ShippingErrorDraft::NotFound.validate().unwrap());
+            return Err(ShippingError::NotFound);
         }
         Ok(ParcelDraft {
             fragile_item_codes: Vec::new(),

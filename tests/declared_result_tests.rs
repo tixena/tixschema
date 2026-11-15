@@ -50,8 +50,7 @@ mod tests {
                 held: 13_u32,
                 refused: "late".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         };
         assert_eq!(
             serde_json::to_value(&value).unwrap(),

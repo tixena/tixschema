@@ -38,8 +38,8 @@ fn test_typescript_feature_types_constructible() {
         payment,
         TypeScriptTestPaymentDraft::PayPal { email: _email }
     ));
-    let status = TypeScriptTestStatusDraft::Active;
-    assert_eq!(status, TypeScriptTestStatusDraft::Active);
+    let status = TypeScriptTestStatus::Active;
+    assert_eq!(status, TypeScriptTestStatus::Active);
     let user = TypeScriptTestUserDraft {
         active: false,
         age: 0,
@@ -97,9 +97,9 @@ fn test_typescript_enabled_plain_enum_zod_schema() {
     let zod_schema = TypeScriptTestStatus::zod_schema();
 
     assert!(zod_schema.contains(
-        "const TypeScriptTestStatusDraft$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
+        "const TypeScriptTestStatus$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
     ));
-    assert!(zod_schema.contains("export const TypeScriptTestStatusDraft$Schema: ZodType<TypeScriptTestStatusDraft> = TypeScriptTestStatusDraft$RawSchema;"));
+    assert!(zod_schema.contains("export const TypeScriptTestStatus$Schema: ZodType<TypeScriptTestStatus> = TypeScriptTestStatus$RawSchema;"));
     assert!(zod_schema.contains(".meta({"));
 
     assert!(!zod_schema.contains("export type TypeScriptTestStatus"));
@@ -175,9 +175,9 @@ fn test_typescript_disabled_plain_enum_zod_schema_typescript_serde_style() {
     // When serde feature is disabled, the rename_all attribute is not processed
     // so the enum values will be the original Rust names (Title case)
     assert!(zod_schema.contains(
-        "const TypeScriptTestStatusDraft$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
+        "const TypeScriptTestStatus$RawSchema = z.enum([\"active\", \"inactive\", \"pending\"])"
     ));
-    assert!(zod_schema.contains("export const TypeScriptTestStatusDraft$Schema: ZodType<TypeScriptTestStatusDraft> = TypeScriptTestStatusDraft$RawSchema;"));
+    assert!(zod_schema.contains("export const TypeScriptTestStatus$Schema: ZodType<TypeScriptTestStatus> = TypeScriptTestStatus$RawSchema;"));
     assert!(zod_schema.contains(".meta({"));
 
     assert!(!zod_schema.contains("export type TypeScriptTestStatus"));

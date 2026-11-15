@@ -197,13 +197,12 @@ impl CallService<()> for CallBackEnd {
         Ok(CallAnswerDraft {
             invoices: u32::try_from(req.customer_id.len()).unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn sweep(&self, _ctx: &()) -> Result<CallAnswer, CallFailure> {
         ready(()).await;
-        Ok(CallAnswerDraft { invoices: 0 }.validate().unwrap())
+        Ok(CallAnswerDraft { invoices: 0 }.into())
     }
 }
 
@@ -217,8 +216,7 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
         Ok(CreateDocumentResponseDraft {
             document_id: format!("doc-{}", req.title),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn get_thumbnail(
@@ -246,8 +244,7 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
             VersionResponseDraft {
                 content: format!("{document_id}@{version_id}"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "v1".to_owned(),
         ))
     }
@@ -266,8 +263,7 @@ impl DocumentClientService<()> for DocumentClientBackEnd {
         Ok(VersionResponseDraft {
             content: document_id,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -421,15 +417,11 @@ fn a_call_placed_without_a_dispatcher_reads_the_answer_the_remote_wrote() {
             CallRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
-    assert_eq!(
-        answered,
-        Ok(CallAnswerDraft { invoices: 7 }.validate().unwrap())
-    );
+    assert_eq!(answered, Ok(CallAnswerDraft { invoices: 7 }.into()));
     assert_eq!(client.transport().calls(), vec!["read-balance".to_owned()]);
 }
 
@@ -441,7 +433,7 @@ fn the_error_the_operation_declared_comes_back_in_the_operation_arm() {
     assert_eq!(
         answered,
         Err(call_service_schema::CallError::Operation(
-            CallFailureDraft::DbError.validate().unwrap()
+            CallFailure::DbError
         ))
     );
 }
@@ -454,8 +446,7 @@ fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure(
             CallRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -469,7 +460,7 @@ fn a_transport_that_could_not_carry_the_call_is_reported_as_a_transport_failure(
         call_service_schema::ServiceFaultKind::TransportFailure
     );
     assert_eq!(reported.operation(), "read-balance");
-    assert_eq!(reported.detail(), "the deadline passed with no reply");
+    assert_eq!(reported.detail(), Some("the deadline passed with no reply"));
 }
 
 #[test]
@@ -480,8 +471,7 @@ fn a_one_way_send_answers_the_transport_s_own_refusal_as_a_fault() {
             CallRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap()
@@ -501,18 +491,14 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
             CallRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
-    assert_eq!(
-        answered,
-        Ok(CallAnswerDraft { invoices: 4 }.validate().unwrap())
-    );
+    assert_eq!(answered, Ok(CallAnswerDraft { invoices: 4 }.into()));
     assert_eq!(
         poll_once(CallBackEnd.sweep(&())).unwrap(),
-        Ok(CallAnswerDraft { invoices: 0 }.validate().unwrap())
+        Ok(CallAnswerDraft { invoices: 0 }.into())
     );
     poll_once(
         CallBackEnd.note(
@@ -520,8 +506,7 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
             CallRequestDraft {
                 customer_id: "acme".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -547,8 +532,7 @@ fn a_call_records_the_exact_request_method_path_query_headers_and_body() {
             VersionResponseDraft {
                 content: "d1@v1".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "v9".to_owned()
         ))
     );
@@ -602,8 +586,7 @@ fn a_bodied_call_carries_the_message_as_the_json_body() {
             CreateDocumentRequestDraft {
                 title: "report".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -612,8 +595,7 @@ fn a_bodied_call_carries_the_message_as_the_json_body() {
         Ok(CreateDocumentResponseDraft {
             document_id: "doc-report".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let requests = client.transport().requests();
     assert_eq!(requests.len(), 1, "got: {requests:?}");
@@ -635,7 +617,7 @@ fn a_mapped_status_decodes_into_the_declared_error() {
     assert_eq!(
         answered,
         Err(document_client_service_schema::CallError::Operation(
-            GetVersionErrorDraft::NotFound.validate().unwrap()
+            GetVersionError::NotFound
         ))
     );
 }
@@ -659,7 +641,7 @@ fn a_fixed_fault_status_decodes_through_the_private_mirror() {
         reported.kind(),
         document_client_service_schema::ServiceFaultKind::HandlerPanic
     );
-    assert_eq!(reported.detail(), "the handler came apart");
+    assert_eq!(reported.detail(), Some("the handler came apart"));
 }
 
 #[test]
@@ -678,9 +660,8 @@ fn a_status_naming_neither_a_declared_error_nor_a_fixed_fault_is_an_undeserializ
         document_client_service_schema::ServiceFaultKind::UndeserializablePayload
     );
     assert!(
-        reported.detail().contains("599"),
-        "got: {}",
-        reported.detail()
+        reported.detail().is_some_and(|said| said.contains("599")),
+        "got: {reported}"
     );
 }
 
@@ -706,8 +687,7 @@ fn a_generated_field_bound_to_a_placeholder_fills_the_path() {
         Ok(VersionResponseDraft {
             content: "d1".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         client.transport().requests()[0].path,
@@ -792,7 +772,7 @@ fn a_bytes_operations_mapped_status_still_decodes_into_the_declared_error() {
     assert_eq!(
         answered,
         Err(document_client_service_schema::CallError::Operation(
-            ThumbnailErrorDraft::NotFound.validate().unwrap()
+            ThumbnailError::NotFound
         ))
     );
 }
@@ -808,8 +788,7 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
             VersionResponseDraft {
                 content: "d1@v1".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "v1".to_owned()
         ))
     );
@@ -821,16 +800,14 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
                 CreateDocumentRequestDraft {
                     title: "report".to_owned()
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
         )
         .unwrap(),
         Ok(CreateDocumentResponseDraft {
             document_id: "doc-report".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         poll_once(DocumentClientBackEnd.get_thumbnail(&(), "d1".to_owned())).unwrap(),
@@ -845,7 +822,6 @@ fn the_document_contract_is_implementable_where_no_dispatcher_was_placed() {
         Ok(VersionResponseDraft {
             content: "d1".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }

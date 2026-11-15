@@ -18,14 +18,14 @@ use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
 
 use super::run_dart_validate::{
-    CHECKS, Case, CrateDraft, DeckDraft, GaugeDraft, PairDraft, Parcel, SHAPE_FUNCTIONS,
+    CHECKS, Case, CrateDraft, DeckDraft, GaugeDraft, ISSUES_OF, PairDraft, Parcel, SHAPE_FUNCTIONS,
     StampDraft, Terminal, TerminalDraft, YardDraft, brand_cases, code_point_cases, compared, dart,
     from_until, manifest_dart, module, named_shape_cases, named_variant_cases, outside, parcel,
     parcel_dart, pinned, shape_definitions, sound, table_cases, tagged_and_untagged_variant_cases,
     texts, unlabelled,
 };
 use super::runtime::ran;
-use super::tests::{ShelfError, ShelfErrorDraft, shelf_error_dart};
+use super::tests::{ShelfError, shelf_error_dart};
 
 /// The class the emitter writes for a struct whose one field is named after the unjudged read,
 /// which `src/features/dart/tests.rs` holds the emitter to.
@@ -37,9 +37,9 @@ void judged(String name, Object? Function() read) {
   try {
     read();
     print('$name: read');
-  } on FormatException catch (refused) {
-    print('$name: refused (FormatException)');
-    for (final violation in refused.message.split('; ')) {
+  } on Exception catch (refused) {
+    print('$name: refused (${refused.runtimeType})');
+    for (final violation in issuesOf(refused)) {
       print('    $violation');
     }
   }
@@ -51,25 +51,28 @@ const KNOWN_TRAY: &str = "
 List<String> knownTray(Tray value) => value.value == 'XX' ? const ['a tray is known'] : const [];
 ";
 
+/// The class each alias among the cases is published as, which names the refusal its read throws.
+const ALIAS_CLASSES: [(&str, &str); 1] = [("Consignment", "ConsignmentType")];
+
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
 const RUNTIME_VAR: &str = "TIXSCHEMA_DART";
 
 /// The five reads of the sample, as the Dart VM prints them.
 const SAMPLE: &str = "\
-Parcel alone: refused (FormatException)
+Parcel alone: refused (ParcelRefusal)
     'fragileItemCodes.1': y is outside of itemCodeList
-Terminal, four broken parcels: refused (FormatException)
+Terminal, four broken parcels: refused (TerminalRefusal)
     'firstParcel.label': too short: minimum length is 1, got 0
     'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
     'parcelsByDock.north.label': too short: minimum length is 1, got 0
     'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-List<Terminal>, the second broken: refused (FormatException)
+List<Terminal>, the second broken: refused (TerminalRefusal)
     'firstParcel.label': too short: minimum length is 1, got 0
     'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
     'parcelsByDock.north.label': too short: minimum length is 1, got 0
     'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-Crate<Parcel>, the second code broken: refused (FormatException)
-    'fragileItemCodes.1': y is outside of itemCodeList
+Crate<Parcel>, the second code broken: refused (ParcelRefusal)
+    'codes.1.fragileItemCodes.1': y is outside of itemCodeList
 Terminal with no spareParcel key, all good: read
 ";
 
@@ -144,7 +147,8 @@ void main() async {
 }
 ";
 
-/// What says which member of the result a call answered, and the fault's kind and detail.
+/// What says which member of the result a call answered, and the fault's kind, detail and
+/// problems.
 const DESCRIBED: &str = "
 Map<String, dynamic> described(ParcelClientServiceWeighResult result) {
   return switch (result) {
@@ -154,6 +158,7 @@ Map<String, dynamic> described(ParcelClientServiceWeighResult result) {
         'kind': 'fault',
         'faultKind': fault.kind.name,
         'detail': fault.detail,
+        'issues': fault.issues?.map((issue) => {'detail': issue.detail, 'field': issue.field}).toList(),
       },
   };
 }
@@ -181,8 +186,8 @@ pub struct Rack {
     pub tray: Tray,
 }
 
-/// An enum serde writes as the value of its variant: a member's own bound and a brand's own
-/// bound each choose a variant, and a model and a brand's check choose none.
+/// An enum serde writes as the value of its variant, read as the first variant its shape fits: a
+/// member's own bound and a brand's own bound choose none, and refuse what the variant holds.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -247,6 +252,24 @@ fn judged_case(held: &Case) -> Option<Case> {
     })
 }
 
+/// The refusal of the type `built` reads last with `fromJson`, the one a broken case is refused
+/// with.
+fn refusal_of(built: &str) -> String {
+    let mut before = &built[..built.rfind(".fromJson(").unwrap()];
+    if before.ends_with('>') {
+        before = &before[..before.find('<').unwrap()];
+    }
+    let start = before
+        .rfind(|letter: char| !letter.is_alphanumeric() && letter != '_')
+        .map_or(0, |at| at + 1);
+    let named = &before[start..];
+    let class = ALIAS_CLASSES
+        .iter()
+        .find(|(alias, _)| *alias == named)
+        .map_or(named, |(_, class)| class);
+    format!("{class}Refusal")
+}
+
 /// What [`JUDGED`] prints for `cases`.
 fn printed_for(cases: &[Case]) -> String {
     let mut printed = String::new();
@@ -254,7 +277,13 @@ fn printed_for(cases: &[Case]) -> String {
         if held.answered.is_empty() {
             writeln!(printed, "{}: read", held.name).unwrap();
         } else {
-            writeln!(printed, "{}: refused (FormatException)", held.name).unwrap();
+            writeln!(
+                printed,
+                "{}: refused ({})",
+                held.name,
+                refusal_of(&held.built)
+            )
+            .unwrap();
             for message in &held.answered {
                 writeln!(printed, "    {message}").unwrap();
             }
@@ -314,8 +343,7 @@ fn sound_terminal() -> Terminal {
         parcels_by_dock: BTreeMap::from([("north".to_owned(), sound())]),
         spare_parcel: None,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The four messages a read of [`broken_terminal`] is refused with, in the order the terminal
@@ -362,7 +390,7 @@ fn sample_cases() -> Vec<Case> {
         pinned(
             "Crate<Parcel>, the second code broken",
             &filled,
-            &["'fragileItemCodes.1': y is outside of itemCodeList"],
+            &["'codes.1.fragileItemCodes.1': y is outside of itemCodeList"],
             "Crate<Parcel>.fromJson(@, (e) => Parcel.fromJson(e))",
         ),
         pinned(
@@ -409,7 +437,7 @@ fn the_sample_is_refused_with_every_message_at_its_full_place() {
         "sample.dart",
         &module(
             &shape_definitions(),
-            &[CHECKS, SHAPE_FUNCTIONS, JUDGED],
+            &[CHECKS, SHAPE_FUNCTIONS, JUDGED, ISSUES_OF],
             &driver(&cases),
         ),
     ) else {
@@ -513,7 +541,7 @@ fn each_shape_is_refused_with_what_its_validate_answers() {
         "shapes_read.dart",
         &module(
             &shape_definitions(),
-            &[CHECKS, SHAPE_FUNCTIONS, JUDGED],
+            &[CHECKS, SHAPE_FUNCTIONS, JUDGED, ISSUES_OF],
             &driver(&cases),
         ),
     ) else {
@@ -529,9 +557,9 @@ fn stuck(name: &'static str, payload: &str) -> (Case, String) {
     let answered = mapped_or_default(taken.as_ref().err(), |refused| vec![refused.to_string()]);
     let line = taken.map_or_else(
         |_| {
-            format!(
-                "{name}: refused (FormatException)\n    {}\n",
-                answered.join("; ")
+            answered.iter().fold(
+                format!("{name}: refused (StickerRefusal)\n"),
+                |told, issue| format!("{told}    {issue}\n"),
             )
         },
         |read| format!("{name}: {}\n", class_of(&read)),
@@ -546,9 +574,8 @@ fn stuck(name: &'static str, payload: &str) -> (Case, String) {
     )
 }
 
-/// A payload that breaks the bound of the first variant it fits is the next one, as serde reads
-/// it: a member's own bound and a brand's own bound choose. A model that breaks its rule and a
-/// brand that breaks its check are the variant they fit, and the enum's read refuses them.
+/// A payload is read as the first variant its shape fits, as serde reads it, and a bound or a check
+/// that variant breaks is what the enum's read refuses it with.
 #[test]
 fn an_untagged_enum_takes_the_variant_serde_takes() {
     let rows = [
@@ -565,22 +592,24 @@ fn an_untagged_enum_takes_the_variant_serde_takes() {
         answered,
         "\
 a labelled carton: StickerBoxed
-an unlabelled carton: refused (FormatException)
+an unlabelled carton: refused (StickerRefusal)
     'label': too short: minimum length is 1, got 0
 a number the bound holds: StickerPositive
-a number the bound refuses: StickerWhole
+a number the bound refuses: refused (StickerRefusal)
+    too small: minimum is 1, got 0
 a tray: StickerTrayed
-a text the bound of a tray refuses: StickerWritten
-a tray its check refuses: refused (FormatException)
+a text the bound of a tray refuses: refused (StickerRefusal)
+    too short: minimum length is 2, got 1
+a tray its check refuses: refused (StickerRefusal)
     a tray is known
 ",
         "what the Rust read answers"
     );
     let mut entry = String::from(
         "void taken(String name, Sticker Function() read) {\n  try {\n    print('$name: \
-         ${read().toDraft().runtimeType}');\n  } on FormatException catch (refused) {\n    print('$name: \
-         refused (FormatException)');\n    print('    ${refused.message}');\n  }\n}\n\nvoid \
-         main() {\n",
+         ${read().toDraft().runtimeType}');\n  } on StickerRefusal catch (refused) {\n    print('$name: \
+         refused (StickerRefusal)');\n    for (final issue in refused.issues) {\n      print('    \
+         $issue');\n    }\n  }\n}\n\nvoid main() {\n",
     );
     for (held, _) in &rows {
         writeln!(entry, "  taken('{}', () => {});", held.name, held.built).unwrap();
@@ -653,7 +682,11 @@ fn a_brand_under_a_members_own_bound_judges_itself_as_it_is_read() {
         RUNTIME_VAR,
         "dart",
         "rack.dart",
-        &module(&definitions, &[KNOWN_TRAY, JUDGED], &driver(&cases)),
+        &module(
+            &definitions,
+            &[KNOWN_TRAY, JUDGED, ISSUES_OF],
+            &driver(&cases),
+        ),
     ) else {
         return;
     };
@@ -667,10 +700,10 @@ fn a_member_named_after_the_unjudged_read_builds_and_keeps_its_key() {
     let entry = "void main() {\n  final ledger = \
                  Ledger.fromJson(jsonDecode(r'{\"fromJsonUnjudged\":true}'));\n  \
                  print(ledger.fromJsonUnjudged);\n  print(jsonEncode(ledger.toJson()));\n  \
-                 print(Stage.fromJson('FromJsonUnjudged') == StageDraft.fromJsonUnjudged_.validate());\n  \
+                 print(Stage.fromJson('FromJsonUnjudged') == Stage.fromJsonUnjudged_);\n  \
                  print(jsonEncode(Stage.fromJsonUnjudged('FromJsonUnjudged').toJson()));\n}\n";
     assert_eq!(
-        serde_json::to_string(&[StageDraft::FromJsonUnjudged, StageDraft::Judged]).unwrap(),
+        serde_json::to_string(&[Stage::FromJsonUnjudged, Stage::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#,
         "the values serde writes"
     );
@@ -706,7 +739,7 @@ fn the_emitted_source_of_the_reads_has_no_issue() {
     ]);
     let source = module(
         &definitions,
-        &[CHECKS, SHAPE_FUNCTIONS, KNOWN_TRAY, JUDGED],
+        &[CHECKS, SHAPE_FUNCTIONS, KNOWN_TRAY, JUDGED, ISSUES_OF],
         &driver(&sample_cases()[..1]),
     );
     let Some((clean, said)) = dart("analyze-reads", &["analyze"], &source) else {
@@ -733,14 +766,27 @@ fn client_module(imports: &[&str], client: String, entry: &str) -> String {
 }
 
 /// What a client answers for a reply that keeps every rule, and for one that breaks a bound,
-/// where it answers the latter with a fault of `kind`.
+/// where it answers the latter with a fault of `kind`: the read's refusal as the detail of an
+/// `undeserializablePayload`, and each of its messages at its field for a `failedValidation`.
 fn answers(kind: &str) -> serde_json::Value {
+    let (detail, issues) = if kind == "failedValidation" {
+        (
+            serde_json::Value::Null,
+            serde_json::json!([{ "detail": "too short: minimum length is 1, got 0", "field": "label" }]),
+        )
+    } else {
+        (
+            serde_json::json!("ParcelRefusal: ['label': too short: minimum length is 1, got 0]"),
+            serde_json::Value::Null,
+        )
+    };
     serde_json::json!({
         "sound": {"kind": "ok", "label": "A"},
         "unlabelled": {
             "kind": "fault",
             "faultKind": kind,
-            "detail": "FormatException: 'label': too short: minimum length is 1, got 0",
+            "detail": detail,
+            "issues": issues,
         },
     })
 }

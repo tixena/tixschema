@@ -1,7 +1,7 @@
 //! Helpers the expansions share: naming, doc comments and their examples, the registry of declared
 //! items, and the checks a `pattern` goes through.
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::mem;
 use core::ops::Range;
@@ -2049,6 +2049,19 @@ pub fn lookup_alias_info(rust_ident: &str) -> Option<AliasInfo> {
     ALIAS_INFO.with(|map| map.borrow().get(rust_ident).cloned())
 }
 
+/// A name for a type parameter of a function written for an item: `base`, numbered where one of
+/// `written`, the names the item writes, is that name. The parameter would hide a type of its
+/// name wherever the function writes one, and be refused beside a parameter of the type's own.
+pub fn unclaimed_parameter(base: &str, written: &[String]) -> proc_macro2::Ident {
+    let mut named = base.to_owned();
+    let mut tried: usize = 1;
+    while written.contains(&named) {
+        tried = tried.saturating_add(1);
+        named = format!("{base}{tried}");
+    }
+    proc_macro2::Ident::new(&named, proc_macro2::Span::call_site())
+}
+
 /// Every name `tokens` write: each identifier, and each word of a string, which is where a serde
 /// attribute writes the path of a hook.
 pub fn written_names(tokens: proc_macro2::TokenStream) -> Vec<String> {
@@ -2934,3 +2947,18 @@ pub fn asks_one_of(bound: &syn::TypeParamBound, asked: &[String]) -> bool {
 #[cfg(test)]
 #[cfg(any(feature = "typescript", feature = "zod"))]
 mod tests;
+
+thread_local! {
+    static RULE_LESS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Records whether the item being expanded declares no rule of its own, which every surface that
+/// converts a draft with no judgement reads.
+pub fn note_rule_less(rule_less: bool) {
+    RULE_LESS.with(|held| held.set(rule_less));
+}
+
+/// Whether the item being expanded declares no rule of its own.
+pub fn is_rule_less() -> bool {
+    RULE_LESS.with(Cell::get)
+}

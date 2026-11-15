@@ -13,7 +13,7 @@ use super::shapes::{
 };
 use super::{
     Address, AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceId,
-    InvoiceStatusDraft, LineItem, LineItemDraft, Point, PointDraft, shown, shown_value,
+    InvoiceStatus, LineItem, LineItemDraft, Point, PointDraft, shown, shown_value,
 };
 
 /// What `key` leads to in `value`: a key of a document, a position in an array, or the key in
@@ -60,8 +60,7 @@ fn address() -> Address {
         city: "Santo Domingo".to_owned(),
         postal_code: "10101".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn invoice() -> Invoice {
@@ -132,12 +131,11 @@ fn invoice() -> Invoice {
         }
         .validate()
         .unwrap(),
-        status: InvoiceStatusDraft::PastDue.validate().unwrap(),
+        status: InvoiceStatus::PastDue,
         tags: vec!["export".to_owned(), "priority".to_owned()],
         total: 1250.5_f64,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The paths of the row's own values, of the models it holds bare, and of the list of plain

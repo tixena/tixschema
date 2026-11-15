@@ -16,6 +16,11 @@ mod omitted;
 mod readme;
 
 #[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "support/dart_integer_read.rs"]
+mod dart_integer_read;
+
+#[cfg(test)]
 #[path = "serde_default_tests/tests.rs"]
 mod tests;
 
@@ -31,6 +36,12 @@ mod swift_fitted;
 #[path = "support/swift_valid.rs"]
 mod swift_valid;
 
+/// The `validate()` of the draft of a type that declares no rule.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_valid_free.rs"]
+mod swift_valid_free;
+
 #[cfg(test)]
 #[path = "serde_default_tests/variants.rs"]
 mod variants;
@@ -39,3 +50,13 @@ mod variants;
 #[cfg(feature = "kotlin")]
 #[path = "support/kotlin_numbers.rs"]
 mod kotlin_numbers;
+
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "support/kotlin_pathed.rs"]
+mod kotlin_pathed;
+
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "support/kotlin_thrown.rs"]
+mod kotlin_thrown;

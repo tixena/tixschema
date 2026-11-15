@@ -82,7 +82,7 @@ impl AppraisalClientService<()> for Court {
     async fn appraise(&self, _ctx: &(), case_number: String) -> Result<Verdict, AppraisalError> {
         ready(()).await;
         if case_number.is_empty() {
-            return Err(AppraisalErrorDraft::Missing.validate().unwrap());
+            return Err(AppraisalError::Missing);
         }
         Ok(Verdict::model_schema_wrap_unjudged(
             VerdictDraft::Overturned,

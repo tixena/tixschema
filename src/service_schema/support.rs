@@ -12,7 +12,7 @@ use super::transport::Transport;
 use crate::rename_rule::RenameRule;
 use crate::utils::is_recorded_drafted_unit_struct_type;
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote, quote_spanned};
+use quote::{ToTokens as _, format_ident, quote, quote_spanned};
 use syn::{Ident, Type, parse_quote};
 
 /// The service's own module, holding everything either half of a service reads and nothing that
@@ -701,13 +701,12 @@ fn streamed_answer_type() -> TokenStream {
     }
 }
 
-/// One completeness probe per operation that declared `http(...)`: a closure built from exactly
-/// the declared `error_status` arms and no wildcard, coerced to a plain function pointer over the
-/// operation's own error type. Type-checking that closure is what runs rustc's exhaustiveness
-/// check — a variant `error_status` left unmapped is refused with rustc's own `E0004`, naming it,
-/// with no cross-item lookahead of our own: the operation's parser cannot see the error enum's
-/// declaration, that type being an ordinary sibling item, so the compiler is the only thing here
-/// that can answer for it.
+/// One completeness check per operation that declared `http(...)` with an `error_status`: an
+/// unnamed constant evaluated while the crate compiles, which compares the names the fault
+/// publishes in `MODEL_SCHEMA_VARIANTS` with the names `error_status` writes. A variant with no
+/// status, and a name that is no variant, each stop the build with a message that names it. The
+/// fault is read by the names it publishes, so it may be declared above the service, below it or
+/// in another crate.
 ///
 /// Emitted unconditionally wherever `http(...)` was written, regardless of whether the service
 /// also asked for the `http_rest` transport — the mapping is either complete or it is not, and
@@ -720,11 +719,12 @@ fn streamed_answer_type() -> TokenStream {
 /// `WidgetError` declares two variants; the mapping names only one:
 ///
 /// ```rust,compile_fail
-/// use tixschema::service_schema;
+/// use tixschema::{model_schema, service_schema};
 ///
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub struct WidgetResponse;
 ///
+/// #[model_schema()]
 /// #[derive(serde::Deserialize, serde::Serialize)]
 /// pub enum WidgetError {
 ///     Gone,
@@ -749,35 +749,16 @@ fn streamed_answer_type() -> TokenStream {
 /// fn main() {}
 /// ```
 ///
-/// A `compile_fail` doctest asserts only that *something* was refused, so the file above was
-/// compiled standalone and the diagnostic read off that run, verbatim, and it was the only error
-/// the file earned. Nothing here wrote this sentence — it is rustc's own exhaustiveness check,
-/// naming the variant the mapping left out:
+/// A `compile_fail` doctest asserts only that *something* was refused. The diagnostic of the same
+/// mistake, held to its text by `tests/error_status_refusals/no_status.rs`, names the variant the
+/// mapping left out:
 ///
 /// ```text
-/// error[E0004]: non-exhaustive patterns: `&WidgetError::Gone` not covered
-///   --> tests/zz_probe.rs:12:1
+/// error[E0080]: evaluation panicked: `error_status` of the operation `fetch` gives no status to the variant `VersionGone` of `DocumentError`: write `VersionGone = <status>` for it
+///   --> tests/error_status_refusals/no_status.rs:14:1
 ///    |
-/// 12 | #[service_schema()]
-///    | ^^^^^^^^^^^^^^^^^^^ pattern `&WidgetError::Gone` not covered
-///    |
-/// note: `WidgetError` defined here
-///   --> tests/zz_probe.rs:7:10
-///    |
-///  7 | pub enum WidgetError {
-///    |          ^^^^^^^^^^^
-///  8 |     Gone,
-///    |     ---- not covered
-///    = note: the matched value is of type `&WidgetError`
-///    = note: this error originates in the attribute macro `service_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
-/// help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
-///    |
-/// 12 ~ #[service_schema()],
-/// 13 + &WidgetError::Gone => todo!()
-///    |
-///
-/// For more information about this error, try `rustc --explain E0004`.
-/// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
+/// 14 | #[service_schema(transports = ["http_rest"])]
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `documents_schema::_` failed here
 /// ```
 fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
     let checks = service.operations.iter().filter_map(|operation| {
@@ -794,19 +775,104 @@ fn http_error_status_completeness(service: &ServiceDef) -> TokenStream {
         };
         let error = error_declared_type(binding.error_header_out.len(), raw_error);
         let summary = http_binding_summary(binding);
-        let drafted = draft_type_path(error);
-        let arms = binding
+        let named: Vec<String> = binding
             .error_status
             .iter()
-            .map(|(variant, code)| quote! { #drafted::#variant { .. } => #code, });
+            .map(|(variant, _)| written(variant))
+            .collect();
+        let shown = error.to_token_stream().to_string().replace(' ', "");
+        let operation_name = operation.wire_name.as_str();
+        let unknown = named.iter().map(|name| {
+            let message = format!(
+                "`error_status` of the operation `{operation_name}` names `{name}`, which is no variant of `{shown}`"
+            );
+            quote! {
+                if !named(<#error>::MODEL_SCHEMA_VARIANTS, #name) {
+                    ::core::panic!(#message);
+                }
+            }
+        });
+        let lookup = variant_name_lookup();
+        let before = format!("`error_status` of the operation `{operation_name}` gives no status to the variant `");
+        let between = format!("` of `{shown}`: write `");
+        let after = " = <status>` for it".to_owned();
         Some(quote! {
             #[doc = #summary]
-            const _: fn(&#error) -> u16 = |reported| match &**reported {
-                #(#arms)*
+            const _: () = {
+                const NAMED: &[&str] = &[#(#named),*];
+                #lookup
+                const fn without_status(variants: &[&'static str]) -> &'static str {
+                    let mut at = 0;
+                    while at < variants.len() {
+                        if !named(NAMED, variants[at]) {
+                            return variants[at];
+                        }
+                        at += 1;
+                    }
+                    ""
+                }
+                const fn said(variant: &str) -> ([u8; 1024], usize) {
+                    let parts: [&str; 5] = [#before, variant, #between, variant, #after];
+                    let mut buffer = [0_u8; 1024];
+                    let mut used = 0;
+                    let mut part = 0;
+                    while part < parts.len() {
+                        let bytes = parts[part].as_bytes();
+                        let mut at = 0;
+                        while at < bytes.len() {
+                            buffer[used] = bytes[at];
+                            used += 1;
+                            at += 1;
+                        }
+                        part += 1;
+                    }
+                    (buffer, used)
+                }
+                #(#unknown)*
+                let missing = without_status(<#error>::MODEL_SCHEMA_VARIANTS);
+                if !missing.is_empty() {
+                    let (buffer, used) = said(missing);
+                    let text = match ::core::str::from_utf8(buffer.split_at(used).0) {
+                        ::core::result::Result::Ok(text) => text,
+                        ::core::result::Result::Err(_) => "",
+                    };
+                    ::core::panic!("{}", text);
+                }
             };
         })
     });
     quote! { #(#checks)* }
+}
+
+/// The constant function `named(names, name)`, which finds `name` among `names` where a constant
+/// is evaluated, and the `same` it compares with.
+pub(super) fn variant_name_lookup() -> TokenStream {
+    quote! {
+        const fn same(left: &str, right: &str) -> bool {
+            let (left, right) = (left.as_bytes(), right.as_bytes());
+            if left.len() != right.len() {
+                return false;
+            }
+            let mut at = 0;
+            while at < left.len() {
+                if left[at] != right[at] {
+                    return false;
+                }
+                at += 1;
+            }
+            true
+        }
+        const fn named(names: &[&str], name: &str) -> bool {
+            let mut at = 0;
+            while at < names.len() {
+                if same(names[at], name) {
+                    return true;
+                }
+                at += 1;
+            }
+            false
+        }
+    }
 }
 
 /// One line describing the whole binding, folded into the completeness check's own doc comment
@@ -1164,19 +1230,6 @@ pub fn message_validation_in_scope() -> TokenStream {
     quote! {
         use message_validation::MessageValidation;
     }
-}
-
-/// The draft of the model type `ty` names, which a pattern over the variants and the members of
-/// the declared type is written against: the last segment of its path, with `Draft` after it.
-pub fn draft_type_path(ty: &Type) -> TokenStream {
-    let Type::Path(path) = ty else {
-        return quote! { #ty };
-    };
-    let mut drafted = path.clone();
-    if let Some(last) = drafted.path.segments.last_mut() {
-        last.ident = format_ident!("{}Draft", last.ident, span = last.ident.span());
-    }
-    quote! { #drafted }
 }
 
 /// The value of the unit type `ty`: `()`, or a recorded unit struct.
@@ -1633,40 +1686,47 @@ fn violation_readers() -> TokenStream {
             ::core::option::Option::Some(field)
         }
 
-        /// Everything that failed, in one line, for the fault's detail.
-        pub fn violation_detail(reported: &[::std::string::String]) -> ::std::string::String {
-            reported.join("; ")
+        /// One line of a violation report as a fault lists it: the field the line names, cut off
+        /// its front, and what it says there. A line that names no field, as a constrained
+        /// newtype's does, is the problem's detail whole.
+        pub fn violation_issue(reported: &str) -> ServiceFaultIssue {
+            let ::core::option::Option::Some(field) = named_field(reported) else {
+                return ServiceFaultIssue::new(::core::option::Option::None, reported);
+            };
+            let rest = reported
+                .strip_prefix('\'')
+                .and_then(|rest| rest.strip_prefix(field))
+                .and_then(|rest| rest.strip_prefix('\''))
+                .unwrap_or_default();
+            ServiceFaultIssue::new(
+                ::core::option::Option::Some(field),
+                rest.strip_prefix(": ").unwrap_or(rest),
+            )
         }
 
-        /// The field a violation report names, which is its first line's. A violation naming no
-        /// field, as a constrained newtype's does, leaves the fault's field empty.
-        pub fn violated_field(reported: &[::std::string::String]) -> ::core::option::Option<&str> {
-            named_field(reported.first()?)
+        /// Every line of a violation report as a fault lists it, one problem each, in order.
+        pub fn violation_issues(reported: &[::std::string::String]) -> ::std::vec::Vec<ServiceFaultIssue> {
+            reported.iter().map(|line| violation_issue(line)).collect()
         }
 
-        /// The field and the detail of a refusal serde raised at `path`, the place it tracked,
-        /// where `said` names each violation by the holders' fields alone, with no list index and
-        /// no map key: each name is placed at `path`, so `'shipment.tags'` raised at
-        /// `shipment.tags.1` names `shipment.tags.1`, and `'shipment.parcelCount'` raised at
-        /// `shipment` names `shipment.parcelCount`.
-        pub fn refused_at(path: &str, said: &str) -> (::std::string::String, ::std::string::String) {
-            let mut field = ::core::option::Option::None;
-            let lines: ::std::vec::Vec<::std::string::String> = said
-                .split("; '")
+        /// The problems of a refusal serde raised at `path`, the place it tracked, where `said`
+        /// names each violation by the holders' fields alone, with no list index and no map key:
+        /// each name is placed at `path`, so `'shipment.tags'` raised at `shipment.tags.1` names
+        /// `shipment.tags.1`, and `'shipment.parcelCount'` raised at `shipment` names
+        /// `shipment.parcelCount`. serde carries one sentence, which is cut back into its lines.
+        pub fn refused_at(path: &str, said: &str) -> ::std::vec::Vec<ServiceFaultIssue> {
+            said.split("; '")
                 .enumerate()
                 .map(|(at, piece)| {
                     let line = if at == 0 { piece.to_owned() } else { ::std::format!("'{piece}") };
                     let ::core::option::Option::Some(named) = named_field(&line) else {
-                        return line;
+                        return violation_issue(&line);
                     };
                     let placed = placed_at(path, named);
                     let rest = line.strip_prefix(&::std::format!("'{named}'")).unwrap_or_default();
-                    let rewritten = ::std::format!("'{placed}'{rest}");
-                    field.get_or_insert(placed);
-                    rewritten
+                    violation_issue(&::std::format!("'{placed}'{rest}"))
                 })
-                .collect();
-            (field.unwrap_or_else(|| path.to_owned()), lines.join("; "))
+                .collect()
         }
 
         /// `named` placed at `path`: each of its steps is found in `path`, in order, and the
@@ -1819,11 +1879,12 @@ fn call_error_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream
 ///
 /// fn log_line(fault: &sweep_service_schema::ServiceFault) -> String {
 ///     format!(
-///         "{} in `{}` at {:?}: {}",
+///         "{} in `{}` at {:?}: {:?} {:?}",
 ///         fault.kind(),
 ///         fault.operation(),
 ///         fault.field(),
 ///         fault.detail(),
+///         fault.issues(),
 ///     )
 /// }
 ///
@@ -1832,26 +1893,23 @@ fn call_error_declaration(declared: &Ident, non_exhaustive: bool) -> TokenStream
 fn fault_accessors() -> TokenStream {
     quote! {
         impl ServiceFault {
-            /// What went wrong, in words, for the log line a receiver writes.
+            /// What went wrong, in words, for the log line a receiver writes. `None` for a failed
+            /// validation, whose words are those of each of its [`issues`](Self::issues).
             #[must_use]
-            pub fn detail(&self) -> &str {
-                &self.detail
+            pub fn detail(&self) -> ::core::option::Option<&str> {
+                self.detail.as_deref()
             }
 
-            /// The field the failure named, where it named one.
-            ///
-            /// A message that failed validation names the field that failed, and so does a
-            /// payload refused by the serde hook a constrained field carries — that hook runs
-            /// the same check and reports it in the same words. Everything else leaves it empty:
-            /// a payload refused for its shape rather than its values, an operation name nothing
-            /// answers to, a handler that panicked.
+            /// The field the failure names, where it names one. A failed validation names the
+            /// field of each problem in [`issues`](Self::issues) instead.
             #[must_use]
             pub fn field(&self) -> ::core::option::Option<&str> {
                 self.field.as_deref()
             }
 
-            /// Each problem the failure found, at its field, where it found more than one; the
-            /// first is the one [`field`](Self::field) names. Empty for a failure of one problem.
+            /// Each problem a failed validation found, one entry each, at its field where it is
+            /// at one: every bound and check the message broke, and a payload serde refused for
+            /// a value it does not admit. Empty for every other kind.
             #[must_use]
             pub fn issues(&self) -> &[ServiceFaultIssue] {
                 self.issues.as_deref().unwrap_or_default()
@@ -1926,13 +1984,14 @@ fn fault_accessors() -> TokenStream {
 fn fault_constructors() -> TokenStream {
     quote! {
         impl ServiceFault {
-            /// A message that failed its own schema, naming the field when the violation named one.
+            /// A message that failed its own schema, listing every problem it found, one entry
+            /// each, at its field where it is at one.
             #[must_use]
-            pub fn failed_validation(operation: &str, field: ::core::option::Option<&str>, detail: &str) -> Self {
+            pub fn failed_validation(operation: &str, issues: ::std::vec::Vec<ServiceFaultIssue>) -> Self {
                 Self {
-                    detail: detail.to_owned(),
-                    field: field.map(str::to_owned),
-                    issues: ::core::option::Option::None,
+                    detail: ::core::option::Option::None,
+                    field: ::core::option::Option::None,
+                    issues: ::core::option::Option::Some(issues),
                     kind: ServiceFaultKind::FailedValidation,
                     operation: operation.to_owned(),
                 }
@@ -1942,7 +2001,7 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn handler_panic(operation: &str, detail: &str) -> Self {
                 Self {
-                    detail: detail.to_owned(),
+                    detail: ::core::option::Option::Some(detail.to_owned()),
                     field: ::core::option::Option::None,
                     issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::HandlerPanic,
@@ -1954,7 +2013,7 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn transport_failure(operation: &str, detail: &str) -> Self {
                 Self {
-                    detail: detail.to_owned(),
+                    detail: ::core::option::Option::Some(detail.to_owned()),
                     // The transport reports that the call did not travel, not that a value inside
                     // it was wrong, so there is no field to name.
                     field: ::core::option::Option::None,
@@ -1968,7 +2027,7 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn undeserializable_payload(operation: &str, detail: &str) -> Self {
                 Self {
-                    detail: detail.to_owned(),
+                    detail: ::core::option::Option::Some(detail.to_owned()),
                     // `refused_payload` sends here only the refusals serde_json classified as bytes
                     // that are not a document, so there is no field to name.
                     field: ::core::option::Option::None,
@@ -1982,21 +2041,13 @@ fn fault_constructors() -> TokenStream {
             #[must_use]
             pub fn unknown_operation(operation: &str) -> Self {
                 Self {
-                    detail: "the service answers to no operation by that name".to_owned(),
+                    detail: ::core::option::Option::Some(
+                        "the service answers to no operation by that name".to_owned(),
+                    ),
                     field: ::core::option::Option::None,
                     issues: ::core::option::Option::None,
                     kind: ServiceFaultKind::UnknownOperation,
                     operation: operation.to_owned(),
-                }
-            }
-
-            /// This fault, listing `issues` beside its own field and detail: each problem it
-            /// found, the first being the one its field names. An empty list leaves it unchanged.
-            #[must_use]
-            pub fn with_issues(self, issues: ::std::vec::Vec<ServiceFaultIssue>) -> Self {
-                Self {
-                    issues: (!issues.is_empty()).then_some(issues),
-                    ..self
                 }
             }
         }
@@ -2042,9 +2093,7 @@ fn fault_declaration(
         fault_issue_name(&declared.to_string()),
         span = declared.span()
     );
-    let issue_doc = format!(
-        "One problem a `{declared}` fault found, at its field, where the fault lists more than one."
-    );
+    let issue_doc = format!("One problem a failed validation of `{declared}` found, at its field.");
     let issue_alias_doc =
         format!("One problem a [`ServiceFault`] lists. The same type as [`{issue}`].");
     let definitions = fields_with_issue(&fields, &issue);
@@ -2058,7 +2107,7 @@ fn fault_declaration(
         #sealed
         pub enum #kind {
             /// A message reached its operation and did not satisfy the operation's schema. The
-            /// fault names the field that failed.
+            /// fault lists every problem it found.
             FailedValidation,
             /// The operation's handler panicked.
             HandlerPanic,
@@ -2092,12 +2141,14 @@ fn fault_declaration(
             #[derive(Clone, Debug, Eq, PartialEq, ::serde::Serialize)]
             #[serde(rename_all = "camelCase")]
             pub struct #fields {
-                detail: ::std::string::String,
-                // Omitted, never written as `null`, when there is no field to name: the reply
-                // envelope's convention, and what lets the TypeScript spell it `string | undefined`.
+                // Omitted, never written as `null`, for a failed validation, which lists its
+                // words in `issues`: the reply envelope's convention, and what lets the TypeScript
+                // spell it `string | undefined`.
+                #[serde(skip_serializing_if = "::core::option::Option::is_none")]
+                detail: ::core::option::Option<::std::string::String>,
                 #[serde(skip_serializing_if = "::core::option::Option::is_none")]
                 field: ::core::option::Option<::std::string::String>,
-                // Omitted for a failure of one problem, so optional in TypeScript.
+                // Written for a failed validation alone, so optional in TypeScript.
                 #[model_schema_prop(ts_optional)]
                 #[serde(skip_serializing_if = "::core::option::Option::is_none")]
                 issues: ::core::option::Option<::std::vec::Vec<#issue>>,
@@ -2204,32 +2255,42 @@ fn kotlin_fields_with_issue(_fields: &Ident, _issue: &Ident) -> TokenStream {
 }
 
 /// How a fault and a call error read in a log line. A fault is meant to page a human, so the one
-/// line it renders to names the kind, the operation and the field before the detail.
+/// line it renders to names the kind, the operation and the field before the detail, or before
+/// the list of problems a failed validation found, each as the validator words it.
 fn renderings() -> TokenStream {
     quote! {
         impl ::core::fmt::Display for ServiceFault {
             fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                match self.field.as_deref() {
-                    ::core::option::Option::Some(named) => ::core::write!(
-                        formatter,
-                        "{} in operation `{}`, field `{}`: {}",
-                        self.kind,
-                        self.operation,
-                        named,
-                        self.detail
-                    ),
-                    ::core::option::Option::None => ::core::write!(
-                        formatter,
-                        "{} in operation `{}`: {}",
-                        self.kind,
-                        self.operation,
-                        self.detail
-                    ),
+                ::core::write!(formatter, "{} in operation `{}`", self.kind, self.operation)?;
+                if let ::core::option::Option::Some(named) = self.field.as_deref() {
+                    ::core::write!(formatter, ", field `{named}`")?;
+                }
+                match (self.detail.as_deref(), self.issues.as_deref()) {
+                    (::core::option::Option::Some(said), _) => ::core::write!(formatter, ": {said}"),
+                    (::core::option::Option::None, ::core::option::Option::Some(listed)) => {
+                        let lines: ::std::vec::Vec<::std::string::String> =
+                            listed.iter().map(::std::string::ToString::to_string).collect();
+                        ::core::write!(formatter, ": {lines:?}")
+                    }
+                    (::core::option::Option::None, ::core::option::Option::None) => {
+                        ::core::result::Result::Ok(())
+                    }
                 }
             }
         }
 
         impl ::core::error::Error for ServiceFault {}
+
+        impl ::core::fmt::Display for ServiceFaultIssue {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                match self.field.as_deref() {
+                    ::core::option::Option::Some(named) => {
+                        ::core::write!(formatter, "'{named}': {}", self.detail)
+                    }
+                    ::core::option::Option::None => formatter.write_str(&self.detail),
+                }
+            }
+        }
 
         impl ::core::fmt::Display for ServiceFaultKind {
             fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {

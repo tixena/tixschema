@@ -15,14 +15,6 @@ use super::validate::{
     rating_dart, reference_dart, sleeve_dart,
 };
 
-/// The helper a variant asks a value it holds for the bound of its own with.
-const HELD_BOUND: &str = "static List<String> _heldBound(Object held) { try { return (held as \
-     dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const []; } }";
-
-/// What a judged read does with the value its unjudged read answered.
-const JUDGED: &str = "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
-     FormatException(violations.join('; ')); return read; }";
-
 /// A model with a bound.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -102,13 +94,23 @@ pub struct Vise {
     pub pair: [u8; 2],
 }
 
+/// What a judged read of the type published as `named` does with the value its unjudged read
+/// answered.
+fn judged(named: &str) -> String {
+    format!(
+        "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
+         {named}Refusal(violations); return read; }}"
+    )
+}
+
 /// The pair every class type writes: `named`'s judged read over its unjudged one, which takes
 /// `parameters` and is handed `arguments`.
 fn pair(named: &str, parameters: &str, arguments: &str) -> String {
     format!(
         "factory {named}.fromJson({parameters}) {{ final read = \
-         {named}.fromJsonUnjudged({arguments}); {JUDGED} factory \
-         {named}.fromJsonUnjudged({parameters}) "
+         {named}.fromJsonUnjudged({arguments}); {judged} factory \
+         {named}.fromJsonUnjudged({parameters}) ",
+        judged = judged(named)
     )
 }
 
@@ -121,8 +123,9 @@ fn draft(named: &str, parameters: &str) -> String {
 fn sealed_pair(named: &str, parameters: &str, arguments: &str) -> String {
     format!(
         "factory {named}.fromJson({parameters}) {{ final read = \
-         {named}.fromJsonUnjudged({arguments}); {JUDGED} factory \
-         {named}.fromJsonUnjudged({parameters}) "
+         {named}.fromJsonUnjudged({arguments}); {judged} factory \
+         {named}.fromJsonUnjudged({parameters}) ",
+        judged = judged(named)
     )
 }
 
@@ -142,15 +145,11 @@ fn every_declared_type_is_constructible() {
     .validate()
     .unwrap();
     let hold = HoldDraft {
-        by_dock: HashMap::from([
-            (DockDraft::North.validate().unwrap(), item.clone()),
-            (DockDraft::South.validate().unwrap(), item.clone()),
-        ]),
+        by_dock: HashMap::from([(Dock::North, item.clone()), (Dock::South, item.clone())]),
         filled: BinDraft {
             held: vec![item.clone()],
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(hold.by_dock.len(), 2);
     assert_eq!(hold.filled.held.len(), 1);
@@ -165,7 +164,7 @@ fn every_declared_type_is_constructible() {
     ];
     assert_eq!(shelfmarks.len(), 3);
     assert_eq!(
-        serde_json::to_string(&[ReadingDraft::FromJsonUnjudged, ReadingDraft::Judged]).unwrap(),
+        serde_json::to_string(&[Reading::FromJsonUnjudged, Reading::Judged]).unwrap(),
         r#"["FromJsonUnjudged","Judged"]"#
     );
     let vise = ViseDraft {
@@ -242,10 +241,11 @@ fn a_holder_reads_what_it_names_unjudged() {
     );
 }
 
-/// A generic type takes its converters in both reads. A value behind a parameter and the key of
-/// a map are not reached by `validate()`, so each is read by its own judged read.
+/// A generic type takes its converters in both reads. A holder hands the converter of a model's
+/// unjudged read where the model fills a parameter, and judges it through `validationIssuesWith`.
+/// The key of a map is not reached by `validate()`, so it is read by its own judged read.
 #[test]
-fn a_value_validate_does_not_reach_judges_itself() {
+fn a_value_behind_a_parameter_is_read_unjudged_and_a_key_judges_itself() {
     let converters = "Map<String, dynamic> json, CodeType Function(dynamic) codeTypeFromJson";
     assert_written(
         &crate_dart::dart_definition(),
@@ -262,7 +262,12 @@ fn a_value_validate_does_not_reach_judges_itself() {
     assert_written(
         &hold,
         "filled: _readAt(json, 'filled', () => Bin.fromJsonUnjudged(json['filled'], (e) => \
-         Item.fromJson(e))),",
+         Item.fromJsonUnjudged(e))),",
+    );
+    assert_written(
+        &hold,
+        "for (final violation in filled.validationIssuesWith((argument) => [ \
+         ...argument.validationIssues(), ])) _under('filled', violation),",
     );
     assert_written(
         &hold,
@@ -419,66 +424,51 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
     );
 }
 
-/// An untagged enum takes the first variant whose payload decodes and whose members' own bounds
-/// hold. `_bounds()` lists them, with no check and nothing a held model reports.
+/// An untagged enum takes the first variant whose payload decodes. No bound of a member chooses
+/// one, and nothing a check or a held model reports does.
 #[test]
-fn an_untagged_enum_takes_the_first_variant_whose_bounds_hold() {
+fn an_untagged_enum_takes_the_first_variant_that_decodes() {
     let reference = reference_dart::dart_definition();
     assert_written(
         &reference,
         &format!(
-            "{}{{ try {{ final read = ReferenceNamed.fromJson(json as Map<String, \
-             dynamic>); if (read._bounds().isEmpty) return read; }} catch (_) {{}} try {{ final \
-             read = ReferenceNumbered({numbered}); if (read._bounds().isEmpty) return read; }} \
-             catch (_) {{}} throw FormatException('No variant of Reference matched'); }} dynamic \
-             toJson();",
+            "{}{{ try {{ return ReferenceNamed.fromJson(json as Map<String, dynamic>); }} catch \
+             (_) {{}} try {{ return ReferenceNumbered({numbered}); }} catch (_) {{}} throw \
+             FormatException('No variant of Reference matched'); }} dynamic toJson();",
             draft("ReferenceDraft", "dynamic json"),
             numbered = u32_held("json as int")
         ),
     );
     assert_written(
         &reference,
-        "Map<String, dynamic> toJson() => { 'name': name, }; List<String> _bounds() => [ if \
-         (name.runes.length < 1) \"too short: minimum length is 1, got ${name.runes.length}\", \
-         ]; @override List<String> validationIssues() =>",
+        "Map<String, dynamic> toJson() => { 'name': name, }; @override List<String> \
+         validationIssues() =>",
     );
     assert_written(
         &reference,
         &format!(
-            "@override dynamic toJson() => {}; List<String> _bounds() => [ if (value < 1) \"too \
-             small: minimum is 1, got ${{value}}\", ]; @override List<String> validationIssues() =>",
+            "@override dynamic toJson() => {}; @override List<String> validationIssues() =>",
             u32_held("value")
         ),
     );
+    assert!(!reference.contains("_bounds"), "got: {reference}");
 }
 
-/// A variant asks each declared type it holds for the bound of its own, through a list as
-/// through the value itself. A variant that holds none is taken by its shape alone.
+/// A variant that holds a declared type, through a list as through the value itself, is taken by
+/// its shape alone.
 #[test]
-fn a_variant_asks_what_it_holds_for_its_own_bound() {
+fn a_variant_that_holds_a_declared_type_is_taken_by_its_shape() {
     let shelfmark = shelfmark_dart::dart_definition();
     assert_written(
         &shelfmark,
-        "try { final read = ShelfmarkCoded(Slip.fromJsonUnjudged(json)); if \
-         (read._bounds().isEmpty) return read; } catch (_) {} try { final read = \
+        "try { return ShelfmarkCoded(Slip.fromJsonUnjudged(json)); } catch (_) {} try { return \
          ShelfmarkListed((json as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
-         Slip.fromJsonUnjudged(e.$2))).toList()); if (read._bounds().isEmpty) return read; } \
-         catch (_) {} try { return ShelfmarkShelved(json as bool); } catch (_) {} throw",
+         Slip.fromJsonUnjudged(e.$2))).toList()); } catch (_) {} try { return \
+         ShelfmarkShelved(json as bool); } catch (_) {} throw",
     );
-    assert_written(
-        &shelfmark,
-        &format!(
-            "List<String> _bounds() => [ ..._heldBound(value), ]; {HELD_BOUND} @override \
-             List<String> validationIssues() =>"
-        ),
-    );
-    assert_written(
-        &shelfmark,
-        &format!(
-            "List<String> _bounds() => [ for (final held in value) ..._heldBound(held), ]; \
-             {HELD_BOUND} @override List<String> validationIssues() =>"
-        ),
-    );
+    for asked in ["_bounds", "_heldBound", "validateBound"] {
+        assert!(!shelfmark.contains(asked), "{asked} is in: {shelfmark}");
+    }
     assert!(
         shelfmark.ends_with(
             "@override dynamic toJson() => value; @override List<String> validationIssues() => const []; }"
@@ -487,18 +477,20 @@ fn a_variant_asks_what_it_holds_for_its_own_bound() {
     );
 }
 
-/// The draft of a plain enum reads with no check, and the valid type judges what its draft reads
-/// and carries the unjudged read a holder calls.
+/// A plain enum that names no check is its own read; one that names a check has a draft that reads
+/// with no check, and a valid type that judges what its draft reads and carries the unjudged read
+/// a holder calls.
 #[test]
 fn a_plain_enum_judges_where_it_names_a_check() {
     assert_written(
         &grade_dart::dart_definition(),
         &format!(
-            "static GradeDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue;",
+            "static Grade fromJson(dynamic json) {{ {} }} static Grade fromJsonUnjudged(dynamic \
+             json) => fromJson(json); String toJson() => wireValue;",
             plain_enum_read(
                 "Grade",
                 "json",
-                "'Express' => GradeDraft.express,'Standard' => GradeDraft.standard,"
+                "'Express' => Grade.express,'Standard' => Grade.standard,"
             )
         ),
     );
@@ -520,7 +512,7 @@ fn a_plain_enum_judges_where_it_names_a_check() {
              {} factory Rating.fromJsonUnjudged(dynamic json) => \
              Rating._(RatingDraft.fromJson(json));",
             "final violations = read.validationIssues(); if (violations.isNotEmpty) throw \
-             FormatException(violations.join('; ')); return Rating._(read); }"
+             RatingRefusal(violations); return Rating._(read); }"
         ),
     );
 }
@@ -531,11 +523,11 @@ fn an_enum_member_named_after_the_unjudged_read_moves() {
     let reading = reading_dart::dart_definition();
     assert_written(
         &reading,
-        "enum ReadingDraft { fromJsonUnjudged_('FromJsonUnjudged'), judged('Judged');",
+        "enum Reading { fromJsonUnjudged_('FromJsonUnjudged'), judged('Judged');",
     );
     assert_written(
         &reading,
-        "'FromJsonUnjudged' => ReadingDraft.fromJsonUnjudged_,'Judged' => ReadingDraft.judged,",
+        "'FromJsonUnjudged' => Reading.fromJsonUnjudged_,'Judged' => Reading.judged,",
     );
 }
 

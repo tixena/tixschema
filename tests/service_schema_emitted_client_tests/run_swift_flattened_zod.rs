@@ -41,6 +41,10 @@ func notBlank(_ value: String) -> [String] {
 /// What prints a row: the value read and written back with its keys sorted, or `refused`, and what
 /// prints a checked row.
 const HARNESS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   do {
     let held = try JSONDecoder().decode(type, from: Data(payload.utf8))
@@ -56,6 +60,10 @@ func checked<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String
   do {
     _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
     print("\(name): passes")
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    print("\(name): refused")
+    for violation in issues { print("    \(violation)") }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused")
     for violation in context.debugDescription.components(separatedBy: "; ") { print("    \(violation)") }

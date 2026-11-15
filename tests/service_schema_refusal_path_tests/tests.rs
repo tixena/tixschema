@@ -132,23 +132,23 @@ fn each_broken_label_is_named_at_its_path() {
     for (payload, field) in cases {
         let fault = fault_for(&payload);
         assert_eq!(fault["kind"], "failed-validation", "{payload}");
-        assert_eq!(fault["field"], field, "{payload}");
+        assert_eq!(fault["issues"][0]["field"], field, "{payload}");
         assert!(
-            fault["detail"]
-                .as_str()
-                .unwrap()
-                .starts_with(&format!("'{field}': ")),
+            !fault["issues"][0]["detail"].as_str().unwrap().is_empty(),
             "{fault}"
         );
     }
 }
 
 #[test]
-fn every_break_of_a_checked_holder_reaches_the_detail() {
+fn every_break_of_a_checked_holder_reaches_the_issues() {
     let payload = json!({ "shipment": shipment(&json!({ "label": "", "parcelCount": 200_u32 })), "notes": [] });
     assert_eq!(
-        fault_for(&payload)["detail"],
-        "'shipment.label': too short: minimum length is 1, got 0; 'shipment.parcelCount': too large: maximum is 100, got 200"
+        fault_for(&payload)["issues"],
+        json!([
+            { "detail": "too short: minimum length is 1, got 0", "field": "shipment.label" },
+            { "detail": "too large: maximum is 100, got 200", "field": "shipment.parcelCount" },
+        ])
     );
 }
 
@@ -187,22 +187,32 @@ fn a_refusal_raised_while_serde_reads_is_placed_at_the_path_serde_tracked() {
         ),
     ];
     for (path, said, field) in cases {
-        let (named, detail) = shipping_schema::refused_at(path, said);
-        assert_eq!(named, field, "{path} / {said}");
         let (_, words) = said.split_once("': ").unwrap();
-        assert_eq!(detail, format!("'{field}': {words}"));
+        assert_eq!(
+            shipping_schema::refused_at(path, said),
+            [shipping_schema::ServiceFaultIssue::new(Some(field), words)],
+            "{path} / {said}"
+        );
     }
 }
 
 #[test]
 fn each_violation_of_a_refusal_is_placed() {
-    let (field, detail) = shipping_schema::refused_at(
+    let issues = shipping_schema::refused_at(
         "notes.0",
         "'notes.label': too short: minimum length is 1, got 0; 'notes.parcelCount': too large: maximum is 100, got 200",
     );
-    assert_eq!(field, "notes.0.label");
     assert_eq!(
-        detail,
-        "'notes.0.label': too short: minimum length is 1, got 0; 'notes.0.parcelCount': too large: maximum is 100, got 200"
+        issues,
+        [
+            shipping_schema::ServiceFaultIssue::new(
+                Some("notes.0.label"),
+                "too short: minimum length is 1, got 0"
+            ),
+            shipping_schema::ServiceFaultIssue::new(
+                Some("notes.0.parcelCount"),
+                "too large: maximum is 100, got 200"
+            ),
+        ]
     );
 }

@@ -43,8 +43,7 @@ mod a_length_on_a_brand_over_a_list {
             ListPartDraft {
                 value: "part".to_owned()
             }
-            .validate()
-            .unwrap();
+            .into();
             count
         ]
     }
@@ -101,8 +100,7 @@ mod a_length_on_a_brand_over_a_list {
                 ListPartDraft {
                     value: "a".to_owned()
                 }
-                .validate()
-                .unwrap()
+                .into()
             ])
             .unwrap()
         );

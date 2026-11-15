@@ -100,17 +100,18 @@ pub const LITERAL_READS: [LiteralRead; 24] = [
         ],
     ),
     read("ingot of gold", "Ingot", r#"{"metal":"gold","weight":1}"#),
-    read(
+    refused(
         "ingot of silver",
         "Ingot",
         r#"{"metal":"silver","weight":1}"#,
+        &["'metal': not the literal \"gold\", got silver"],
     ),
-    LiteralRead {
-        answered: Answered::Unmatched,
-        held_by: "Ingot",
-        name: "ingot of copper",
-        payload: r#"{"metal":"copper","weight":1}"#,
-    },
+    refused(
+        "ingot of copper",
+        "Ingot",
+        r#"{"metal":"copper","weight":1}"#,
+        &["'metal': not the literal \"gold\", got copper"],
+    ),
     read("bullion as declared", "Bullion", r#"["bar",400]"#),
     refused(
         "bullion of other values",
@@ -154,9 +155,6 @@ pub enum Answered {
     Read,
     /// Refused, each violation `validate()` reports of the value in its order.
     Refused(&'static [&'static str]),
-    /// Refused by an untagged enum, no variant of which reads the payload: each target says so in
-    /// words of its own.
-    Unmatched,
 }
 
 /// One payload, the model it is read as, and what the read answers.
@@ -229,7 +227,8 @@ pub struct Hallmark {
     pub weight: f32,
 }
 
-/// Two variants of one shape, told apart by the literal each member holds.
+/// Two variants of one shape, which no literal tells apart in serde's read: the first takes every
+/// payload of the shape, and its literal refuses the others.
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -279,8 +278,7 @@ pub enum TaggedAssay {
     },
 }
 
-/// Whether a target that names each violation of a refused row names those of `row`: a row an
-/// untagged enum refuses for want of a variant is refused in words of the target's own.
+/// Whether a target that names each violation of a refused row names those of `row`.
 pub const fn names_each_violation(row: &LiteralRead) -> bool {
     matches!(row.answered, Answered::Refused(_))
 }
@@ -301,9 +299,6 @@ pub fn literal_report(names: fn(&LiteralRead) -> bool) -> String {
                         let _ = writeln!(printed, "    {violation}");
                     }
                 }
-            }
-            Answered::Unmatched => {
-                let _ = writeln!(printed, "{}: refused", row.name);
             }
         }
     }

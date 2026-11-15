@@ -14,6 +14,12 @@ use super::fixed_arrays_models::{
 };
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
+#[cfg(feature = "serde")]
+use super::kotlin_thrown::THROWN;
+
+/// The function that names the place of a map key a brand's check refused: the steps of the path
+/// kotlinx states, then the key.
+const PLACE: &str = r#"@OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaPlace(input: Decoder, key: String): String { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path }; return (Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at.orEmpty()).map { step -> step.groupValues.drop(1).joinToString("") }.toList() + key).joinToString(".") }; "#;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself, each part from its text, placed under its step.
@@ -44,8 +50,14 @@ const LABELLED_ISSUES: &str = "fun validationIssues(): List<String> { val violat
      violations.add(\"'label': too short: minimum length is 1, got \
      ${label.codePointCount(0, label.length)}\"); return violations }";
 
+/// What a serializer that reads a held type unjudged answers where the type's companion has no
+/// member for it.
+const HELD_FALLBACK: &str = "private fun <KotlinSchemaCompanion, KotlinSchemaHeld> \
+     KotlinSchemaCompanion.kotlinSchemaUnjudged(own: KSerializer<KotlinSchemaHeld>, vararg \
+     arguments: KSerializer<*>): KSerializer<KotlinSchemaHeld> = own; ";
+
 /// The annotation a holder reads a pallet unjudged with.
-const UNJUDGED: &str = "@Serializable(with = PalletUnjudged::class)";
+const UNJUDGED: &str = "@Serializable(with = KotlinHeld1::class)";
 
 /// A model with one bound.
 #[model_schema()]
@@ -114,39 +126,44 @@ fn generated(named: &str) -> String {
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 pub fn judged(named: &str) -> String {
     format!(
-        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ \
-         override fun invoke(): KSerializer<{named}> = {named}Unjudged; override val \
-         descriptor: SerialDescriptor = {named}Unjudged.descriptor; override fun \
-         serialize(encoder: Encoder, value: {named}) = {named}Unjudged.serialize(encoder, \
-         value); override fun deserialize(decoder: Decoder): {named} {{ val read = \
+        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ {THROWN}override \
+         fun invoke(): KSerializer<{named}> = {named}Unjudged; override val descriptor: \
+         SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
+         value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
+         deserialize(decoder: Decoder): {named} {{ val read = \
          {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }} }}"
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
     )
 }
 
 /// The serializer of `named`, a type with the one parameter `parameter`, which `bound` follows.
 pub fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> String {
     format!(
-        "class {named}Serializer<{parameter}{bound}>({handed}: \
-         KSerializer<{parameter}>) : KSerializer<{named}<{parameter}>>, () -> \
-         KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
-         {named}Unjudged({handed}); override fun invoke(): \
+        "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
+         KSerializer<{named}<{parameter}>>, () -> KSerializer<{named}<{parameter}>> {{ private \
+         val kotlinSchemaUnjudged = {named}Unjudged({handed}); {THROWN}override fun invoke(): \
          KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
          SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
-         Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, \
-         value); override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read \
-         = kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }} }}"
+         Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); \
+         override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
+         kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
+    )
+}
+
+/// The refusal class the text of the type published as `named` opens with.
+pub fn refusal(named: &str) -> String {
+    format!(
+        "class {named}Refusal(val issues: List<String>) : SerializationException(\"$issues\", \
+         IllegalArgumentException(\"validate()\"))"
     )
 }
 
 /// The annotations of the draft of a type the plugin reads, which keeps the plugin's serial name.
 pub fn kept_draft(named: &str) -> String {
     format!(
-        "@OptIn(ExperimentalSerializationApi::class) \
-         @Serializable(with = {named}DraftUnjudged::class) @KeepGeneratedSerializer"
+        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+         {named}DraftUnjudged::class) @KeepGeneratedSerializer"
     )
 }
 
@@ -154,14 +171,61 @@ pub fn kept_draft(named: &str) -> String {
 pub fn to_valid(named: &str, generic: &str) -> String {
     format!(
         "fun validate(): {named}{generic} {{ val violations = validationIssues(); if \
-         (violations.isNotEmpty()) throw SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return {named}.checked(this) }}"
+         (violations.isNotEmpty()) throw {named}Refusal(violations); return \
+         {named}.checked(this) }}"
+    )
+}
+
+/// [`to_valid`], and the conversion a draft that declares no rule has.
+pub fn to_valid_free(named: &str, generic: &str) -> String {
+    format!(
+        "{} fun toValid(): {named}{generic} = {named}.checked(this)",
+        to_valid(named, generic)
     )
 }
 
 /// The valid class of `named`, over its draft, which forwards each property in `forwards`.
 pub fn valid_class(named: &str, forwards: &str) -> String {
     valid_class_over(named, "", forwards)
+}
+
+/// [`valid_class`] with `statics`, the constants its companion holds, after a semicolon.
+pub fn valid_class_with(named: &str, forwards: &str, statics: &str) -> String {
+    let member = unjudged_member(named, "");
+    valid_class(named, forwards).replace(
+        &format!("= {named}(draft); {member} }}"),
+        &format!("= {named}(draft); {member}{statics} }}"),
+    )
+}
+
+/// The member of the companion of `named` that answers its unjudged serializer, over the one type
+/// parameter `generic` lists, written `<A>`.
+pub fn unjudged_member(named: &str, generic: &str) -> String {
+    if generic.is_empty() {
+        return format!(
+            "internal fun kotlinSchemaUnjudged(own: KSerializer<{named}>): KSerializer<{named}> = \
+             {named}Unjudged"
+        );
+    }
+    let parameter = generic.trim_matches(['<', '>']);
+    let (first, rest) = parameter.split_at(1);
+    let handed = format!("{}{rest}Serializer", first.to_lowercase());
+    format!(
+        "internal fun {generic} kotlinSchemaUnjudged(own: KSerializer<{named}{generic}>, {handed}: \
+         KSerializer<{parameter}>): KSerializer<{named}{generic}> = {named}Unjudged({handed})"
+    )
+}
+
+/// The private serializer `named` a holder reads the type `class`, with no type parameter,
+/// unjudged through, declared ahead of the holder.
+pub fn held(named: &str, class: &str) -> String {
+    format!(
+        "private object {named} : KSerializer<{class}> {{ {HELD_FALLBACK}private val held: \
+         KSerializer<{class}> = {class}.kotlinSchemaUnjudged(serializer<{class}>()); override val \
+         descriptor: SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
+         value: {class}) = held.serialize(encoder, value); override fun deserialize(decoder: \
+         Decoder): {class} = held.deserialize(decoder) }}"
+    )
 }
 
 /// [`valid_class`] of a type over the type parameters `generic`, written `<A, B>`.
@@ -174,8 +238,51 @@ pub fn valid_class_over(named: &str, generic: &str, forwards: &str) -> String {
     format!(
         "@ConsistentCopyVisibility @Serializable(with = {named}Serializer::class) data class \
          {named}{generic} private constructor(val draft: {named}Draft{generic}) {{ {forwards}fun \
-         validationIssues(): List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): \
-         {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft) }} }}"
+         validationIssues(): List<String> = draft.validationIssues(); {}fun kotlinSchemaChecked(): \
+         {named}Draft{generic} = draft; companion object {{ internal fun {checked}checked(draft: {named}Draft{generic}): {named}{generic} = {named}(draft); {} }} }}",
+        issues_with_forwarded(generic),
+        unjudged_member(named, generic)
+    )
+}
+
+/// The `validationIssuesWith` a valid type of the parameters `generic` forwards to its draft,
+/// none where it declares none.
+fn issues_with_forwarded(generic: &str) -> String {
+    let parameters: Vec<&str> = generic
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .split(", ")
+        .filter(|parameter| !parameter.is_empty())
+        .collect();
+    if parameters.is_empty() {
+        return String::new();
+    }
+    let checks = parameters
+        .iter()
+        .map(|parameter| format!("issuesOf{parameter}: ({parameter}) -> List<String>"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let named = parameters
+        .iter()
+        .map(|parameter| format!("issuesOf{parameter}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "fun validationIssuesWith({checks}): List<String> = draft.validationIssuesWith({named}); "
+    )
+}
+
+/// The walk of a draft that declares the parameter `parameter`, whose `statements` hand each value
+/// behind it to its check.
+pub fn walked_issues(parameter: &str, statements: &str) -> String {
+    format!(
+        "fun validationIssues(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
+         validationIssuesWith(issuesOf{parameter}: ({parameter}) -> List<String>): List<String> \
+         {{ val violations = mutableListOf<String>(); {statements}; return violations }}; \
+         private fun kotlinSchemaUnder(place: String, violation: String): String {{ val end = \
+         violation.indexOf('\\'', 1); return if (violation.startsWith(\"'\") && end > 0) {{ \
+         \"'$place.${{violation.substring(1, end)}}'${{violation.substring(end + 1)}}\" }} else \
+         {{ \"'$place': $violation\" }} }}"
     )
 }
 
@@ -231,10 +338,46 @@ pub fn judged_valid_over(named: &str, parameter: &str, bound: &str, handed: &str
 /// What follows the draft class of `named`, a type with no parameter the plugin reads: its draft's
 /// unjudged serializer, the valid class forwarding `forwards`, and the two serializers over it.
 pub fn drafted_serializers(named: &str, forwards: &str) -> String {
+    drafted_serializers_with(named, forwards, &format!("; {}", of_from(named, forwards)))
+}
+
+/// The `of` of a struct whose valid class forwards `forwards`: one parameter for each property, an
+/// optional one defaulting to `null`, handed to the draft by name.
+fn of_from(named: &str, forwards: &str) -> String {
+    let properties: Vec<(&str, &str)> = forwards
+        .split("; ")
+        .filter_map(|forward| forward.strip_prefix("val ")?.split_once(": "))
+        .filter_map(|(property, rest)| Some((property, rest.split_once(" get() =")?.0)))
+        .collect();
+    let parameters = properties
+        .iter()
+        .map(|(property, ty)| {
+            let default = if ty.ends_with('?') { " = null" } else { "" };
+            format!("{property}: {ty}{default}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arguments = properties
+        .iter()
+        .map(|(property, _)| format!("{property} = {property}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("fun of({parameters}): {named} = {named}Draft({arguments}).validate()")
+}
+
+/// The valid `class`, with `of` written in its companion object after the rest of it.
+pub fn with_of(valid: impl Into<String>, of: &str) -> String {
+    let class: String = valid.into();
+    let head = class.trim_end_matches(" } }");
+    format!("{head}; {of} }} }}")
+}
+
+/// [`drafted_serializers`] where the valid class holds `statics` in its companion.
+pub fn drafted_serializers_with(named: &str, forwards: &str, statics: &str) -> String {
     format!(
         "{} {} {} {}",
         generated(&format!("{named}Draft")),
-        valid_class(named, forwards),
+        valid_class_with(named, forwards, statics),
         valid_unjudged(named),
         judged_valid(named)
     )
@@ -265,8 +408,8 @@ pub fn brand_companion(named: &str, value: &str) -> String {
     format!(
         "companion object {{ fun of(value: {value}): {named} {{ val read = {named}(value); val \
          violations = read.validate(); if (violations.isNotEmpty()) throw \
-         SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read }} }}"
+         {named}Refusal(violations); return read }}; {} }}",
+        unjudged_member(named, "")
     )
 }
 
@@ -284,17 +427,17 @@ pub fn mapped(named: &str) -> String {
     )
 }
 
-/// [`mapped`] of a brand over a brand over a text, which throws the refusal of the brand it holds
-/// under the key's text as well.
+/// [`mapped`] of a brand over the brand `inner` over a text, which throws the refusal of the brand
+/// it holds under the key's text as well.
 #[cfg(feature = "serde")]
-pub fn mapped_over_a_brand(named: &str) -> String {
+pub fn mapped_over_a_brand(named: &str, inner: &str) -> String {
     mapped_reading(
         named,
         &format!(
             "try {{ kotlinSchemaDecoded(input.json, {named}Unjudged, JsonPrimitive(entry.key), \
-             entry.key, \"\") }} catch (refused: SerializationException) {{ if \
-             (refused.cause?.message != \"validate()\") throw refused; throw \
-             SerializationException(\"'\" + entry.key + \"': \" + refused.message.orEmpty()) }}"
+             entry.key, \"\") }} catch (refused: {inner}Refusal) {{ val at = \
+             kotlinSchemaPlace(input, entry.key); throw {inner}Refusal(refused.issues.map {{ \"'\" \
+             + at + \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}"
         ),
     )
 }
@@ -309,15 +452,15 @@ fn mapped_reading(named: &str, key: &str) -> String {
          KSerializer<Map<{named}, KotlinSchemaValue>> {{ private val whole = \
          MapSerializer(keySerializer, valueSerializer); override val descriptor: SerialDescriptor \
          = whole.descriptor; override fun serialize(encoder: Encoder, value: Map<{named}, \
-         KotlinSchemaValue>) = whole.serialize(encoder, value); {DECODED}{PATHED}override fun \
-         deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = decoder \
-         as JsonDecoder; val element = input.decodeJsonElement(); return kotlinSchemaAt(input) \
-         {{ (element as? JsonObject ?: throw SerializationException(\"expected an object, found \
-         \" + element)).entries.associate {{ entry -> val key = {key}; val violations = \
-         key.validate(); if (violations.isNotEmpty()) throw \
-         SerializationException(violations.joinToString(\"; \") {{ \"'\" + entry.key + \"': \" + \
-         it }}); key to kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \
-         \".\" + entry.key) }} }} }} }}"
+         KotlinSchemaValue>) = whole.serialize(encoder, value); {DECODED}{PATHED}{PLACE}override \
+         fun deserialize(decoder: Decoder): Map<{named}, KotlinSchemaValue> {{ val input = \
+         decoder as JsonDecoder; val element = input.decodeJsonElement(); return \
+         kotlinSchemaAt(input) {{ (element as? JsonObject ?: throw SerializationException(\"expected \
+         an object, found \" + element)).entries.associate {{ entry -> val key = {key}; val \
+         violations = key.validate(); if (violations.isNotEmpty()) {{ val at = \
+         kotlinSchemaPlace(input, entry.key); throw {named}Refusal(violations.map {{ \"'\" + at + \
+         \"': \" + it }}).also {{ it.addSuppressed(IllegalStateException(\"placed\")) }} }}; key to kotlinSchemaDecoded(input.json, valueSerializer, entry.value, \
+         entry.key, \".\" + entry.key) }} }} }} }}"
     )
 }
 
@@ -339,8 +482,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
         trailer: TrailerDraft {
             plate: "p".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     };
     assert_eq!(
         serde_json::to_value(bay).unwrap(),
@@ -387,7 +529,8 @@ fn a_class_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
         super::tests::renumbered(&pallet_kotlin::kotlin_definition()),
         format!(
-            "{} data class PalletDraft(val label: String) {{ {LABELLED_ISSUES} {} }} {}",
+            "{} {} data class PalletDraft(val label: String) {{ {LABELLED_ISSUES} {} }} {}",
+            refusal("Pallet"),
             kept_draft("Pallet"),
             to_valid("Pallet", ""),
             drafted_serializers("Pallet", "val label: String get() = draft.label; ")
@@ -397,15 +540,19 @@ fn a_class_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
 
 /// A holder names the unjudged serializer of each model it holds where `validate()` walks it: on
 /// the property, and on the type inside a list and a map. A type declared below the holder is
-/// read by its own serializer.
+/// read the same way.
 #[test]
 fn a_holder_reads_each_model_it_walks_with_no_judgement() {
     let bay = super::tests::renumbered(&bay_kotlin::kotlin_definition());
     assert!(
         bay.starts_with(&format!(
-            "{} data class BayDraft({UNJUDGED} val first: Pallet, val listed: List<{UNJUDGED} \
-             Pallet>, {UNJUDGED} val spare: Pallet? = null, val stored: Map<String, {UNJUDGED} \
-             Pallet>, val trailer: Trailer) {{ fun validationIssues(): List<String> {{",
+            "{} {} {} {} data class BayDraft({UNJUDGED} val first: Pallet, val listed: \
+             List<{UNJUDGED} Pallet>, {UNJUDGED} val spare: Pallet? = null, val stored: \
+             Map<String, {UNJUDGED} Pallet>, @Serializable(with = KotlinHeld2::class) val \
+             trailer: Trailer) {{ fun validationIssues(): List<String> {{",
+            refusal("Bay"),
+            held("KotlinHeld1", "Pallet"),
+            held("KotlinHeld2", "Trailer"),
             kept_draft("Bay")
         )),
         "got: {bay}"
@@ -421,9 +568,10 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
     assert_eq!(
         super::tests::renumbered(&trailer_kotlin::kotlin_definition()),
         format!(
-            "{} data class TrailerDraft(val plate: String) {{ {NO_ISSUES} {} }} {}",
+            "{} {} data class TrailerDraft(val plate: String) {{ {NO_ISSUES} {} }} {}",
+            refusal("Trailer"),
             kept_draft("Trailer"),
-            to_valid("Trailer", ""),
+            to_valid_free("Trailer", ""),
             drafted_serializers("Trailer", "val plate: String get() = draft.plate; ")
         )
     );
@@ -436,16 +584,29 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     assert_eq!(
         super::tests::renumbered(&cask_kotlin::kotlin_definition()),
         format!(
-            "{} data class CaskDraft<Held>(val held: List<Held>, val label: String) {{ \
-             {LABELLED_ISSUES} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+            "{} {} data class CaskDraft<Held>(val held: List<Held>, val label: String) {{ \
+             {} {} }} @OptIn(ExperimentalSerializationApi::class) class \
              CaskDraftUnjudged<Held>(heldSerializer: KSerializer<Held>) : \
              KSerializer<CaskDraft<Held>> by CaskDraft.generatedSerializer(heldSerializer) {} {} {}",
+            refusal("Cask"),
             kept_draft("Cask"),
+            walked_issues(
+                "Held",
+                "held.forEachIndexed { index, held -> violations.addAll(issuesOfHeld(held).map { \
+                 kotlinSchemaUnder(\"held.$index\", it) }) }; if (label.codePointCount(0, \
+                 label.length) < 1) violations.add(\"'label': too short: minimum length is 1, got \
+                 ${label.codePointCount(0, label.length)}\")"
+            ),
             to_valid("Cask", "<Held>"),
-            valid_class_over(
-                "Cask",
-                "<Held>",
-                "val held: List<Held> get() = draft.held; val label: String get() = draft.label; "
+            with_of(
+                valid_class_over(
+                    "Cask",
+                    "<Held>",
+                    "val held: List<Held> get() = draft.held; val label: String get() = \
+                     draft.label; "
+                ),
+                "fun <Held> of(held: List<Held>, label: String): Cask<Held> = \
+                 CaskDraft<Held>(held = held, label = label).validate()"
             ),
             valid_unjudged_over("Cask", "Held", "", "heldSerializer"),
             judged_valid_over("Cask", "Held", "", "heldSerializer")
@@ -454,8 +615,8 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     let cellar = super::tests::renumbered(&cellar_kotlin::kotlin_definition());
     assert!(
         cellar.contains(
-            "data class CellarDraft(@Serializable(with = CaskUnjudged::class) val cask: Cask<Pallet>, \
-             val casks: List<@Serializable(with = CaskUnjudged::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
+            "data class CellarDraft(@Serializable(with = KotlinHeld2::class) val cask: Cask<Pallet>, \
+             val casks: List<@Serializable(with = KotlinHeld3::class) Cask<@Serializable(with = KotlinNumber1::class) UInt>>) {"
         ),
         "got: {cellar}"
     );
@@ -467,9 +628,10 @@ fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
         super::tests::renumbered(&seal_kotlin::kotlin_definition()),
         format!(
-            "{} value class Seal private constructor(val value: String) {{ fun \
+            "{} {} value class Seal private constructor(val value: String) {{ fun \
              kotlinSchemaText(): String = value; fun kotlinSchemaLength(): Int = \
              value.codePointCount(0, value.length); {NO_RULE}; {} }} {} {}",
+            refusal("Seal"),
             kept_inline("Seal"),
             brand_companion("Seal", "String"),
             brand_serializers("Seal"),
@@ -488,16 +650,16 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
             "@Serializable(with = LoadDraftUnjudged::class) sealed interface LoadDraft {{ fun \
              validationIssues(): List<String>; {} }} @Serializable data class \
              LoadBoxed({UNJUDGED} val value: Pallet) : LoadDraft {{",
-            to_valid("Load", "")
+            to_valid_free("Load", "")
         ),
         "} object LoadDraftUnjudged : KSerializer<LoadDraft> { override val descriptor: \
          SerialDescriptor = buildClassSerialDescriptor(\"Load\");"
             .to_owned(),
         "is LoadBoxed -> buildJsonObject { put(\"Boxed\", \
-         output.json.encodeToJsonElement(PalletUnjudged, value.value)) }"
+         output.json.encodeToJsonElement(KotlinHeld1, value.value)) }"
             .to_owned(),
         "\"Boxed\" -> kotlinSchemaUnder(\".\" + tag) { LoadBoxed(kotlinSchemaDecoded(input.json, \
-         PalletUnjudged, data, \"Boxed\", \"\"))"
+         KotlinHeld1, data, \"Boxed\", \"\"))"
             .to_owned(),
     ] {
         assert!(load.contains(&held), "no `{held}` in: {load}");
@@ -505,7 +667,7 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
     assert!(
         load.ends_with(&format!(
             "{} {} {}",
-            valid_class("Load", ""),
+            valid_class_with("Load", "", "; val Empty = checked(LoadEmpty)"),
             valid_unjudged("Load"),
             judged_valid("Load")
         )),
@@ -647,28 +809,21 @@ fn seal(text: &str) -> Seal {
 
 #[cfg(not(feature = "serde"))]
 fn seal(text: &str) -> Seal {
-    SealDraft(text.to_owned()).validate().unwrap()
+    SealDraft(text.to_owned()).into()
 }
 
-/// The plain enum `named`: its draft, declared with `members` and read by `{Type}DraftUnjudged`
-/// over `variants` and `correction`, then the valid class over it with its two serializers.
-pub fn paired_plain_enum(
+/// The plain enum `named` that names no check: declared as written with its members and
+/// read by `{Type}Unjudged` over `variants` and `correction`.
+pub fn plain_enum(
     named: &str,
     members: &str,
     variants: &[(&str, &str, &[&str])],
     correction: &str,
 ) -> String {
     format!(
-        "{} enum class {named}Draft {{ {members}; {NO_ISSUES} {} }} {} {} {} {}",
-        kept_draft(named),
-        to_valid(named, ""),
-        super::kotlin_plain_enum::plain_enum_unjudged(
-            &format!("{named}Draft"),
-            variants,
-            correction
-        ),
-        valid_class(named, ""),
-        valid_unjudged(named),
-        judged_valid(named)
+        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = {named}Unjudged::class) \
+         @KeepGeneratedSerializer enum class {named} {{ {members}; fun validate(): List<String> = \
+         emptyList(); fun validationIssues(): List<String> = validate() }} {}",
+        super::kotlin_plain_enum::plain_enum_unjudged(named, variants, correction),
     )
 }

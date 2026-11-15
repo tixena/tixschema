@@ -47,8 +47,7 @@ mod tests {
                 high: 13_u32,
                 low: 8_u32,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         };
         assert_eq!(
             serde_json::to_value(&value).unwrap(),

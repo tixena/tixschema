@@ -52,7 +52,7 @@ use super::flattened_models::{
     stropping_kotlin, swaying_kotlin, tacking_kotlin, ticketed_kotlin, unwritten_kotlin,
     whelping_kotlin, whipping_kotlin, yawing_kotlin,
 };
-use super::runtime::ran_kotlin;
+use super::runtime::{held_through, ran_kotlin};
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 use super::swift_flattened_options_models::{
@@ -237,13 +237,15 @@ fun <T : Any> variant(serializer: KSerializer<T>, payload: String) {
 "#;
 
 /// What prints a row of a holder of a flattened `Option` of an enum: the holder read and written
-/// back, or the class and the first line of what its read throws.
+/// back, or the class and the first line of what its read throws, or each issue of a type's
+/// refusal, read by reflection.
 const TOLD_OR_REFUSED: &str = r#"
 fun <T> told(name: String, serializer: KSerializer<T>, payload: String) {
     val told = try {
         Json.encodeToString(serializer, Json.decodeFromString(serializer, payload))
     } catch (refused: Exception) {
-        "refused: ${refused::class.simpleName}: ${(refused.message ?: "").lines().first()}"
+        val said = if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).joinToString("; ") else (refused.message ?: "").lines().first()
+        "refused: ${refused::class.simpleName}: $said"
     }
     println("$name: $told")
 }
@@ -1555,7 +1557,7 @@ fn an_optional_type_declared_below_that_breaks_a_rule_is_refused_in_kotlin_as_se
         let in_kotlin = if serde.starts_with('{') {
             serde.to_owned()
         } else {
-            format!("refused: SerializationException: {serde}")
+            format!("refused: GrommetingRefusal: {serde}")
         };
         let _ = writeln!(expected, "{at}: {in_kotlin}");
         let _ = writeln!(
@@ -1848,16 +1850,24 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag_in_kot
         );
         assert!(kotlin.contains(&held), "no `{held}` in: {kotlin}");
     };
+    let lowering = lowering_kotlin::kotlin_definition();
     looked_for(
-        &lowering_kotlin::kotlin_definition(),
+        &lowering,
         "grommet",
-        "runCatching { lenient.decodeFromString(GrommetUnjudged, obj.toString()) }.getOrNull()",
+        &format!(
+            "runCatching {{ lenient.decodeFromString({}, obj.toString()) }}.getOrNull()",
+            held_through(&lowering, "Grommet")
+        ),
         "\"kind\"",
     );
+    let squaring = squaring_kotlin::kotlin_definition();
     looked_for(
-        &squaring_kotlin::kotlin_definition(),
+        &squaring,
         "becket",
-        "lenient.decodeFromString(BecketUnjudged, obj.toString())",
+        &format!(
+            "lenient.decodeFromString({}, obj.toString())",
+            held_through(&squaring, "Becket")
+        ),
         "\"kind\", \"body\"",
     );
 }

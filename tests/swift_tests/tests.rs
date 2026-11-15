@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-use crate::swift_plain_enum::plain_enum_reads;
+use crate::swift_plain_enum::{plain_enum_reads, refusal};
 use crate::swift_valid;
 
 #[model_schema()]
@@ -241,7 +241,7 @@ fn every_width_maps_to_its_own_swift_type() {
 fn a_plain_enum_earns_a_string_raw_value_enum() {
     let swift = status_swift::swift_definition();
     assert!(
-        swift.contains("public enum StatusDraft: String, Codable, Sendable"),
+        swift.contains("public enum Status: String, Codable, Sendable"),
         "got: {swift}"
     );
     assert!(swift.contains("case active = \"active\""), "got: {swift}");
@@ -544,7 +544,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     };
     serde_json::to_string(&all_widths).unwrap();
 
-    serde_json::to_string(&StatusDraft::Active).unwrap();
+    serde_json::to_string(&Status::Active).unwrap();
     serde_json::to_string(&ExternalTaggedDraft::Foo { a: "x".to_owned() }).unwrap();
     serde_json::to_string(&InternalTaggedDraft::Foo { a: "x".to_owned() }).unwrap();
     serde_json::to_string(&AdjacentTaggedDraft::Flag(true)).unwrap();
@@ -571,7 +571,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     })
     .unwrap();
     serde_json::to_string(&ByEnumDraft {
-        by_enum: HashMap::from([(PrimaryDraft::Primary.validate().unwrap(), "p".to_owned())]),
+        by_enum: HashMap::from([(Primary::Primary, "p".to_owned())]),
     })
     .unwrap();
     serde_json::to_string(&EnvelopeDraft {
@@ -591,8 +591,7 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
         extra: FlattenedExtraDraft {
             reason: "r".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         id: "id-1".to_owned(),
     })
     .unwrap();
@@ -623,17 +622,45 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
 fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     assert_eq!(
         swift_valid::draft_of(&reserved_members_swift::swift_definition()),
-        "public struct ReservedMembersDraft: Codable, Sendable { public var `class`: String; public var `in`: String; public var type: String; enum CodingKeys: String, CodingKey { case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try container.decode(String.self, forKey: .type) }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; public func validate() throws -> ReservedMembers { let found = validationIssues(); if !found.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: found.joined(separator: \"; \"))) }; return ReservedMembers(draft: self) } };"
+        "public struct ReservedMembersDraft: Codable, Sendable { public var `class`: String; \
+         public var `in`: String; public var type: String; enum CodingKeys: String, CodingKey { \
+         case `class`; case `in`; case type;  }; public init(`class`: String, `in`: String, type: \
+         String) { self.`class` = `class`; self.`in` = `in`; self.type = type;  }; private struct \
+         SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; \
+         init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { \
+         nil } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout \
+         taken: [String]) throws { let container = try decoder.container(keyedBy: \
+         CodingKeys.self); self.`class` = try container.decode(String.self, forKey: .`class`); \
+         self.`in` = try container.decode(String.self, forKey: .`in`); self.type = try \
+         container.decode(String.self, forKey: .type) }; fileprivate init(swiftSchemaUnjudged \
+         decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && \
+         decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for \
+         unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+         ![\"class\", \"in\", \"type\"].contains(unknown.stringValue) { throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+         [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
+         self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
+         decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = \
+         validationIssues(); if !violations.isEmpty { throw ReservedMembersRefusal(issues: { () \
+         -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? \
+         $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \
+         violations.map { said in guard said.hasPrefix(\"'\"), let end = \
+         said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; return \
+         \"'\\(at).\\(said[said.index(after: said.startIndex)..<end])'\\(said[said.index(after: \
+         end)...])\" } }()) } }; public func validationIssues() -> [String] { [] }; public func \
+         validate() throws -> \
+         ReservedMembers { let found = validationIssues(); if !found.isEmpty { throw \
+         ReservedMembersRefusal(issues: found) }; return ReservedMembers(draft: self) }; public \
+         var valid: ReservedMembers { ReservedMembers(draft: self) } };"
     );
     assert_eq!(
-        swift_valid::draft_of(&reserved_member_swift::swift_definition()),
+        reserved_member_swift::swift_definition(),
         format!(
-            "public enum ReservedMemberDraft: String, Codable, Sendable {{ case `default` = \
+            "{} public enum ReservedMember: String, Codable, Sendable {{ case `default` = \
              \"Default\"; case `in` = \"In\"; case other = \"Other\"; {} public func \
-             validationIssues() -> [String] {{ [] }}; public func swiftSchemaValidateBound() -> \
-             [String] {{ [] }}; {} }}",
-            plain_enum_reads("ReservedMemberDraft"),
-            swift_valid::validating("ReservedMember")
+             validate() -> [String] {{ [] }} }}",
+            refusal("ReservedMember"),
+            plain_enum_reads("ReservedMember"),
         )
     );
     assert_eq!(
@@ -648,9 +675,9 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMemberDraft::Default,
-            ReservedMemberDraft::In,
-            ReservedMemberDraft::Other
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])
@@ -664,5 +691,5 @@ fn correlation_id(text: &str) -> CorrelationId {
 
 #[cfg(not(feature = "serde"))]
 fn correlation_id(text: &str) -> CorrelationId {
-    CorrelationIdDraft(text.to_owned()).validate().unwrap()
+    CorrelationIdDraft(text.to_owned()).into()
 }

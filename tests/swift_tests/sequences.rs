@@ -188,6 +188,7 @@ fn beside_validate(swift: &str) -> String {
         "public func validate() throws -> ",
         "fileprivate func validate() -> [String] ",
         "; private static func swiftSchema",
+        "; public var valid: ",
     ] {
         while let Some(start) = written.find(opening) {
             let open = start + written[start..].find('{').unwrap();
@@ -292,7 +293,7 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
             pair: (texts(&["g"]), 1),
             spare: Some(BTreeSet::from([2])),
             stowed: (VecDeque::from([("h".to_owned(), buoy("i"))]), 2),
-            tether: TetherDraft { id: texts(&["j"]) }.validate().unwrap(),
+            tether: TetherDraft { id: texts(&["j"]) }.into(),
         }),
         read_back(&BundledAsVecDraft {
             buoys: vec![buoy("a")],
@@ -304,15 +305,15 @@ fn each_fixture_writes_the_json_its_twin_written_with_vec_writes() {
             pair: (texts(&["g"]), 1),
             spare: Some(vec![2]),
             stowed: (vec![("h".to_owned(), buoy("i"))], 2),
-            tether: TetherDraft { id: texts(&["j"]) }.validate().unwrap(),
+            tether: TetherDraft { id: texts(&["j"]) }.into(),
         })
     );
     assert_eq!(
         read_back(&TetheredDraft {
-            queue: VecDeque::from([TetherDraft { id: "k".to_owned() }.validate().unwrap()]),
+            queue: VecDeque::from([TetherDraft { id: "k".to_owned() }.into()]),
         }),
         read_back(&TetheredAsVecDraft {
-            queue: vec![TetherDraft { id: "k".to_owned() }.validate().unwrap()],
+            queue: vec![TetherDraft { id: "k".to_owned() }.into()],
         })
     );
     for (held, as_vec) in [

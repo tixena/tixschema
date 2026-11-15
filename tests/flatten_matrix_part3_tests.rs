@@ -202,10 +202,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CAW10NNDraft { b: 45 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CAW10NNDraft { b: 45 }.into())),
             ]
         }
     }
@@ -240,10 +237,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CAW10SSDraft { b: 45 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CAW10SSDraft { b: 45 }.into())),
             ]
         }
     }
@@ -288,23 +282,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 80,
-                        inner: CFTI10NNNDraft::Rect { a: 82 }.validate().unwrap(),
+                        inner: CFTI10NNNDraft::Rect { a: 82 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 80,
-                        inner: CFTI10NNNDraft::Dot.validate().unwrap(),
+                        inner: CFTI10NNN::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 80,
-                        inner: CFTI10NNNDraft::Wrap(CFTW10NNNDraft { b: 85 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: CFTI10NNNDraft::Wrap(CFTW10NNNDraft { b: 85 }.into()).into(),
                     },
                 ),
             ]
@@ -341,10 +333,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 50 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CTW10NNDraft { b: 55 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CTW10NNDraft { b: 55 }.into())),
             ]
         }
     }
@@ -381,10 +370,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CEW11NNDraft { b: 36 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CEW11NNDraft { b: 36 }.into())),
             ]
         }
     }
@@ -421,10 +407,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CEW11SSDraft { b: 36 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CEW11SSDraft { b: 36 }.into())),
             ]
         }
     }
@@ -462,8 +445,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: CFOX11NNDraft { a: 111 }.validate().unwrap(),
-                    y: CFOY11NNDraft { b: 136 }.validate().unwrap(),
+                    x: CFOX11NNDraft { a: 111 }.into(),
+                    y: CFOY11NNDraft { b: 136 }.into(),
                 },
             )]
         }
@@ -497,7 +480,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 111,
-                    inner: CFPI11NNDraft { a: 76 }.validate().unwrap(),
+                    inner: CFPI11NNDraft { a: 76 }.into(),
                 },
             )]
         }
@@ -575,10 +558,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CEW10NNDraft { b: 35 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CEW10NNDraft { b: 35 }.into())),
             ]
         }
     }
@@ -613,10 +593,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CAW11NNDraft { b: 46 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CAW11NNDraft { b: 46 }.into())),
             ]
         }
     }
@@ -651,10 +628,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CAW11SSDraft { b: 46 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CAW11SSDraft { b: 46 }.into())),
             ]
         }
     }
@@ -699,23 +673,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 81,
-                        inner: CFTI11NNNDraft::Rect { a: 83 }.validate().unwrap(),
+                        inner: CFTI11NNNDraft::Rect { a: 83 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 81,
-                        inner: CFTI11NNNDraft::Dot.validate().unwrap(),
+                        inner: CFTI11NNN::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 81,
-                        inner: CFTI11NNNDraft::Wrap(CFTW11NNNDraft { b: 86 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: CFTI11NNNDraft::Wrap(CFTW11NNNDraft { b: 86 }.into()).into(),
                     },
                 ),
             ]
@@ -752,10 +724,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 51 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CTW11NNDraft { b: 56 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CTW11NNDraft { b: 56 }.into())),
             ]
         }
     }
@@ -790,10 +759,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 51 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CTW11SSDraft { b: 56 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CTW11SSDraft { b: 56 }.into())),
             ]
         }
     }
@@ -830,10 +796,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(CEW10SSDraft { b: 35 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(CEW10SSDraft { b: 35 }.into())),
             ]
         }
     }
@@ -871,8 +834,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: CFOX10NNDraft { a: 110 }.validate().unwrap(),
-                    y: CFOY10NNDraft { b: 135 }.validate().unwrap(),
+                    x: CFOX10NNDraft { a: 110 }.into(),
+                    y: CFOY10NNDraft { b: 135 }.into(),
                 },
             )]
         }
@@ -906,7 +869,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 110,
-                    inner: CFPI10NNDraft { a: 75 }.validate().unwrap(),
+                    inner: CFPI10NNDraft { a: 75 }.into(),
                 },
             )]
         }
@@ -1022,7 +985,7 @@ mod holders {
                 ("Rect".to_owned(), Self::Rect { a: 110 }),
                 (
                     "Wrap".to_owned(),
-                    Self::Wrap(CVW10NNDraft { b: 145 }.validate().unwrap()),
+                    Self::Wrap(CVW10NNDraft { b: 145 }.into()),
                 ),
             ]
         }
@@ -1058,10 +1021,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(AW0NNDraft { b: 35 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(AW0NNDraft { b: 35 }.into())),
             ]
         }
     }
@@ -1096,10 +1056,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 30 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(AW0SSDraft { b: 35 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(AW0SSDraft { b: 35 }.into())),
             ]
         }
     }
@@ -1136,10 +1093,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 20 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(EW0NNDraft { b: 25 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(EW0NNDraft { b: 25 }.into())),
             ]
         }
     }
@@ -1176,10 +1130,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 20 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(EW0SSDraft { b: 25 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(EW0SSDraft { b: 25 }.into())),
             ]
         }
     }
@@ -1217,8 +1168,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX0NNDraft { a: 120 }.validate().unwrap(),
-                    y: FOY0NNDraft { b: 125 }.validate().unwrap(),
+                    x: FOX0NNDraft { a: 120 }.into(),
+                    y: FOY0NNDraft { b: 125 }.into(),
                 },
             )]
         }
@@ -1257,8 +1208,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX0SSDraft { a: 120 }.validate().unwrap(),
-                    y: FOY0SSDraft { b: 125 }.validate().unwrap(),
+                    x: FOX0SSDraft { a: 120 }.into(),
+                    y: FOY0SSDraft { b: 125 }.into(),
                 },
             )]
         }
@@ -1292,7 +1243,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 60,
-                    inner: FPI0NNDraft { a: 65 }.validate().unwrap(),
+                    inner: FPI0NNDraft { a: 65 }.into(),
                 },
             )]
         }
@@ -1326,7 +1277,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 60,
-                    inner: FPI0SSDraft { a: 65 }.validate().unwrap(),
+                    inner: FPI0SSDraft { a: 65 }.into(),
                 },
             )]
         }
@@ -1372,23 +1323,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NNNDraft::Rect { a: 72 }.validate().unwrap(),
+                        inner: FTI0NNNDraft::Rect { a: 72 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NNNDraft::Dot.validate().unwrap(),
+                        inner: FTI0NNN::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NNNDraft::Wrap(FTW0NNNDraft { b: 75 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: FTI0NNNDraft::Wrap(FTW0NNNDraft { b: 75 }.into()).into(),
                     },
                 ),
             ]
@@ -1505,10 +1454,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW0NNDraft { b: 45 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW0NNDraft { b: 45 }.into())),
             ]
         }
     }
@@ -1543,10 +1489,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 40 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW0SSDraft { b: 45 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW0SSDraft { b: 45 }.into())),
             ]
         }
     }
@@ -1579,10 +1522,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 130 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW0NNDraft { b: 135 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW0NNDraft { b: 135 }.into())),
             ]
         }
     }
@@ -1617,10 +1557,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(AW1NNDraft { b: 36 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(AW1NNDraft { b: 36 }.into())),
             ]
         }
     }
@@ -1655,10 +1592,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 31 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(AW1SSDraft { b: 36 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(AW1SSDraft { b: 36 }.into())),
             ]
         }
     }
@@ -1695,10 +1629,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 21 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(EW1NNDraft { b: 26 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(EW1NNDraft { b: 26 }.into())),
             ]
         }
     }
@@ -1735,10 +1666,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 21 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(EW1SSDraft { b: 26 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(EW1SSDraft { b: 26 }.into())),
             ]
         }
     }
@@ -1776,8 +1704,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX1NNDraft { a: 121 }.validate().unwrap(),
-                    y: FOY1NNDraft { b: 126 }.validate().unwrap(),
+                    x: FOX1NNDraft { a: 121 }.into(),
+                    y: FOY1NNDraft { b: 126 }.into(),
                 },
             )]
         }
@@ -1816,8 +1744,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX1SSDraft { a: 121 }.validate().unwrap(),
-                    y: FOY1SSDraft { b: 126 }.validate().unwrap(),
+                    x: FOX1SSDraft { a: 121 }.into(),
+                    y: FOY1SSDraft { b: 126 }.into(),
                 },
             )]
         }
@@ -1851,7 +1779,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 61,
-                    inner: FPI1NNDraft { a: 66 }.validate().unwrap(),
+                    inner: FPI1NNDraft { a: 66 }.into(),
                 },
             )]
         }
@@ -1885,7 +1813,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 61,
-                    inner: FPI1SSDraft { a: 66 }.validate().unwrap(),
+                    inner: FPI1SSDraft { a: 66 }.into(),
                 },
             )]
         }
@@ -1931,23 +1859,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNNDraft::Rect { a: 73 }.validate().unwrap(),
+                        inner: FTI1NNNDraft::Rect { a: 73 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNNDraft::Dot.validate().unwrap(),
+                        inner: FTI1NNN::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNNDraft::Wrap(FTW1NNNDraft { b: 76 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: FTI1NNNDraft::Wrap(FTW1NNNDraft { b: 76 }.into()).into(),
                     },
                 ),
             ]
@@ -2064,10 +1990,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW1NNDraft { b: 46 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW1NNDraft { b: 46 }.into())),
             ]
         }
     }
@@ -2102,10 +2025,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW1SSDraft { b: 46 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW1SSDraft { b: 46 }.into())),
             ]
         }
     }
@@ -2138,10 +2058,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 131 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW1NNDraft { b: 136 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW1NNDraft { b: 136 }.into())),
             ]
         }
     }
@@ -2174,10 +2091,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 131 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW1SSDraft { b: 136 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW1SSDraft { b: 136 }.into())),
             ]
         }
     }
@@ -2212,10 +2126,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 32 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(AW2NNDraft { b: 37 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(AW2NNDraft { b: 37 }.into())),
             ]
         }
     }
@@ -2250,10 +2161,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 32 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(AW2SSDraft { b: 37 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(AW2SSDraft { b: 37 }.into())),
             ]
         }
     }
@@ -2290,10 +2198,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 22 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(EW2NNDraft { b: 27 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(EW2NNDraft { b: 27 }.into())),
             ]
         }
     }
@@ -2330,10 +2235,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 22 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(EW2SSDraft { b: 27 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(EW2SSDraft { b: 27 }.into())),
             ]
         }
     }
@@ -2371,8 +2273,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX2NNDraft { a: 122 }.validate().unwrap(),
-                    y: FOY2NNDraft { b: 127 }.validate().unwrap(),
+                    x: FOX2NNDraft { a: 122 }.into(),
+                    y: FOY2NNDraft { b: 127 }.into(),
                 },
             )]
         }
@@ -2411,8 +2313,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX2SSDraft { a: 122 }.validate().unwrap(),
-                    y: FOY2SSDraft { b: 127 }.validate().unwrap(),
+                    x: FOX2SSDraft { a: 122 }.into(),
+                    y: FOY2SSDraft { b: 127 }.into(),
                 },
             )]
         }
@@ -2446,7 +2348,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 62,
-                    inner: FPI2NNDraft { a: 67 }.validate().unwrap(),
+                    inner: FPI2NNDraft { a: 67 }.into(),
                 },
             )]
         }
@@ -2480,7 +2382,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 62,
-                    inner: FPI2SSDraft { a: 67 }.validate().unwrap(),
+                    inner: FPI2SSDraft { a: 67 }.into(),
                 },
             )]
         }
@@ -2526,23 +2428,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 72,
-                        inner: FTI2NNNDraft::Rect { a: 74 }.validate().unwrap(),
+                        inner: FTI2NNNDraft::Rect { a: 74 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 72,
-                        inner: FTI2NNNDraft::Dot.validate().unwrap(),
+                        inner: FTI2NNN::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 72,
-                        inner: FTI2NNNDraft::Wrap(FTW2NNNDraft { b: 77 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: FTI2NNNDraft::Wrap(FTW2NNNDraft { b: 77 }.into()).into(),
                     },
                 ),
             ]
@@ -2659,10 +2559,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 42 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW2NNDraft { b: 47 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW2NNDraft { b: 47 }.into())),
             ]
         }
     }
@@ -2697,10 +2594,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 42 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW2SSDraft { b: 47 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW2SSDraft { b: 47 }.into())),
             ]
         }
     }
@@ -2733,10 +2627,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 132 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW2NNDraft { b: 137 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW2NNDraft { b: 137 }.into())),
             ]
         }
     }
@@ -2769,10 +2660,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 132 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW2SSDraft { b: 137 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW2SSDraft { b: 137 }.into())),
             ]
         }
     }
@@ -2810,8 +2698,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX0NSDraft { a: 120 }.validate().unwrap(),
-                    y: FOY0NSDraft { b: 125 }.validate().unwrap(),
+                    x: FOX0NSDraft { a: 120 }.into(),
+                    y: FOY0NSDraft { b: 125 }.into(),
                 },
             )]
         }
@@ -2845,7 +2733,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 60,
-                    inner: FPI0NSDraft { a: 65 }.validate().unwrap(),
+                    inner: FPI0NSDraft { a: 65 }.into(),
                 },
             )]
         }
@@ -2891,23 +2779,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NSNDraft::Rect { a: 72 }.validate().unwrap(),
+                        inner: FTI0NSNDraft::Rect { a: 72 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NSNDraft::Dot.validate().unwrap(),
+                        inner: FTI0NSN::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 70,
-                        inner: FTI0NSNDraft::Wrap(FTW0NSNDraft { b: 75 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: FTI0NSNDraft::Wrap(FTW0NSNDraft { b: 75 }.into()).into(),
                     },
                 ),
             ]
@@ -2942,10 +2828,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 130 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW0SNDraft { b: 135 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW0SNDraft { b: 135 }.into())),
             ]
         }
     }
@@ -2983,8 +2866,8 @@ mod holders {
             vec![(
                 "-".to_owned(),
                 Self {
-                    x: FOX1SNDraft { a: 121 }.validate().unwrap(),
-                    y: FOY1SNDraft { b: 126 }.validate().unwrap(),
+                    x: FOX1SNDraft { a: 121 }.into(),
+                    y: FOY1SNDraft { b: 126 }.into(),
                 },
             )]
         }
@@ -3018,7 +2901,7 @@ mod holders {
                 "-".to_owned(),
                 Self {
                     own: 61,
-                    inner: FPI1NSDraft { a: 66 }.validate().unwrap(),
+                    inner: FPI1NSDraft { a: 66 }.into(),
                 },
             )]
         }
@@ -3064,23 +2947,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNSDraft::Rect { a: 73 }.validate().unwrap(),
+                        inner: FTI1NNSDraft::Rect { a: 73 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNSDraft::Dot.validate().unwrap(),
+                        inner: FTI1NNS::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NNSDraft::Wrap(FTW1NNSDraft { b: 76 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: FTI1NNSDraft::Wrap(FTW1NNSDraft { b: 76 }.into()).into(),
                     },
                 ),
             ]
@@ -3127,23 +3008,21 @@ mod holders {
                     "Rect".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NSSDraft::Rect { a: 73 }.validate().unwrap(),
+                        inner: FTI1NSSDraft::Rect { a: 73 }.into(),
                     },
                 ),
                 (
                     "Dot".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NSSDraft::Dot.validate().unwrap(),
+                        inner: FTI1NSS::Dot,
                     },
                 ),
                 (
                     "Wrap".to_owned(),
                     Self {
                         own: 71,
-                        inner: FTI1NSSDraft::Wrap(FTW1NSSDraft { b: 76 }.validate().unwrap())
-                            .validate()
-                            .unwrap(),
+                        inner: FTI1NSSDraft::Wrap(FTW1NSSDraft { b: 76 }.into()).into(),
                     },
                 ),
             ]
@@ -3180,10 +3059,7 @@ mod holders {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 41 }),
                 ("Dot".to_owned(), Self::Dot),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(TW1NSDraft { b: 46 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(TW1NSDraft { b: 46 }.into())),
             ]
         }
     }
@@ -3216,10 +3092,7 @@ mod holders {
         fn samples() -> Vec<(String, Self)> {
             vec![
                 ("Rect".to_owned(), Self::Rect { a: 131 }),
-                (
-                    "Wrap".to_owned(),
-                    Self::Wrap(VW1NSDraft { b: 136 }.validate().unwrap()),
-                ),
+                ("Wrap".to_owned(), Self::Wrap(VW1NSDraft { b: 136 }.into())),
             ]
         }
     }

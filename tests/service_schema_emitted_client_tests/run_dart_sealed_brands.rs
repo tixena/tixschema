@@ -169,7 +169,7 @@ fn a_second_library_builds_a_tuple_struct_and_an_alias_and_reads_them() {
 fn of_and_from_json_refuse_what_rust_refuses_with_its_messages() {
     let rust = PennantText::new(String::new()).unwrap_err().join("; ");
     let late = PennantLate::new("a".to_owned()).unwrap_err().join("; ");
-    let user = "import 'dart:convert';\nimport 'holders.dart';\nimport 'models.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  }\n  return 'built';\n}\n\nvoid main() {\n  print(refused(() => PennantText.of('')));\n  print(PennantText.of('Shipping').value);\n  print(refused(() => Pennant.fromJson(jsonDecode('{\"text\":\"\",\"fly\":{\"late\":\"ab\"}}'))));\n  print(refused(() => Pennant.fromJson(jsonDecode('{\"text\":\"x\",\"fly\":{\"late\":\"a\"}}'))));\n  print(jsonEncode(Pennant.fromJson(jsonDecode('{\"text\":\"x\",\"fly\":{\"late\":\"ab\"}}'))));\n}\n";
+    let user = "import 'dart:convert';\nimport 'holders.dart';\nimport 'models.dart';\n\nString refused(void Function() build) {\n  try {\n    build();\n  } on FormatException catch (e) {\n    return e.message;\n  } on Exception catch (e) {\n    return ((e as dynamic).issues as List<String>).join('; ');\n  }\n  return 'built';\n}\n\nvoid main() {\n  print(refused(() => PennantText.of('')));\n  print(PennantText.of('Shipping').value);\n  print(refused(() => Pennant.fromJson(jsonDecode('{\"text\":\"\",\"fly\":{\"late\":\"ab\"}}'))));\n  print(refused(() => Pennant.fromJson(jsonDecode('{\"text\":\"x\",\"fly\":{\"late\":\"a\"}}'))));\n  print(jsonEncode(Pennant.fromJson(jsonDecode('{\"text\":\"x\",\"fly\":{\"late\":\"ab\"}}'))));\n}\n";
     let Some((ran, printed)) = dart_files(
         "sealed-run",
         &[],

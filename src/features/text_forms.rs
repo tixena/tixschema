@@ -8,6 +8,15 @@
 //! The patterns are those of Zod 4.6.5, written with `\d` for an ASCII digit. The JSON Schema
 //! holds a time and a date and time with no zone to the form serde writes through them as well.
 
+#[cfg(all(
+    feature = "chrono",
+    any(
+        all(feature = "dart", feature = "chrono"),
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+use crate::field_type::Zone;
 #[cfg(any(
     all(feature = "dart", feature = "chrono"),
     feature = "swift",
@@ -57,6 +66,9 @@ pub enum TextForm {
     Date,
     #[cfg(feature = "chrono")]
     DateTime,
+    /// A `DateTime<Tz>` of a zone but `Utc`, which chrono writes in the offset it holds.
+    #[cfg(feature = "chrono")]
+    Offset,
     #[cfg(feature = "chrono")]
     Time,
     /// A `DateTime<Tz>` a client holds as its text: read as any text, as Zod reads any text a
@@ -78,7 +90,7 @@ impl TextForm {
             #[cfg(feature = "chrono")]
             Self::Time => "a time",
             #[cfg(feature = "chrono")]
-            Self::Zoned => "a date and time with its zone",
+            Self::Zoned | Self::Offset => "a date and time with its zone",
         }
     }
 
@@ -104,7 +116,10 @@ impl TextForm {
                 .model_schema_prop_meta
                 .as_ref()
                 .is_some_and(|meta| meta.as_number))
-            .then_some(Self::Zoned),
+            .then_some(match field.zone {
+                Zone::Utc => Self::Zoned,
+                Zone::Other => Self::Offset,
+            }),
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => None,
             FieldDefType::SiblingType(_, _)
@@ -183,7 +198,7 @@ impl TextForm {
             #[cfg(feature = "chrono")]
             Self::Time => Some(TIME.to_owned()),
             #[cfg(feature = "chrono")]
-            Self::Zoned => None,
+            Self::Zoned | Self::Offset => None,
         }
     }
 
@@ -232,7 +247,7 @@ impl TextForm {
             #[cfg(feature = "chrono")]
             Self::Time => Some(TIME_SENT.to_owned()),
             #[cfg(feature = "chrono")]
-            Self::Zoned => Some(format!("{DATE}T{TIME_SENT}{OFFSET}")),
+            Self::Zoned | Self::Offset => Some(format!("{DATE}T{TIME_SENT}{OFFSET}")),
         }
     }
 
@@ -257,7 +272,7 @@ impl TextForm {
             #[cfg(feature = "chrono")]
             Self::Time => Some(format!("({HOUR_MINUTE})()")),
             #[cfg(feature = "chrono")]
-            Self::Zoned => Some(format!("({DATE}T{HOUR_MINUTE})({OFFSET})")),
+            Self::Zoned | Self::Offset => Some(format!("({DATE}T{HOUR_MINUTE})({OFFSET})")),
         }
     }
 
@@ -275,7 +290,7 @@ impl TextForm {
         match self {
             Self::Char => false,
             #[cfg(feature = "chrono")]
-            Self::Date | Self::Time | Self::Zoned => false,
+            Self::Date | Self::Time | Self::Zoned | Self::Offset => false,
             #[cfg(feature = "chrono")]
             Self::DateTime => true,
         }

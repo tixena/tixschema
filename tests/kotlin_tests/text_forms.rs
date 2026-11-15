@@ -29,6 +29,10 @@ const TIME_SENT: &str = r"(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?";
 /// The zone of a date and time, as Kotlin source writes it.
 const OFFSET: &str = r"(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)";
 
+/// The member that writes a date and time with its zone as chrono does, in the source of a
+/// `DateTime<Utc>`'s serializer.
+const ZONED_WRITER: &str = r#"private fun written(text: String, utc: Boolean): String { val moment = try { java.time.OffsetDateTime.parse(text.replace(Regex("(\\.\\d{9})\\d+"), "\$1")) } catch (refused: java.time.format.DateTimeParseException) { throw SerializationException("expected a date and time with its zone, found " + JsonPrimitive(text)) }; val at = if (utc) moment.withOffsetSameInstant(java.time.ZoneOffset.UTC) else moment; val nanos = at.nano; val fraction = when { nanos == 0 -> ""; nanos % 1000000 == 0 -> "." + (nanos / 1000000).toString().padStart(3, '0'); nanos % 1000 == 0 -> "." + (nanos / 1000).toString().padStart(6, '0'); else -> "." + nanos.toString().padStart(9, '0') }; val seconds = at.offset.totalSeconds; val zone = if (seconds == 0) "Z" else (if (seconds < 0) "-" else "+") + String.format(java.util.Locale.ROOT, "%02d:%02d", kotlin.math.abs(seconds) / 3600, kotlin.math.abs(seconds) % 3600 / 60); return at.format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss")) + fraction + zone }; "#;
+
 /// The `Regex` property `named` of a serializer over `pattern`.
 fn matched(named: &str, pattern: &str) -> String {
     format!("private val {named} = Regex(\"{pattern}\"); ")
@@ -209,10 +213,11 @@ fn a_time_and_a_date_and_time_are_read_through_their_form_in_every_place() {
             &[
                 matched("sending", &format!("{DATE}T{TIME_SENT}{OFFSET}")),
                 matched("unsecond", &format!("({DATE}T{HOUR_MINUTE})({OFFSET})")),
+                ZONED_WRITER.to_owned(),
             ]
             .concat(),
             unseconded("value"),
-            "sent",
+            "written(sent, true)",
             None,
             "a date and time with its zone"
         )),

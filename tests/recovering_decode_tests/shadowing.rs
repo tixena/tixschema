@@ -47,8 +47,7 @@ fn ticket() -> Ticket {
             .unwrap(),
         ],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]

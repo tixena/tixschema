@@ -1,7 +1,6 @@
 //! A `DateTime<Tz>` read and written back by the emitted Kotlin types compiled with `-Werror`
 //! against serde: a date of whole seconds, of milliseconds, in a list, as a map's key and value, in
-//! a tuple's slot and in a variant's slot, and an optional date under `as_number`. Kotlin holds
-//! the text as written, so what it writes is read by serde to the instant it was handed.
+//! //! a tuple's slot and in a variant's slot, and an optional date under `as_number`.
 
 #![cfg(all(feature = "kotlin", feature = "chrono"))]
 

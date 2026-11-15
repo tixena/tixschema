@@ -311,13 +311,12 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeErrorDraft::DbError.validate().unwrap())
+            Err(ProbeError::DbError)
         } else {
             Ok(BalanceResponseDraft {
                 invoices: self.billed_invoices + u32::try_from(seen).unwrap_or(0),
             }
-            .validate()
-            .unwrap())
+            .into())
         }
     }
 
@@ -326,8 +325,7 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
         Ok(BalanceResponseDraft {
             invoices: self.billed_invoices,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn void_invoice(
@@ -338,13 +336,12 @@ impl ProbeService<ProbeContext> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         let seen = ready(customer_id.len() + invoice_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(ProbeErrorDraft::InsufficientBalance.validate().unwrap())
+            Err(ProbeError::InsufficientBalance)
         } else {
             Ok(BalanceResponseDraft {
                 invoices: u32::try_from(seen).unwrap_or(0),
             }
-            .validate()
-            .unwrap())
+            .into())
         }
     }
 }

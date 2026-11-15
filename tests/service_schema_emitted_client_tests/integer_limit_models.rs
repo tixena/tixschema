@@ -88,7 +88,7 @@ pub const ROWS: [(&str, &str, &str); 16] = [
     (
         "wide floats past",
         "LimitWide",
-        r#"{"held":4000000000.0,"single":1.0,"spelled":4000000000.0,"sunk":-4000000000.0,"vast":1.0,"whole":4000000000.0}"#,
+        r#"{"held":4000000000.0,"single":4000000000.0,"spelled":4000000000.0,"sunk":-4000000000.0,"vast":1.0,"whole":4000000000.0}"#,
     ),
 ];
 
@@ -121,6 +121,7 @@ wide floats within: passes
 wide floats at the limit: passes
 wide floats past: refused
     'held': too large: maximum is 3000000000, got 4000000000
+    'single': too large: maximum is 3000000000, got 4000000000
     'spelled': too large: maximum is 3000000000, got 4000000000
     'sunk': too small: minimum is -3000000000, got -4000000000
     'whole': too large: maximum is 3000000000, got 4000000000

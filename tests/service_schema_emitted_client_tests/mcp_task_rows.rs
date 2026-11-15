@@ -134,7 +134,7 @@ impl JobService<()> for Stand {
     ) -> impl Future<Output = Result<(), JobError>> {
         self.reach(json!(["answer-export", task_id, key, action, content]));
         ready(if task_id == "gone" {
-            Err(JobErrorDraft::NotFound.validate().unwrap())
+            Err(JobError::NotFound)
         } else {
             Ok(())
         })
@@ -147,7 +147,7 @@ impl JobService<()> for Stand {
     ) -> impl Future<Output = Result<(), JobError>> {
         self.reach(json!(["cancel-export", task_id]));
         ready(if task_id == "gone" {
-            Err(JobErrorDraft::NotFound.validate().unwrap())
+            Err(JobError::NotFound)
         } else {
             Ok(())
         })
@@ -173,7 +173,7 @@ impl JobService<()> for Stand {
                 FINISHED.clone_into(&mut task.last_updated_at);
                 Ok(McpTaskState::Completed {
                     task,
-                    result: ExportReportDraft { files: 3 }.validate().unwrap(),
+                    result: ExportReportDraft { files: 3 }.into(),
                 })
             }
             "needs" => Ok(McpTaskState::InputRequired {
@@ -202,7 +202,7 @@ impl JobService<()> for Stand {
             "stopped" => Ok(McpTaskState::Cancelled {
                 task: Self::task(&task_id),
             }),
-            _ => Err(JobErrorDraft::NotFound.validate().unwrap()),
+            _ => Err(JobError::NotFound),
         })
     }
 
@@ -213,7 +213,7 @@ impl JobService<()> for Stand {
     ) -> impl Future<Output = Result<job_service_schema::McpTask, JobError>> {
         self.reach(json!(["start-export", req.folder]));
         ready(if req.folder == "missing" {
-            Err(JobErrorDraft::NotFound.validate().unwrap())
+            Err(JobError::NotFound)
         } else {
             Ok(Self::task("7f3a"))
         })

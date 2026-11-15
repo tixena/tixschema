@@ -357,16 +357,15 @@ fn an_untagged_list_member_is_read_through_the_hook_that_counts_it() {
                 .validate()
                 .unwrap()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let many =
         BoundedChooser::from_bson_with(doc! { "choice": ["a", "b", "c"] }, |_, _| Verdict::Reject);
     assert_eq!(
         many.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
         [
-            "choice: no variant: found Array([String(\"a\"), String(\"b\"), String(\"c\")]), \
-             tried Few, Text"
+            "choice: invalid: expected Array(String), found Array([String(\"a\"), String(\"b\"), \
+             String(\"c\")]): too long: maximum length is 2, got 3"
         ]
     );
 }
@@ -432,8 +431,7 @@ fn a_broken_bound_in_a_tuple_structs_slot_is_listed_at_the_slot() {
             lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
             pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let broken =
@@ -490,8 +488,7 @@ fn a_callback_that_sets_a_tuple_structs_slots_at_their_paths_recovers_the_read()
             lone: BoundedLoneDraft("ok".to_owned()).validate().unwrap(),
             pair: BoundedPairDraft("ab".to_owned(), 1).validate().unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -533,10 +530,10 @@ fn a_callback_that_removes_what_breaks_a_bound_recovers_the_read() {
     );
 }
 
-/// A title that breaks two bounds is one issue at its path, its reason both violations joined by
-/// `; `, and one repair of the value settles the read.
+/// A title that breaks two bounds is two issues at its path, one reason each, and a callback that
+/// sets the value at the path of an issue settles the read.
 #[test]
-fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
+fn a_value_that_breaks_two_bounds_is_two_issues_at_its_path() {
     use bounded_group_schema::{Issue, Stored as _, Verdict};
 
     let stored = || {
@@ -551,7 +548,9 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
             .collect::<Vec<&str>>(),
         [
             "title: invalid: expected String, found String(\"LONG\"): too long: maximum length is \
-             3, got 4; does not match pattern '^[a-z]+$'"
+             3, got 4",
+            "title: invalid: expected String, found String(\"LONG\"): does not match pattern \
+             '^[a-z]+$'",
         ]
     );
 
@@ -563,6 +562,12 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
                 found: _found,
                 reason: _reason,
             },
+            Issue::Invalid {
+                path: _same,
+                expected: _also_expected,
+                found: _also_found,
+                reason: _other_reason,
+            },
         ] = found
         else {
             return Verdict::Reject;
@@ -573,14 +578,15 @@ fn a_value_that_breaks_two_bounds_is_one_issue_at_its_path() {
     assert_eq!(set_once.unwrap().title, "aa");
 }
 
-/// A slot of a tuple variant that breaks two bounds is one issue, so a callback that removes the
-/// value at each issue's path takes that slot out of the array alone.
+/// A slot of a tuple variant that breaks two bounds is two issues at one path, so a callback that
+/// removes the value at the path of each distinct issue takes that slot out of the array alone.
 #[test]
 fn a_slot_that_breaks_two_bounds_is_removed_alone() {
     use bounded_slots_schema::{Issue, Stored as _, Verdict};
 
     let mut left = Document::new();
     let read = BoundedSlots::from_bson_with(doc! { "Titled": ["LONG", 1_i32] }, |raw, found| {
+        let mut removed = Vec::new();
         for issue in found {
             if let Issue::Invalid {
                 path,
@@ -588,8 +594,10 @@ fn a_slot_that_breaks_two_bounds_is_removed_alone() {
                 found: _found,
                 reason: _reason,
             } = issue
+                && !removed.contains(&path)
             {
                 raw.remove_at(path);
+                removed.push(path);
             }
         }
         left = raw.clone();
@@ -599,7 +607,9 @@ fn a_slot_that_breaks_two_bounds_is_removed_alone() {
         read.unwrap_err().to_string().lines().collect::<Vec<&str>>(),
         [
             "Titled[0]: invalid: expected String, found String(\"LONG\"): too long: maximum \
-             length is 3, got 4; does not match pattern '^[a-z]+$'"
+             length is 3, got 4",
+            "Titled[0]: invalid: expected String, found String(\"LONG\"): does not match \
+             pattern '^[a-z]+$'",
         ]
     );
     assert_eq!(left, doc! { "Titled": [1_i32] });

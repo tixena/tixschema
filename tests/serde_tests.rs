@@ -17,6 +17,11 @@ mod tagged_struct;
 mod kotlin_pathed;
 
 #[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "support/kotlin_thrown.rs"]
+mod kotlin_thrown;
+
+#[cfg(test)]
 #[cfg(feature = "serde")]
 #[path = "serde_tests/tests.rs"]
 mod tests;

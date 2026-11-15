@@ -63,13 +63,12 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
     ) -> Result<PathBoundDocument, PathBoundError> {
         ready(()).await;
         if id == "missing" {
-            return Err(PathBoundErrorDraft::NotFound.validate().unwrap());
+            return Err(PathBoundError::NotFound);
         }
         Ok(PathBoundDocumentDraft {
             title: format!("{org}/{id}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn list_documents(
@@ -82,8 +81,7 @@ impl PathBoundBesideQueryService<()> for BesideQueryBackEnd {
         Ok(PathBoundDocumentDraft {
             title: format!("{org} limit={limit:?}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -96,7 +94,13 @@ impl FaultHandler for RecordingFaultHandler {
         OutgoingResponse::new(
             499,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }

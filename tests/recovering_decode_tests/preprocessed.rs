@@ -158,8 +158,7 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
         Ok(StoredManifestDraft {
             parcel: parcel("A", &[])
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let flattened = StoredCrated::from_value_with(
         json!({ "dock": "north", "label": "A", "itemCodeList": ["x"] }),
@@ -171,8 +170,7 @@ fn an_issue_the_function_of_a_type_fixed_is_not_listed() {
             dock: "north".to_owned(),
             parcel: parcel("A", &[])
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -305,8 +303,7 @@ fn an_enum_is_taken_out_of_its_envelope_by_the_recovering_read() {
         Ok(StoredShipmentDraft::Air {
             flight: "F1".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 

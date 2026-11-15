@@ -23,12 +23,18 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// `dataCorrupted` the read throws, the type and the path of a `typeMismatch`, whose description
 /// Foundation words differently from one version to the next, or any other error.
 const TOLD: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
   do {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     let read = try JSONDecoder().decode(type, from: Data(payload.utf8))
     print("\(at): read \(String(data: try encoder.encode(read), encoding: .utf8)!)")
+  } catch let refused where issuesOf(refused) != nil {
+    print("\(at): \(Swift.type(of: refused)): \(issuesOf(refused)!.joined(separator: "; "))")
   } catch DecodingError.dataCorrupted(let context) {
     print("\(at): dataCorrupted: \(context.debugDescription)")
   } catch DecodingError.typeMismatch(let expected, let context) {
@@ -41,15 +47,16 @@ func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
 "#;
 
 /// What the Swift read answers of each payload of [`REFUSED`], in its order: a number beyond an
-/// `Int64` and a fraction in serde's words.
+/// `Int64` and a fraction in serde's words, and a value a bound or a literal refuses with its
+/// type's own refusal.
 const SWIFT_REFUSED: [&str; 8] = [
     "dataCorrupted: invalid value: integer `9223372036854775808`, expected i64",
     "typeMismatch: Int64 at ''",
     "dataCorrupted: invalid type: floating point `-9.223372036854776e+18`, expected i64",
     "dataCorrupted: invalid type: floating point `1.5`, expected i64",
-    "dataCorrupted: 'level': too large: maximum is 5, got 6",
+    "SixtyLevelRefusal: 'level': too large: maximum is 5, got 6",
     "dataCorrupted: invalid value: integer `9223372036854775808`, expected i64",
-    "dataCorrupted: 'fixed': not the literal 214, got 215",
+    "SixtyReachedRefusal: 'fixed': not the literal 214, got 215",
     "typeMismatch: Int64 at 'keyed.4'",
 ];
 

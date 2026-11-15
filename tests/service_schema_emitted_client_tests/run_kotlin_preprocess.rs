@@ -20,7 +20,7 @@ use tixschema::{model_schema, service_schema};
 use self::packet_client_service_schema::{
     packet_client_service_fault_fields_kotlin, packet_client_service_fault_kind_kotlin,
 };
-use super::runtime::{ran_kotlin, refused_by_kotlinc};
+use super::runtime::{held_through, ran_kotlin, refused_by_kotlinc};
 
 const KOTLIN_IMPORTS: &str = "import kotlinx.coroutines.*\n\
      import kotlinx.coroutines.flow.*\n\
@@ -109,12 +109,15 @@ fun withinLimit(value: ScaledDraft): List<String> =
 /// of what the read threw. `thrown` names what was thrown, and the first line of what the
 /// serialization library says of it.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun told(name: String, read: () -> String) {
     try {
         println("$name: read ${read()}")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 
@@ -192,7 +195,8 @@ a member of a variant under its name: read {\"Boxed\":{\"label\":\"A\"}}
 a slot of a variant under its name: read {\"Lone\":\"A\"}
 a member of an untagged variant: read {\"code\":\"ab\"}
 a slot of an untagged variant, within its bound: read \"a\"
-a slot of an untagged variant, past its bound: read \"  abc  \"
+a slot of an untagged variant, past its bound: refused
+    too long: maximum length is 2, got 3
 a slot of a tuple struct: read [\"A\",2]
 a member of a variant that reaches a parameter: read {\"kind\":\"Many\",\"detail\":{\"codes\":[\"x\"]}}
 a slot of a variant that reaches a parameter: read {\"kind\":\"One\",\"detail\":\"x\"}
@@ -238,6 +242,9 @@ fun made(answered: PacketClientServiceSentResult): JsonElement = when (answered)
     is PacketClientServiceSentResult.Fault -> buildJsonObject {
         put("kind", Json.encodeToJsonElement(serializer<PacketClientServiceFaultKind>(), answered.fault.kind))
         put("detail", answered.fault.detail)
+        answered.fault.issues?.let { listed ->
+            put("issues", JsonArray(listed.map { buildJsonObject { put("detail", it.detail); put("field", it.field) } }))
+        }
     }
 }
 
@@ -738,7 +745,7 @@ impl PacketClientService<()> for PacketBackEnd {
     async fn sent(&self, _ctx: &(), req: PacketRequest) -> Result<Packet, PacketError> {
         ready(()).await;
         if req.dock.is_empty() {
-            return Err(PacketErrorDraft::Closed.validate().unwrap());
+            return Err(PacketError::Closed);
         }
         Ok(PacketDraft {
             fragile_item_codes: Vec::new(),
@@ -1432,30 +1439,30 @@ fn each_client_reads_a_reply_through_the_functions_of_its_type() {
     };
     let (answered, listed) = printed.trim().split_once('\n').unwrap();
     let told: Value = serde_json::from_str(answered).unwrap();
-    let thrown = "kotlinx.serialization.SerializationException: 'label': too short: minimum \
-                  length is 1, got 0";
+    let thrown = "PacketRefusal: ['label': too short: minimum length is 1, got 0]";
     assert_eq!(
         told,
         json!({
             "httpCorrected": { "label": "A", "fragile": 0_u32 },
             "httpRefused": { "kind": "undeserializable-payload", "detail": thrown },
             "socketCorrected": { "label": "A", "fragile": 0_u32 },
-            "socketRefused": { "kind": "failed-validation", "detail": thrown }
+            "socketRefused": {
+                "kind": "failed-validation",
+                "detail": null,
+                "issues": [{ "detail": "too short: minimum length is 1, got 0", "field": "label" }]
+            }
         })
     );
     let of_a_list: Value = serde_json::from_str(listed).unwrap();
-    for (client, kind) in [
-        ("http", "undeserializable-payload"),
-        ("socket", "failed-validation"),
-    ] {
-        assert_eq!(of_a_list[client]["kind"], kind);
-        let detail = of_a_list[client]["detail"].as_str().unwrap();
-        assert_eq!(
-            detail,
-            "kotlinx.serialization.SerializationException: 'label': STRING cannot be read from \
-             an array at path: $.label"
-        );
-    }
+    let unread = "kotlinx.serialization.SerializationException: 'label': STRING cannot be read \
+                  from an array at path: $.label";
+    assert_eq!(of_a_list["http"]["kind"], "undeserializable-payload");
+    assert_eq!(of_a_list["http"]["detail"], unread);
+    assert_eq!(of_a_list["socket"]["kind"], "failed-validation");
+    assert_eq!(
+        of_a_list["socket"]["issues"],
+        json!([{ "detail": unread, "field": "label" }])
+    );
 }
 
 /// A name with no Kotlin function is the compiler's to refuse, at the call.
@@ -1491,10 +1498,11 @@ fn a_variant_under_a_tag_alone_reads_what_it_holds_through_its_functions() {
     );
     let emitted = handoff_kotlin::kotlin_definition();
     assert!(
-        emitted.contains(
+        emitted.contains(&format!(
             "@SerialName(\"Held\") @Serializable data class HandoffHeld(@Serializable(with = \
-             PacketUnjudged::class) val value: Packet) : Handoff"
-        ),
+             {}::class) val value: Packet) : Handoff",
+            held_through(&emitted, "Packet")
+        )),
         "got: {emitted}"
     );
 }
@@ -1547,8 +1555,7 @@ fn the_backend_answers_the_contract() {
                 PacketRequestDraft {
                     dock: dock.to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         )
         .unwrap()

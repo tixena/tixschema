@@ -174,8 +174,7 @@ impl UploadClientService<()> for UploadClientBackEnd {
         Ok(UploadResponseDraft {
             document_id: format!("{folder_id}/{title}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -209,8 +208,7 @@ fn a_multipart_call_builds_one_text_part_per_field_and_one_file_part_per_binding
         Ok(UploadResponseDraft {
             document_id: "doc-1".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         client.transport().requests(),
@@ -291,7 +289,6 @@ fn the_contract_is_implementable_where_no_dispatcher_was_placed() {
         Ok(UploadResponseDraft {
             document_id: "acme/report".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }

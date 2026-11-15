@@ -277,7 +277,7 @@ pub fn assert_rust_keeps_one_item() {
         ),
         "a count is held to what is left of each set, and a list keeps both items"
     );
-    let point = |x: u32, y: u32| PointDraft { x, y }.validate().unwrap();
+    let point = |x: u32, y: u32| PointDraft { x, y }.into();
     keeps(
         "nested repeated",
         NestingDraft {

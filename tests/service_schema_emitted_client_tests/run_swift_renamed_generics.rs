@@ -92,8 +92,7 @@ fn folio(leaf: &str) -> Folio<String> {
         leaf: leaf.to_owned(),
         page: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// `leaf` as a `String`.
@@ -107,8 +106,7 @@ fn tome() -> Tome<String> {
         folio: folio("a"),
         leaf: owned("b"),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The payloads of each alias, through each of its names.
@@ -242,45 +240,40 @@ fn variant_rows() -> Vec<Row> {
 /// The payloads of the holder declared above the types it holds and of the one declared below.
 fn holder_rows() -> Vec<Row> {
     let lectern = LecternDraft {
-        adjacent_scroll: AdjacentScrollDraft::Paired(owned("a"), 1)
-            .validate()
-            .unwrap(),
-        diptych: DiptychDraft(owned("b"), 2).validate().unwrap(),
+        adjacent_scroll: AdjacentScrollDraft::Paired(owned("a"), 1).into(),
+        diptych: DiptychDraft(owned("b"), 2).into(),
         scroll: ScrollDraft::Unrolled {
             folio: folio("c"),
             leaf: owned("d"),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         shelfmark: Shelfmark::new(owned("e")).unwrap(),
         spread: (owned("f"), 3),
-        tagged_scroll: TaggedScrollDraft::Bound(folio("g")).validate().unwrap(),
+        tagged_scroll: TaggedScrollDraft::Bound(folio("g")).into(),
         tome: tome(),
-        untagged_scroll: UntaggedScrollDraft::Sealed(owned("h")).validate().unwrap(),
+        untagged_scroll: UntaggedScrollDraft::Sealed(owned("h")).into(),
         volume: folio("i"),
     };
     let library = LibraryDraft {
-        adjacent_scroll: AdjacentScrollDraft::Sealed(owned("a")).validate().unwrap(),
+        adjacent_scroll: AdjacentScrollDraft::Sealed(owned("a")).into(),
         catalog: HashMap::from([(owned("b"), owned("c"))]),
-        diptych: DiptychDraft(owned("d"), 2).validate().unwrap(),
+        diptych: DiptychDraft(owned("d"), 2).into(),
         leaves: vec![owned("e")],
         margin: Some(owned("f")),
-        scroll: ScrollDraft::Paired(owned("g"), 3).validate().unwrap(),
+        scroll: ScrollDraft::Paired(owned("g"), 3).into(),
         shelfmark: Shelfmark::new(owned("h")).unwrap(),
         spread: (owned("i"), 4),
         tagged_scroll: TaggedScrollDraft::Unrolled {
             folio: folio("j"),
             leaf: owned("k"),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         tome: tome(),
         untagged_scroll: UntaggedScrollDraft::Unrolled {
             folio: folio("l"),
             leaf: owned("m"),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         volume: folio("n"),
     };
     vec![

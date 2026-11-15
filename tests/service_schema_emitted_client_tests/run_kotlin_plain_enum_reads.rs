@@ -29,13 +29,16 @@ fun affirmed(value: VerdictDraft): List<String> =
 "#;
 
 const HARNESS: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun <T> row(name: String, serializer: KSerializer<T>, payload: String, detail: Boolean) {
     try {
         val read = Json.decodeFromString(serializer, payload)
         println("$name: read ${Json.encodeToString(serializer, read)}")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        if (detail) (refused.message ?: "").split("; ").forEach { println("    $it") }
+        if (detail) issuesOf(refused).forEach { println("    $it") }
     }
 }
 "#;

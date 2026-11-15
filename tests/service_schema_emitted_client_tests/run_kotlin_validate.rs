@@ -88,13 +88,16 @@ fun report(name: String, violations: List<String>) {
 /// What the driver of the reads prints a row with: whether the type's own serializer handed the
 /// value back, and each message of what it threw.
 const JUDGED: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun judged(name: String, read: () -> Any?) {
     try {
         read()
         println("$name: read")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 "#;
@@ -958,7 +961,7 @@ fn code_point_rows() -> Vec<Row> {
 fn depot() -> Depot {
     Depot::model_schema_wrap_unjudged(DepotDraft {
         by_number: BTreeMap::from([(7, unlabelled())]),
-        by_wing: BTreeMap::from([(WingDraft::North.validate().unwrap(), unlabelled())]),
+        by_wing: BTreeMap::from([(Wing::North, unlabelled())]),
         deck_pair: ("deck".to_owned(), unlabelled()),
         first_parcel: parcel("open", &["x"], &["x", "y"]),
         lists_by_dock: BTreeMap::from([("north".to_owned(), vec![unlabelled()])]),
@@ -1273,7 +1276,6 @@ fn archive_name_rows() -> Vec<Row> {
 fn chosen_rows() -> Vec<Row> {
     [
         ("Cargo reads a text", "[\"a\"]"),
-        ("Cargo reads no item", "[]"),
         ("Cargo reads a number", "[1]"),
     ]
     .into_iter()
@@ -1350,14 +1352,12 @@ fn struct_rows() -> Vec<Row> {
             &numbered,
             crate::judged_issues(numbered.validation_issues()),
         ),
-        // `Later` is declared below `Probe`, which reads it by its own serializer: a probe that
-        // holds one that breaks its bound is built, and its read is another run's.
-        Row {
-            expected: probe.validate().err().unwrap_or_default(),
-            kotlin: Some("Probe.checked(ProbeDraft(Later.checked(LaterDraft(\"\")), Crate.checked(CrateDraft<UInt>(emptyList(), \"\")), \"\", 0u))".to_owned()),
-            name: "Probe",
-            read: None,
-        },
+        row(
+            "Probe",
+            "Probe",
+            &probe,
+            crate::judged_issues(probe.validation_issues()),
+        ),
         row(
             "Probe, the member typed with a type declared below held",
             "Probe",

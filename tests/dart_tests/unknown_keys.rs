@@ -8,7 +8,12 @@ pub const READ_AT: &str = "static Read _readAt<Read>(Map<String, dynamic>? objec
      !object.containsKey(key)) throw FormatException('missing field `$key`', <Object>[key]); if \
      (refused is TypeError) throw FormatException('$refused', <Object>[key]); if (refused is \
      FormatException) { final at = refused.source; throw FormatException(refused.message, \
-     <Object>[key, if (at is List<Object>) ...at]); } rethrow; } }";
+     <Object>[key, if (at is List<Object>) ...at]); } if (refused is Exception) { Object? listed; \
+     try { listed = (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if \
+     (listed is List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = \
+     listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = \
+     end > 0 ? \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': \
+     $said\"; } } } rethrow; } }";
 
 /// The helper a class reads the members it takes from content its holder buffers with, which words
 /// a refusal of the shape of an externally tagged enum's value as a value of the wrong kind.
@@ -52,26 +57,30 @@ pub fn plain_enum_read(named: &str, json: &str, arms: &str) -> String {
     )
 }
 
-/// The `validate()` of the draft of a plain enum `named`.
-pub fn plain_enum_validate(named: &str) -> String {
+/// A plain enum that names no check, declared as written: its `members`, and `reads`, which
+/// holds the two reads.
+pub fn plain_enum_text(named: &str, members: &str, reads: &str) -> String {
     format!(
-        "{named} validate() {{ final found = validationIssues(); if (found.isNotEmpty) throw \
-         FormatException(found.join('; ')); return {named}._(this); }} }}"
+        "enum {named} {{ {members}; const {named}(this.wireValue); final String wireValue; {reads} \
+         String toJson() => wireValue; List<String> validationIssues() => const []; static \
+         Object $thrown(Object thrown) => thrown; }}"
     )
 }
 
-/// The valid class over the draft of a plain enum `named` whose read judges nothing.
-pub fn plain_enum_valid(named: &str) -> String {
+/// The two reads of a plain enum that names no check and no function: `fromJson` reads, and
+/// `fromJsonUnjudged` is the same read.
+pub fn plain_enum_reads(named: &str, read: &str) -> String {
     format!(
-        "class {named} {{ const {named}._(this._draft); final {named}Draft _draft; {named}Draft \
-         toDraft() => _draft; factory {named}.fromJson(dynamic json) {{ final read = \
-         {named}Draft.fromJson(json); final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
-         {named}._(read); }} factory {named}.fromJsonUnjudged(dynamic json) => \
-         {named}._({named}Draft.fromJson(json)); String toJson() => _draft.toJson(); \
-         List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
-         ==(Object other) => other is {named} && other._draft == _draft; @override int get \
-         hashCode => _draft.hashCode; static Object $thrown(Object thrown) => thrown is \
-         {named}Draft ? thrown.validate() : thrown; }}"
+        "static {named} fromJson(dynamic json) {{ {read} }} static {named} \
+         fromJsonUnjudged(dynamic json) => fromJson(json);"
+    )
+}
+
+/// The two reads of a plain enum that names a function and no check: `fromJson` calls the read
+/// that `fromJsonUnjudged` is, which hands `payload` to the function first.
+pub fn plain_enum_corrected_reads(named: &str, correction: &str, read: &str) -> String {
+    format!(
+        "static {named} fromJson(dynamic json) => fromJsonUnjudged(json); static {named} \
+         fromJsonUnjudged(dynamic payload) {{ {correction} {read} }}"
     )
 }

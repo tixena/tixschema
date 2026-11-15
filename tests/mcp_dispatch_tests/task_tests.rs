@@ -592,8 +592,7 @@ fn the_client_reads_the_handle_and_the_state_as_ordinary_successes() {
             ExportRequestDraft {
                 folder: "reports".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -639,8 +638,7 @@ fn the_client_reads_a_declared_error_and_a_fault() {
             ExportRequestDraft {
                 folder: "missing".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     );
     assert!(
@@ -685,8 +683,8 @@ fn a_key_the_message_of_a_tool_of_no_argument_does_not_declare_is_refused_before
     assert_eq!(answered["result"]["isError"], true);
     assert_eq!(
         answered["result"]["content"][0]["text"],
-        "{\"fault\":{\"detail\":\"'stray': unknown field `stray`, there are no \
-         fields\",\"field\":\"stray\",\"kind\":\"failed-validation\",\"operation\":\"count-exports\"},\
+        "{\"fault\":{\"issues\":[{\"detail\":\"unknown field `stray`, there are no \
+         fields\",\"field\":\"stray\"}],\"kind\":\"failed-validation\",\"operation\":\"count-exports\"},\
          \"isServiceFault\":true}"
     );
     assert!(jobs.reached.lock().unwrap().is_empty());

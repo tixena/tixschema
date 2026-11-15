@@ -689,10 +689,18 @@ pub fn observed(matches: Match, answered: &str) -> String {
 }
 
 /// An answer whose fault, in a tool execution error or in the data of an error, is left without
-/// its `detail`.
+/// its `detail` and without the `detail` of each issue it lists.
 fn without_detail(answer: &Value) -> Value {
     let strip = |fault: &mut serde_json::Map<String, Value>| {
         fault.remove("detail");
+        for issue in fault
+            .get_mut("issues")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            issue.as_object_mut().unwrap().remove("detail");
+        }
     };
     let mut stripped = answer.clone();
     if let Some(fault) = stripped["error"]["data"]["fault"].as_object_mut() {

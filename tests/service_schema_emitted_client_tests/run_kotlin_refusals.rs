@@ -241,6 +241,36 @@ const UNIT_ROWS: [(&str, &str, &str); 3] = [
 
 const NUMBERS: &str = r#"{"arch":5,"double":2.5,"flag":true,"large":4,"medium":3,"single":1.5,"small":2,"tiny":1,"umedium":8,"usmall":7,"utiny":6}"#;
 
+/// A number between quotes in a slot, with the type serde names in its refusal and the path the
+/// Kotlin read states: a tuple struct's slot, a slot of a tuple variant of several, and the slot
+/// of a tuple variant of one.
+const QUOTED_SLOTS: [(&str, &str, &str, &str, &str); 5] = [
+    ("QuotedSlotted", r#"["7",-2,9,0.5]"#, "7", "u32", "$[0]"),
+    ("QuotedSlotted", r#"[7,-2,9,"0.5"]"#, "0.5", "f64", "$[3]"),
+    (
+        "QuotedSlots",
+        r#"{"Four":["7",-2,9,0.5]}"#,
+        "7",
+        "u32",
+        "$.Four[0]",
+    ),
+    (
+        "QuotedSlots",
+        r#"{"Four":[7,-2,9,"0.5"]}"#,
+        "0.5",
+        "f64",
+        "$.Four[3]",
+    ),
+    ("QuotedSlots", r#"{"One":"7"}"#, "7", "u32", "$.One"),
+];
+
+/// The same payloads with every slot a number, which are read.
+const UNQUOTED_SLOTS: [(&str, &str); 3] = [
+    ("QuotedSlotted", "[7,-2,9,0.5]"),
+    ("QuotedSlots", r#"{"Four":[7,-2,9,0.5]}"#),
+    ("QuotedSlots", r#"{"One":7}"#),
+];
+
 const PLACES: &str = r#"{"held":{"value":1},"id":1,"items":[1],"keyed":{"k":1},"keys":{"3":"x"},"maybe":1,"outcome":{"Ok":1},"pair":[1,2],"span":{"start":1,"end":2}}"#;
 
 const OUTCOME_ERR: &str = r#"{"held":{"value":1},"id":1,"items":[1],"keyed":{"k":1},"keys":{"3":"x"},"maybe":null,"outcome":{"Err":"7"},"pair":[1,2],"span":{"start":1,"end":2}}"#;
@@ -269,6 +299,19 @@ const QUOTED: [(&str, &str, &str, &str, &str); 20] = [
     ("QuotedPlaces", "/span/start", "7", "i16", "$.span.start"),
     ("QuotedPlaces", "/pair/0", "7", "u8", "$.pair[0]"),
 ];
+
+/// Every slot of a tuple struct, each of a different number type.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuotedSlotted(u32, i32, i64, f64);
+
+/// A tuple variant of several slots, and one of a single slot.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum QuotedSlots {
+    Four(u32, i32, i64, f64),
+    One(u32),
+}
 
 /// A unit variant under a tag and a content key, beside a variant that holds a value.
 #[model_schema()]
@@ -519,6 +562,61 @@ fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
         quoted_places_kotlin::kotlin_definition(),
         #[cfg(feature = "chrono")]
         quoted_millis_kotlin::kotlin_definition(),
+        main,
+    ];
+    let Some(printed) = ran_kotlin(&source.join("\n\n")) else {
+        return;
+    };
+    assert_eq!(printed, expected, "the Kotlin read is not the read above");
+}
+
+/// serde's answer of `json` read as the type `read_as` names, of the types of the slot rows.
+fn slot_told(read_as: &str, json: &str) -> String {
+    if read_as == "QuotedSlotted" {
+        serde_told::<QuotedSlotted>(json)
+    } else {
+        serde_told::<QuotedSlots>(json)
+    }
+}
+
+/// A number between quotes in a tuple struct's slot, in a slot of a tuple variant of several and in
+/// the slot of one of a single slot is refused with `SerializationException` in serde's words and
+/// at its path, and the same payloads with every slot a number are read.
+#[test]
+fn a_number_between_quotes_is_refused_in_a_slot() {
+    let mut expected = String::new();
+    let mut main = String::from(THROWN);
+    main.push_str("fun main() {\n");
+    for (at, &(read_as, json, quoted, expected_type, path)) in QUOTED_SLOTS.iter().enumerate() {
+        let said = format!("invalid type: string \"{quoted}\", expected {expected_type}");
+        let serde = slot_told(read_as, json);
+        assert!(
+            serde.starts_with(&said),
+            "serde no longer refuses {json} as `{said}`: {serde}"
+        );
+        let _ = writeln!(
+            expected,
+            "{at}: kotlinx.serialization.SerializationException: {said} at path: {path}"
+        );
+        let _ = writeln!(
+            main,
+            "    thrown(\"{at}\", {read_as}.serializer(), \"\"\"{json}\"\"\")"
+        );
+    }
+    for (offset, &(read_as, json)) in UNQUOTED_SLOTS.iter().enumerate() {
+        assert_eq!(slot_told(read_as, json), "read");
+        let at = QUOTED_SLOTS.len() + offset;
+        let _ = writeln!(expected, "{at}: read");
+        let _ = writeln!(
+            main,
+            "    thrown(\"{at}\", {read_as}.serializer(), \"\"\"{json}\"\"\")"
+        );
+    }
+    main.push_str("}\n");
+    let source = [
+        KOTLIN_IMPORTS.to_owned(),
+        quoted_slotted_kotlin::kotlin_definition(),
+        quoted_slots_kotlin::kotlin_definition(),
         main,
     ];
     let Some(printed) = ran_kotlin(&source.join("\n\n")) else {

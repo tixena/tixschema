@@ -53,8 +53,7 @@ fn ledger() -> WideLedger {
         paired: (9_i64, "x".to_owned()),
         total: -(1_i64 << 60_i32),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Reads `stored` with a callback that rejects, and answers the read with every issue listed.

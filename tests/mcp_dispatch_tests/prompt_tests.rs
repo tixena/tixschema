@@ -505,7 +505,7 @@ fn the_client_has_one_method_per_prompt() {
     let client = CounselServiceClient::new(seam);
     assert_eq!(
         block_on(client.get_counsel()).unwrap(),
-        CounselDraft { version: 3 }.validate().unwrap()
+        CounselDraft { version: 3 }.into()
     );
     let text = block_on(client.configure_organization()).unwrap();
     assert_eq!(text, "Apply the entity types in this order.");

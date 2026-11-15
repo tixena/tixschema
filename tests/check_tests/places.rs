@@ -282,7 +282,7 @@ fn struct_cases() -> Vec<Case> {
         strapped_load: Strapped::model_schema_wrap_unjudged(StrappedDraft(unlabelled())),
     };
     let loaded = CraneDraft {
-        strapped_load: StrappedDraft(sound()).validate().unwrap(),
+        strapped_load: StrappedDraft(sound()).into(),
     };
     let hoist = HoistDraft {
         code: Lone::model_schema_wrap_unjudged(LoneDraft(String::new())),

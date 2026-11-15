@@ -14,6 +14,7 @@
 //! parameter is refused: what fills the parameter is written where no expansion reads it.
 
 mod overlap;
+mod published;
 
 use core::cell::RefCell;
 #[cfg(any(feature = "dart", feature = "swift"))]
@@ -26,7 +27,6 @@ use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
 use syn::{Field, Fields, Generics, Item, ItemEnum, ItemStruct, Type, Variant};
 
-use super::judged_read::unclaimed_parameter;
 use super::ranges::def_writes_a_map;
 use super::{
     ModelSchemaArgs, prefixed_guard_message, strict, written_as_its_slot, written_spelling,
@@ -41,7 +41,7 @@ use crate::features::serde::{
 use crate::field_type::is_sequence_wrapper;
 use crate::field_type::{FieldDef, FieldDefType, get_field_def};
 use crate::rename_rule::resolve_rename_rule;
-use crate::utils::{Declared, declared, written_names};
+use crate::utils::{Declared, declared, unclaimed_parameter, written_names};
 
 /// The bit of a type's hidden constant saying serde leaves its keys in the object it is flattened
 /// from.
@@ -80,6 +80,14 @@ const FALLBACK: u16 = NOT_MET | UNMODELLED;
 const FLAGS: &str = "__TIXSCHEMA_FLATTENED";
 /// The hidden constant of the keys a holder that flattens the type sees it write or read.
 const KEYS: &str = "__TIXSCHEMA_KEYS";
+/// The hidden constant of the names each variant of an externally tagged enum is read under when
+/// the enum is flattened.
+const ENTRIES: &str = "__TIXSCHEMA_ENTRIES";
+/// The hidden constant of the keys a flattened member takes off the object its holder hands it.
+const TAKEN: &str = "__TIXSCHEMA_TAKEN";
+/// The hidden constant of the names an externally tagged enum's unit variants are read under when
+/// the enum is flattened.
+const UNITS: &str = "__TIXSCHEMA_UNITS";
 /// How many types deep a member is followed before what it reads is called unseen.
 const DEPTH: usize = 8;
 /// Why the expansion cannot see what a member a function of its author's reads.
@@ -3979,16 +3987,30 @@ pub(super) fn tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     };
     let value = flags_value(item, &name.to_string(), generics, &args.default_types);
     let keys_value = keys_value(item, &name.to_string(), generics, &args.default_types);
+    let entries_value = published::entries(item, &args.preprocess);
+    let taken_value = published::taken(item, &args.preprocess);
+    let units_value = published::units(item, &args.preprocess);
     let constant = proc_macro2::Ident::new(FLAGS, Span::call_site());
     let keys = proc_macro2::Ident::new(KEYS, Span::call_site());
+    let entries = proc_macro2::Ident::new(ENTRIES, Span::call_site());
+    let taken = proc_macro2::Ident::new(TAKEN, Span::call_site());
+    let units = proc_macro2::Ident::new(UNITS, Span::call_site());
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let buffered = buffered_checks(item, &args.default_types);
     quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #[doc = " What a holder that flattens this type reads of it: the bits `#[model_schema]` holds the order and the strictness of its flattened members to."]
             pub const #constant: u16 = #value;
+            #[doc = " Whether `#[model_schema]` expanded this type, which a holder that cannot name it asks."]
+            pub const __TIXSCHEMA_MODELLED: bool = true;
             #[doc = " The keys a holder that flattens this type sees it write or read, which no other source of keys of that holder may declare."]
             pub const #keys: &'static [&'static str] = #keys_value;
+            #[doc = " The names a holder that flattens this type reads each variant under, one list per variant, where the type is an externally tagged enum; none for any other type."]
+            pub const #entries: &'static [&'static [&'static str]] = #entries_value;
+            #[doc = " The keys a holder that flattens this type has it take off the object it hands the type: a struct's own, an enum's tag and content key; none for any other type."]
+            pub const #taken: &'static [&'static str] = #taken_value;
+            #[doc = " The name a holder that flattens this type reads each unit variant under, where the type is an externally tagged enum; none for any other type."]
+            pub const #units: &'static [&'static str] = #units_value;
         }
 
         #(#checks)*

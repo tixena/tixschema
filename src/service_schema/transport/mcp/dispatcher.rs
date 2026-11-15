@@ -337,8 +337,10 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
                     return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
                         $crate::#module::ServiceFault::failed_validation(
                             #tool,
-                            ::core::option::Option::Some(#name),
-                            &::std::string::ToString::to_string(&detail),
+                            ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                                ::core::option::Option::Some(#name),
+                                &::std::string::ToString::to_string(&detail),
+                            )],
                         ),
                     )));
                 }
@@ -372,8 +374,10 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
                         return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
                             $crate::#module::ServiceFault::failed_validation(
                                 #tool,
-                                ::core::option::Option::Some("value"),
-                                "'value': missing field `value`",
+                                ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                                    ::core::option::Option::Some("value"),
+                                    "missing field `value`",
+                                )],
                             ),
                         )));
                     }
@@ -393,8 +397,7 @@ fn route_arm(module: &Ident, schema: &Ident, operation: &OperationDef) -> TokenS
                 return ::core::option::Option::Some(::core::result::Result::Ok(fault_result(
                     $crate::#module::ServiceFault::failed_validation(
                         #tool,
-                        $crate::#module::violated_field(&violations),
-                        &$crate::#module::violation_detail(&violations),
+                        $crate::#module::violation_issues(&violations),
                     ),
                 )));
             }

@@ -119,8 +119,7 @@ fn invoice() -> Invoice {
         .validate()
         .unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// `invoice()` as a BSON document, with `key` holding `value`.
@@ -148,8 +147,7 @@ fn under_bson_a_lookup_reads_from_bson() {
         Ok(InvoiceLookupDraft {
             number: "INV-1".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 

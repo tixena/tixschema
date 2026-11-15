@@ -2,7 +2,7 @@
 
 use crate::declarations::probe_service_schema::message_validation::MessageValidation as _;
 use crate::declarations::probe_service_schema::{
-    Answered, ServiceFault, ServiceFaultKind, violated_field, violation_detail,
+    Answered, ServiceFault, ServiceFaultIssue, ServiceFaultKind, violation_issues,
 };
 use crate::declarations::{
     BalanceRequest, BalanceResponse, ProbeError, ProbeService, SweepRequest,
@@ -82,15 +82,14 @@ fn reported(violations: Vec<String>) -> Result<(), Vec<String>> {
     }
 }
 
-/// What a violation report becomes, read through the same two readers the generated half reads it
+/// What a violation report becomes, read through the same reader the generated half reads it
 /// through.
 fn checked(operation: &str, report: Result<(), Vec<String>>) -> Result<(), ServiceFault> {
     match report {
         Ok(()) => Ok(()),
         Err(violations) => Err(ServiceFault::failed_validation(
             operation,
-            violated_field(&violations),
-            &violation_detail(&violations),
+            violation_issues(&violations),
         )),
     }
 }
@@ -152,13 +151,12 @@ fn a_message_failing_its_own_check_never_reaches_the_implementation() {
     assert_eq!(refused.kind(), ServiceFaultKind::FailedValidation);
     assert_eq!(refused.operation(), "get-balance");
     assert_eq!(
-        refused.field(),
-        Some("customer_id"),
+        refused.issues(),
+        [ServiceFaultIssue::new(
+            Some("customer_id"),
+            "too short: minimum length is 1, got 0"
+        )],
         "the published reader names the field off the report the check wrote"
-    );
-    assert_eq!(
-        refused.detail(),
-        "'customer_id': too short: minimum length is 1, got 0"
     );
 }
 
@@ -180,6 +178,6 @@ fn an_operation_the_service_answers_to_by_no_name_is_a_fault_naming_what_arrived
     assert_eq!(unrecognised.field(), None);
     assert_eq!(
         unrecognised.detail(),
-        "the service answers to no operation by that name"
+        Some("the service answers to no operation by that name")
     );
 }

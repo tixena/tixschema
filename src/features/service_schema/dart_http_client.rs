@@ -17,7 +17,7 @@ use crate::service_schema::parse::{
     is_unit_type, option_inner, path_reads_a_named_field, path_writes_a_list, tuple_elements,
     type_leaf_name, vec_inner, wire_key, written,
 };
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use crate::utils::{WireScalarKind, wire_scalar_kind};
 use core::fmt::Write as _;
 use syn::{Ident, Type};
@@ -141,6 +141,15 @@ fn transport_seam(named: &str) -> String {
     )
 }
 
+/// The Dart interpolation of what `fault` says, for the text of the exception it is thrown on: its
+/// detail, or the list of every problem a failed validation found, each as the validator words it.
+pub(super) fn fault_said(fault: &str) -> String {
+    format!(
+        "${{{fault}.detail ?? {fault}.issues?.map((issue) => issue.field == null ? issue.detail : \
+         \"'${{issue.field}}': ${{issue.detail}}\").toList()}}"
+    )
+}
+
 fn refusal_class(named: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     format!(
@@ -151,8 +160,9 @@ fn refusal_class(named: &str) -> String {
          final {fields} fault;\n  \
          @override\n  \
          String toString() =>\n      \
-         '{named}HttpRefusal: ${{fault.kind}} in `${{fault.operation}}`: ${{fault.detail}}';\n\
-         }}"
+         '{named}HttpRefusal: ${{fault.kind}} in `${{fault.operation}}`: {said}';\n\
+         }}",
+        said = fault_said("fault"),
     )
 }
 
@@ -1065,14 +1075,14 @@ fn legal_header_value_fn(fn_prefix: &str) -> String {
 /// holding a comma, answers with, before the transport is ever reached.
 fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
+    let issue = fault_issue_name(named);
     format!(
         "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
          /// own safety check or a path list holds a comma, before the transport is ever reached.\n\
          {fields} _{fn_prefix}HttpOutboundFault(String operation, String field, String detail) \
          =>\n    \
          {fields}(\n      \
-         detail: detail,\n      \
-         field: field,\n      \
+         issues: [{issue}(detail: detail, field: field)],\n      \
          kind: {named}FaultKind.failedValidation,\n      \
          operation: operation,\n    \
          );"

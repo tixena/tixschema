@@ -18,7 +18,7 @@ pub type Several<Held> = Vec<Held>;
 fn test_simple_enum_example() {
     /// Data type enumeration
     /// ```rust example
-    /// let data_type = DataTypeDraft::Numeric;
+    /// let data_type = DataType::Numeric;
     /// println!("Example: {:?}", data_type);
     /// ```
     #[model_schema()]
@@ -39,11 +39,11 @@ fn test_simple_enum_example() {
     #[cfg(feature = "typescript")]
     {
         assert!(
-            zod.contains("DataTypeDraft$RawSchema"),
+            zod.contains("DataType$RawSchema"),
             "Plain enum with example should have $RawSchema. Got:\n{zod}"
         );
         assert!(
-            zod.contains("export const DataTypeDraft$Schema: ZodType<DataTypeDraft> = DataTypeDraft$RawSchema;"),
+            zod.contains("export const DataType$Schema: ZodType<DataType> = DataType$RawSchema;"),
             "Plain enum with example should have $Schema referencing $RawSchema. Got:\n{zod}"
         );
     }
@@ -338,7 +338,7 @@ fn test_objectid_example() {
 
     /// Document with `ObjectId`
     /// ```rust example
-    /// let oid = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
+    /// let oid = ObjectId::parse_str("507f1f77bcf86cd799439011")?;
     /// let doc = DocumentDraft {
     ///     id: oid,
     ///     name: "test".to_string(),
@@ -404,7 +404,7 @@ fn test_empty_example_block() {
 fn test_regex_transform_println() {
     /// Data type with println pattern (for doctest compatibility)
     /// ```rust example
-    /// let data_type = DataTypeDraft::Integer;
+    /// let data_type = DataType::Integer;
     /// println!("data_type: {:?}", data_type);
     /// ```
     #[model_schema()]
@@ -428,7 +428,7 @@ fn test_regex_transform_println() {
 fn test_regex_transform_let_underscore() {
     /// Status with let underscore pattern (for doctest compatibility)
     /// ```rust example
-    /// let _: Status = StatusDraft::Active;
+    /// let _: Status = Status::Active;
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -470,7 +470,7 @@ fn test_description_strips_examples() {
 fn test_description_escapes_quotes() {
     /// Description with "quoted" text
     /// ```rust example
-    /// let _: QuoteTest = QuoteTestDraft::Active;
+    /// let _: QuoteTest = QuoteTest::Active;
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1021,10 +1021,10 @@ fn every_tagging_of_an_enum_with_no_block_publishes_an_empty_list() {
 fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
     /// A level
     /// ```rust example
-    /// LevelDraft::Low
+    /// Level::Low
     /// ```
     /// ```rust example
-    /// LevelDraft::High
+    /// Level::High
     /// ```
     #[model_schema()]
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1250,13 +1250,13 @@ fn a_tuple_struct_carries_its_examples() {
 }
 
 #[test]
-fn the_guide_states_that_an_example_is_evaluated_as_the_draft() {
+fn the_guide_states_that_an_example_builds_the_draft_or_the_valid_type() {
     let guide = include_str!("../../docs/guide/examples.md");
     assert!(
         guide.contains(
-            "An example expression is evaluated as the type's [draft](models.md#a-draft-and-a-valid-type)"
+            "An example expression builds the type's [draft](models.md#a-draft-and-a-valid-type) or its valid type"
         ),
-        "examples.md no longer says what an example expression is evaluated as"
+        "examples.md no longer says what an example expression builds"
     );
     let written: Vec<&str> = guide
         .lines()

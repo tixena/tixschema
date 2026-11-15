@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use super::dart_integer_read::integer_read;
 use super::unknown_keys::READ_AT;
 
 /// The text of each type below but `Audit`, with each `validationIssues()` cut out where `; }`
@@ -359,7 +360,7 @@ fn every_declared_type_is_constructible() {
         ReferenceDraft::Numbered(1),
     ];
     assert_eq!(references.len(), 2);
-    assert_eq!([GradeDraft::Express, GradeDraft::Standard].len(), 2);
+    assert_eq!([Grade::Express, Grade::Standard].len(), 2);
     assert_eq!([RatingDraft::Express, RatingDraft::Unrated].len(), 2);
     let stamps = [
         StampDraft::Inked {
@@ -447,7 +448,9 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
     assert_eq!(
         parcel_dart::dart_definition(),
         format!(
-            "class ParcelDraft {{ const ParcelDraft({{required this.fragile_item_codes,required \
+            "class ParcelRefusal implements Exception {{ const ParcelRefusal(this.issues); final \
+             List<String> issues; @override String toString() => 'ParcelRefusal: $issues'; }} \
+             class ParcelDraft {{ const ParcelDraft({{required this.fragile_item_codes,required \
              this.item_code_list,required this.label,}}); final List<String> \
              fragile_item_codes;final List<String> item_code_list;final String label; factory \
              ParcelDraft.fromJson(Map<String, dynamic> json) {{ for (final key in json.keys) {{ \
@@ -455,29 +458,31 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
              throw FormatException('Unknown key of a Parcel: $key', <Object>[key]); }} return \
              ParcelDraft(fragile_item_codes: _readAt(json, 'fragileItemCodes', () => \
              (json['fragileItemCodes'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
-             () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () \
-             => (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, \
-             () => e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] \
-             as String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'fragileItemCodes': \
-             fragile_item_codes.map((e) => e).toList(),'itemCodeList': \
-             item_code_list.map((e) => e).toList(),'label': label, }}; List<String> \
-             validationIssues() => [ for (final violation in \
-             withoutDuplicates(item_code_list)) _under('itemCodeList', violation), if \
-             (label.runes.length < 1) \"'label': too short: minimum length is 1, got \
+             () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
+             (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
+             e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
+             String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'fragileItemCodes': \
+             fragile_item_codes.map((e) => e).toList(),'itemCodeList': item_code_list.map((e) => \
+             e).toList(),'label': label, }}; List<String> validationIssues() => [ for (final \
+             violation in withoutDuplicates(item_code_list)) _under('itemCodeList', violation), \
+             if (label.runes.length < 1) \"'label': too short: minimum length is 1, got \
              ${{label.runes.length}}\", ...withinParcel(this), ]; {UNDER} Parcel validate() {{ \
-             final found = validationIssues(); if (found.isNotEmpty) throw \
-             FormatException(found.join('; ')); return Parcel._(this); }} }} class Parcel {{ \
-             const Parcel._(this._draft); final ParcelDraft _draft; List<String> \
-             get fragile_item_codes => _draft.fragile_item_codes; List<String> get \
-             item_code_list => _draft.item_code_list; String get label => _draft.label; \
-             ParcelDraft toDraft() => _draft; factory Parcel.fromJson(Map<String, dynamic> json) \
-             {{ final read = ParcelDraft.fromJson(json); final violations = \
-             read.validationIssues(); if (violations.isNotEmpty) throw \
-             FormatException(violations.join('; ')); return Parcel._(read); }} factory \
-             Parcel.fromJsonUnjudged(Map<String, dynamic> json) => \
-             Parcel._(ParcelDraft.fromJson(json)); Map<String, dynamic> toJson() => \
-             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static Object \
-             $thrown(Object thrown) => thrown is ParcelDraft ? thrown.validate() : thrown; }}"
+             final found = validationIssues(); if (found.isNotEmpty) throw ParcelRefusal(found); \
+             return Parcel._(this); }} }} class Parcel {{ const Parcel._(this._draft); final \
+             ParcelDraft _draft; List<String> get fragile_item_codes => \
+             _draft.fragile_item_codes; List<String> get item_code_list => _draft.item_code_list; \
+             String get label => _draft.label; ParcelDraft toDraft() => _draft; factory \
+             Parcel.fromJson(Map<String, dynamic> json) {{ final read = \
+             ParcelDraft.fromJson(json); final violations = read.validationIssues(); if \
+             (violations.isNotEmpty) throw ParcelRefusal(violations); return Parcel._(read); }} \
+             factory Parcel.fromJsonUnjudged(Map<String, dynamic> json) => \
+             Parcel._(ParcelDraft.fromJson(json)); factory Parcel.of({{required List<String> \
+             fragile_item_codes,required List<String> item_code_list,required String label,}}) => \
+             ParcelDraft(fragile_item_codes: fragile_item_codes,item_code_list: \
+             item_code_list,label: label,).validate(); Map<String, dynamic> toJson() => \
+             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); \
+             static Object $thrown(Object thrown) => thrown is ParcelDraft ? thrown.validate() : \
+             thrown; }}"
         )
     );
 }
@@ -661,23 +666,17 @@ fn an_enum_with_no_data_answers_its_checks() {
     let grade = grade_dart::dart_definition();
     assert!(
         grade.contains(
-            "String toJson() => wireValue; List<String> validationIssues() => const []; Grade \
-             validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
-             FormatException(found.join('; ')); return Grade._(this); } }"
-        ) && grade.ends_with(
-            "List<String> validationIssues() => _draft.validationIssues(); @override bool operator \
-             ==(Object other) => other is Grade && other._draft == _draft; @override int get \
-             hashCode => _draft.hashCode; static Object $thrown(Object thrown) => thrown is \
-             GradeDraft ? thrown.validate() : thrown; }"
-        ),
+            "String toJson() => wireValue; List<String> validationIssues() => const []; static \
+             Object $thrown(Object thrown) => thrown; }"
+        ) && !grade.contains("GradeDraft"),
         "got: {grade}"
     );
     let rating = rating_dart::dart_definition();
     assert!(
         rating.contains(
-            "String toJson() => wireValue; List<String> validationIssues() => [ ...rated(this), ]; \
-             Rating validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
-             FormatException(found.join('; ')); return Rating._(this); } }"
+            "String toJson() => wireValue; List<String> validationIssues() => [ ...rated(this), \
+             ]; Rating validate() { final found = validationIssues(); if (found.isNotEmpty) throw \
+             RatingRefusal(found); return Rating._(this); } }"
         ) && rating.ends_with(
             "static Object $thrown(Object thrown) => thrown is RatingDraft ? thrown.validate() : \
              thrown; }"
@@ -717,23 +716,27 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
     assert_eq!(
         audit_dart::dart_definition(),
         format!(
-            "class AuditDraft {{ const AuditDraft({{required this.validate_,}}); final bool validate_; \
-             factory AuditDraft.fromJson(Map<String, dynamic> json) {{ for (final key in \
-             json.keys) {{ if (!const <String>{{'validate'}}.contains(key)) throw \
+            "class AuditRefusal implements Exception {{ const AuditRefusal(this.issues); final \
+             List<String> issues; @override String toString() => 'AuditRefusal: $issues'; }} \
+             class AuditDraft {{ const AuditDraft({{required this.validate_,}}); final bool \
+             validate_; factory AuditDraft.fromJson(Map<String, dynamic> json) {{ for (final key \
+             in json.keys) {{ if (!const <String>{{'validate'}}.contains(key)) throw \
              FormatException('Unknown key of a Audit: $key', <Object>[key]); }} return \
-             AuditDraft(validate_: _readAt(json, 'validate', () => json['validate'] as bool),); }} \
-             {READ_AT} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
+             AuditDraft(validate_: _readAt(json, 'validate', () => json['validate'] as bool),); \
+             }} {READ_AT} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
              List<String> validationIssues() => const []; Audit validate() {{ final found = \
-             validationIssues(); if (found.isNotEmpty) throw FormatException(found.join('; ')); \
-             return Audit._(this); }} }} class Audit {{ const Audit._(this._draft); final \
-             AuditDraft _draft; bool get validate_ => _draft.validate_; AuditDraft toDraft() => \
-             _draft; factory Audit.fromJson(Map<String, dynamic> json) {{ final read = \
-             AuditDraft.fromJson(json); final violations = read.validationIssues(); if \
-             (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
-             Audit._(read); }} factory Audit.fromJsonUnjudged(Map<String, dynamic> json) => \
-             Audit._(AuditDraft.fromJson(json)); Map<String, dynamic> toJson() => \
-             _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); static Object \
-             $thrown(Object thrown) => thrown is AuditDraft ? thrown.validate() : thrown; }}"
+             validationIssues(); if (found.isNotEmpty) throw AuditRefusal(found); return \
+             Audit._(this); }} Audit toValid() => Audit._(this); }} class Audit {{ const \
+             Audit._(this._draft); final AuditDraft _draft; bool get validate_ => \
+             _draft.validate_; AuditDraft toDraft() => _draft; factory Audit.fromJson(Map<String, \
+             dynamic> json) {{ final read = AuditDraft.fromJson(json); final violations = \
+             read.validationIssues(); if (violations.isNotEmpty) throw AuditRefusal(violations); \
+             return Audit._(read); }} factory Audit.fromJsonUnjudged(Map<String, dynamic> json) \
+             => Audit._(AuditDraft.fromJson(json)); factory Audit.of({{required bool \
+             validate_,}}) => AuditDraft(validate_: validate_,).validate(); Map<String, dynamic> \
+             toJson() => _draft.toJson(); List<String> validationIssues() => \
+             _draft.validationIssues(); static Object $thrown(Object thrown) => thrown is \
+             AuditDraft ? thrown.validate() : thrown; }}"
         )
     );
     assert_eq!(
@@ -750,9 +753,11 @@ fn a_types_own_check_is_called_on_the_whole_value() {
     let filled = crate_dart::dart_definition();
     assert!(
         filled.contains(
-            "List<String> validationIssues() => [ if (label.runes.length < 1) \"'label': too \
-             short: minimum length is 1, got ${label.runes.length}\", ...withACode(this), ]; \
-             Crate<CodeType> validate()"
+            "List<String> validationIssuesWith(List<String> Function(CodeType) issuesOfCodeType) \
+             => [ for (final (index, held) in codes.indexed) for (final violation in \
+             issuesOfCodeType(held)) _under('codes.$index', violation), if (label.runes.length < \
+             1) \"'label': too short: minimum length is 1, got ${label.runes.length}\", \
+             ...withACode(this), ];"
         ),
         "got: {filled}"
     );
@@ -779,7 +784,17 @@ fn a_types_own_check_is_called_on_the_whole_value() {
 fn the_codec_of_each_type_is_the_text_it_was() {
     let written = definitions();
     let mut rest = written.as_str();
-    for piece in CODEC.trim_end().split("; }") {
+    let codec = [
+        ("@ITEM_COUNT@", "json['itemCount']"),
+        ("@TUPLE_ONE@", "tuple[1]"),
+        ("@WHOLE@", "json"),
+        ("@PAGES@", "json['pages']"),
+    ]
+    .into_iter()
+    .fold(CODEC.trim_end().to_owned(), |text, (token, expr)| {
+        text.replace(token, &integer_read(expr, "u32"))
+    });
+    for piece in codec.split("; }") {
         let found = rest.find(piece);
         assert!(
             found.is_some(),

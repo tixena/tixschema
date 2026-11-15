@@ -1,0 +1,10 @@
+error[E0592]: duplicate definitions with name `new`
+  --> tests/generated_new_refusals/hand_written_new.rs:6:1
+   |
+ 6 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ duplicate definitions for `new`
+...
+13 |     pub fn new(hour: u8) -> Result<Self, Vec<String>> {
+   |     ------------------------------------------------- other definition for `new`
+   |
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

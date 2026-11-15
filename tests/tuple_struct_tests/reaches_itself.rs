@@ -91,21 +91,14 @@ fn a_generic_one_reaches_itself_through_a_function_stating_what_it_parses() {
 fn serde_writes_each_as_the_nested_arrays_its_schema_describes() {
     let nested = NestsInASlotDraft(
         "a".to_owned(),
-        vec![
-            NestsInASlotDraft("b".to_owned(), Vec::new())
-                .validate()
-                .unwrap(),
-        ],
+        vec![NestsInASlotDraft("b".to_owned(), Vec::new()).into()],
     );
     assert_eq!(
         serde_json::to_value(&nested).unwrap(),
         serde_json::json!(["a", [["b", []]]])
     );
     assert_eq!(
-        serde_json::to_value(NestsAloneDraft(vec![
-            NestsAloneDraft(Vec::new()).validate().unwrap()
-        ]))
-        .unwrap(),
+        serde_json::to_value(NestsAloneDraft(vec![NestsAloneDraft(Vec::new()).into()])).unwrap(),
         serde_json::json!([[]])
     );
     assert_eq!(
@@ -113,8 +106,7 @@ fn serde_writes_each_as_the_nested_arrays_its_schema_describes() {
             DeclaredBelowDraft {
                 label: "x".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             1
         ))
         .unwrap(),
@@ -123,11 +115,7 @@ fn serde_writes_each_as_the_nested_arrays_its_schema_describes() {
     assert_eq!(
         serde_json::to_value(NestsUnderAParameterDraft(
             "a".to_owned(),
-            vec![
-                NestsUnderAParameterDraft("b".to_owned(), Vec::new())
-                    .validate()
-                    .unwrap()
-            ]
+            vec![NestsUnderAParameterDraft("b".to_owned(), Vec::new()).into()]
         ))
         .unwrap(),
         serde_json::json!(["a", [["b", []]]])

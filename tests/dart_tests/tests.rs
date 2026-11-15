@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 #[cfg(feature = "serde")]
-use super::unknown_keys::{plain_enum_read, plain_enum_valid, plain_enum_validate};
+use super::unknown_keys::{plain_enum_read, plain_enum_reads, plain_enum_text};
 
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -217,16 +217,15 @@ fn test_every_declared_type_is_constructible() {
         address: AddressDraft {
             city: "Springfield".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         backup_address: None,
     };
     assert_eq!(warehouse.address.city, "Springfield");
 
     let statuses = [
-        StockStatusDraft::InStock,
-        StockStatusDraft::Backordered,
-        StockStatusDraft::Discontinued,
+        StockStatus::InStock,
+        StockStatus::Backordered,
+        StockStatus::Discontinued,
     ];
     assert_eq!(statuses.len(), 3);
 
@@ -302,10 +301,7 @@ fn test_every_declared_type_is_constructible() {
     let _barcode: Barcode = "0000".to_owned();
 
     let lookup = ProductLookupDraft {
-        by_slot: HashMap::from([(
-            StockStatusDraft::InStock.validate().unwrap(),
-            "A1".to_owned(),
-        )]),
+        by_slot: HashMap::from([(StockStatus::InStock, "A1".to_owned())]),
     };
     assert_eq!(lookup.by_slot.len(), 1);
 }
@@ -459,18 +455,18 @@ fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
 #[cfg(feature = "serde")]
 fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
     let dart = stock_status_dart::dart_definition();
-    assert!(dart.contains("enum StockStatusDraft {"));
+    assert!(dart.contains("enum StockStatus {"));
     assert!(dart.contains("inStock('instock')"));
     assert!(dart.contains("backordered('backordered')"));
     assert!(dart.contains("discontinued('discontinued')"));
-    assert!(dart.contains("static StockStatusDraft fromJson(dynamic json)"));
+    assert!(dart.contains("static StockStatus fromJson(dynamic json)"));
     assert!(dart.contains("String toJson() => wireValue;"));
 }
 
 #[test]
 #[cfg(feature = "serde")]
 fn test_plain_enum_wire_values_match_what_serde_writes() {
-    let value = serde_json::to_value(StockStatusDraft::Backordered).unwrap();
+    let value = serde_json::to_value(StockStatus::Backordered).unwrap();
     assert_eq!(value, serde_json::json!("backordered"));
     let dart = stock_status_dart::dart_definition();
     assert!(dart.contains("'backordered'"));
@@ -908,49 +904,58 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
 fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(
         reserved_members_dart::dart_definition(),
-        "class ReservedMembersDraft { const ReservedMembersDraft({required this.class_,required \
-         this.in_,required this.type,}); final String class_;final String in_;final String type; \
-         factory ReservedMembersDraft.fromJson(Map<String, dynamic> json) { for (final key in \
-         json.keys) { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
+        "class ReservedMembersRefusal implements Exception { const \
+         ReservedMembersRefusal(this.issues); final List<String> issues; @override String \
+         toString() => 'ReservedMembersRefusal: $issues'; } class ReservedMembersDraft { const \
+         ReservedMembersDraft({required this.class_,required this.in_,required this.type,}); \
+         final String class_;final String in_;final String type; factory \
+         ReservedMembersDraft.fromJson(Map<String, dynamic> json) { for (final key in json.keys) \
+         { if (!const <String>{'class', 'in', 'type'}.contains(key)) throw \
          FormatException('Unknown key of a ReservedMembers: $key', <Object>[key]); } return \
-         ReservedMembersDraft(class_: _readAt(json, 'class', () => json['class'] as \
-         String),in_: _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, \
-         'type', () => json['type'] as String),); } static Read _readAt<Read>(Map<String, \
-         dynamic>? object, Object key, Read Function() read) { try { return read(); } catch \
-         (refused) { if (object != null && !object.containsKey(key)) throw \
-         FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
-         throw FormatException('$refused', <Object>[key]); if (refused is FormatException) { \
-         final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
-         is List<Object>) ...at]); } rethrow; } } Map<String, dynamic> toJson() => { 'class': \
-         class_,'in': in_,'type': type, }; List<String> validationIssues() => const []; \
-         ReservedMembers validate() { final found = validationIssues(); if (found.isNotEmpty) \
-         throw FormatException(found.join('; ')); return ReservedMembers._(this); } } class \
-         ReservedMembers { const ReservedMembers._(this._draft); final ReservedMembersDraft \
-         _draft; String get class_ => _draft.class_; String get in_ => _draft.in_; String get \
-         type => _draft.type; ReservedMembersDraft toDraft() => _draft; factory \
-         ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
+         ReservedMembersDraft(class_: _readAt(json, 'class', () => json['class'] as String),in_: \
+         _readAt(json, 'in', () => json['in'] as String),type: _readAt(json, 'type', () => \
+         json['type'] as String),); } static Read _readAt<Read>(Map<String, dynamic>? object, \
+         Object key, Read Function() read) { try { return read(); } catch (refused) { if (object \
+         != null && !object.containsKey(key)) throw FormatException('missing field `$key`', \
+         <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
+         <Object>[key]); if (refused is FormatException) { final at = refused.source; throw \
+         FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); } if \
+         (refused is Exception) { Object? listed; try { listed = (refused as dynamic).issues; } \
+         on NoSuchMethodError { listed = null; } if (listed is List<String>) { for (var at = 0; \
+         at < listed.length; at += 1) { final said = listed[at]; final end = \
+         said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
+         } rethrow; } } Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': \
+         type, }; List<String> validationIssues() => const []; ReservedMembers validate() { final \
+         found = validationIssues(); if (found.isNotEmpty) throw ReservedMembersRefusal(found); \
+         return ReservedMembers._(this); } ReservedMembers toValid() => ReservedMembers._(this); \
+         } class ReservedMembers { const ReservedMembers._(this._draft); final \
+         ReservedMembersDraft _draft; String get class_ => _draft.class_; String get in_ => \
+         _draft.in_; String get type => _draft.type; ReservedMembersDraft toDraft() => _draft; \
+         factory ReservedMembers.fromJson(Map<String, dynamic> json) { final read = \
          ReservedMembersDraft.fromJson(json); final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
-         ReservedMembers._(read); } factory ReservedMembers.fromJsonUnjudged(Map<String, \
-         dynamic> json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); Map<String, \
+         (violations.isNotEmpty) throw ReservedMembersRefusal(violations); return \
+         ReservedMembers._(read); } factory ReservedMembers.fromJsonUnjudged(Map<String, dynamic> \
+         json) => ReservedMembers._(ReservedMembersDraft.fromJson(json)); factory \
+         ReservedMembers.of({required String class_,required String in_,required String type,}) \
+         => ReservedMembersDraft(class_: class_,in_: in_,type: type,).validate(); Map<String, \
          dynamic> toJson() => _draft.toJson(); List<String> validationIssues() => \
          _draft.validationIssues(); static Object $thrown(Object thrown) => thrown is \
          ReservedMembersDraft ? thrown.validate() : thrown; }"
     );
     assert_eq!(
         reserved_member_dart::dart_definition(),
-        format!(
-            "enum ReservedMemberDraft {{ default_('Default'), in_('In'), other('Other'); const \
-             ReservedMemberDraft(this.wireValue); final String wireValue; static \
-             ReservedMemberDraft fromJson(dynamic json) {{ {} }} String toJson() => wireValue; \
-             List<String> validationIssues() => const []; {} {}",
-            plain_enum_read(
+        plain_enum_text(
+            "ReservedMember",
+            "default_('Default'), in_('In'), other('Other')",
+            &plain_enum_reads(
                 "ReservedMember",
-                "json",
-                "'Default' => ReservedMemberDraft.default_,'In' => ReservedMemberDraft.in_,'Other' => ReservedMemberDraft.other,"
+                &plain_enum_read(
+                    "ReservedMember",
+                    "json",
+                    "'Default' => ReservedMember.default_,'In' => ReservedMember.in_,'Other' => ReservedMember.other,"
+                ),
             ),
-            plain_enum_validate("ReservedMember"),
-            plain_enum_valid("ReservedMember"),
         )
     );
     assert_eq!(
@@ -965,9 +970,9 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     );
     assert_eq!(
         serde_json::to_value([
-            ReservedMemberDraft::Default,
-            ReservedMemberDraft::In,
-            ReservedMemberDraft::Other
+            ReservedMember::Default,
+            ReservedMember::In,
+            ReservedMember::Other
         ])
         .unwrap(),
         serde_json::json!(["Default", "In", "Other"])
@@ -1003,7 +1008,7 @@ fn sku() -> Sku {
 
 #[cfg(not(feature = "serde"))]
 fn sku() -> Sku {
-    SkuDraft(String::new()).validate().unwrap()
+    SkuDraft(String::new()).into()
 }
 
 #[cfg(feature = "serde")]

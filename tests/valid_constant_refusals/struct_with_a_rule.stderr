@@ -1,0 +1,13 @@
+error[E0277]: the trait bound `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>: From<ShipmentDraft>` is not satisfied
+  --> tests/valid_constant_refusals/struct_with_a_rule.rs:17:6
+   |
+17 |     .into();
+   |      ^^^^ unsatisfied trait bound
+   |
+help: the trait `From<ShipmentDraft>` is not implemented for `__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>`
+  --> tests/valid_constant_refusals/struct_with_a_rule.rs:6:1
+   |
+ 6 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^
+   = note: required for `ShipmentDraft` to implement `Into<__tixschema_valid_shipment_schema::Shipment<ShipmentDraft>>`
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

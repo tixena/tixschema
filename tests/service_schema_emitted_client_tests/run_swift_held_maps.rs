@@ -11,11 +11,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::held_maps_models::{
-    Currents, CurrentsDraft, HaversackDraft, LeadlineDraft, PlumblineDraft, PocketingDraft,
-    RucksackDraft, StowedHaversackDraft, StowedPocketingDraft, beaconing_swift, captioning_swift,
-    currents_swift, haversack_swift, leadline_swift, plumbline_swift, pocketing_swift,
-    rucksack_swift, sequencing_swift, soundings_swift, stowed_haversack_swift,
-    stowed_pocketing_swift, tabulation_swift,
+    Currents, HaversackDraft, LeadlineDraft, PlumblineDraft, PocketingDraft, RucksackDraft,
+    StowedHaversackDraft, StowedPocketingDraft, beaconing_swift, captioning_swift, currents_swift,
+    haversack_swift, leadline_swift, plumbline_swift, pocketing_swift, rucksack_swift,
+    sequencing_swift, soundings_swift, stowed_haversack_swift, stowed_pocketing_swift,
+    tabulation_swift,
 };
 #[cfg(feature = "chrono")]
 use super::held_maps_models::{MoonlitDraft, at, moonlit_swift, moonrise_swift};
@@ -82,8 +82,8 @@ where
     Held: Clone,
 {
     HashMap::from([
-        (CurrentsDraft::East.validate().unwrap(), held.clone()),
-        (CurrentsDraft::West.validate().unwrap(), held.clone()),
+        (Currents::East, held.clone()),
+        (Currents::West, held.clone()),
     ])
 }
 
@@ -110,33 +110,27 @@ fn argument_rows() -> Vec<Row> {
                 by_current: RucksackDraft {
                     held: currents(&text()),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 by_flag: RucksackDraft {
                     held: flagged(&text()),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 by_name: RucksackDraft {
                     held: HashMap::from([("n".to_owned(), text())]),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 by_number: RucksackDraft {
                     held: numbered(&text()),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 listed: RucksackDraft {
                     held: vec![numbered(&text()), HashMap::new()],
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 maybe: RucksackDraft {
                     held: Some(numbered(&text())),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             },
         ),
         read_row(
@@ -146,25 +140,21 @@ fn argument_rows() -> Vec<Row> {
                 by_current: RucksackDraft {
                     held: HashMap::new(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 by_flag: RucksackDraft {
                     held: HashMap::new(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 by_name: RucksackDraft {
                     held: HashMap::new(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 by_number: RucksackDraft {
                     held: HashMap::new(),
                 }
-                .validate()
-                .unwrap(),
-                listed: RucksackDraft { held: Vec::new() }.validate().unwrap(),
-                maybe: RucksackDraft { held: None }.validate().unwrap(),
+                .into(),
+                listed: RucksackDraft { held: Vec::new() }.into(),
+                maybe: RucksackDraft { held: None }.into(),
             },
         ),
         read_row(
@@ -174,8 +164,7 @@ fn argument_rows() -> Vec<Row> {
                 by_number: RucksackDraft {
                     held: numbered(&text()),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
                 held: text(),
             },
         ),
@@ -192,8 +181,7 @@ fn judged_rows() -> Vec<Row> {
             argument: RucksackDraft {
                 held: numbered(&kept),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             sounded: numbered(&kept),
         },
     )]

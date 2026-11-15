@@ -39,8 +39,7 @@ fn the_readme_shows_the_two_stored_forms_of_an_address() {
     let host = HostDraft {
         address: IpAddr::V4(Ipv4Addr::LOCALHOST),
     }
-    .validate()
-    .unwrap();
+    .into();
     let stored = host.mongo_written_row().unwrap();
     assert_eq!(stored.to_string(), SHOWN_STORED);
     assert_eq!(

@@ -151,22 +151,19 @@ impl BillingService<BillingContext> for BillingBackEnd {
     ) -> Result<OpenBalanceResponse, BalanceError> {
         let seen = ready(req.customer_id.len()).await;
         if ctx.logger_name.is_empty() {
-            Err(BalanceErrorDraft::InsufficientBalance { shortfall: 1 }
-                .validate()
-                .unwrap())
+            Err(BalanceErrorDraft::InsufficientBalance { shortfall: 1 }.into())
         } else {
             Ok(OpenBalanceResponseDraft {
                 open_invoices: u32::try_from(seen).unwrap_or(0),
                 is_post_paid: true,
             }
-            .validate()
-            .unwrap())
+            .into())
         }
     }
 
     async fn sweep(&self, _ctx: &BillingContext) -> Result<OpenBalanceResponse, BalanceError> {
         ready(()).await;
-        Err(BalanceErrorDraft::DbError.validate().unwrap())
+        Err(BalanceError::DbError)
     }
 
     async fn void_invoice(
@@ -180,8 +177,7 @@ impl BillingService<BillingContext> for BillingBackEnd {
             open_invoices: u32::try_from(seen).unwrap_or(0),
             is_post_paid: false,
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -500,8 +496,7 @@ fn asking() -> OpenBalanceRequest {
     OpenBalanceRequestDraft {
         customer_id: "acme".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The invoices an operation answered with, and `u32::MAX` where it answered its declared error.
@@ -542,5 +537,25 @@ fn the_service_the_readme_declares_is_implementable_at_the_context_it_shows() {
         poll_once(BillingBackEnd.apply_bundle(&ctx, asking())),
         Some(()),
         "a one-way operation answers with nothing at all"
+    );
+}
+
+#[test]
+fn the_faults_the_readme_shows_are_written_as_a_fault_writes_them() {
+    use billing_service_schema::{ServiceFault, ServiceFaultIssue};
+    let refused = ServiceFault::failed_validation(
+        "get-open-balance",
+        vec![ServiceFaultIssue::new(
+            Some("customer_id"),
+            "invalid type: integer `5`, expected a string",
+        )],
+    );
+    assert_shown(
+        &serde_json::to_string(&refused).unwrap(),
+        r#"{"issues":[{"detail":"invalid type: integer `5`, expected a string","field":"customer_id"}],"kind":"failed-validation","operation":"get-open-balance"}"#,
+    );
+    assert_shown(
+        &serde_json::to_string(&ServiceFault::unknown_operation("rebook")).unwrap(),
+        r#"{"detail":"the service answers to no operation by that name","kind":"unknown-operation","operation":"rebook"}"#,
     );
 }

@@ -50,13 +50,16 @@ fun calm(value: TemperDraft): List<String> =
 "#;
 
 const HARNESS: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
     try {
         val read = Json.decodeFromString(serializer, payload)
         println("$name: read ${Json.encodeToString(serializer, read)}")
     } catch (refused: SerializationException) {
         println("$name: refused")
-        (refused.message ?: "").split("; ").forEach { println("    $it") }
+        issuesOf(refused).forEach { println("    $it") }
     }
 }
 "#;
@@ -200,7 +203,14 @@ fn leaf(text: &str) -> String {
 fn rows() -> Vec<Row> {
     let line = || "a".to_owned();
     let mut rows: Vec<Row> = [
-        both!("a plain enum", "Genre", "Category", &GenreDraft::Poetry),
+        ["Genre", "Category"].map(|read_as| {
+            read_row_of(
+                &format!("a plain enum, read as {read_as}"),
+                read_as,
+                &Genre::Poetry,
+                &Ok::<Genre, Vec<String>>(Genre::Poetry),
+            )
+        }),
         both!(
             "a plain enum with a check",
             "Mood",
@@ -257,36 +267,36 @@ fn rows() -> Vec<Row> {
         "a holder declared above",
         "Bookcase<String>",
         &BookcaseDraft {
-            act: ActDraft::Lowered.validate().unwrap(),
-            chapter: ChapterDraft::Closing { line: line() }.validate().unwrap(),
-            cue: CueDraft::Sealed(leaf("c")).validate().unwrap(),
-            genre: GenreDraft::Prose.validate().unwrap(),
+            act: Act::Lowered,
+            chapter: ChapterDraft::Closing { line: line() }.into(),
+            cue: CueDraft::Sealed(leaf("c")).into(),
+            genre: Genre::Prose,
             mood: MoodDraft::Calm.validate().unwrap(),
-            reel: ReelDraft::Sealed(leaf("d")).validate().unwrap(),
+            reel: ReelDraft::Sealed(leaf("d")).into(),
         },
     ));
     rows.push(read_row!(
         "a holder declared below",
         "Archive<String>",
         &ArchiveDraft {
-            act: ActDraft::Raised { line: line() }.validate().unwrap(),
-            chapter: ChapterDraft::Opening { line: line() }.validate().unwrap(),
-            cue: CueDraft::Unrolled { leaf: leaf("c") }.validate().unwrap(),
-            genre: GenreDraft::Poetry.validate().unwrap(),
+            act: ActDraft::Raised { line: line() }.into(),
+            chapter: ChapterDraft::Opening { line: line() }.into(),
+            cue: CueDraft::Unrolled { leaf: leaf("c") }.into(),
+            genre: Genre::Poetry,
             mood: MoodDraft::Calm.validate().unwrap(),
-            reel: ReelDraft::Unrolled { leaf: leaf("d") }.validate().unwrap(),
+            reel: ReelDraft::Unrolled { leaf: leaf("d") }.into(),
         },
     ));
     rows.push(read_row!(
         "a holder declared below, its mood refused",
         "Archive<String>",
         &ArchiveDraft {
-            act: ActDraft::Lowered.validate().unwrap(),
-            chapter: ChapterDraft::Closing { line: line() }.validate().unwrap(),
-            cue: CueDraft::Sealed(leaf("c")).validate().unwrap(),
-            genre: GenreDraft::Prose.validate().unwrap(),
+            act: Act::Lowered,
+            chapter: ChapterDraft::Closing { line: line() }.into(),
+            cue: CueDraft::Sealed(leaf("c")).into(),
+            genre: Genre::Prose,
             mood: Mood::model_schema_wrap_unjudged(MoodDraft::Frantic),
-            reel: ReelDraft::Sealed(leaf("d")).validate().unwrap(),
+            reel: ReelDraft::Sealed(leaf("d")).into(),
         },
     ));
     rows

@@ -101,8 +101,7 @@ fn skipped_field() -> SkippedField {
         id: "1".to_owned(),
         internal: vec!["secret".to_owned()],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -150,8 +149,7 @@ fn a_skipped_variant_is_written_in_no_payload_and_read_out_of_none() {
             SkippedTallyDraft {
                 counts: BTreeMap::new(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     ];
     for value in skipped {

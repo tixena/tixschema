@@ -85,8 +85,7 @@ fn payloads() -> Vec<(&'static str, String)> {
             ink: InkDraft {
                 colour: "red".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             stamp: stamp().validate().unwrap(),
         },
     );

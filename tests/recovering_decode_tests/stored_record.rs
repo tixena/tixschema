@@ -66,8 +66,7 @@ fn record(numbers: &[i32]) -> Record {
             .map(|&number| VersionDraft { number }.validate().unwrap())
             .collect(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// Repairs what the cases below leave in a `Record`, and rejects anything else.
@@ -387,8 +386,7 @@ fn a_plain_value_in_a_list_a_map_or_an_option_is_listed_and_fixed_at_its_own_pat
                 id("6a7cc592ca0574e6efdfe218")
             ],
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 
@@ -440,8 +438,7 @@ fn an_id_held_as_text_under_a_brand_is_mistyped_at_the_brand() {
             owner: OwnerId::new(ObjectId::parse_str("6a7cc592ca0574e6efdfe217").unwrap()).unwrap(),
             tagged: Tagged::new(ObjectId::parse_str("6a7cc592ca0574e6efdfe218").unwrap()).unwrap(),
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 
     let alone = OwnerId::from_value_with(json!("not-an-id"), |_raw, _found| {

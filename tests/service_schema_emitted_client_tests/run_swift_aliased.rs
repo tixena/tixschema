@@ -35,6 +35,10 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// what says why: the description of a corrupted payload, the refusal of a member under two of its
 /// names and of a value `validate()` refuses among them.
 const HELPERS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func unpadded(_ payload: Any) -> Any {
   guard let text = payload as? String else { return payload }
   return text.trimmingCharacters(in: .whitespaces)
@@ -61,6 +65,9 @@ func said<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   let told: String
   do {
     told = try writtenBack(type, payload)
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    told = issues.joined(separator: "; ")
   } catch DecodingError.dataCorrupted(let context) {
     told = context.debugDescription
   } catch {

@@ -74,9 +74,9 @@ impl PingService<amqp_server::Context> for PingBackEnd {
         let _entered = ctx.logger.enter();
         ready(()).await;
         if req.customer_id == "unlucky" {
-            Err(PingErrorDraft::DbError.validate().unwrap())
+            Err(PingError::DbError)
         } else {
-            Ok(PingResponseDraft { invoices: 7 }.validate().unwrap())
+            Ok(PingResponseDraft { invoices: 7 }.into())
         }
     }
 }

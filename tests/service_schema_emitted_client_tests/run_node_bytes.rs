@@ -122,8 +122,7 @@ impl BytesClientService<()> for BytesBackEnd {
             content_type: req.content_type.clone(),
             data: req.data.iter().map(|byte| 255 - byte).collect(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 

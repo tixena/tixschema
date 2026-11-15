@@ -103,7 +103,7 @@ pub enum DocumentedUntagged {
 
 /// A documented plain enum.
 /// ```rust example
-/// let item = DocumentedSlotDraft::Primary;
+/// let item = DocumentedSlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -238,7 +238,7 @@ pub enum ExampleOnlyVariantHolder {
 pub type ExampleOnlyAlias = u32;
 
 /// ```rust example
-/// let item = ExampleOnlySlotDraft::Primary;
+/// let item = ExampleOnlySlot::Primary;
 /// println!("Item: {:?}", item);
 /// ```
 #[cfg(feature = "serde")]
@@ -405,8 +405,7 @@ fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
     let held: DocumentedStructRef = DocumentedStructDraft {
         label: "alpha".to_owned(),
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(held.label, "alpha");
     let zod = documented_struct_ref_schema::Schema::zod_schema();
     assert!(!zod.contains(".meta("), "Got: {zod}");

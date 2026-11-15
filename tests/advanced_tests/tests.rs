@@ -380,7 +380,7 @@ fn test_serialization_consistency() {
     let project = ProjectDraft {
         id: "proj_123".to_owned(),
         name: "New Website".to_owned(),
-        status: ProjectStatusDraft::InProgress.validate().unwrap(),
+        status: ProjectStatus::InProgress,
         assigned_employees: vec!["emp_1".to_owned(), "emp_2".to_owned()],
         deadline: Some("2024-12-31".to_owned()),
         budget: Some(50000),
@@ -620,8 +620,7 @@ fn test_roundtrip_serialization() {
                 relationship: "Brother".to_owned(),
                 phone: "098-765-4321".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     };
 

@@ -46,7 +46,7 @@ fn main() {
     );
     assert_eq!(
         read,
-        Ok(InvoiceDraft { number: "INV-7".to_owned(), line_count: 3 }.validate().unwrap())
+        Ok(InvoiceDraft { number: "INV-7".to_owned(), line_count: 3 }.into())
     );
 
     // An issue no resolver settles fails the read, and is listed at its path.

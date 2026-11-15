@@ -191,8 +191,7 @@ fn a_flattened_alias_tixschema_never_sees_takes_every_other_key() {
         Ok(BlockDraft {
             properties: doc! { "a": 1_i32, "b": [true] },
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
 }

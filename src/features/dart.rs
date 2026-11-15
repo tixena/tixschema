@@ -2,6 +2,7 @@
 
 mod forms;
 
+use crate::utils::is_rule_less;
 use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 use core::iter::once;
@@ -18,6 +19,7 @@ use crate::features::member_keys;
 use crate::features::model_schema_prop::{
     FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
 };
+use crate::features::refusals;
 use crate::features::serde::defaults::{SerdeDefaults, substituted};
 use crate::features::serde::{
     brand_field, has_serde_skip_serializing, keys_taken_when_flattened, parse_serde_key_omission,
@@ -32,6 +34,8 @@ use crate::field_type::{
     dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
     get_field_def, is_plain_enum, is_sequence_wrapper,
 };
+use crate::model_schema::parameter_walk;
+use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
 #[cfg(feature = "serde")]
@@ -76,26 +80,25 @@ const DART_ENUM_NAMES_TAKEN: [&str; 12] = [
 
 /// The members an emitted class declares beside those of an enum, which a function of the same name
 /// is called through a forwarder for: the holder of a brand's value and the static helpers.
-const DART_CLASS_MEMBERS: [&str; 11] = [
+const DART_CLASS_MEMBERS: [&str; 9] = [
     "_boundLength",
     "_boundText",
-    "_heldBound",
     "_number",
     "_readAt",
     "_readBuffered",
     "_readFlattened",
     "_repeats",
     "_under",
-    "validateBound",
     "value",
 ];
 
 /// What a field of an emitted class cannot be named beside the reserved words: a type its codec is
 /// written with, or a member the class has. Only names that never compiled are listed: a field
 /// and a constructor share a name, so `fromJson` and `fromJsonUnjudged` are not.
-const DART_FIELD_NAMES_TAKEN: [&str; 8] = [
+const DART_FIELD_NAMES_TAKEN: [&str; 9] = [
     "dynamic",
     "noSuchMethod",
+    "of",
     "runtimeType",
     "toDraft",
     "toJson",
@@ -113,11 +116,8 @@ const DART_RESERVED: [&str; 33] = [
     "with",
 ];
 
-/// The helper a variant of an untagged enum asks a value it holds for the bound of its own with:
-/// a brand that carries one answers `validateBound()`, and any other value has none.
-const HELD_BOUND_HELPER: &str = "static List<String> _heldBound(Object held) { try { return \
-     (held as dynamic).validateBound() as List<String>; } on NoSuchMethodError { return const \
-     []; } }";
+/// The text [`integer_read`] fills in, which the tests of the emitted text fill in the same way.
+const INTEGER_READ: &str = include_str!("dart/integer_read.txt");
 
 /// The helper a class reads a flattened member with, and an enum reads a braced variant under an
 /// internal tag with. serde reads such a value from the keys its holder buffers and places a
@@ -157,6 +157,8 @@ struct DartField {
     /// Where the JSON of the default serde reads for an absent key is written.
     default_at: Option<String>,
     field_def: FieldDef,
+    /// The Dart value a `literal` fixes the member to, which `of` writes for it.
+    fixed: Option<String>,
     flatten: bool,
     member: String,
     /// Whether serde never writes the member: it is under `skip_serializing`.
@@ -271,6 +273,26 @@ struct Pair<'names> {
     /// What `toJson` answers.
     json_type: &'names str,
     kind: &'names str,
+    /// The constants of the valid type: one for each unit variant, where nothing can refuse one.
+    statics: &'names str,
+}
+
+/// How the sealed base of an enum is written: the form of its classes, whether any rule judges a
+/// value of it, and the constants of its unit variants.
+struct EnumDraft<'names> {
+    form: ReadForm,
+    rule_less: bool,
+    statics: &'names str,
+}
+
+/// What the dispatch of a tagged enum's read is written from.
+struct TaggedDispatch<'text> {
+    corrects: &'text Corrects<'text>,
+    export_name: &'text str,
+    is_external: bool,
+    item_enum: &'text ItemEnum,
+    shape: &'text TagShape<'text>,
+    variant_rule: RenameRule,
 }
 
 /// What the classes of a struct are written from.
@@ -281,6 +303,8 @@ struct StructText<'text> {
     fields: &'text [DartField],
     generic_params: &'text str,
     own_tag: Option<&'text (String, String)>,
+    /// Whether the struct is a unit struct, which has one value.
+    unit: bool,
 }
 
 /// The text of the `validationIssues()` of a value wrapper, and whether the wrapper is a draft.
@@ -387,12 +411,11 @@ impl<'held> Bounds<'held> {
     }
 }
 
-/// A helper a type's `validationIssues()` or the bounds of a variant call.
+/// A helper a type's `validationIssues()` calls.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Helper {
     BoundLength,
     BoundText,
-    HeldBound,
     Number,
     Repeats,
     Under,
@@ -421,9 +444,6 @@ impl Helpers {
 /// What a walk lists of the value a member holds.
 #[derive(Clone, Copy)]
 enum Asked {
-    /// What chooses a variant of an untagged enum: the member's own bounds and the bound of
-    /// each brand it holds, with no check and nothing a model reports.
-    Bound,
     /// What `validationIssues()` lists: the member's bounds, the `validationIssues()` of each declared type it
     /// holds, then its checks.
     Rules,
@@ -492,8 +512,6 @@ struct Corrects<'item> {
     own: &'item [FunctionName],
     /// What holds the payload as it is taken, where the type names a function.
     payload: String,
-    /// What holds the variant of an untagged enum whose bounds are asked.
-    read: String,
     /// What holds the tag of an enum.
     tag: String,
 }
@@ -506,7 +524,6 @@ impl<'item> Corrects<'item> {
             map: declared("map"),
             own,
             payload: declared("payload"),
-            read: declared("read"),
             tag: declared("tag"),
         }
     }
@@ -519,7 +536,6 @@ impl<'item> Corrects<'item> {
             map: self.map.clone(),
             own: &[],
             payload: self.payload.clone(),
-            read: self.read.clone(),
             tag: self.tag.clone(),
         }
     }
@@ -671,13 +687,71 @@ thread_local! {
     /// How many classes of a `Result` have been named, never reset: every one lands in the same
     /// consuming file, where no two may share a name.
     static DART_RESULT_COUNTER: Cell<u32> = const { Cell::new(0) };
+
+    /// The refusal class the reads and `validate()` of the item being emitted throw.
+    static DART_REFUSAL: RefCell<String> = const { RefCell::new(String::new()) };
+
+    /// The refusal classes a judged read of each type a class has been emitted for throws, by
+    /// Rust ident: its own, and for an alias those of what it reads judged.
+    static DART_REFUSALS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+}
+
+/// Makes the refusal of the type published as `export_name` the one the item being emitted throws.
+fn enter_refusal(export_name: &str) {
+    DART_REFUSAL.with(|held| *held.borrow_mut() = refusals::refusal_name(export_name));
+}
+
+/// The refusal class the item being emitted throws.
+fn refusal() -> String {
+    DART_REFUSAL.with(|held| held.borrow().clone())
+}
+
+/// The refusal classes a judged read of `def` throws where the value it reads, or one it holds,
+/// breaks a rule, as far as the types it names were emitted before.
+pub fn dart_refusals_of(def: &FieldDef) -> Vec<String> {
+    refusals::reached(def, &own_refusals)
+}
+
+/// The refusal classes recorded for the type written `name`.
+fn own_refusals(name: &str) -> Vec<String> {
+    DART_REFUSALS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+}
+
+/// Drops what was recorded for a type written `rust_ident`: of two types of one ident in a crate,
+/// a holder names the refusals of the one expanded last.
+fn forget_refusals(rust_ident: &str) {
+    DART_REFUSALS.with(|recorded| {
+        recorded.borrow_mut().remove(rust_ident);
+    });
+}
+
+/// Records that a judged read of `rust_ident` throws `refused` as well.
+fn record_refusals(rust_ident: &str, refused: Vec<String>) {
+    DART_REFUSALS.with(|recorded| {
+        let mut held = recorded.borrow_mut();
+        let listed = held.entry(rust_ident.to_owned()).or_default();
+        for refusal in refused {
+            if !listed.contains(&refusal) {
+                listed.push(refusal);
+            }
+        }
+    });
+}
+
+/// The class the item being emitted throws as `refused`, holding the list of broken rules.
+fn refusal_class(refused: &str) -> String {
+    format!(
+        "class {refused} implements Exception {{ const {refused}(this.issues); final List<String> \
+         issues; @override String toString() => '{refused}: $issues'; }}"
+    )
 }
 
 /// The helper, named `name`, a read reads a value under a key or an index with. A refusal carries
 /// the path of the value refused as its `FormatException`'s `source`, a list of steps a holder puts
 /// its own step ahead of. One of a key `object` does not hold is `missing field`, as serde words
 /// it, and a cast's `TypeError` and a Dart parser's refusal become a `FormatException` with the
-/// path.
+/// path. A type's refusal a value read judged throws keeps its class, and each issue it holds is
+/// placed under the step: no refusal class is shared to name, so its `issues` is read dynamically.
 pub fn read_at_function(name: &str) -> String {
     format!(
         "Read {name}<Read>(Map<String, dynamic>? object, Object key, Read Function() read) {{ try \
@@ -685,7 +759,12 @@ pub fn read_at_function(name: &str) -> String {
          throw FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
          throw FormatException('$refused', <Object>[key]); if (refused is FormatException) {{ \
          final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
-         is List<Object>) ...at]); }} rethrow; }} }}"
+         is List<Object>) ...at]); }} if (refused is Exception) {{ Object? listed; try {{ listed = \
+         (refused as dynamic).issues; }} on NoSuchMethodError {{ listed = null; }} if (listed is \
+         List<String>) {{ for (var at = 0; at < listed.length; at += 1) {{ final said = \
+         listed[at]; final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; \
+         listed[at] = end > 0 ? \"'$key.${{said.substring(1, end)}}'${{said.substring(end + 1)}}\" \
+         : \"'$key': $said\"; }} }} }} rethrow; }} }}"
     )
 }
 
@@ -750,6 +829,10 @@ fn with_read_at(reads: String, called: bool) -> String {
 /// own shape; an item this module has nothing to say about (anything but a struct, an enum or a
 /// type alias) earns nothing.
 pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream {
+    let ident = refusals::item_ident(item);
+    if let Some(named) = &ident {
+        forget_refusals(named);
+    }
     record_called(called_by(item, args));
     record_members(item, args);
     record_flattenings(item);
@@ -762,7 +845,11 @@ pub fn dart_schema_dispatch(item: &Item, args: &DartTypeArgs<'_>) -> TokenStream
     } else {
         TokenStream::new()
     };
+    if let Some(named) = &ident {
+        record_refusals(named, refusals::held_by(item, &own_refusals));
+    }
     record_called(Vec::new());
+    DART_REFUSAL.with(|held| held.borrow_mut().clear());
     DART_MEMBERS.with(|held| *held.borrow_mut() = (String::new(), Vec::new()));
     DART_FORWARDERS.with(|held| held.borrow_mut().clear());
     DART_FLATTENING.with(|current| current.borrow_mut().clear());
@@ -1147,7 +1234,13 @@ fn dart_module_tokens(
             declared
         },
     );
-    let source = format!("{forwarders}{dart_source}");
+    let refused = refusal();
+    let source = if dart_source.contains(&format!("throw {refused}(")) {
+        record_refusals(rust_ident, vec![refused.clone()]);
+        format!("{forwarders}{} {dart_source}", refusal_class(&refused))
+    } else {
+        format!("{forwarders}{dart_source}")
+    };
     let full_source = if classes.is_empty() {
         source
     } else {
@@ -1601,6 +1694,12 @@ fn joined_entries(def: &FieldDef, encode: &str) -> String {
         )
     } else if writes_an_object(def) {
         encode.to_owned()
+    } else if late_flattened(def) {
+        format!(
+            "((Object? held) => switch (held) {{ final String name => {{name: null}}, final \
+             Map<String, dynamic> written => written, _ => throw const FormatException('expected \
+             an object') }})({encode})"
+        )
     } else if matches!(def.field_type, FieldDefType::SiblingType(_, _))
         && def.array_depth == 0
         && !def.is_optional()
@@ -1789,6 +1888,11 @@ fn collect_dart_fields(
                 None
             },
             field_def,
+            fixed: fixed_value(field).map(|fixed| match fixed {
+                Fixed::Bool(value) => value.to_string(),
+                Fixed::Number(digits, _) => digits,
+                Fixed::Text(text) => quoted(&text),
+            }),
             member: dart_member(&rust_name, &DART_FIELD_NAMES_TAKEN, &written),
             never_written: has_serde_skip_serializing(&field.attrs),
             wire_name,
@@ -2066,6 +2170,29 @@ fn number_key_text(number: &FieldDefType, expr: &str, narrowed: bool) -> String 
     )
 }
 
+/// The `int` `expr` is cast to, where a `double` is refused as serde refuses a float for an
+/// integer, naming it as `serde_json` spells it: its shortest digits laid out plainly from
+/// `0.00001` to below `1e16`, with `.0` where they hold no fraction, and as `1e+16` beyond.
+pub fn integer_read(integer: &FieldDefType, expr: &str) -> String {
+    let (int, double) = (dart_core("int"), dart_core("double"));
+    let expected = integer.number_name().unwrap_or("an integer");
+    let (held, number, spelled) = (declared("held"), declared("number"), declared("spelled"));
+    [
+        ("@EXPR@", expr),
+        ("@DOUBLE@", &double),
+        ("@INT@", &int),
+        ("@NUMBER@", &number),
+        ("@SPELLED@", &spelled),
+        ("@HELD@", &held),
+        ("@EXPECTED@", expected),
+        ("@OUT@", NUMBER_OUT_OF_RANGE),
+    ]
+    .into_iter()
+    .fold(INTEGER_READ.to_owned(), |text, (from, to)| {
+        text.replace(from, to)
+    })
+}
+
 /// The float `taken` reads as, as serde reads an `f32` or an `f64`: an `f32` beyond its range as an
 /// infinity of its sign, and an infinity, which `jsonDecode` reads a number beyond an `f64` as, in
 /// serde's words for text that is not the document.
@@ -2327,13 +2454,6 @@ pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
     dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Judged)
 }
 
-/// [`dart_json_decode`] reading each declared type by its `fromJsonUnjudged`, which throws for what
-/// does not read and never for what `validationIssues()` refuses.
-#[cfg(feature = "serde")]
-pub fn dart_json_decode_unjudged(ty: &syn::Type, expr: &str) -> String {
-    dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Unjudged)
-}
-
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
 /// type is encoded. `promoted`: Dart narrows `expr`, being a parameter or a local.
 #[cfg(feature = "serde")]
@@ -2342,13 +2462,15 @@ pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
 }
 
 /// The converters a holder hands the type `name` for `arguments`, one per type parameter, each
-/// reading the argument judged: no `validationIssues()` reaches a value behind a parameter. A value that
+/// reading the argument as `read` reads the type: unjudged where the holder judges the whole value
+/// once, through the type's `validationIssuesWith`, and judged where the type is read by itself,
+/// whose `validationIssues()` reaches no value behind a parameter. A value that
 /// reads one key alone is handed that key alone where the type reads its parameter flattened
 /// alone, and by a converter of the flattened reads where it reads it otherwise too. A parameter
 /// of the holder's own is handed the holder's converter of its flattened reads there. Where the
 /// type reads a parameter flattened under an `Option`, it is handed the keys of the argument, where
 /// they are known, and a parameter of the holder's own the keys the holder is handed for it.
-fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
+fn argument_converters(name: &str, arguments: &[FieldDef], read_as: Read) -> String {
     let through = flattenings_of(name);
     let looked_up = looked_up_by(name);
     let mut converters = Vec::new();
@@ -2367,12 +2489,7 @@ fn argument_converters(name: &str, arguments: &[FieldDef]) -> String {
         } else {
             None
         };
-        let read = |handed: &str| {
-            format!(
-                "(e) => {}",
-                dart_decode_expr(argument, handed, Read::Judged)
-            )
-        };
+        let read = |handed: &str| format!("(e) => {}", dart_decode_expr(argument, handed, read_as));
         match (through.get(at), alone, held) {
             (Some(Flattening::Alone), Some(handed), _) => converters.push(read(&handed)),
             (Some(Flattening::Alone), None, Some((named, own))) => {
@@ -2498,7 +2615,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
             if generics.is_empty() {
                 format!("{class_name}.{constructor}({expr})")
             } else {
-                let converters = argument_converters(name, generics);
+                let converters = argument_converters(name, generics, read);
                 format!("{class_name}.{constructor}({expr}, {converters})")
             }
         }
@@ -2522,7 +2639,7 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         | FieldDefType::I64
         | FieldDefType::Usize
         | FieldDefType::Isize => {
-            let taken = format!("{expr} as {}", dart_core("int"));
+            let taken = integer_read(&field.field_type, expr);
             forms::number_held(&field.field_type, &taken).unwrap_or(taken)
         }
         FieldDefType::F32 | FieldDefType::F64 => float_read(
@@ -2888,16 +3005,80 @@ fn first_of(json: &str, enum_name: &str, names: &[Vec<String>]) -> String {
         .map(|variant| format!("[{}]", listed_names(variant)))
         .collect::<Vec<_>>()
         .join(", ");
+    first_among(
+        json,
+        enum_name,
+        &format!("const [{}]", listed_names(&names.concat())),
+        &variants,
+    )
+}
+
+/// [`first_of`] over `flat`, a Dart list of every name of every variant, and `variants`, the text
+/// of the list of each variant's names.
+fn first_among(json: &str, enum_name: &str, flat: &str, variants: &str) -> String {
     format!(
-        "(switch ({json}) {{ final whole => whole.keys.where(const [{}].contains).length > 1 ? \
+        "(switch ({json}) {{ final whole => whole.keys.where({flat}.contains).length > 1 ? \
          throw FormatException('more than one variant of enum {} found in flattened data: ' + \
          [for (final variant in const [{variants}]) if (variant.any(whole.containsKey)) \
          variant.first].join(', ')) : {{ for (final key in \
-         whole.keys.where(const [{}].contains).take(1)) key: whole[key] }} }})",
-        listed_names(&names.concat()),
-        dart_escaped(enum_name, '\''),
-        listed_names(&names.concat())
+         whole.keys.where({flat}.contains).take(1)) key: whole[key] }} }})",
+        dart_escaped(enum_name, '\'')
     )
+}
+
+/// The list of every name of every variant of an enum a holder reads late, from `entries`, the
+/// placeholder of each variant's names.
+fn late_names(entries: &str) -> String {
+    format!("[for (final variant in const [{entries}]) ...variant]")
+}
+
+/// Whether the flattened member typed `def` has a type declared below its holder or in another
+/// crate, which the holder is written without seeing.
+#[cfg(feature = "serde")]
+fn late_flattened(def: &FieldDef) -> bool {
+    def.array_depth == 0
+        && member_keys::is_unmet(def)
+        && lookup_dart_name(named_type(def)).is_none()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_flattened(_def: &FieldDef) -> bool {
+    false
+}
+
+/// The placeholder of the names each variant of the flattened member typed `def` is read under,
+/// where its type is declared below its holder or in another crate: filled when the holder's
+/// `dart_definition()` runs, with no name for a type that is no externally tagged enum.
+#[cfg(feature = "serde")]
+fn late_entries(def: &FieldDef) -> Option<String> {
+    (member_functions(def).is_empty()
+        && object_id_keys(def).is_empty()
+        && lookup_dart_name(named_type(def)).is_none())
+    .then(|| member_keys::entries_of(def))
+    .flatten()
+}
+
+/// The placeholder of the keys the flattened member typed `def` takes off the object its holder
+/// hands it, where its type is declared below its holder or in another crate.
+#[cfg(feature = "serde")]
+fn late_taken(def: &FieldDef) -> Vec<String> {
+    if lookup_dart_name(named_type(def)).is_some() {
+        return Vec::new();
+    }
+    member_keys::taken_of(def).unwrap_or_default()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_taken(_def: &FieldDef) -> Vec<String> {
+    Vec::new()
+}
+
+/// With no `serde`, nothing is flattened.
+#[cfg(not(feature = "serde"))]
+const fn late_entries(_def: &FieldDef) -> Option<String> {
+    None
 }
 
 /// The read of an externally tagged enum typed `def` flattened into its holder from `first`, the
@@ -3045,10 +3226,14 @@ fn corrected_option(def: &FieldDef, functions: &[FunctionName], handed: &str) ->
 /// The object `json` names without its first entry, in the object's order, under one of `names`:
 /// what serde hands a member flattened after an externally tagged enum, which takes that entry.
 fn without_first(json: &str, names: &[String]) -> String {
+    without_first_among(json, &format!("const [{}]", listed_names(names)))
+}
+
+/// [`without_first`] over `flat`, a Dart list of the names.
+fn without_first_among(json: &str, flat: &str) -> String {
     format!(
         "(switch ({{...{json}}}) {{ final rest => \
-         rest..remove(rest.keys.where(const [{}].contains).firstOrNull) }})",
-        listed_names(names)
+         rest..remove(rest.keys.where({flat}.contains).firstOrNull) }})"
     )
 }
 
@@ -3462,7 +3647,6 @@ where
     let within = stepped(place, Step::Bound(index.clone()));
     let inner = of_item(&item, &within, depth.saturating_add(1));
     let walked = match asked {
-        Asked::Bound => format!("for (final {item} in {expr})"),
         Asked::Rules => format!("for (final ({index}, {item}) in {expr}.indexed)"),
     };
     guarded(&walked, inner)
@@ -3584,13 +3768,22 @@ fn held_at(
                 let wrapped = combined.array_depth.saturating_sub(field.array_depth);
                 return held_at(&combined, wrapped, expr, place, depth, asked, helpers);
             }
-            vec![match asked {
-                Asked::Bound => {
-                    helpers.call(Helper::HeldBound);
-                    format!("..._heldBound({expr})")
-                }
-                Asked::Rules => reported(&format!("{expr}.validationIssues()"), place, helpers),
-            }]
+            vec![named_element(
+                expr,
+                arguments,
+                place,
+                (depth, asked),
+                helpers,
+            )]
+        }
+        FieldDefType::TypeParam(parameter)
+            if matches!(asked, Asked::Rules) && walked_parameters().contains(parameter) =>
+        {
+            vec![reported(
+                &format!("{}({expr})", dart_check_of(parameter)),
+                place,
+                helpers,
+            )]
         }
         FieldDefType::Map(key, value) => {
             let entry = binder("entry", depth);
@@ -3656,6 +3849,102 @@ fn held_at(
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => Vec::new(),
     }
+}
+
+/// What a value `expr` of a declared type filled with `arguments` answers `asked`: the bound it
+/// carries, or what it reports, handed the check of each argument where it declares parameters.
+fn named_element(
+    expr: &str,
+    arguments: &[FieldDef],
+    place: &[Step],
+    (depth, asked): (usize, Asked),
+    helpers: &mut Helpers,
+) -> String {
+    match asked {
+        Asked::Rules if arguments.is_empty() => {
+            reported(&format!("{expr}.validationIssues()"), place, helpers)
+        }
+        Asked::Rules => {
+            let handed: Vec<String> = arguments
+                .iter()
+                .map(|argument| argument_check(argument, depth, helpers))
+                .collect();
+            reported(
+                &format!("{expr}.validationIssuesWith({})", handed.join(", ")),
+                place,
+                helpers,
+            )
+        }
+    }
+}
+
+/// The type parameters of the item being emitted, whose values its `validationIssuesWith` hands to
+/// a check each.
+fn walked_parameters() -> Vec<String> {
+    parameter_walk::scope().parameters
+}
+
+/// The check `validationIssuesWith` takes for the values behind `parameter`.
+fn dart_check_of(parameter: &str) -> String {
+    format!("issuesOf{parameter}")
+}
+
+/// What a holder hands a generic model's `validationIssuesWith` for one of its type arguments,
+/// `argument`: the check of the holder's own parameter where the argument is one, and otherwise
+/// what the walk of a value of the argument reports of it, nothing where it holds no rule.
+fn argument_check(argument: &FieldDef, depth: usize, helpers: &mut Helpers) -> String {
+    if let FieldDefType::TypeParam(parameter) = &argument.field_type
+        && argument.array_depth == 0
+        && !argument.is_optional()
+        && walked_parameters().contains(parameter)
+    {
+        return dart_check_of(parameter);
+    }
+    let held = binder("argument", depth);
+    let elements = held_elements(
+        argument,
+        &held,
+        &[],
+        depth.saturating_add(1),
+        Asked::Rules,
+        helpers,
+    );
+    if elements.is_empty() {
+        return "(_) => const <String>[]".to_owned();
+    }
+    format!("({held}) => [ {}, ]", elements.join(", "))
+}
+
+/// The parameters of `validationIssuesWith` on a type that declares `parameters`.
+fn issues_with_parameters(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| {
+            format!(
+                "List<String> Function({parameter}) {}",
+                dart_check_of(parameter)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The checks `validationIssues()` hands `validationIssuesWith`: none reports anything.
+fn checks_of_nothing(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|_| "(_) => const <String>[]")
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The checks a type that declares `parameters` hands on to the `validationIssuesWith` it calls.
+fn checks_handed_on(parameters: &[String]) -> String {
+    parameters
+        .iter()
+        .map(|parameter| dart_check_of(parameter))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// What the arms of the `Result` `expr` report of the value the one it holds holds, each message
@@ -3852,18 +4141,13 @@ fn member_elements(
     asked: Asked,
     helpers: &mut Helpers,
 ) -> Vec<String> {
-    let named: &[Step] = match asked {
-        Asked::Bound => &[],
-        Asked::Rules => place,
-    };
     let (mut elements, walked) = match asked {
-        Asked::Bound => (Vec::new(), field.clone()),
         Asked::Rules => (
             own_repeat_elements(field, expr, place, depth, helpers),
             field.without_own_set(),
         ),
     };
-    let own = own_bound_elements(field, expr, named, depth, helpers);
+    let own = own_bound_elements(field, expr, place, depth, helpers);
     let held = held_elements(&walked, expr, place, depth, asked, helpers);
     elements.extend(held);
     elements.extend(own);
@@ -3986,7 +4270,17 @@ fn validate_members(rules: &[String], helpers: &Helpers, overrides: bool) -> Str
     } else {
         format!("[ {}, ]", rules.join(", "))
     };
-    let mut written = format!("{annotation}List<String> validationIssues() => {answered};");
+    let parameters = walked_parameters();
+    let mut written = if parameters.is_empty() {
+        format!("{annotation}List<String> validationIssues() => {answered};")
+    } else {
+        format!(
+            "{annotation}List<String> validationIssues() => validationIssuesWith({}); \
+             {annotation}List<String> validationIssuesWith({}) => {answered};",
+            checks_of_nothing(&parameters),
+            issues_with_parameters(&parameters),
+        )
+    };
     for (called, helper) in [
         (helpers.calls(Helper::Under), UNDER_HELPER.to_owned()),
         (helpers.calls(Helper::BoundLength), bound_length_helper()),
@@ -4019,9 +4313,7 @@ fn declared_default(parameter: &str, default_types: &[(Ident, syn::Type)]) -> Fi
 
 /// A brand's `validationIssues()`: a repeat of the set it wraps and its string check over the value, under
 /// no place, then the checks it names. A brand over one of its own parameters holds the declared
-/// default of that parameter and no other filling. A brand that carries a bound writes
-/// `validateBound()` ahead of it, the bound alone, which a variant of an untagged enum that holds
-/// the brand is chosen by.
+/// default of that parameter and no other filling.
 fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
     let mut helpers = Helpers::default();
     let bounds = Bounds {
@@ -4045,21 +4337,19 @@ fn brand_validate(value_field: &FieldDef, args: &DartTypeArgs<'_>) -> String {
     } else {
         bound_elements(value_field, "value", &[], &bounds, 0, &mut helpers)
     };
-    let bound_alone = (!rules.is_empty()).then(|| {
-        format!(
-            "List<String> validateBound() => [ {}, ]; ",
-            rules.join(", ")
-        )
-    });
     let mut repeated = own_repeat_elements(value_field, "value", &[], 0, &mut helpers);
     repeated.append(&mut rules);
     rules = repeated;
+    // A brand that holds one of its own parameters hands the value to the check of it.
+    if let FieldDefType::TypeParam(parameter) = &value_field.field_type
+        && !value_field.is_list()
+        && !value_field.is_optional()
+        && walked_parameters().contains(parameter)
+    {
+        rules.push(format!("...{}(value)", dart_check_of(parameter)));
+    }
     rules.extend(own_check_elements(args.check));
-    format!(
-        "{}{}",
-        bound_alone.unwrap_or_default(),
-        validate_members(&rules, &helpers, false)
-    )
+    validate_members(&rules, &helpers, false)
 }
 
 /// A variant's `validationIssues()`: its members under `under`, the steps serde writes on the way to
@@ -4085,25 +4375,8 @@ fn variant_elements(
     }
 }
 
-/// `_bounds()` of a variant of an untagged enum, written ahead of its `validationIssues()`: what chooses
-/// it once its payload decodes, as serde's read of the enum chooses it. `None` for a variant
-/// that holds nothing to ask.
-fn variant_bounds(payload: &VariantPayload) -> Option<String> {
-    let mut helpers = Helpers::default();
-    let rules = variant_elements(payload, &[], Asked::Bound, &mut helpers);
-    if rules.is_empty() {
-        return None;
-    }
-    let mut written = format!("List<String> _bounds() => [ {}, ]; ", rules.join(", "));
-    if helpers.calls(Helper::HeldBound) {
-        written.push_str(HELD_BOUND_HELPER);
-        written.push(' ');
-    }
-    Some(written)
-}
-
 /// The body of a judged read over `unjudged`, the call of the unjudged one: the value it
-/// answers, refused with what its `validationIssues()` answers of it, joined as the Rust read joins it.
+/// answers, refused with the list its `validationIssues()` answers of it.
 fn judged_body(unjudged: &str) -> String {
     judged_body_returning(unjudged, "read")
 }
@@ -4112,7 +4385,8 @@ fn judged_body(unjudged: &str) -> String {
 fn judged_body_returning(unjudged: &str, returned: &str) -> String {
     format!(
         "{{ final read = {unjudged}; final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return {returned}; }}"
+         (violations.isNotEmpty) throw {}(violations); return {returned}; }}",
+        refusal()
     )
 }
 
@@ -4174,6 +4448,7 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
         json_type,
         kind,
         by_draft,
+        statics,
     } = *pair;
     let draft = draft_name(export_name);
     let forwarded = if getters.is_empty() {
@@ -4199,23 +4474,74 @@ fn valid_class(pair: &Pair<'_>, codec: &GenericCodec) -> String {
         "class {export_name}{generic_params} {{ const {export_name}._(this._draft); final \
          {draft}{generic_params} _draft; {forwarded}{draft}{generic_params} toDraft() => _draft; \
          factory {export_name}.fromJson({kind} json{parameters}) {} factory \
-         {export_name}.fromJsonUnjudged({kind} json{parameters}) => {built}({read}); \
+         {export_name}.fromJsonUnjudged({kind} json{parameters}) => {built}({read}); {statics}\
          {json_type} toJson({tp}) => _draft.toJson({args}); List<String> validationIssues() => \
-         _draft.validationIssues(); {identity}static Object $thrown{generic_params}(Object thrown) => \
+         _draft.validationIssues(); {handed}{identity}static Object $thrown{generic_params}(Object thrown) => \
          thrown is {draft}{generic_params} ? thrown.validate() : thrown; }}",
         judged_body_returning(&read, &format!("{built}(read)")),
         tp = codec.to_json_params,
         args = codec.to_json_args,
+        handed = issues_with_delegated(),
+    )
+}
+
+/// `validationIssuesWith` of a valid type, which runs the draft's, where the type declares
+/// parameters.
+fn issues_with_delegated() -> String {
+    let parameters = walked_parameters();
+    if parameters.is_empty() {
+        return String::new();
+    }
+    format!(
+        "List<String> validationIssuesWith({}) => _draft.validationIssuesWith({}); ",
+        issues_with_parameters(&parameters),
+        checks_handed_on(&parameters),
     )
 }
 
 /// `validate()` of a draft of the type published as `export_name`: its valid type where
-/// `validationIssues()` is empty, else a refusal with those issues joined as a read joins them.
-fn validate_method(export_name: &str, generic_params: &str) -> String {
+/// `validationIssues()` is empty, else its refusal holding those issues.
+fn validate_method(export_name: &str, generic_params: &str, rule_less: bool) -> String {
+    let converts = if rule_less {
+        format!(
+            " {export_name}{generic_params} toValid() => {export_name}{generic_params}._(this);"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "{export_name}{generic_params} validate() {{ final found = validationIssues(); if \
-         (found.isNotEmpty) throw FormatException(found.join('; ')); return \
-         {export_name}{generic_params}._(this); }}"
+         (found.isNotEmpty) throw {}(found); return {export_name}{generic_params}._(this); \
+         }}{converts}",
+        refusal()
+    )
+}
+
+/// The `of` factory of a valid type, which builds the draft from its members, as its constructor
+/// takes them, and judges it. A member a `literal` fixes is written, not taken.
+fn of_factory(export_name: &str, generic_params: &str, fields: &[DartField]) -> String {
+    let parameters = fields.iter().filter(|field| field.fixed.is_none()).fold(
+        String::new(),
+        |mut acc, field| {
+            let declared = dart_typename(&field.field_def);
+            let required = if field.required { "required " } else { "" };
+            write!(acc, "{required}{declared} {},", field.member).unwrap();
+            acc
+        },
+    );
+    let group = if parameters.is_empty() {
+        String::new()
+    } else {
+        format!("{{{parameters}}}")
+    };
+    let arguments = fields.iter().fold(String::new(), |mut acc, field| {
+        let value = field.fixed.as_ref().unwrap_or(&field.member);
+        write!(acc, "{}: {value},", field.member).unwrap();
+        acc
+    });
+    format!(
+        "factory {export_name}.of({group}) => {}{generic_params}({arguments}).validate(); ",
+        draft_name(export_name)
     )
 }
 
@@ -4315,6 +4641,25 @@ fn generic_codec(parameters: &[String]) -> GenericCodec {
     }
 }
 
+/// The read of the flattened member typed `def` from `handed`, the object it is handed, where its
+/// type is declared below its holder or in another crate. The type publishes what it takes and
+/// the names it reads each variant under, which `entries` is the placeholder of and the holder
+/// reads at run time: an externally tagged enum from the first entry under a variant's name, a
+/// struct and an enum under a tag and a content key from the keys they take, and any other type as
+/// it is read where no key is known.
+fn late_flattened_decode(def: &FieldDef, handed: &str, placeholder: &str) -> String {
+    let entries = quoted(placeholder);
+    let first = first_among(handed, named_type(def), &late_names(&entries), &entries);
+    let whole = flattened_decode(def, handed, &[]);
+    let taken = late_taken(def);
+    let keyed = flattened_decode(def, &only(handed, &taken), &taken);
+    format!(
+        "(const [{entries}].isEmpty ? (const [{}].isEmpty ? {whole} : {keyed}) : {})",
+        listed_names(&taken),
+        first_entry_decode(def, &first)
+    )
+}
+
 /// The arguments the constructor of a class is read with from the object `json` names: each
 /// member from its key, where the payload holds it for a member that names a function, and a
 /// flattened one at its place, from the entries neither `tag_key`, a member of the holder's own nor
@@ -4346,39 +4691,46 @@ fn constructor_arguments(fields: &[DartField], json: &str, tag_key: Option<&str>
             let handed = without(&source, &keys);
             let def = field.wire_def();
             // A flattened member is walked whatever it writes.
-            let decode = match taken_by(def) {
-                Taken::Keys(taken) | Taken::Tagged(taken) => {
-                    // serde hands a member that leaves its keys every key still left, and one that
-                    // takes its own keys those keys alone.
-                    let known = closed_record_of(def)
-                        .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
-                        .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());
-                    let kept = match known {
-                        Some(read) => only(&handed, &read),
-                        None => handed,
-                    };
-                    let decode = flattened_decode(def, &kept, &taken);
-                    for key in taken {
-                        if !taken_ahead.contains(&key) {
-                            taken_ahead.push(key);
+            let decode = if let Some(held_entries) = late_entries(def) {
+                let flat = late_names(&quoted(&held_entries));
+                source = without_first_among(&handed, &flat);
+                removed = taken_ahead.len();
+                late_flattened_decode(def, &handed, &held_entries)
+            } else {
+                match taken_by(def) {
+                    Taken::Keys(taken) | Taken::Tagged(taken) => {
+                        // serde hands a member that leaves its keys every key still left, and one that
+                        // takes its own keys those keys alone.
+                        let known = closed_record_of(def)
+                            .or_else(|| (!taken.is_empty()).then(|| taken.clone()))
+                            .filter(|_| !leaves_its_keys(def) && member_functions(def).is_empty());
+                        let kept = match known {
+                            Some(read) => only(&handed, &read),
+                            None => handed,
+                        };
+                        let decode = flattened_decode(def, &kept, &taken);
+                        for key in taken {
+                            if !taken_ahead.contains(&key) {
+                                taken_ahead.push(key);
+                            }
                         }
+                        decode
                     }
-                    decode
-                }
-                Taken::Only(taken) => {
-                    let decode = flattened_decode(def, &only(&handed, &taken), &taken);
-                    for key in taken {
-                        if !taken_ahead.contains(&key) {
-                            taken_ahead.push(key);
+                    Taken::Only(taken) => {
+                        let decode = flattened_decode(def, &only(&handed, &taken), &taken);
+                        for key in taken {
+                            if !taken_ahead.contains(&key) {
+                                taken_ahead.push(key);
+                            }
                         }
+                        decode
                     }
-                    decode
-                }
-                Taken::FirstOf(names) => {
-                    source = without_first(&handed, &names.concat());
-                    removed = taken_ahead.len();
-                    let first = first_of(&handed, named_type(def), &names);
-                    first_entry_decode(def, &first)
+                    Taken::FirstOf(names) => {
+                        source = without_first(&handed, &names.concat());
+                        removed = taken_ahead.len();
+                        let first = first_of(&handed, named_type(def), &names);
+                        first_entry_decode(def, &first)
+                    }
                 }
             };
             let held = format!("_readFlattened(() => {decode})");
@@ -4683,6 +5035,7 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         fields,
         generic_params,
         own_tag,
+        unit,
     } = *text;
     let tag_written: Vec<String> = own_tag
         .iter()
@@ -4692,7 +5045,10 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         (
             draft_name(export_name),
             ReadForm::Draft,
-            format!("{issues} {}", validate_method(export_name, generic_params)),
+            format!(
+                "{issues} {}",
+                validate_method(export_name, generic_params, is_rule_less())
+            ),
         )
     } else {
         (
@@ -4723,6 +5079,18 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
         &declared,
     );
     if drafted {
+        let instance = if unit && is_rule_less() {
+            format!(
+                "static const instance = {export_name}._({}()); ",
+                draft_name(export_name)
+            )
+        } else {
+            String::new()
+        };
+        let statics = format!(
+            "{instance}{}",
+            of_factory(export_name, generic_params, fields)
+        );
         let getters = forwarding_getters(
             fields
                 .iter()
@@ -4737,6 +5105,7 @@ fn struct_classes(text: &StructText<'_>, issues: &str, drafted: bool) -> String 
                 json_type: "Map<String, dynamic>",
                 kind: payload_kind(corrects, "Map<String, dynamic>"),
                 by_draft: false,
+                statics: &statics,
             },
             codec,
         ));
@@ -4770,6 +5139,7 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
 
     let rust_ident = item_struct.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
+    enter_refusal(&export_name);
     register_dart_name(&rust_ident, &export_name);
     note_writes_an_object(&rust_ident, true);
 
@@ -4832,6 +5202,8 @@ fn struct_dart_tokens(item_struct: &ItemStruct, args: &DartTypeArgs<'_>) -> Toke
             fields: &fields,
             generic_params: &generic_params,
             own_tag: own_tag.as_ref(),
+            unit: matches!(item_struct.fields, Fields::Unit)
+                && item_struct.generics.params.is_empty(),
         },
         &validate_members(&rules, &helpers, false),
         !args.undrafted,
@@ -4900,6 +5272,7 @@ fn value_wrapper_tokens(
 ) -> TokenStream {
     let rust_ident = ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, name_override);
+    enter_refusal(&export_name);
     register_dart_name(&rust_ident, &export_name);
     let sealed = matches!(held, Held::Brand(_));
     note_wrapper(&rust_ident, held, corrects);
@@ -4923,7 +5296,7 @@ fn value_wrapper_tokens(
         Validation::Drafted(issues) => (
             format!(
                 "{issues} {}",
-                validate_method(&export_name, &generic_params)
+                validate_method(&export_name, &generic_params, is_rule_less())
             ),
             true,
         ),
@@ -4970,7 +5343,7 @@ fn value_wrapper_tokens(
         tp = codec.to_json_params,
     );
     if drafted {
-        let getters = forwarding_getters([(value_ty, "value".to_owned())]);
+        let getters = forwarding_getters([(value_ty.clone(), "value".to_owned())]);
         let pair = Pair {
             export_name: &export_name,
             generic_params: &generic_params,
@@ -4978,6 +5351,9 @@ fn value_wrapper_tokens(
             json_type: "dynamic",
             kind: "dynamic",
             by_draft: false,
+            statics: &format!(
+                "factory {export_name}.of({value_ty} value) => {class_name}{generic_params}(value).validate(); "
+            ),
         };
         body.push(' ');
         body.push_str(&valid_class(&pair, &codec));
@@ -5057,14 +5433,20 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
     let named = !target.is_list()
         && !target.is_optional()
         && matches!(target.field_type, FieldDefType::SiblingType(_, _));
-    let rules: Vec<String> = named
-        .then(|| "...value.validationIssues()".to_owned())
-        .into_iter()
-        .collect();
+    let mut helpers = Helpers::default();
+    let rules: Vec<String> = if type_parameters.is_empty() {
+        named
+            .then(|| "...value.validationIssues()".to_owned())
+            .into_iter()
+            .collect()
+    } else {
+        // What fills the alias's parameters is handed on to the type it names.
+        held_elements(&target, "value", &[], 0, Asked::Rules, &mut helpers)
+    };
     if type_parameters.is_empty() {
         note_key_value(&item_type.ident.to_string(), &target);
     }
-    value_wrapper_tokens(
+    let tokens = value_wrapper_tokens(
         &item_type.ident,
         &item_type.generics,
         Some(&export_name),
@@ -5072,8 +5454,12 @@ fn alias_dart_tokens(item_type: &ItemType, name_override: Option<&str>) -> Token
         if named { Read::Unjudged } else { Read::Judged },
         // An alias is refused a `preprocess`: it has no read of its own.
         &Corrects::of(&[]),
-        &Validation::Plain(&validate_members(&rules, &Helpers::default(), false)),
-    )
+        &Validation::Plain(&validate_members(&rules, &helpers, false)),
+    );
+    if !named {
+        record_refusals(&item_type.ident.to_string(), dart_refusals_of(&target));
+    }
+    tokens
 }
 
 /// The Dart tokens an enum earns: a plain enhanced enum for an all-unit, untagged-by-default
@@ -5085,6 +5471,7 @@ fn enum_dart_tokens(declared: &ItemEnum, args: &DartTypeArgs<'_>) -> TokenStream
     let item_enum = &variants_on_the_wire(declared);
     let rust_ident = item_enum.ident.to_string();
     let export_name = compute_item_export_name(&rust_ident, args.name_override);
+    enter_refusal(&export_name);
     register_dart_name(&rust_ident, &export_name);
     note_writes_an_object(&rust_ident, false);
     let tag_attrs = enum_tag_attrs(&item_enum.attrs);
@@ -5596,15 +5983,28 @@ fn enum_classes(
     kind: &str,
     codec: &GenericCodec,
     reads: &str,
-    form: ReadForm,
+    drafted: &EnumDraft<'_>,
 ) -> String {
+    let form = drafted.form;
     let validate = match form {
-        ReadForm::Draft => format!(" {}", validate_method(export_name, generic_params)),
+        ReadForm::Draft => format!(
+            " {}",
+            validate_method(export_name, generic_params, drafted.rule_less)
+        ),
         ReadForm::Whole => format!(" {}", thrown_as_is(generic_params)),
+    };
+    let parameters = walked_parameters();
+    let handed = if parameters.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " List<String> validationIssuesWith({});",
+            issues_with_parameters(&parameters)
+        )
     };
     let base = format!(
         "sealed class {base_name}{generic_params} {{ const {base_name}(); {reads} dynamic \
-         toJson({tp}); {VALIDATE_DECLARED}{validate} }}",
+         toJson({tp}); {VALIDATE_DECLARED}{handed}{validate} }}",
         tp = codec.to_json_params,
     );
     match form {
@@ -5617,12 +6017,79 @@ fn enum_classes(
                     json_type: "dynamic",
                     kind,
                     by_draft: false,
+                    statics: drafted.statics,
                 },
                 codec,
             );
             format!("{base} {valid}")
         }
         ReadForm::Whole => base,
+    }
+}
+
+/// The constants of the valid type of a tagged enum: one for each unit variant, where the enum
+/// names no check and takes no parameter.
+fn tagged_statics(item_enum: &ItemEnum, export_name: &str, no_check: bool) -> String {
+    if !no_check || !item_enum.generics.params.is_empty() {
+        return String::new();
+    }
+    let written: Vec<String> = item_enum
+        .variants
+        .iter()
+        .map(|variant| dart_lower_camel(&variant.ident.to_string()))
+        .collect();
+    item_enum
+        .variants
+        .iter()
+        .filter(|variant| variant_wire_kind(variant) == VariantKind::Unit)
+        .fold(String::new(), |mut acc, variant| {
+            let name = variant.ident.to_string();
+            let member = dart_member(&dart_lower_camel(&name), &DART_ENUM_NAMES_TAKEN, &written);
+            write!(
+                acc,
+                "static const {member} = {export_name}._({export_name}{name}()); "
+            )
+            .unwrap();
+            acc
+        })
+}
+
+/// The kind of payload a tagged enum's read takes, what it casts it as, and the dispatch over it.
+fn tagged_dispatch(
+    text: &TaggedDispatch<'_>,
+    is_string_dispatch_arms: Vec<String>,
+    map_dispatch_arms: &[String],
+) -> (&'static str, &'static str, String) {
+    let TaggedDispatch {
+        corrects,
+        export_name,
+        is_external,
+        item_enum,
+        shape,
+        variant_rule,
+    } = *text;
+    if is_external {
+        // serde and Zod read the variant from an object of one key, and refuse any other.
+        (
+            "dynamic",
+            "",
+            external_dispatch(
+                export_name,
+                corrects,
+                &[
+                    is_string_dispatch_arms,
+                    carried_string_arms(item_enum, variant_rule, &corrects.json),
+                ]
+                .concat(),
+                map_dispatch_arms,
+            ),
+        )
+    } else {
+        (
+            payload_kind(corrects, "Map<String, dynamic>"),
+            " as Map<String, dynamic>",
+            keyed_dispatch(export_name, shape, corrects, map_dispatch_arms),
+        )
     }
 }
 
@@ -5698,29 +6165,18 @@ fn tagged_enum_dart_source(
         record_writes_a_name(rust_ident);
     }
 
-    let (payload_ty, held_as, dispatch) = if is_external {
-        // serde and Zod read the variant from an object of one key, and refuse any other.
-        (
-            "dynamic",
-            "",
-            external_dispatch(
-                export_name,
-                &corrects,
-                &[
-                    is_string_dispatch_arms,
-                    carried_string_arms(item_enum, variant_rule, &corrects.json),
-                ]
-                .concat(),
-                &map_dispatch_arms,
-            ),
-        )
-    } else {
-        (
-            payload_kind(&corrects, "Map<String, dynamic>"),
-            " as Map<String, dynamic>",
-            keyed_dispatch(export_name, &shape, &corrects, &map_dispatch_arms),
-        )
-    };
+    let (payload_ty, held_as, dispatch) = tagged_dispatch(
+        &TaggedDispatch {
+            corrects: &corrects,
+            export_name,
+            is_external,
+            item_enum,
+            shape: &shape,
+            variant_rule,
+        },
+        is_string_dispatch_arms,
+        &map_dispatch_arms,
+    );
     record_closed_keys(
         rust_ident,
         closed_by_tagging(&shape, &variant_payloads, &corrects),
@@ -5738,7 +6194,11 @@ fn tagged_enum_dart_source(
         payload_ty,
         &codec,
         &format!("{reads}{helper}"),
-        form,
+        &EnumDraft {
+            form,
+            rule_less: is_rule_less(),
+            statics: &tagged_statics(item_enum, export_name, args.check.is_empty()),
+        },
     );
     let typedef = ident_typedef(rust_ident, export_name, &generic_params);
     format!("{base} {}{typedef}", subclasses.join(" "))
@@ -5806,8 +6266,8 @@ fn untagged_variant_class(
 
 /// The Dart tokens a `#[serde(untagged)]` enum earns: a `sealed` base class whose unjudged read
 /// tries each variant's own decode in turn (Dart has no runtime structural type inspection to
-/// dispatch on ahead of time, unlike Zod's `z.union`), returning the first that does not throw and
-/// whose `_bounds()` hold, and whose `fromJson` judges what that answers.
+/// dispatch on ahead of time, unlike Zod's `z.union`), returning the first that does not throw, and
+/// whose `fromJson` judges what that answers.
 fn untagged_enum_dart_source(
     item_enum: &ItemEnum,
     rust_ident: &str,
@@ -5822,7 +6282,6 @@ fn untagged_enum_dart_source(
     let codec = generic_codec(&type_parameters);
     let (base_name, form) = enum_base(export_name, !args.undrafted);
     let corrects = Corrects::of(args.preprocess);
-    let read = &corrects.read;
 
     let mut subclasses = Vec::new();
     let mut attempts = Vec::new();
@@ -5836,13 +6295,8 @@ fn untagged_enum_dart_source(
         reads_unit |= matches!(&payload, VariantPayload::Value(held) if reads_a_unit(held));
         enter_variant_core_scope(&subclass_name, &payload);
         variant_payloads.push(variant_keys(&payload, &corrects));
-        let bounds = variant_bounds(&payload);
         // serde writes an untagged variant as its value, so no step leads to its members.
-        let validate = format!(
-            "{}{}",
-            bounds.as_deref().unwrap_or_default(),
-            variant_validate(&payload, &[], args.check)
-        );
+        let validate = variant_validate(&payload, &[], args.check);
         let (class_text, from_json) = within_variant(&variant.ident, || {
             untagged_variant_class(
                 &VariantClass {
@@ -5860,14 +6314,7 @@ fn untagged_enum_dart_source(
             )
         });
         subclasses.push(format!("{}{class_text}", leave_core_scope()));
-        attempts.push(if bounds.is_some() {
-            format!(
-                "try {{ final {read} = {from_json}; if ({read}._bounds().isEmpty) return {read}; }} \
-                 catch (_) {{}}"
-            )
-        } else {
-            format!("try {{ return {from_json}; }} catch (_) {{}}")
-        });
+        attempts.push(format!("try {{ return {from_json}; }} catch (_) {{}}"));
     }
 
     note_reads_a_unit(rust_ident, reads_unit);
@@ -5893,7 +6340,11 @@ fn untagged_enum_dart_source(
         "dynamic",
         &codec,
         &reads,
-        form,
+        &EnumDraft {
+            form,
+            rule_less: is_rule_less(),
+            statics: "",
+        },
     );
     let typedef = ident_typedef(rust_ident, export_name, &generic_params);
     format!("{base} {}{typedef}", subclasses.join(" "))
@@ -5983,8 +6434,20 @@ fn plain_enum_dart_source(
         "enum {draft} {{ {member_list}; const {draft}(this.wireValue); final String wireValue; \
          static {draft} fromJson({payload_ty} {taken_as}) {matched} String toJson() => wireValue; \
          {validate} {} }}",
-        validate_method(export_name, "")
+        validate_method(export_name, "", is_rule_less())
     );
+    let statics = if checks.is_empty() {
+        members.iter().fold(String::new(), |mut acc, (name, _)| {
+            write!(
+                acc,
+                "static const {name} = {export_name}._({draft}.{name}); "
+            )
+            .unwrap();
+            acc
+        })
+    } else {
+        String::new()
+    };
     let valid = valid_class(
         &Pair {
             export_name,
@@ -5993,6 +6456,7 @@ fn plain_enum_dart_source(
             json_type: "String",
             kind: "dynamic",
             by_draft: true,
+            statics: &statics,
         },
         &generic_codec(&[]),
     );

@@ -133,8 +133,8 @@ export function conversationClientServiceHttpDefaultFaultHandler(fault: Conversa
   return conversationClientServiceHttpJson(status, [], fault);
 }
 
-function conversationClientServiceHttpFault(kind: ConversationClientServiceFaultFields[\"kind\"], operation: string, detail: string, field?: string): ConversationClientServiceFault {
-  const built: ConversationClientServiceFaultFields = { detail, field, kind, operation };
+function conversationClientServiceHttpFault(kind: ConversationClientServiceFaultFields[\"kind\"], operation: string, detail: string): ConversationClientServiceFault {
+  const built: ConversationClientServiceFaultFields = { detail, field: undefined, kind, operation };
   return built as ConversationClientServiceFault;
 }
 

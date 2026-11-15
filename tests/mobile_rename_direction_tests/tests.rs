@@ -1,6 +1,8 @@
 //! A renaming written as a list whose two directions agree names one key, which every build
 //! takes: each client names that key, the one serde writes and reads.
 
+#[cfg(feature = "dart")]
+use crate::dart_integer_read::integer_read;
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
 use serde::{Deserialize, Serialize};
@@ -93,8 +95,11 @@ fn the_dart_definition_names_each_agreed_key() {
         &parcel_dart::dart_definition(),
         &[
             "reference: _readAt(json, 'ref', () => json['ref'] as String",
-            "weight_grams: _readAt(json, 'weightGrams', () => (switch (json['weightGrams'] as \
-             int) { final number when number >= 0 && number <= 4294967295 => number,",
+            &format!(
+                "weight_grams: _readAt(json, 'weightGrams', () => (switch ({}) {{ final number \
+                 when number >= 0 && number <= 4294967295 => number,",
+                integer_read("json['weightGrams']", "u32")
+            ),
             "'ref': reference",
             "'weightGrams': (switch (weight_grams) {",
         ],

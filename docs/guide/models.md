@@ -18,7 +18,7 @@ pub struct UserProfile {
 
 #### A Draft and a Valid Type
 
-One declaration makes two types. The type you write is emitted as `{Name}Draft`, with the fields, derives and attributes you wrote: code builds it and changes it. `{Name}` is the valid type, which only the draft's `validate()` and a read of the type make, so a function that takes `&UserProfile` gets a value that passed every rule the type declares. Every `#[model_schema()]` struct and enum has the pair; a [brand](generics-and-brands.md#a-brand-is-sealed) has none.
+One declaration makes two types. The type you write is emitted as `{Name}Draft`, with the fields, derives and attributes you wrote: code builds it and changes it. `{Name}` is the valid type, which only the draft's `validate()` and a read of the type make, so a function that takes `&UserProfile` gets a value that passed every rule the type declares. Every `#[model_schema()]` struct and enum has the pair, but a [plain enum that names no `check`](#a-plain-enum-with-no-check-has-no-draft) and a [brand](generics-and-brands.md#a-brand-is-sealed), which have none.
 
 ```rust
 let draft = UserProfileDraft {
@@ -33,7 +33,7 @@ let draft = UserProfileDraft {
 assert!(draft.validation_issues().is_empty());
 
 // `validate()` takes the draft and answers the valid value, or every rule it breaks.
-let profile: UserProfile = draft.validate().unwrap();
+let profile: UserProfile = draft.validate()?;
 assert_eq!(profile.age, 36);
 
 // A valid value turns back into its draft, which is open again.
@@ -41,15 +41,160 @@ let mut again: UserProfileDraft = profile.into();
 again.age = 37;
 ```
 
+Work with the valid type as much as possible. A field, a parameter, a return type, a constant, a static and an impl name `UserProfile`; a draft appears only on the expression that builds or changes a value, and is validated there. A function that answers a value that cannot fail answers the valid type through a constant or `.into()`, which the next two sections show, and `.validate().unwrap()` is for a test alone. A [`rust example` block](examples.md#compiler-validated-examples) in the type's doc comment may build the valid type the same way (`Payment::Pending`, `.into()`, `.validate()?`) and may use `?`, so it never unwraps.
+
 The valid type reads like the draft: `profile.age` and `&*profile` (a `match &*payment { PaymentDraft::Card { .. } => .. }` over an enum) work through `Deref`. It has no `DerefMut`, so `profile.age = 1` and `&mut profile.age` do not compile, and its tuple constructor is closed, so `UserProfile(draft)` does not compile in the declaring module or outside it. `#[derive(Default)]` stays on the draft only, because a default would build a valid value no check saw.
 
-The valid type writes what its draft writes, and `serde_json::from_str::<UserProfile>(..)`, a MongoDB read and a dispatcher's read return a valid value and refuse a broken one with the messages `validate()` gives. The surfaces keep the declared name: TypeScript, Zod, JSON Schema, Dart, Swift, Kotlin, MCP and OpenAPI all publish `UserProfile`. A member that holds a model names the valid type (`pub profile: UserProfile`), so a draft is built from values that already passed. An enum no variant of which holds a value is paired too, with a rule or without, in Kotlin as in Rust: `StatusDraft.Active.validate()` is the valid `Status`. `Self` in a member names the valid type too. A serde message that names the type, such as `data did not match any variant of untagged enum` or `the enum variant X::Y cannot be serialized`, names `UserProfile` where the read or the write goes through the valid type, and `UserProfileDraft` where it goes through the draft itself.
+The valid type writes what its draft writes, and `serde_json::from_str::<UserProfile>(..)`, a MongoDB read and a dispatcher's read return a valid value and refuse a broken one with the messages `validate()` gives. The surfaces keep the declared name: TypeScript, Zod, JSON Schema, Dart, Swift, Kotlin, MCP and OpenAPI all publish `UserProfile`. A member that holds a model names the valid type (`pub profile: UserProfile`), so a draft is built from values that already passed. An enum no variant of which holds a value, and that names a `check`, is paired too, in Kotlin as in Rust: `StatusDraft.Active.validate()` is the valid `Status`. `Self` in a member names the valid type too. A serde message that names the type, such as `data did not match any variant of untagged enum` or `the enum variant X::Y cannot be serialized`, names `UserProfile` where the read or the write goes through the valid type, and `UserProfileDraft` where it goes through the draft itself.
 
 A declaration whose `{Name}Draft` is the name of another type in the module stops the build with the compiler's duplicate-name error (`E0428`). The type the valid wrapper is made of is generic and hidden: the compiler prints a valid value's type as `UserProfile<UserProfileDraft>`, and a type declared in a function body is wrapped as one declared beside it.
 
-A plain enum, whose variants hold no data, is the pair in Rust, TypeScript, Swift and Dart, with a rule or without. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
+A plain enum, whose variants hold no data, that names a `check` is the pair in Rust, TypeScript, Swift and Dart. In Dart `enum Rating { Express, Unrated }` is the enhanced enum `RatingDraft` and the class `Rating`, which has no public constructor: `RatingDraft.unrated.validate()` answers a `Rating` or throws what `Rating.fromJson` throws, and a function that takes a `Rating` cannot be handed `RatingDraft.unrated`. The wire, and the keys of a `Map<Rating, V>`, are unchanged. See [A draft and a valid type](dart.md#a-draft-and-a-valid-type).
 
-A plain enum's draft also has `wire_name()`, the text serde writes for the value; see [Plain Enums](enums.md#plain-enums).
+A plain enum also has `wire_name()`, the text serde writes for the value; see [Plain Enums](enums.md#plain-enums).
+
+**Every enum names its variants.** An enum has `model_schema_variant()`, the name of the variant a value is, as Rust declares it (not the name serde writes), and `MODEL_SCHEMA_VARIANTS`, the name of each variant in declaration order. Code that only needs to know which variant a value is reads the name and writes no `match`:
+
+```rust
+let fault: ShipFault = ShipFault::NotFound;
+assert_eq!(fault.model_schema_variant(), "NotFound");
+assert_eq!(ShipFault::MODEL_SCHEMA_VARIANTS, ["Closed", "NotFound"]);
+```
+
+A variant under `#[cfg(..)]` is named under the same `#[cfg(..)]`, and a generic enum has both over its own type parameters. An enum with a draft has `model_schema_variant()` on the draft, which the valid type reaches through `Deref`, and `MODEL_SCHEMA_VARIANTS` on the valid type. A hand-written item of either name stops the build with `error[E0592]: duplicate definitions`. The service macros read the variant a fault is by this name, so a fault is named the same where it is declared above its service, below it or in another crate: see [`error_status`](http-rest.md) and [asking the user](mcp.md).
+
+#### A Plain Enum With No Check Has No Draft
+
+A plain enum that names no `check` guards nothing with a draft: every value of it is valid. It is declared as written on every surface, as a brand is, and its variants are its values:
+
+```rust
+#[model_schema()]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InvoiceStatus { Draft, PastDue, Paid }
+
+fn label(status: InvoiceStatus) -> &'static str {
+    match status {
+        InvoiceStatus::Draft => "draft",
+        InvoiceStatus::PastDue => "past due",
+        InvoiceStatus::Paid => "paid",
+    }
+}
+```
+
+There is no `InvoiceStatusDraft`, no `validate()` and no `.into()`; a struct that holds one names the enum (`pub status: InvoiceStatus`). TypeScript writes the bare string union, with the literals of its variants in a `const` object of the same name:
+
+```typescript
+export type InvoiceStatus = "draft" | "past-due" | "paid";
+
+export const InvoiceStatus = {
+  Draft: "draft",
+  PastDue: "past-due",
+  Paid: "paid",
+} as const satisfies Record<string, InvoiceStatus>;
+```
+
+It indexes a `Record<InvoiceStatus, number>` and narrows in a `switch` with no `default`. Dart, Swift and Kotlin write their native enum, with no draft and no valid class. A plain enum that names a `check`, and every other enum, keeps `{Name}Draft` and the valid type.
+
+#### A Constant for a Unit Variant, and `From` for a Draft With No Rule
+
+Two valid values cannot fail, and the macro hands them over without a `Result`. A unit variant of an enum that has a draft and names no `check` is a constant of the valid type, named like the variant:
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum Payment {
+    Pending,
+    Cancelled,
+    Card(String),
+}
+
+fn default_payment() -> Payment {
+    Payment::Pending
+}
+
+fn clearance(payment: &Payment) -> u8 {
+    match payment {
+        Payment::Pending => 1,
+        Payment::Cancelled => 2,
+        Payment::Card(_) => 3,
+    }
+}
+```
+
+A constant is a value of the valid type in an expression and, where the enum derives `PartialEq` and `Eq`, in a pattern: rustc counts the constants toward exhaustiveness, so a `match` that names every unit variant beside the others takes no `_` arm, and an arm `_` after them draws `warning: unreachable pattern`. Without `PartialEq` and `Eq` a `match` on a constant stops the build with `error: constant of non-structural type .. in a pattern`, and the constant still works in an expression. An enum with data-carrying variants has a constant for each unit variant alone. An enum that names a `check` has none, because a check could refuse a unit variant, and its unit variant is `PaymentDraft::Pending.validate()?`. A generic enum has none. An enum of unit variants alone and no check has no draft, so no constants: its variants are its values.
+
+Each constant is named like its variant, which is no upper case name, so the macro writes one `#[expect(non_upper_case_globals, reason = "..")]` on the `impl` that holds them, and none where every unit variant is upper case. A unit struct is a constant too, in the module that declares it: `Ok(SealAck)` and `serde_json::to_string(&SealAck)` take the valid value of `#[model_schema()] pub struct SealAck;`.
+
+A draft that declares no rule becomes its valid type with `From`, which cannot fail:
+
+```rust
+let rule: RuleResult = RuleResultDraft { passed: true, label: "sealed".to_owned() }.into();
+```
+
+A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that has a draft, names no `check` and takes no parameter: `Payment.Pending` (TypeScript), `Payment.pending` (Dart and Swift) and `Payment.Pending` (Kotlin), for each unit variant whatever the other variants hold; a plain enum has no draft, so these are its own variants. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `ShipmentDraft$valid(draft)`, `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule.
+
+#### `new`: a Valid Value From Its Fields
+
+A struct's valid type has `new`, which takes the fields and answers what `validate()` answers: `Result<Self, Vec<String>>`, with the same messages. A struct with no rule answers a `Result` too, so every type is built the same way, and `new` is never `const`.
+
+```rust
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeOfDay {
+    #[model_schema_prop(maximum = 23)]
+    pub hour: u8,
+    #[model_schema_prop(maximum = 59)]
+    pub minute: u8,
+}
+
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CalculatedFlag {
+    pub advanced: bool,
+    #[model_schema_prop(literal = true)]
+    pub is_calculated: bool,
+}
+
+fn schedule() -> Result<TimeOfDay, Vec<String>> {
+    let flag = CalculatedFlag::new(false)?; // is_calculated is written as true
+    assert!(flag.is_calculated);
+    assert!(TimeOfDay::new(24, 0).is_err());
+    TimeOfDay::new(12, 0)
+}
+```
+
+The parameters are the fields in declaration order, each named like its field and typed as written; a field serde skips is a parameter too, because the draft needs its value. A tuple struct takes `value` for one slot and `value0`, `value1`, .. for more, and a unit struct's `new()` takes nothing. A field a `literal` fixes is no parameter when its type holds one value of it: `bool`, a number type, `String` or `PathBuf`, the same behind a `Box`, `Rc`, `Arc` or `Cow` (`Box<str>`, `Arc<bool>`, `Cow<'static, str>`), and a `&'static str` or a `&'static` bool or number: `new` writes the value. A literal on an `Option`, a list or a set stays a parameter, and so does one on a type no value is written for, such as a `&'static String` or a `Box<Box<str>>`. A generic struct's `new` takes the struct's generics and where-clause. A struct that declares a `cfg` on a named field has the parameter under the same `cfg`; a tuple struct with a `cfg` on a slot has no `new`. An enum has no `new` (a unit variant is a [constant](#a-constant-for-a-unit-variant-and-from-for-a-draft-with-no-rule), and a variant that holds data is built on the draft), and neither has a brand, which has its own [`new(value)`](generics-and-brands.md#a-brand-is-sealed).
+
+The draft stays available: `TimeOfDayDraft { hour: 12, minute: 0 }.validate()` builds the same value, and is the way to build one a function changes field by field.
+
+Whether a struct has `new` depends on how many parameters it would take, filled literals not counted:
+
+- 7 or fewer: `new` is written.
+- 8 or more: no `new` is written, so the struct is built through its draft or through a `new` the author writes, and clippy's `too_many_arguments` has nothing to flag.
+- `new = true` on the declaration writes it at any width, with `#[allow(clippy::too_many_arguments)]` on it when it takes 8 or more.
+- `new = false` writes none at any width.
+- A tuple struct with a slot under `#[cfg(..)]` gets no `new`, at any width: with no `new` setting, or `new = false`, none is written, and `new = true` stops the build with ``error: model_schema: `new = true` on `Reading`: slot 1 is under `#[cfg(unix)]`, and a tuple struct with a slot under `#[cfg]` gets no generated `new`. Write `new = false`.``, spanned on the `#[cfg]`. A struct with named fields keeps its `new` with a parameter under the same `#[cfg]` as its field.
+
+A struct that declares its own `fn new` in an `impl` stops the build with `error[E0592]: duplicate definitions with name `new`` unless it says `#[model_schema(new = false)]`, because the macro cannot see the author's `impl` blocks. Rename the hand-written `new`, or write `new = false` and keep it:
+
+```rust
+#[model_schema(new = false)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Shipment {
+    pub label: String,
+}
+
+impl Shipment {
+    pub fn new(label: &str) -> Result<Self, Vec<String>> {
+        ShipmentDraft { label: label.to_owned() }.validate()
+    }
+}
+```
+
+Any value of `new` but `true` and `false` stops the build with a message that names `new = false`. `new` is the Rust constructor alone: Dart, Swift and Kotlin write `of` for every struct whatever `new` says (see [Dart](dart.md#a-draft-and-a-valid-type), [Swift](swift.md#a-swift-model-type-is-a-draft-and-a-valid-type) and [Kotlin](kotlin.md)).
 
 #### The Draft and the Valid Type in TypeScript and Zod
 
@@ -68,6 +213,8 @@ export type Shipment = Readonly<ShipmentDraft> & $brand<"Shipment">;
 
 Zod publishes a schema for each. `ShipmentDraft$Schema` parses to a `ShipmentDraft`, and `Shipment$Schema` is the draft's schema frozen and branded, so `Shipment$Schema.parse(json)` has the type `Shipment`. The refusals of the two are the same ones, word for word, and so is the JSON Schema, which is not split: the wire is the same for both types.
 
+TypeScript writes no constructor beside the type: `Shipment$Schema.parse({ label: "Shipping", parcelCount: 3 })` is the one call that builds a `Shipment` from its fields, or throws what `validate()` refuses, the counterpart of Rust's `Shipment::new(..)` and of `of` in Dart, Swift and Kotlin.
+
 ```typescript
 import { Shipment$Schema, ShipmentDraft$Schema, type Shipment, type ShipmentDraft } from "./models";
 
@@ -84,6 +231,18 @@ A value written by hand is not a `Shipment`, and a member of one cannot be assig
 
 TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out of anything, and no schema has seen it. That is the one way round the check, and it is a way a reader of the code can see. The same goes for a `Shipment` written in a `declare const`.
 
+A plain enum that names no `check` is the bare string union with a `const` object of its literals (`Status.Active` is `"active"`), and has no draft, no `StatusDraft$valid` and no brand. An enum that has a draft and names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Payment.Pending`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), a unit struct that declares no rule has a `const` of its own name, and a type that declares no rule has `ShipmentDraft$valid(draft)`, which answers its valid type with no parse (the value is the draft itself, neither copied nor frozen):
+
+```typescript
+import { Payment, PaymentDraft$valid, type PaymentDraft } from "./models";
+
+const open: Payment = Payment.Pending;
+const draft: PaymentDraft = { Card: "visa" };
+const closed: Payment = PaymentDraft$valid(draft);
+```
+
+A type that declares a rule has neither, and a draft becomes its valid type through `Shipment$Schema.parse(draft)`.
+
 Every client and dispatcher types each message and result as the valid type, so `client.ship(...)` takes a `Shipment` and a handler is handed one. Make the argument with `Shipment$Schema.parse(draft)`. A function a `check` names takes the draft, the type the rules run on: `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>)`, where a `Crate<CodeType>` stops the build of the consumer with ``error TS2345: Argument of type 'CrateDraft<unknown>' is not assignable to parameter of type 'Crate<unknown>'.`` A struct that flattens a model holds its keys among its own, so it holds the model's draft: `{ label: string } & MoorageDraft`.
 
 A type that declares a parameter publishes `WrapDraft<T>` and `Wrap<T>` of the same form, and two factories: `WrapDraft$SchemaFactory` answers the draft's schema as it always answered the type's, and `Wrap$SchemaFactory` answers a `ZodType<Wrap<...>>`, which names what the schema parses to, so `.shape` is not on it. `Wrap$SchemaDefault` and `WrapDraft$SchemaDefault` are each the factory at the declared defaults. A build with `typescript` and no `zod` writes the marker a brand writes there, `{ readonly [__brand_Shipment]: true }` after a `declare const __brand_Shipment: unique symbol;`.
@@ -97,9 +256,9 @@ A unit struct -- `pub struct Ping;`, no braces, no fields -- crosses the wire as
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ping;
 
-assert_eq!(serde_json::to_string(&PingDraft).unwrap(), "{}");
-serde_json::from_str::<Ping>("{}").unwrap();
-serde_json::from_str::<Ping>("null").unwrap_err();
+assert_eq!(serde_json::to_string(&Ping)?, "{}");
+serde_json::from_str::<Ping>("{}")?;
+assert!(serde_json::from_str::<Ping>("null").is_err());
 ```
 
 TypeScript, Zod and JSON Schema describe it exactly as a braced empty struct already does: `Record<string, never>`, `z.strictObject({})`, `{"type": "object", "additionalProperties": false, "properties": {}, "required": []}`. Dart, Swift and Kotlin each publish their own no-data type -- Dart a `const` class, Swift an empty `Codable` struct, and Kotlin a serializable `object Ping` rather than a `class` (a braced `struct Ping {}` still publishes a `class`, since it is a different shape). Declared above a service as an operation's success, `Result<Ping, E>`, a unit struct reads like a `()` success on every client -- the limit is a registry's own: the struct must be declared in the same crate, above the service, or the client sees the field-position type instead (and the call still succeeds, since both sides still agree the wire is `{}`).
@@ -189,7 +348,7 @@ The unit variant of a strict enum under a tag alone refuses a key beside the tag
 
 A braced variant serde reads no member of, `Off {}`, or one whose every member serde neither reads nor writes, `Off { #[serde(skip)] since: u32 }`, is read the same way: the macro hangs a read it writes on the variant, which reads `{}`, refuses every key with ``unknown field `stray`, there are no fields`` and builds each member as serde's derive builds it, from the member's `#[serde(default = "...")]`, else from `Default`, under a `Default` bound of each such member whose type names a parameter of the enum. The enum is then closed, so its other variants refuse a key too: `pub enum Signal { Off {}, On { level: u8 } }` refuses `{"Off":{"stray":1}}` and `{"On":{"level":1,"stray":1}}` and reads `{"Off":{}}` and `{"On":{"level":1}}`, under a tag alone, under a tag and a content key, and untagged as well, as the Zod, JSON Schema, Dart, Kotlin and Swift reads do. Marked `nonstrict`, it reads past the key on every surface. A braced variant of no member read that serde never reads, under `#[serde(skip)]`, or reads through its author's `#[serde(deserialize_with = "...")]`, closes its enum the same way and gets no read of the macro's: the author's function decides what that variant takes.
 
-A struct whose flattened members all take their own keys is closed, with a key of its own or none: `pub struct Bundle { #[serde(flatten)] pub stamp: Stamp, #[serde(flatten)] pub ink: Ink }` refuses `{"at":"noon","colour":"red","stray":1}`. A `nonstrict` holder of a member that refuses a key refuses it on every surface, as serde does. A `nonstrict` enum is judged variant by variant, as serde reads each variant: a variant that refuses a key, by a member it flattens or, under a tag alone or untagged, by the type a newtype variant holds, refuses it on every surface, and every other variant, and the object under a tag and a content key, reads it past on every surface. A struct not marked `nonstrict`, or a struct variant of an enum not marked `nonstrict`, that flattens a member which reads every key still left and refuses none, a map aside, stops the build where no other member it flattens refuses such a key, whatever another variant of the enum refuses: serde cannot refuse one beside it, so mark the struct or the enum `nonstrict`, and every surface reads past the key as serde does. So does one that flattens a member read through a `preprocess`, a `deserialize_with` or a `with` of its author's, whatever the member's type and wherever that type is declared: whether serde refuses such a key depends on what the function answers, which tixschema cannot see. A `nonstrict` struct that flattens such a member is a member that reads past a key to a holder that flattens it. A member whose type is declared below its holder, or in another crate, is held to take its own keys, and where its hidden constant says it reads every key still left, the build asks for the holder, or the enum of a struct variant, to be marked `nonstrict`. An enum one of whose variants flattens a member that reads every key still left cannot carry `deny_unknown_fields`, which serde reads for every variant at once, so where another of its levels would refuse a key (the object under a tag and a content key, another struct variant, the unit variant under a tag alone), the build stops: mark the enum `nonstrict`, or hold that variant's members in a struct of their own and write the variant as a newtype variant over it, a struct the build asks to be marked `nonstrict` where the member refuses no key. A braced struct of no member, `pub struct Hollow {}`, and one whose every member serde neither reads nor writes, `pub struct Skipped { #[serde(skip)] pub held: u32 }`, refuse `{"stray":1}` with ``unknown field `stray`, there are no fields`` and read `{}`: the macro takes `Deserialize` off the derive and writes the read, as it does for a unit struct, unless the type is `nonstrict`. So does the message the `service_schema` macros generate for an operation of no argument: the Rust dispatchers of `amqp_rpc`, `ws_rpc`, `http_rest` and `mcp` answer `{"stray":1}` with `failed-validation`, the field `stray` and the detail ``'stray': unknown field `stray`, there are no fields``, and call no handler, and the TypeScript, Dart and Kotlin dispatchers answer the same kind and field, each with a detail in its own words. The read the macro writes for a struct whose every member serde skips builds each member as serde's derive builds it, from the member's `#[serde(default = "...")]`, else from the container's `#[serde(default)]`, else from `Default`, so `{}` reads as `Skipped { held: 0 }`, and it asks the bounds that derive asks: `T: Default` of a `Skipped<T>` whose member of type `T` is built by `Default`, or what the container's `#[serde(bound(deserialize = "..."))]` writes. A braced struct of no member, or one whose every member serde skips, read through `#[serde(from = "...")]`, `try_from` or `remote`, stops the build, as the read the macro writes cannot be read through the conversion: mark it `nonstrict`, so serde reads it through the conversion and every other surface reads past the key. `into` is not refused.
+A struct whose flattened members all take their own keys is closed, with a key of its own or none: `pub struct Bundle { #[serde(flatten)] pub stamp: Stamp, #[serde(flatten)] pub ink: Ink }` refuses `{"at":"noon","colour":"red","stray":1}`. A `nonstrict` holder of a member that refuses a key refuses it on every surface, as serde does. A `nonstrict` enum is judged variant by variant, as serde reads each variant: a variant that refuses a key, by a member it flattens or, under a tag alone or untagged, by the type a newtype variant holds, refuses it on every surface, and every other variant, and the object under a tag and a content key, reads it past on every surface. A struct not marked `nonstrict`, or a struct variant of an enum not marked `nonstrict`, that flattens a member which reads every key still left and refuses none, a map aside, stops the build where no other member it flattens refuses such a key, whatever another variant of the enum refuses: serde cannot refuse one beside it, so mark the struct or the enum `nonstrict`, and every surface reads past the key as serde does. So does one that flattens a member read through a `preprocess`, a `deserialize_with` or a `with` of its author's, whatever the member's type and wherever that type is declared: whether serde refuses such a key depends on what the function answers, which tixschema cannot see. A `nonstrict` struct that flattens such a member is a member that reads past a key to a holder that flattens it. A member whose type is declared below its holder, or in another crate, is held to take its own keys, and where its hidden constant says it reads every key still left, the build asks for the holder, or the enum of a struct variant, to be marked `nonstrict`. An enum one of whose variants flattens a member that reads every key still left cannot carry `deny_unknown_fields`, which serde reads for every variant at once, so where another of its levels would refuse a key (the object under a tag and a content key, another struct variant, the unit variant under a tag alone), the build stops: mark the enum `nonstrict`, or hold that variant's members in a struct of their own and write the variant as a newtype variant over it, a struct the build asks to be marked `nonstrict` where the member refuses no key. A braced struct of no member, `pub struct Hollow {}`, and one whose every member serde neither reads nor writes, `pub struct Skipped { #[serde(skip)] pub held: u32 }`, refuse `{"stray":1}` with ``unknown field `stray`, there are no fields`` and read `{}`: the macro takes `Deserialize` off the derive and writes the read, as it does for a unit struct, unless the type is `nonstrict`. So does the message the `service_schema` macros generate for an operation of no argument: the Rust dispatchers of `amqp_rpc`, `ws_rpc`, `http_rest` and `mcp` answer `{"stray":1}` with `failed-validation` listing ``unknown field `stray`, there are no fields`` at the field `stray`, and call no handler, and the TypeScript, Dart and Kotlin dispatchers answer the same kind and field, each with a detail in its own words. The read the macro writes for a struct whose every member serde skips builds each member as serde's derive builds it, from the member's `#[serde(default = "...")]`, else from the container's `#[serde(default)]`, else from `Default`, so `{}` reads as `Skipped { held: 0 }`, and it asks the bounds that derive asks: `T: Default` of a `Skipped<T>` whose member of type `T` is built by `Default`, or what the container's `#[serde(bound(deserialize = "..."))]` writes. A braced struct of no member, or one whose every member serde skips, read through `#[serde(from = "...")]`, `try_from` or `remote`, stops the build, as the read the macro writes cannot be read through the conversion: mark it `nonstrict`, so serde reads it through the conversion and every other surface reads past the key. `into` is not refused.
 
 A member written with the holder's own type parameter, `#[serde(flatten)] pub recipient: invoice_lookups::ParcelRecipient<IdType>`, is read at the type the holder's `default_types` fills the parameter with: under `default_types(IdType = String)`, the `const` beside the holder reads `ParcelRecipient<String>`. A type's keys are the same at every filling, since flattening a type parameter is refused, so that filling answers for all of them. Where the holder declares no entry for the parameter, the build stops and asks for one:
 
@@ -729,6 +888,10 @@ export type HistogramDraft = {
 };
 
 export type Histogram = Readonly<HistogramDraft> & $brand<"Histogram">;
+
+export function HistogramDraft$valid(draft: HistogramDraft): Histogram {
+  return draft as unknown as Histogram;
+}
 ```
 
 - **Where the note is written.** On a member whose type writes such a map at any depth, or names an alias, a brand or a tuple struct declared above it that carries the note. On the key a variant's slots are written under, its name or its content key. On a tuple struct, an alias and a brand whose value writes such a map, and on the name each republishes itself under. In the service code, on each method of a client and of an implementation whose message, header or part writes one, and on the `value` or the `error` of a result and of an outcome whose arm writes one. A type declared below the member that names it, or in another crate, is not looked into.
@@ -819,6 +982,10 @@ export type SpannedDraft = {
 };
 
 export type Spanned = Readonly<SpannedDraft> & $brand<"Spanned">;
+
+export function SpannedDraft$valid(draft: SpannedDraft): Spanned {
+  return draft as unknown as Spanned;
+}
 ```
 
 ```typescript
@@ -858,6 +1025,10 @@ export type ReplyDraft = {
 };
 
 export type Reply = Readonly<ReplyDraft> & $brand<"Reply">;
+
+export function ReplyDraft$valid(draft: ReplyDraft): Reply {
+  return draft as unknown as Reply;
+}
 ```
 
 ```typescript

@@ -8,7 +8,7 @@ use super::aliased_models::{
     lulling_kotlin, scending_kotlin, surging_kotlin, swell_kotlin, veering_kotlin,
 };
 use super::kotlin_pathed::PATHED;
-use super::read::paired_plain_enum;
+use super::read::plain_enum;
 
 /// What reads a payload's key `name` as `label`, and refuses the two together.
 const NAME_AS_LABEL: &str = "let { whole: JsonElement -> if (whole is JsonObject) \
@@ -86,7 +86,7 @@ fn a_tagged_enum_reads_a_variant_under_each_alias() {
 fn a_plain_enum_reads_a_variant_under_each_alias() {
     assert_eq!(
         swell_kotlin::kotlin_definition(),
-        paired_plain_enum(
+        plain_enum(
             "Swell",
             "Ebb, Flood",
             &[("Ebb", "Ebb", &["Low", "Neap"]), ("Flood", "Flood", &[])],
@@ -95,7 +95,7 @@ fn a_plain_enum_reads_a_variant_under_each_alias() {
     );
     assert_eq!(
         lulling_kotlin::kotlin_definition(),
-        paired_plain_enum(
+        plain_enum(
             "Lulling",
             "Ebb, Flood",
             &[("Ebb", "Ebb", &["Low"]), ("Flood", "Flood", &[])],
@@ -162,7 +162,7 @@ fn a_struct_the_plugin_reads_reads_a_member_under_each_alias() {
 /// object without the member's key.
 #[test]
 fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
-    let fairleading = fairleading_kotlin::kotlin_definition();
+    let fairleading = super::tests::renumbered(&fairleading_kotlin::kotlin_definition());
     let held = format!(
         "val element = input.decodeJsonElement(); return kotlinSchemaAt(input) {{ val obj = \
          element.{NAME_AS_LABEL}.let {{ it as? JsonObject ?: throw \
@@ -170,7 +170,7 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
          kotlinSchemaDecoded(input.json, serializer<String>(), (obj[\"label\"] ?: throw \
          SerializationException(\"missing field `label`\")), \"label\", \".label\"); val \
          tallyKeys = setOf(\"keys\"); val tally = kotlinSchemaFlattened {{ \
-         input.json.decodeFromString(PennonUnjudged, \
+         input.json.decodeFromString(KotlinHeld1, \
          withItsKeys(JsonObject(obj - setOf(\"label\"))).toString()) }};"
     );
     assert!(fairleading.contains(&held), "no `{held}` in: {fairleading}");
@@ -180,9 +180,9 @@ fn a_struct_read_by_hand_reads_a_member_under_its_alias() {
 /// off its holder's object.
 #[test]
 fn a_flattened_struct_takes_each_alias_of_its_members() {
-    let fothering = fothering_kotlin::kotlin_definition();
+    let fothering = super::tests::renumbered(&fothering_kotlin::kotlin_definition());
     let held = "val hawsingKeys = setOf(\"label\", \"name\", \"title\", \"note\", \"remark\"); \
-                val hawsing = kotlinSchemaFlattened { input.json.decodeFromString(HawsingUnjudged, \
+                val hawsing = kotlinSchemaFlattened { input.json.decodeFromString(KotlinHeld1, \
                 JsonObject(obj.filterKeys { it in setOf(\"label\", \"name\", \"title\", \"note\", \
                 \"remark\") }).toString()) };";
     assert!(fothering.contains(held), "no `{held}` in: {fothering}");

@@ -2,6 +2,8 @@
 
 #### Plain Enums
 
+A plain enum that names no `check` has no draft on any surface: it is declared as written, its variants are its values (`UserStatus::Active`, in an expression and in a `match`), and in TypeScript it is the bare string union, which indexes a `Record<UserStatus, T>` and narrows in a `switch`. One that names a `check` keeps `{Name}Draft` and the valid type, since a check can refuse a variant.
+
 An enum whose variants are all unit variants and which names no `tag` and no `untagged` generates a TypeScript string union and `z.enum()` in Zod, matching the bare variant name Serde writes for it. Serde reads the variant from that name, or from an object of one key over `null`, `{"status":{"Active":null}}`, which the schema and every client read as `Active`; a value that is neither a string nor an object of one key, `1`, `[]`, `true`, `{}` or an object of two keys, is refused as the shape of an externally tagged enum's value is, `undeserializable-payload` naming no field, an object of one key over a value other than `null`, `{"Active":1}`, is refused naming the field under the variant, `status.Active`, and a name no variant takes naming the field, `status`. Either attribute changes what Serde writes, and the surfaces follow it rather than the string union. Naming a `tag` moves the variant name under the tag key, into an object, so the same all-unit variants are described as the tagged objects below. Naming `untagged` drops the name altogether -- Serde writes every unit variant as a bare `null` -- and the declaration is refused per variant, the way any unit variant in an untagged enum is refused under "Untagged Enums" below.
 
 ```rust
@@ -16,12 +18,11 @@ pub enum UserStatus {
 }
 ```
 
-An enum like this, with the `serde` feature on, has `wire_name(&self) -> &'static str` on its draft, a `const fn` answering the text serde writes for the value: a variant's `rename` wins over `rename_all`, the `serialize` side of a list-form rename is the one used, and an alias changes nothing. A valid value reaches it through `Deref`:
+An enum like this, with the `serde` feature on, has `wire_name(&self) -> &'static str` on the enum, a `const fn` answering the text serde writes for the value: a variant's `rename` wins over `rename_all`, the `serialize` side of a list-form rename is the one used, and an alias changes nothing. 
 
 ```rust
-const MAX: &str = DateMinMaxTypeDraft::MaxIsCurrentDate.wire_name(); // "MaxIsCurrentDate"
-let bound: DateMinMaxType = DateMinMaxTypeDraft::Custom.validate()?;
-lines.tag("DateMinMaxType", bound.wire_name());
+const MAX: &str = DateMinMaxType::MaxIsCurrentDate.wire_name(); // "MaxIsCurrentDate"
+lines.tag("DateMinMaxType", DateMinMaxType::Custom.wire_name());
 ```
 
 An enum serde writes in any other way has no `wire_name`: one under `tag` (with or without `content`), one with a variant that holds data, one with a variant under `skip` or `skip_serializing`, and one with a variant under `with` or `serialize_with`. Without the `serde` feature no attribute is read, and the method is not written. A plain enum a service declares for itself, its fault kind, has no draft and carries the method on the one enum.
@@ -487,7 +488,7 @@ The enum's check is the same check written in `#[model_schema_prop(...)]` on eac
 
 - **Reached:** a field of any variant, a named member or a slot, written as a string or a path itself -- `String`, `&str`, `PathBuf` -- under `Option`, the transparent wrappers `Box`, `Rc`, `Arc` and `Cow`, and any reference.
 - **Not reached:** the items of a list, so a field written `Vec<String>` is held to nothing; a field typed with a named type, a brand included, which carries its own check; a number, a `bool`, a map and a tuple; a field typed with one of the enum's own type parameters; and a field that carries a [`literal`](literals-and-type-names.md#literal-values), which takes no other rule.
-- **A member of an untagged enum** is checked by the read, which is what chooses the variant, and by `validate()`, the Zod schema and the JSON Schema.
+- **A member of an untagged enum** is checked by `validate()`, which the read runs once the variant is chosen by shape, and by the Zod schema and the JSON Schema.
 - **A member of a tagged enum** is checked by `validate()`, which the enum's own read runs on the value it read, and by the Zod schema, the JSON Schema and the [recovering decode](recovering-decode.md#recovering-decode-decode_with). See [Where a constraint is checked](validation.md#where-a-constraint-is-checked).
 
 `validate()` reports a field at [the path serde writes it at](validation.md#the-path-a-message-names), as it does for [a check written on the member](validation.md#a-slot-of-a-tuple-variant): below the variant's name or the content key where serde writes one, and under no name for an untagged newtype variant's slot. A validator is published in every build.

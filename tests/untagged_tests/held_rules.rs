@@ -60,15 +60,13 @@ fn a_held_models_rule_chooses_no_variant() {
             .validate()
             .unwrap()
         )
-        .validate()
-        .unwrap())
+        .into())
     );
     let empty = ProbePickerDraft::B(
         ProbeLooseDraft {
             label: String::new(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
     );
     assert_eq!(serde_json::to_string(&empty).unwrap(), r#"{"label":""}"#);
     assert_eq!(
@@ -78,9 +76,7 @@ fn a_held_models_rule_chooses_no_variant() {
 
     assert_eq!(
         read::<ProbeChooser>("1"),
-        Ok(ProbeChooserDraft::A(ProbeCountDraft(1).validate().unwrap())
-            .validate()
-            .unwrap())
+        Ok(ProbeChooserDraft::A(ProbeCountDraft(1).validate().unwrap()).into())
     );
     assert_eq!(
         serde_json::to_string(&ProbeChooserDraft::B(0)).unwrap(),

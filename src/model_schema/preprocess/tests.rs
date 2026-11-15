@@ -106,12 +106,12 @@ fn the_read_calls_the_functions_of_the_type_and_then_those_of_each_member() {
         );
     }
     // Read as an identifier: the source of a client is a string the expansion holds, and it
-    // names the `validate()` of its own type. The one `validate` the expansion writes is the
-    // draft's own, which the read never calls.
+    // names the `validate()` of its own type. The expansion writes the draft's own `validate`
+    // and the one call of it in `new`, and the read calls neither.
     assert_eq!(
         idents_named(tokens, "validate").len(),
-        1,
-        "found more than the draft's `validate` in: {rendered}"
+        2,
+        "found more than the draft's `validate` and the call in `new` in: {rendered}"
     );
 }
 

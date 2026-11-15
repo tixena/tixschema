@@ -540,8 +540,7 @@ pub(super) fn arm(module: &Ident, operation: &OperationDef) -> TokenStream {
                 return reply
                     .fault($crate::#module::ServiceFault::failed_validation(
                         #wire,
-                        $crate::#module::violated_field(&violations),
-                        &$crate::#module::violation_detail(&violations),
+                        $crate::#module::violation_issues(&violations),
                     ))
                     .await;
             }
@@ -1257,14 +1256,27 @@ pub(super) fn fault_wire_types() -> TokenStream {
         /// A fault as it arrives, which is the one shape that reads one back. `ServiceFault`
         /// derives no `Deserialize` of its own, that being a public constructor by another name.
         #[derive(::serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct FaultOnTheWire {
-            detail: ::std::string::String,
-            field: ::core::option::Option<::std::string::String>,
-            #[serde(default)]
-            issues: ::std::vec::Vec<IssueOnTheWire>,
-            kind: FaultKindOnTheWire,
-            operation: ::std::string::String,
+        #[serde(tag = "kind", rename_all = "kebab-case")]
+        enum FaultOnTheWire {
+            FailedValidation {
+                issues: ::std::vec::Vec<IssueOnTheWire>,
+                operation: ::std::string::String,
+            },
+            HandlerPanic {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            TransportFailure {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            UndeserializablePayload {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            UnknownOperation {
+                operation: ::std::string::String,
+            },
         }
 
         /// One problem a fault lists, as it arrives.
@@ -1272,17 +1284,6 @@ pub(super) fn fault_wire_types() -> TokenStream {
         struct IssueOnTheWire {
             detail: ::std::string::String,
             field: ::core::option::Option<::std::string::String>,
-        }
-
-        /// The kinds, spelled as the wire spells them.
-        #[derive(::serde::Deserialize)]
-        #[serde(rename_all = "kebab-case")]
-        enum FaultKindOnTheWire {
-            FailedValidation,
-            HandlerPanic,
-            TransportFailure,
-            UndeserializablePayload,
-            UnknownOperation,
         }
 
         /// What the failure arm carries when the failure was never declared, tagged so a caller in
@@ -1314,30 +1315,24 @@ pub(super) fn fault_mirror_readers(generated: &Generated) -> TokenStream {
             /// publishes: its fields are private, and this reads a fault back from wherever the
             /// caller placed the client.
             fn into_fault(self) -> #fault {
-                match self.kind {
-                    FaultKindOnTheWire::FailedValidation => #fault::failed_validation(
-                        &self.operation,
-                        self.field.as_deref(),
-                        &self.detail,
-                    )
-                    .with_issues(
-                        self.issues
+                match self {
+                    Self::FailedValidation { issues, operation } => #fault::failed_validation(
+                        &operation,
+                        issues
                             .iter()
                             .map(|issue| #issue::new(issue.field.as_deref(), &issue.detail))
                             .collect(),
                     ),
-                    FaultKindOnTheWire::HandlerPanic => {
-                        #fault::handler_panic(&self.operation, &self.detail)
+                    Self::HandlerPanic { detail, operation } => {
+                        #fault::handler_panic(&operation, &detail)
                     }
-                    FaultKindOnTheWire::TransportFailure => {
-                        #fault::transport_failure(&self.operation, &self.detail)
+                    Self::TransportFailure { detail, operation } => {
+                        #fault::transport_failure(&operation, &detail)
                     }
-                    FaultKindOnTheWire::UndeserializablePayload => {
-                        #fault::undeserializable_payload(&self.operation, &self.detail)
+                    Self::UndeserializablePayload { detail, operation } => {
+                        #fault::undeserializable_payload(&operation, &detail)
                     }
-                    FaultKindOnTheWire::UnknownOperation => {
-                        #fault::unknown_operation(&self.operation)
-                    }
+                    Self::UnknownOperation { operation } => #fault::unknown_operation(&operation),
                 }
             }
         }
@@ -1441,8 +1436,10 @@ fn header_in_reads(module: &Ident, operation: &OperationDef) -> TokenStream {
                     return reply
                         .fault($crate::#module::ServiceFault::failed_validation(
                             #wire,
-                            ::core::option::Option::Some(#name),
-                            &detail,
+                            ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                                ::core::option::Option::Some(#name),
+                                &detail,
+                            )],
                         ))
                         .await;
                 }
@@ -1730,11 +1727,18 @@ fn header_encode_refusal(
     let Generated {
         call_error,
         fault,
-        module: _module,
+        module,
     } = generated;
     let wire = &operation.wire_name;
-    let built =
-        quote! { #fault::failed_validation(#wire, ::core::option::Option::Some(#name), &detail) };
+    let built = quote! {
+        #fault::failed_validation(
+            #wire,
+            ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                ::core::option::Option::Some(#name),
+                &detail,
+            )],
+        )
+    };
     match &operation.outcome {
         OperationOutcome::OneWay => quote! { return ::core::result::Result::Err(#built); },
         OperationOutcome::Reply {
@@ -1768,8 +1772,10 @@ fn header_value_decode_lets(
                         return ::core::result::Result::Err(#call_error::Fault(
                             $crate::#module::ServiceFault::failed_validation(
                                 #wire,
-                                ::core::option::Option::Some(#name),
-                                &detail,
+                                ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                                    ::core::option::Option::Some(#name),
+                                    &detail,
+                                )],
                             ),
                         ));
                     }
@@ -2009,11 +2015,7 @@ pub(super) fn outbound_refusal(operation: &OperationDef, generated: &Generated) 
     } = generated;
     let wire = &operation.wire_name;
     let built = quote! {
-        #fault::failed_validation(
-            #wire,
-            $crate::#module::violated_field(&violations),
-            &$crate::#module::violation_detail(&violations),
-        )
+        #fault::failed_validation(#wire, $crate::#module::violation_issues(&violations))
     };
     match &operation.outcome {
         OperationOutcome::OneWay => quote! { return ::core::result::Result::Err(#built); },
@@ -2212,8 +2214,8 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
         /// not match the message — a value someone supplied that the message does not admit, which
         /// is the same failure the validator answers for and is answered under the same kind.
         ///
-        /// A `Data` refusal names the path serde was at, and the key serde says is missing or
-        /// unknown below it, so it reads as a broken bound does: `'entities.1.title': …`.
+        /// A `Data` refusal is listed at the path serde was at, and the key serde says is missing
+        /// or unknown below it, as a broken bound is: the field `entities.1.title`.
         ///
         /// The byte offset serde appends is dropped. It locates the failure inside an encoding the
         /// caller never saw, and it is removed by rebuilding it from the refusal's own line and
@@ -2231,11 +2233,9 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
             let said = reported.strip_suffix(&offset).unwrap_or(reported.as_str());
             if matches!(refusal.error.classify(), ::serde_json::error::Category::Data) {
                 if $crate::#module::named_field(said).is_some() {
-                    let (field, detail) = $crate::#module::refused_at(&refusal.path, said);
                     return $crate::#module::ServiceFault::failed_validation(
                         operation,
-                        ::core::option::Option::Some(field.as_str()),
-                        &detail,
+                        $crate::#module::refused_at(&refusal.path, said),
                     );
                 }
                 let mut path = refusal.path.clone();
@@ -2250,17 +2250,12 @@ pub(super) fn refusal_reader(module: &Ident) -> TokenStream {
                         }
                     }
                 }
-                if path.is_empty() {
-                    return $crate::#module::ServiceFault::failed_validation(
-                        operation,
-                        ::core::option::Option::None,
-                        said,
-                    );
-                }
                 return $crate::#module::ServiceFault::failed_validation(
                     operation,
-                    ::core::option::Option::Some(path.as_str()),
-                    &format!("'{path}': {said}"),
+                    ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                        (!path.is_empty()).then_some(path.as_str()),
+                        said,
+                    )],
                 );
             }
             $crate::#module::ServiceFault::undeserializable_payload(operation, said)

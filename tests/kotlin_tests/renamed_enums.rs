@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-use super::read::paired_plain_enum;
+use super::read::plain_enum;
 
 #[model_schema(name = "Category")]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -75,7 +75,7 @@ fn a_renamed_enum_republishes_its_ident_under_every_tagging() {
 fn an_enum_published_under_its_own_ident_writes_no_alias() {
     assert_eq!(
         season_kotlin::kotlin_definition(),
-        paired_plain_enum("Season", "Autumn", &[("Autumn", "Autumn", &[])], "element")
+        plain_enum("Season", "Autumn", &[("Autumn", "Autumn", &[])], "element")
     );
 }
 
@@ -83,7 +83,7 @@ fn an_enum_published_under_its_own_ident_writes_no_alias() {
 fn serde_writes_a_renamed_enum_by_its_variants_alone() {
     assert_eq!(
         [
-            serde_json::to_string(&GenreDraft::Poetry).unwrap(),
+            serde_json::to_string(&Genre::Poetry).unwrap(),
             serde_json::to_string(&ChapterDraft::Opening {
                 line: "a".to_owned()
             })
@@ -94,7 +94,7 @@ fn serde_writes_a_renamed_enum_by_its_variants_alone() {
             .unwrap(),
             serde_json::to_string(&CueDraft::Sealed("a".to_owned())).unwrap(),
             serde_json::to_string(&ScrollDraft::Sealed("a".to_owned())).unwrap(),
-            serde_json::to_string(&SeasonDraft::Autumn).unwrap(),
+            serde_json::to_string(&Season::Autumn).unwrap(),
         ],
         [
             r#""Poetry""#,

@@ -32,12 +32,20 @@ const TRIMMED_DOCK: &str = "func trimmedDock(_ payload: Any) -> Any {
 /// What a run reads a payload with, and prints the answer with: the value written back, or each
 /// message of a refusal.
 const HARNESS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   do {
     let held = try JSONDecoder().decode(type, from: Data(payload.utf8))
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     print("\(name): read \(String(data: try encoder.encode(held), encoding: .utf8)!)")
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    print("\(name): refused")
+    for line in issues { print("    \(line)") }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused")
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }
@@ -136,8 +144,14 @@ fn a_default_with_no_json_keeps_its_key_required() {
     let harbour = harbour_swift::swift_definition();
     assert!(
         harbour.contains(
-            "let container = try decoder.container(keyedBy: CodingKeys.self); self.berths = try \
-             container.decode([SwiftSchemaFit<Moored>].self, forKey: .berths).map({ $0.value }); self.flagship = try container.decode(SwiftSchemaFit<Moored>.self, forKey: .flagship).value; self.slips = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .slips).map({ $0.value }) }"
+            "let container = try decoder.container(keyedBy: CodingKeys.self); var listed = try \
+             container.nestedUnkeyedContainer(forKey: .berths); var items: [Moored] = []; while \
+             !listed.isAtEnd { items.append(try swiftSchemaReaderOfMoored(listed.superDecoder())) }; \
+             self.berths = items; _ = try container.decodeNil(forKey: .flagship); self.flagship = \
+             try swiftSchemaReaderOfMoored(container.superDecoder(forKey: .flagship)); var listed1 = \
+             try container.nestedUnkeyedContainer(forKey: .slips); var items1: [Moored] = []; while \
+             !listed1.isAtEnd { items1.append(try swiftSchemaReaderOfMoored(listed1.superDecoder())) \
+             }; self.slips = items1 }"
         ),
         "{harbour}"
     );
@@ -152,7 +166,7 @@ fn an_empty_collection_of_a_parameter_is_read_from_its_json() {
             "if container.contains(.moored) { self.moored = try container.decode([SwiftSchemaFit<Moored>].self, forKey: .moored).map({ $0.value }) } else { let mooredDefaultPayload = try \
              JSONSerialization.jsonObject(with: Data(\"[]\".utf8), options: \
              [.fragmentsAllowed]); self.moored = try SwiftSchemaPayload.read([Moored].self, \
-             from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored]) }"
+             from: mooredDefaultPayload, at: container.codingPath + [CodingKeys.moored], within: decoder) }"
         ),
         "{basin}"
     );
@@ -168,7 +182,7 @@ fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json(
             "else { let vecDefaultPayload = try JSONSerialization.jsonObject(with: \
              Data(\"[]\".utf8), options: [.fragmentsAllowed]); self.vec = try \
              SwiftSchemaPayload.read([Link<IdType>].self, from: vecDefaultPayload, at: \
-             container.codingPath + [CodingKeys.vec]) }"
+             container.codingPath + [CodingKeys.vec], within: decoder) }"
         ),
         "{fleet}"
     );
@@ -178,7 +192,7 @@ fn an_empty_collection_of_a_model_filled_with_a_parameter_is_read_from_its_json(
             "else { let hashMapDefaultPayload = try JSONSerialization.jsonObject(with: \
              Data(\"{}\".utf8), options: [.fragmentsAllowed]); self.hashMap = try \
              SwiftSchemaPayload.read([String: Link<IdType>].self, from: hashMapDefaultPayload, \
-             at: container.codingPath + [CodingKeys.hashMap]) }"
+             at: container.codingPath + [CodingKeys.hashMap], within: decoder) }"
         ),
         "{logbook}"
     );

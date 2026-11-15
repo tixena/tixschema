@@ -141,12 +141,9 @@ mod a_length_counts_characters {
 
     #[test]
     fn a_unit_variant_named_with_one_character_builds_under_a_maximum_of_one() {
+        assert_eq!(serde_json::to_string(&Marks::Accent).unwrap(), "\"\u{e9}\"");
         assert_eq!(
-            serde_json::to_string(&MarksDraft::Accent).unwrap(),
-            "\"\u{e9}\""
-        );
-        assert_eq!(
-            serde_json::to_string(&MarksDraft::Smile).unwrap(),
+            serde_json::to_string(&Marks::Smile).unwrap(),
             "\"\u{1f600}\""
         );
     }

@@ -137,7 +137,7 @@ impl TrackingClientService<()> for TrackingBackEnd {
     async fn track(&self, _ctx: &(), parcel_label: String) -> Result<Parcel, TrackingError> {
         ready(()).await;
         if parcel_label.is_empty() {
-            return Err(TrackingErrorDraft::NotFound.validate().unwrap());
+            return Err(TrackingError::NotFound);
         }
         Ok(ParcelDraft {
             fragile_item_codes: Vec::new(),

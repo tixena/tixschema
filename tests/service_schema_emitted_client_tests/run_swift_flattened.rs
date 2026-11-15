@@ -47,6 +47,10 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// written with its keys sorted, the read of a payload, and what a read that refuses one says, a
 /// key it misses in serde's words.
 const HELPERS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func asGiven(_ payload: Any) -> Any { payload }
 
 func withItsKeys(_ payload: Any) -> Any {
@@ -68,6 +72,9 @@ func refusal<Read: Decodable>(_ type: Read.Type, _ payload: String) -> String {
   do {
     _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
     return "read"
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    return issues.joined(separator: "; ")
   } catch DecodingError.dataCorrupted(let context) {
     return context.debugDescription
   } catch DecodingError.keyNotFound(let key, _) {
@@ -367,8 +374,7 @@ fn after_a_struct() -> String {
         flag: PennantDraft {
             label: "n".to_owned(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         notch: Notch::model_schema_wrap_unjudged(NotchDraft {
             mark: String::new(),
         }),

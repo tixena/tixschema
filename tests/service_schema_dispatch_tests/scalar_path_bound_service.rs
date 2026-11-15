@@ -46,9 +46,9 @@ impl ScalarPathBoundService<()> for ScalarBackEnd {
     async fn get(&self, _ctx: &(), id: String) -> Result<DocumentSummary, GetDocumentError> {
         ready(()).await;
         if id == "missing" {
-            return Err(GetDocumentErrorDraft::NotFound.validate().unwrap());
+            return Err(GetDocumentError::NotFound);
         }
-        Ok(DocumentSummaryDraft { id }.validate().unwrap())
+        Ok(DocumentSummaryDraft { id }.into())
     }
 }
 
@@ -61,7 +61,13 @@ impl FaultHandler for RecordingFaultHandler {
         OutgoingResponse::new(
             499,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }

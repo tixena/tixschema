@@ -34,8 +34,7 @@ fn with_age() -> OmittedKeyFields {
         id: "1".to_owned(),
         roles: vec![],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn without_age() -> OmittedKeyFields {
@@ -44,8 +43,7 @@ fn without_age() -> OmittedKeyFields {
         id: "1".to_owned(),
         roles: vec![],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn with_roles() -> PredicateOmittedKey {
@@ -53,8 +51,7 @@ fn with_roles() -> PredicateOmittedKey {
         id: "1".to_owned(),
         roles: vec!["admin".to_owned()],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn without_roles() -> PredicateOmittedKey {
@@ -62,8 +59,7 @@ fn without_roles() -> PredicateOmittedKey {
         id: "1".to_owned(),
         roles: vec![],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The two payloads every surface below is measured against.

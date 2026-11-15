@@ -12,16 +12,14 @@ use crate::features::service_schema::registry_ident;
 use crate::service_schema::parse::{
     BIGINT_FORM, BOOLEAN_FORM, BodyKind, DEFAULT_BINDING_ERROR_STATUS, HeaderIn, HttpShape,
     LIST_FORM, MultipartPart, NUMBER_FORM, OperationDef, OperationInputs, OperationOutcome,
-    PATH_ITEM_HOLDS_A_COMMA, PathSegment, ScalarKind, ServiceDef, argument_local,
-    error_declared_type, field_ident, is_scalar_named_type, is_unit_type, option_inner,
-    path_reads_a_named_field, scalar_kind, service_declares_a_placeholder,
-    service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
-    written,
+    PATH_ITEM_HOLDS_A_COMMA, PathSegment, ScalarKind, ServiceDef, argument_local, field_ident,
+    is_scalar_named_type, is_unit_type, option_inner, path_reads_a_named_field, scalar_kind,
+    service_declares_a_placeholder, service_declares_a_stream, service_declares_multipart,
+    tuple_elements, vec_inner, wire_key, written,
 };
 use crate::service_schema::support::{
-    draft_type_path, exhaustiveness, message_alias_ident, message_reader_ident,
-    message_validator_ident, message_wire_form_ident, message_wire_key_ident, module_ident,
-    unit_value,
+    exhaustiveness, message_alias_ident, message_reader_ident, message_validator_ident,
+    message_wire_form_ident, message_wire_key_ident, module_ident, unit_value,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -925,8 +923,7 @@ fn dispatch_arm(module: &Ident, operation: &OperationDef, has_stream: bool) -> T
         if let ::core::result::Result::Err(violations) = $crate::#module::#validator(&received) {
             return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                 #wire,
-                $crate::#module::violated_field(&violations),
-                &$crate::#module::violation_detail(&violations),
+                $crate::#module::violation_issues(&violations),
             ));
         }
     };
@@ -983,15 +980,19 @@ fn multipart_part_let(module: &Ident, wire: &str, part: &MultipartPart) -> Token
             ::core::option::Option::Some(IncomingPart::Text(_)) => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    ::core::option::Option::Some(#name),
-                    "expected a file part, found a text part",
+                    ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                        ::core::option::Option::Some(#name),
+                        "expected a file part, found a text part",
+                    )],
                 ));
             }
             ::core::option::Option::None => {
                 return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                     #wire,
-                    ::core::option::Option::Some(#name),
-                    "a required multipart part was not carried",
+                    ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                        ::core::option::Option::Some(#name),
+                        "a required multipart part was not carried",
+                    )],
                 ));
             }
         };
@@ -1009,8 +1010,10 @@ fn header_in_let(module: &Ident, wire: &str, header: &HeaderIn) -> TokenStream {
         quote! {
             return handler.on_fault(&$crate::#module::ServiceFault::failed_validation(
                 #wire,
-                ::core::option::Option::Some(#name),
-                "a required header was not carried",
+                ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                    ::core::option::Option::Some(#name),
+                    "a required header was not carried",
+                )],
             ))
         }
     };
@@ -1208,17 +1211,21 @@ fn object_base(inserts: bool) -> TokenStream {
 
 /// The status a declared error answers at, read off `error_status`, or the fixed
 /// [`DEFAULT_BINDING_ERROR_STATUS`] where the operation named no `http(...)` group.
-fn error_status_expr(shape: &HttpShape, error_head: &Type) -> TokenStream {
+fn error_status_expr(shape: &HttpShape) -> TokenStream {
     if shape.error_status.is_empty() {
         let fallback = DEFAULT_BINDING_ERROR_STATUS;
         quote! { #fallback }
     } else {
-        let drafted = draft_type_path(error_head);
-        let arms = shape
-            .error_status
-            .iter()
-            .map(|(variant, code)| quote! { #drafted::#variant { .. } => #code, });
-        quote! { match &*declared_error { #(#arms)* } }
+        let arms = shape.error_status.iter().map(|(variant, code)| {
+            let name = written(variant);
+            quote! { #name => #code, }
+        });
+        quote! {
+            match declared_error.model_schema_variant() {
+                #(#arms)*
+                _ => 500,
+            }
+        }
     }
 }
 
@@ -1296,14 +1303,8 @@ fn error_header_out_idents(count: usize) -> Vec<Ident> {
 
 /// The `Ok(Err(...)) => {...}` arm every reply-answering block shares: splits the error tuple
 /// apart where `error_header_out` declared one, the same composition `header_out` performs.
-fn declared_error_arm(
-    wire: &str,
-    shape: &HttpShape,
-    error: &Type,
-    error_head: &Type,
-    module: &Ident,
-) -> TokenStream {
-    let status_expr = error_status_expr(shape, error_head);
+fn declared_error_arm(wire: &str, shape: &HttpShape, error: &Type, module: &Ident) -> TokenStream {
+    let status_expr = error_status_expr(shape);
     if shape.error_header_out.is_empty() {
         quote! {
             ::core::result::Result::Ok(::core::result::Result::Err(declared_error)) => {
@@ -1364,8 +1365,7 @@ fn answer_block(
             }
         }
         OperationOutcome::Reply { error, success } => {
-            let error_head = error_declared_type(shape.error_header_out.len(), error);
-            let error_arm = declared_error_arm(wire, shape, error, error_head, module);
+            let error_arm = declared_error_arm(wire, shape, error, module);
             let arm = AnswerArm {
                 called,
                 error_arm: &error_arm,
@@ -1935,14 +1935,27 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
     } = generated;
     quote! {
         #[derive(::serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct FaultOnTheWire {
-            detail: ::std::string::String,
-            field: ::core::option::Option<::std::string::String>,
-            #[serde(default)]
-            issues: ::std::vec::Vec<IssueOnTheWire>,
-            kind: FaultKindOnTheWire,
-            operation: ::std::string::String,
+        #[serde(tag = "kind", rename_all = "kebab-case")]
+        enum FaultOnTheWire {
+            FailedValidation {
+                issues: ::std::vec::Vec<IssueOnTheWire>,
+                operation: ::std::string::String,
+            },
+            HandlerPanic {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            TransportFailure {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            UndeserializablePayload {
+                detail: ::std::string::String,
+                operation: ::std::string::String,
+            },
+            UnknownOperation {
+                operation: ::std::string::String,
+            },
         }
 
         #[derive(::serde::Deserialize)]
@@ -1951,44 +1964,28 @@ fn client_fault_mirror_types(generated: &Generated) -> TokenStream {
             field: ::core::option::Option<::std::string::String>,
         }
 
-        #[derive(::serde::Deserialize)]
-        #[serde(rename_all = "kebab-case")]
-        enum FaultKindOnTheWire {
-            FailedValidation,
-            HandlerPanic,
-            TransportFailure,
-            UndeserializablePayload,
-            UnknownOperation,
-        }
-
         impl FaultOnTheWire {
             fn into_fault(self) -> #fault {
-                match self.kind {
-                    FaultKindOnTheWire::FailedValidation => #fault::failed_validation(
-                        &self.operation,
-                        self.field.as_deref(),
-                        &self.detail,
-                    )
-                    .with_issues(
-                        self.issues
+                match self {
+                    Self::FailedValidation { issues, operation } => #fault::failed_validation(
+                        &operation,
+                        issues
                             .iter()
                             .map(|issue| {
                                 $crate::#module::ServiceFaultIssue::new(issue.field.as_deref(), &issue.detail)
                             })
                             .collect(),
                     ),
-                    FaultKindOnTheWire::HandlerPanic => {
-                        #fault::handler_panic(&self.operation, &self.detail)
+                    Self::HandlerPanic { detail, operation } => {
+                        #fault::handler_panic(&operation, &detail)
                     }
-                    FaultKindOnTheWire::TransportFailure => {
-                        #fault::transport_failure(&self.operation, &self.detail)
+                    Self::TransportFailure { detail, operation } => {
+                        #fault::transport_failure(&operation, &detail)
                     }
-                    FaultKindOnTheWire::UndeserializablePayload => {
-                        #fault::undeserializable_payload(&self.operation, &self.detail)
+                    Self::UndeserializablePayload { detail, operation } => {
+                        #fault::undeserializable_payload(&operation, &detail)
                     }
-                    FaultKindOnTheWire::UnknownOperation => {
-                        #fault::unknown_operation(&self.operation)
-                    }
+                    Self::UnknownOperation { operation } => #fault::unknown_operation(&operation),
                 }
             }
         }
@@ -2349,14 +2346,16 @@ fn value_refusal(
     let Generated {
         call_error,
         fault,
-        module: _module,
+        module,
     } = generated;
     let wire = &operation.wire_name;
     let built = quote! {
         #fault::failed_validation(
             #wire,
-            ::core::option::Option::Some(#name),
-            #detail,
+            ::std::vec![$crate::#module::ServiceFaultIssue::new(
+                ::core::option::Option::Some(#name),
+                #detail,
+            )],
         )
     };
     match &operation.outcome {

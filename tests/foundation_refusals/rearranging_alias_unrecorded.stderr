@@ -1,0 +1,47 @@
+error[E0277]: model_schema: `__tixschema_valid_page_schema::Page<PageDraft<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>>` fills a type parameter of the generic model this member holds, where the member's type writes `__tixschema_valid_parcel_schema::Parcel<ParcelDraft>`: the member's type is an alias that rearranges the parameters of the model it names, and a holder hands the model what fills each of its own parameters
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:32:1
+   |
+32 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ write the generic model the alias names, with its parameters filled, in place of the alias
+...
+35 |     pub pages: PagesOf<Parcel>,
+   |                        ------ required by a bound introduced by this call
+   |
+help: the trait `ModelSchemaWrittenAs<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>` is not implemented for `__tixschema_valid_page_schema::Page<PageDraft<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>>`
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:8:1
+   |
+ 8 | #[model_schema(default_types(Item = String))]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: for `type PagesOf<Item> = Page<Page<Item>>`, a member that holds `PagesOf<Parcel>` is written `Page<Page<Parcel>>`
+help: the trait `ModelSchemaWrittenAs<W>` is implemented for `ModelSchemaUnreached<W>`
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:32:1
+   |
+32 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: model_schema: `__tixschema_valid_page_schema::Page<PageDraft<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>>` fills a type parameter of the generic model this member holds, where the member's type writes `__tixschema_valid_parcel_schema::Parcel<ParcelDraft>`: the member's type is an alias that rearranges the parameters of the model it names, and a holder hands the model what fills each of its own parameters
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:32:1
+   |
+32 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^ write the generic model the alias names, with its parameters filled, in place of the alias
+   |
+   = note: for `type PagesOf<Item> = Page<Page<Item>>`, a member that holds `PagesOf<Parcel>` is written `Page<Page<Parcel>>`
+help: the trait `DeserializeSeed<'_>` is not implemented for `Read<_>`
+      but it is implemented for `Read<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>`
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:32:1
+   |
+32 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `__tixschema_valid_parcel_schema::Parcel<ParcelDraft>`, found `__tixschema_valid_page_schema::Page<PageDraft<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>>`
+note: required for `<read_unjudged_pages::Unjudged as serde::Deserialize<'de>>::deserialize::Read<__tixschema_valid_page_schema::Page<PageDraft<__tixschema_valid_parcel_schema::Parcel<ParcelDraft>>>>` to implement `DeserializeSeed<'_>`
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:32:1
+   |
+32 | #[model_schema()]
+   | ^^^^^^^^^^^^^^^^^
+note: required by a bound in `<impl __tixschema_valid_page_schemaPage<PageDraft<Item>>>::model_schema_read_unjudged_by1`
+  --> tests/foundation_refusals/rearranging_alias_unrecorded.rs:8:1
+   |
+ 8 | #[model_schema(default_types(Item = String))]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `<impl Page<PageDraft<Item>>>::model_schema_read_unjudged_by1`
+   = note: this error originates in the attribute macro `model_schema` (in Nightly builds, run with -Z macro-backtrace for more info)

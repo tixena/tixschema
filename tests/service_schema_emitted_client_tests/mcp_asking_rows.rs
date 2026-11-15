@@ -277,8 +277,7 @@ impl AskingService<()> for Stand {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 
     fn connect_by_kind(
@@ -291,8 +290,7 @@ impl AskingService<()> for Stand {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 
     fn connect_renamed(
@@ -305,8 +303,7 @@ impl AskingService<()> for Stand {
             url: LINK.to_owned(),
             message: LINK_MESSAGE.to_owned(),
         }
-        .validate()
-        .unwrap()))
+        .into()))
     }
 
     fn delete_adjacent(
@@ -317,14 +314,13 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<(), AskingAdjacentError>> {
         self.reach(json!(["delete-adjacent", document_id, confirmation]));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(AskingAdjacentErrorDraft::NotFound.validate().unwrap()),
+            ("missing", _) => Err(AskingAdjacentError::NotFound),
             (_, None) => Err(AskingAdjacentErrorDraft::NeedsConfirmation {
                 message: CONFIRMATION_MESSAGE.to_owned(),
             }
-            .validate()
-            .unwrap()),
+            .into()),
             (_, Some(given)) if given.confirm => Ok(()),
-            (_, Some(_)) => Err(AskingAdjacentErrorDraft::Refused.validate().unwrap()),
+            (_, Some(_)) => Err(AskingAdjacentError::Refused),
         })
     }
 
@@ -336,14 +332,13 @@ impl AskingService<()> for Stand {
     ) -> impl Future<Output = Result<(), AskingError>> {
         self.reach(json!(["delete-document", document_id, confirmation]));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(AskingErrorDraft::NotFound.validate().unwrap()),
+            ("missing", _) => Err(AskingError::NotFound),
             (_, None) => Err(AskingErrorDraft::NeedsConfirmation {
                 message: CONFIRMATION_MESSAGE.to_owned(),
             }
-            .validate()
-            .unwrap()),
+            .into()),
             (_, Some(given)) if given.confirm => Ok(()),
-            (_, Some(_)) => Err(AskingErrorDraft::Refused.validate().unwrap()),
+            (_, Some(_)) => Err(AskingError::Refused),
         })
     }
 
@@ -357,15 +352,13 @@ impl AskingService<()> for Stand {
             Ok(AskingLinkedDraft {
                 document_id: format!("doc-{file_id}"),
             }
-            .validate()
-            .unwrap())
+            .into())
         } else {
             Err(AskingLinkErrorDraft::NeedsConnection {
                 url: LINK.to_owned(),
                 message: LINK_MESSAGE.to_owned(),
             }
-            .validate()
-            .unwrap())
+            .into())
         })
     }
 
@@ -381,8 +374,7 @@ impl AskingService<()> for Stand {
                 Err(AskingErrorDraft::NeedsConfirmation {
                     message: SHIPPING_MESSAGE.to_owned(),
                 }
-                .validate()
-                .unwrap())
+                .into())
             },
             |_form| Ok(()),
         ))
@@ -400,7 +392,7 @@ impl PreviewService<()> for Stand {
             "doc-1" => Ok((vec![0x89, b'P', b'N', b'G'], "image/png".to_owned())),
             "voice" => Ok((vec![1, 2, 3, 4, 5], "audio/mpeg".to_owned())),
             "plain" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
-            _ => Err(AskingMissDraft::NotFound.validate().unwrap()),
+            _ => Err(AskingMiss::NotFound),
         })
     }
 }
@@ -880,7 +872,16 @@ fn without_detail(answer: &Value) -> Value {
     let text = stripped["result"]["content"][0]["text"].as_str().unwrap();
     let mut body: Value = serde_json::from_str(text).unwrap();
     assert_eq!(body["isServiceFault"], true, "{answer:#}");
-    body["fault"].as_object_mut().unwrap().remove("detail");
+    let fault = body["fault"].as_object_mut().unwrap();
+    fault.remove("detail");
+    for issue in fault
+        .get_mut("issues")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        issue.as_object_mut().unwrap().remove("detail");
+    }
     stripped["result"]["content"][0]["text"] = json!(body.to_string());
     stripped
 }

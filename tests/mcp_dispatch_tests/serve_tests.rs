@@ -261,7 +261,7 @@ fn arguments_that_do_not_read_answer_the_failed_validation_fault_naming_the_path
     let answered = ask("get-version", &json!({ "document_id": 5_u8 }));
     assert_eq!(
         failure_text(&answered),
-        "{\"fault\":{\"detail\":\"'document_id': invalid type: integer `5`, expected a string\",\"field\":\"document_id\",\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"invalid type: integer `5`, expected a string\",\"field\":\"document_id\"}],\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}"
     );
     assert_result("CallToolResult", &answered);
 }
@@ -276,7 +276,7 @@ fn arguments_the_validator_refuses_answer_the_failed_validation_fault_naming_the
     .unwrap();
     assert_eq!(
         failure_text(&answered),
-        "{\"fault\":{\"detail\":\"'document_id': too short: minimum length is 1, got 0\",\"field\":\"document_id\",\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"too short: minimum length is 1, got 0\",\"field\":\"document_id\"}],\"kind\":\"failed-validation\",\"operation\":\"get-version\"},\"isServiceFault\":true}"
     );
     assert_result("CallToolResult", &answered);
     assert_eq!(*archive.reached.lock().unwrap(), Vec::<String>::new());
@@ -442,7 +442,7 @@ fn a_wrapped_message_is_read_from_its_value_property() {
     let unfound = ask("lookup-document", &json!({}));
     assert_eq!(
         failure_text(&unfound),
-        "{\"fault\":{\"detail\":\"'value': missing field `value`\",\"field\":\"value\",\"kind\":\"failed-validation\",\"operation\":\"lookup-document\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"missing field `value`\",\"field\":\"value\"}],\"kind\":\"failed-validation\",\"operation\":\"lookup-document\"},\"isServiceFault\":true}"
     );
 }
 
@@ -454,7 +454,7 @@ fn a_key_that_is_missing_and_a_value_of_the_wrong_type_name_their_full_path() {
     );
     assert_eq!(
         failure_text(&missing),
-        "{\"fault\":{\"detail\":\"'drafts.1.title': missing field `title`\",\"field\":\"drafts.1.title\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
     let mistyped = ask(
         "check-drafts",
@@ -462,7 +462,7 @@ fn a_key_that_is_missing_and_a_value_of_the_wrong_type_name_their_full_path() {
     );
     assert_eq!(
         failure_text(&mistyped),
-        "{\"fault\":{\"detail\":\"'drafts.0.references.0.name': invalid type: integer `5`, expected a string\",\"field\":\"drafts.0.references.0.name\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"invalid type: integer `5`, expected a string\",\"field\":\"drafts.0.references.0.name\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
     let broken = ask(
         "check-drafts",
@@ -470,7 +470,7 @@ fn a_key_that_is_missing_and_a_value_of_the_wrong_type_name_their_full_path() {
     );
     assert_eq!(
         failure_text(&broken),
-        "{\"fault\":{\"detail\":\"'drafts.0.title': too short: minimum length is 1, got 0\",\"field\":\"drafts.0.title\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"too short: minimum length is 1, got 0\",\"field\":\"drafts.0.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
 }
 
@@ -482,7 +482,7 @@ fn two_drafts_that_each_miss_a_key_are_named_in_one_fault() {
     );
     assert_eq!(
         failure_text(&missing),
-        "{\"fault\":{\"detail\":\"'drafts.0.title': missing field `title`; 'drafts.1.title': missing field `title`\",\"field\":\"drafts.0.title\",\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
 }
 
@@ -498,7 +498,7 @@ fn a_missing_key_an_unknown_key_and_a_value_of_the_wrong_type_are_named_in_one_f
     );
     assert_eq!(
         failure_text(&refused),
-        "{\"fault\":{\"detail\":\"'drafts.0.title': missing field `title`; 'drafts.1.subtitle': unknown field `subtitle`; 'drafts.2.title': invalid type, expected a string\",\"field\":\"drafts.0.title\",\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"unknown field `subtitle`\",\"field\":\"drafts.1.subtitle\"},{\"detail\":\"invalid type, expected a string\",\"field\":\"drafts.2.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.0.title\"},{\"detail\":\"unknown field `subtitle`\",\"field\":\"drafts.1.subtitle\"},{\"detail\":\"invalid type, expected a string\",\"field\":\"drafts.2.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
 }
 
@@ -512,7 +512,7 @@ fn a_broken_bound_beside_a_missing_key_is_not_named() {
     );
     assert_eq!(
         failure_text(&refused),
-        "{\"fault\":{\"detail\":\"'drafts.1.title': missing field `title`\",\"field\":\"drafts.1.title\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"missing field `title`\",\"field\":\"drafts.1.title\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
 }
 
@@ -527,7 +527,7 @@ fn an_unknown_key_inside_a_list_names_the_key_once() {
     );
     assert_eq!(
         failure_text(&unknown),
-        "{\"fault\":{\"detail\":\"'drafts.1.subtitle': unknown field `subtitle`, expected `references` or `title`\",\"field\":\"drafts.1.subtitle\",\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"unknown field `subtitle`, expected `references` or `title`\",\"field\":\"drafts.1.subtitle\"}],\"kind\":\"failed-validation\",\"operation\":\"check-drafts\"},\"isServiceFault\":true}"
     );
 }
 
@@ -721,7 +721,7 @@ fn a_required_header_property_that_is_missing_answers_the_failed_validation_faul
     .unwrap();
     assert_eq!(
         failure_text(&missing),
-        "{\"fault\":{\"detail\":\"invalid type: null, expected a string\",\"field\":\"x-ledger\",\"kind\":\"failed-validation\",\"operation\":\"get-balance\"},\"isServiceFault\":true}"
+        "{\"fault\":{\"issues\":[{\"detail\":\"invalid type: null, expected a string\",\"field\":\"x-ledger\"}],\"kind\":\"failed-validation\",\"operation\":\"get-balance\"},\"isServiceFault\":true}"
     );
     let unreadable = answer_workspace(
         &archive,

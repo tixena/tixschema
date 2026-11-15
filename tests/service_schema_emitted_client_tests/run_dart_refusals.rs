@@ -495,8 +495,8 @@ fn an_object_of_one_key_and_a_tuple_of_its_length_are_read_as_serde_reads_them()
     assert_eq!(printed, expected, "the Dart read is not serde's");
 }
 
-/// An enum declared below its holder is read from the object its holder hands it, and the holder
-/// refuses a key beside its entry, as serde refuses it, naming the keys the enum publishes.
+/// An enum declared below its holder is read from the entry under the names it publishes, and the
+/// holder refuses a key beside its entry, as serde refuses it.
 #[test]
 fn an_enum_declared_below_its_holder_is_refused_beside_another_key() {
     assert_eq!(
@@ -526,8 +526,6 @@ fn the_readme_shows_refusals_the_run_measures() {
     for declared in [
         "`enum Drizzling { Calm, Gust { knots: u32 }, Held(String) }`",
         "`enum Fogging { Boxed(String), Split(String, u32) }`",
-        "`struct Overcast { note: String, #[serde(flatten)] stratus: Hazing }`",
-        "`enum Hazing { Bay { label: String } }`",
         "`struct Clenching { pair: [u8; 2] }`",
         "`[[u8; 2]; 3]`",
     ] {
@@ -557,12 +555,6 @@ fn the_readme_shows_refusals_the_run_measures() {
             "not in the README: {json}"
         );
     }
-    assert!(
-        section.contains(&format!(
-            "`{BESIDE}` is refused with `more than one key for Hazing`"
-        )),
-        "the README no longer shows the refusal of a key beside the entry"
-    );
     for shown in [
         "`Unknown Drizzling: Gale`",
         "`Drizzling: Calm takes no value`",

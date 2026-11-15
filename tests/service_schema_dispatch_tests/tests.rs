@@ -134,11 +134,9 @@ pub mod a_message_annotated_with_a_constraint {
         Scoped(ScopedBalanceRequest),
     }
 
-    /// A union whose first member's own bound is what takes it out of the running: the read tries
-    /// `Attributed`, the bound refuses the value, and the payload is `Unattributed` instead. That
-    /// check stays on the read, and moving it would change which variant a payload *is* rather than
-    /// how a violation is worded. Nonstrict, so that `Unattributed` reads past the `name` the
-    /// first member was refused for.
+    /// A union whose first member holds a bound: the read takes `Attributed` for any payload that
+    /// has a `name`, and the message is judged once as that variant. Nonstrict, so that
+    /// `Unattributed` reads past a `name`.
     #[model_schema(nonstrict)]
     #[derive(Deserialize, Serialize)]
     #[serde(untagged)]
@@ -163,9 +161,7 @@ pub mod a_message_annotated_with_a_constraint {
         pub customer_id: String,
     }
 
-    /// The same carve-out in the position this change newly walks: a *newtype* member whose bound
-    /// selects it. `Tag`'s own read hook is what takes `Tagged` out of the running, and the arm
-    /// added for the slot runs after that choice is settled.
+    /// A *newtype* member whose brand holds a bound.
     #[model_schema(minLength = 3)]
     #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
     #[serde(transparent)]
@@ -174,8 +170,6 @@ pub mod a_message_annotated_with_a_constraint {
     #[model_schema()]
     #[derive(Deserialize, Serialize)]
     #[serde(untagged)]
-    /// `Bounded` is declared first because an untagged read tries its members in order and `Free`
-    /// admits every string: the bound is what takes the first member out of the running.
     pub enum Label {
         Bounded(Tag),
         Free(String),
@@ -257,7 +251,7 @@ pub mod a_message_annotated_with_a_constraint {
         async fn admit(&self, _ctx: &(), req: GateRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.customer_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn dock(&self, _ctx: &(), req: DockRequest) -> Result<Admitted, GateError> {
@@ -267,7 +261,7 @@ pub mod a_message_annotated_with_a_constraint {
                 req.bay.as_inner(),
                 req.slug.as_inner()
             ));
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn enrol(&self, _ctx: &(), req: EnrolRequest) -> Result<Admitted, GateError> {
@@ -276,13 +270,13 @@ pub mod a_message_annotated_with_a_constraint {
                 .lock()
                 .unwrap()
                 .push(req.slug.clone().into_inner());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn hold(&self, _ctx: &(), req: HoldRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.holds.name.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn label(&self, _ctx: &(), req: LabelRequest) -> Result<Admitted, GateError> {
@@ -291,13 +285,13 @@ pub mod a_message_annotated_with_a_constraint {
                 LabelDraft::Bounded(tag) => format!("tagged:{}", tag.as_inner()),
                 LabelDraft::Free(free) => format!("free:{free}"),
             });
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn open_ledger(&self, _ctx: &(), req: LedgerRequest) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.ledger_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn place_call(&self, _ctx: &(), req: CallRequest) -> Result<Admitted, GateError> {
@@ -311,7 +305,7 @@ pub mod a_message_annotated_with_a_constraint {
                 } => format!("named:{name}"),
                 CallerDraft::Unattributed { claims: _claims } => "anonymous".to_owned(),
             });
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn read_admin_balance(
@@ -321,7 +315,7 @@ pub mod a_message_annotated_with_a_constraint {
         ) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.customer_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn read_balance(
@@ -334,7 +328,7 @@ pub mod a_message_annotated_with_a_constraint {
                 BalanceRequestDraft::Admin(admin) => admin.customer_id.clone(),
                 BalanceRequestDraft::Scoped(scoped) => scoped.customer_id.clone(),
             });
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
 
         async fn read_scoped_balance(
@@ -344,7 +338,7 @@ pub mod a_message_annotated_with_a_constraint {
         ) -> Result<Admitted, GateError> {
             ready(()).await;
             self.reached.lock().unwrap().push(req.customer_id.clone());
-            Ok(AdmittedDraft { admitted: true }.validate().unwrap())
+            Ok(AdmittedDraft { admitted: true }.into())
         }
     }
 
@@ -394,6 +388,19 @@ pub mod a_message_annotated_with_a_constraint {
         fn settled(&self) -> Vec<String> {
             self.settled.lock().unwrap().clone()
         }
+    }
+
+    /// Each problem a fault lists, as the validator words it.
+    fn listed(fault: &gate_service_schema::ServiceFault) -> Vec<String> {
+        fault.issues().iter().map(ToString::to_string).collect()
+    }
+
+    /// The field of the first problem a fault lists, where it lists one at a field.
+    fn first_field(fault: &gate_service_schema::ServiceFault) -> Option<&str> {
+        fault
+            .issues()
+            .first()
+            .and_then(gate_service_schema::ServiceFaultIssue::field)
     }
 
     fn bay_in_upper_case(value: &Bay) -> Result<(), Vec<String>> {
@@ -449,19 +456,19 @@ pub mod a_message_annotated_with_a_constraint {
              the field declared. What it is not is a message satisfying the constraint, and \
              telling the sender its serialization was broken would send it looking in the wrong \
              place entirely. Got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(reported[0].operation(), "admit");
         assert!(
-            reported[0].detail().contains("too short"),
+            listed(&reported[0])[0].contains("too short"),
             "got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("customer_id"),
             "the caller has to be told which field it got wrong. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
     }
 
@@ -511,20 +518,20 @@ pub mod a_message_annotated_with_a_constraint {
                 kind,
                 "`{sent}` was answered under the wrong class of failure, and the class is what a \
                  caller branches on. Got detail: {}",
-                reported[0].detail()
+                reported[0]
             );
             assert_eq!(
-                reported[0].field(),
+                first_field(&reported[0]),
                 field,
                 "`{sent}` must name the field its refusal named and no other: a name invented for \
                  a refusal that carried none would be read out of a message nobody read. Got: {}",
-                reported[0].detail()
+                reported[0]
             );
             assert!(
-                !reported[0].detail().contains("at line"),
+                !reported[0].to_string().contains("at line"),
                 "the byte offset serde appends locates the failure inside an encoding the caller \
                  never saw. Got: {}",
-                reported[0].detail()
+                reported[0]
             );
         }
     }
@@ -557,20 +564,20 @@ pub mod a_message_annotated_with_a_constraint {
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "every key is present and every value is of the type its field declared, so this is a \
              message — one whose value broke a rule. Got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("holds.name"),
             "the path to the member that was actually wrong, and not the hop above it: a caller \
              looks the name up in the payload it sent, where `holds` is an object rather than the \
              thing out of range. It is also the string the TypeScript schema published from this \
              same declaration reports. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'holds.name': too short: minimum length is 3, got 1"
+            listed(&reported[0]),
+            ["'holds.name': too short: minimum length is 3, got 1"]
         );
     }
 
@@ -614,29 +621,29 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert!(
-            reported[0].detail().contains("too short"),
+            listed(&reported[0])[0].contains("too short"),
             "the hook hands serde the brand's own message verbatim. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("slug"),
             "the caller has to be told which key it got wrong, and a brand names none of its own —              the field holding it supplies the name. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'slug': too short: minimum length is 3, got 2",
+            listed(&reported[0]),
+            ["'slug': too short: minimum length is 3, got 2"],
             "one quoted run holding the whole name, which is what a reader takes a name out of"
         );
         assert!(
-            !reported[0].detail().contains("at line"),
+            !reported[0].to_string().contains("at line"),
             "the byte offset locates the failure inside an encoding the caller never saw. \
              Got: {}",
-            reported[0].detail()
+            reported[0]
         );
     }
 
@@ -672,13 +679,16 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'bay': a bay is upper case; 'slug': too short: minimum length is 3, got 2"
+            listed(&reported[0]),
+            [
+                "'bay': a bay is upper case",
+                "'slug': too short: minimum length is 3, got 2"
+            ]
         );
-        assert_eq!(reported[0].field(), Some("bay"));
+        assert_eq!(first_field(&reported[0]), Some("bay"));
         assert_eq!(
             dispatched("dock", br#"{"bay":"NORTH","slug":"abc"}"#).0,
             vec!["NORTH:abc".to_owned()]
@@ -699,17 +709,17 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("account.jti"),
             "an untagged newtype member writes no key of its own — what it puts on the wire is the              inner value — so the union contributes no segment and the path is the one the payload              actually spells. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].detail(),
-            "'account.jti': too short: minimum length is 1, got 0"
+            listed(&reported[0]),
+            ["'account.jti': too short: minimum length is 1, got 0"]
         );
     }
 
@@ -725,14 +735,14 @@ pub mod a_message_annotated_with_a_constraint {
             reported[0].kind(),
             gate_service_schema::ServiceFaultKind::FailedValidation,
             "got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
-        assert_eq!(reported[0].field(), Some("account.jti"));
+        assert_eq!(first_field(&reported[0]), Some("account.jti"));
 
         let (_, direct) = dispatched("read-scoped-balance", payload);
         assert_eq!(
-            reported[0].detail(),
-            direct[0].detail(),
+            listed(&reported[0]),
+            listed(&direct[0]),
             "the union has no report of its own to write: what it answers is the variant's,              unchanged"
         );
     }
@@ -744,60 +754,55 @@ pub mod a_message_annotated_with_a_constraint {
             br#"{"account":{"sysAdminUsername":"ops","jti":""},"customerId":"gate-org"}"#,
         );
         assert!(reached.is_empty(), "got: {reached:?}");
-        assert_eq!(reported[0].field(), Some("account.jti"));
+        assert_eq!(first_field(&reported[0]), Some("account.jti"));
         assert_eq!(
-            reported[0].detail(),
-            "'account.jti': too short: minimum length is 1, got 0"
+            listed(&reported[0]),
+            ["'account.jti': too short: minimum length is 1, got 0"]
         );
     }
 
-    /// The carve-out, from both sides.
+    /// What `operation` refuses of `payload`, the implementation having been reached by nothing.
+    fn refused_with(operation: &str, payload: &[u8]) -> Vec<String> {
+        let (reached, reported) = dispatched(operation, payload);
+        assert!(reached.is_empty(), "got: {reached:?}");
+        listed(&reported[0])
+    }
+
+    /// A bound chooses no variant: the read takes the first variant the shape fits, and the
+    /// message is judged once, whichever variant that was.
     #[test]
-    fn a_bound_that_selects_the_variant_stays_on_the_read() {
-        assert_eq!(
-            dispatched(
-                "place-call",
-                br#"{"caller":{"name":"ab","jti":"a"},"customerId":"gate-org"}"#
-            )
-            .0,
-            vec!["anonymous".to_owned()],
-            "the bound took the first member out of the running rather than ending the read"
-        );
+    fn a_bound_does_not_select_the_variant_the_read_takes() {
         assert_eq!(
             dispatched(
                 "place-call",
                 br#"{"caller":{"name":"abc","jti":"a"},"customerId":"gate-org"}"#
             )
             .0,
-            vec!["named:abc".to_owned()],
-            "the same key one character longer is the first member, which is what the bound              decides and what only the read can decide"
+            vec!["named:abc".to_owned()]
         );
-
-        // And the member's *type* is still walked in whichever variant was chosen: the bound below
-        // the hop is reported, under the path the payload spells, in both.
-        for (name, chosen) in [("ab", "the second member"), ("abc", "the first")] {
-            let payload =
-                format!(r#"{{"caller":{{"name":"{name}","jti":""}},"customerId":"gate-org"}}"#);
-            let (reached, reported) = dispatched("place-call", payload.as_bytes());
-            assert!(reached.is_empty(), "{chosen} executed. Got: {reached:?}");
-            assert_eq!(
-                reported[0].detail(),
-                "'caller.jti': too short: minimum length is 1, got 0",
-                "{chosen} was chosen and its own members went unwalked"
-            );
-        }
-
-        // And in the position this change newly walks: a newtype member whose brand's own hook is
-        // what selects it. Adding an arm for the slot must not have moved that decision.
         assert_eq!(
-            dispatched("label", br#"{"label":"ab"}"#).0,
-            vec!["free:ab".to_owned()],
-            "the brand's hook took the newtype member out of the running"
+            refused_with(
+                "place-call",
+                br#"{"caller":{"name":"ab","jti":"a"},"customerId":"gate-org"}"#
+            ),
+            ["'caller.name': too short: minimum length is 3, got 2"],
+            "the shape fits the first variant, whose bound refuses the name"
+        );
+        assert_eq!(
+            refused_with(
+                "place-call",
+                br#"{"caller":{"name":"abc","jti":""},"customerId":"gate-org"}"#
+            ),
+            ["'caller.jti': too short: minimum length is 1, got 0"]
         );
         assert_eq!(
             dispatched("label", br#"{"label":"abc"}"#).0,
-            vec!["tagged:abc".to_owned()],
-            "one character longer and the same key is the newtype member instead"
+            vec!["tagged:abc".to_owned()]
+        );
+        assert_eq!(
+            refused_with("label", br#"{"label":"ab"}"#),
+            ["'label': too short: minimum length is 3, got 2"],
+            "the shape fits the newtype member, whose brand's bound refuses the value"
         );
     }
 
@@ -850,14 +855,14 @@ pub mod a_message_annotated_with_a_constraint {
             "the author put this check on the read, but what it refused is a value out of range \
              inside a document that read perfectly well — the class serde_json reports it under, \
              and the one a caller acts on. Got detail: {}",
-            reported[0].detail()
+            reported[0]
         );
         assert_eq!(
-            reported[0].field(),
+            first_field(&reported[0]),
             Some("ledger_id"),
             "a refusal written in the shape a validator reports in names its field, and the \
              fault reads the name back off it wherever the refusal came from. Got: {}",
-            reported[0].detail()
+            reported[0]
         );
     }
 }
@@ -991,7 +996,7 @@ impl ProbeService<String> for ProbeBackEnd {
     async fn admit(&self, _ctx: &String, req: AdmitRequest) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("admit {}", req.customer_id));
-        Ok(BalanceResponseDraft { invoices: 3 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 3 }.into())
     }
 
     async fn apply_bundle(&self, ctx: &String, req: BalanceRequest) {
@@ -1007,7 +1012,7 @@ impl ProbeService<String> for ProbeBackEnd {
         ready(()).await;
         self.reach(format!("collapse {}", req.customer_id));
         come_apart(req.customer_id == "formatted", &req.customer_id);
-        Ok(BalanceResponseDraft { invoices: 0 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 0 }.into())
     }
 
     async fn discard(&self, _ctx: &String, req: BalanceRequest) {
@@ -1024,16 +1029,16 @@ impl ProbeService<String> for ProbeBackEnd {
         ready(()).await;
         self.reach(format!("get_balance {}", req.customer_id));
         if req.customer_id == "unlucky" {
-            Err(ProbeErrorDraft::DbError.validate().unwrap())
+            Err(ProbeError::DbError)
         } else {
-            Ok(BalanceResponseDraft { invoices: 7 }.validate().unwrap())
+            Ok(BalanceResponseDraft { invoices: 7 }.into())
         }
     }
 
     async fn sweep(&self, _ctx: &String) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach("sweep".to_owned());
-        Ok(BalanceResponseDraft { invoices: 0 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 0 }.into())
     }
 
     async fn void_invoice(
@@ -1044,7 +1049,7 @@ impl ProbeService<String> for ProbeBackEnd {
     ) -> Result<BalanceResponse, ProbeError> {
         ready(()).await;
         self.reach(format!("void_invoice {customer_id} {invoice_id}"));
-        Ok(BalanceResponseDraft { invoices: 1 }.validate().unwrap())
+        Ok(BalanceResponseDraft { invoices: 1 }.into())
     }
 }
 
@@ -1448,7 +1453,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("archive_document {document_id}"));
         if document_id == "already" {
-            return Err(ArchiveErrorDraft::AlreadyArchived.validate().unwrap());
+            return Err(ArchiveError::AlreadyArchived);
         }
         Ok(())
     }
@@ -1461,18 +1466,10 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("check_vault {document_id}"));
         match document_id.as_str() {
-            "locked" => Err(VaultErrorDraft::Locked { retry_after: 30 }
-                .validate()
-                .unwrap()),
-            "gone" => Err(VaultErrorDraft::Gone(
-                RetryDetailDraft { retry_after: 0 }.validate().unwrap(),
-            )
-            .validate()
-            .unwrap()),
-            "missing" => Err(VaultErrorDraft::NotFound.validate().unwrap()),
-            _ => Ok(CreateDocumentResponseDraft { document_id }
-                .validate()
-                .unwrap()),
+            "locked" => Err(VaultErrorDraft::Locked { retry_after: 30 }.into()),
+            "gone" => Err(VaultErrorDraft::Gone(RetryDetailDraft { retry_after: 0 }.into()).into()),
+            "missing" => Err(VaultError::NotFound),
+            _ => Ok(CreateDocumentResponseDraft { document_id }.into()),
         }
     }
 
@@ -1484,13 +1481,12 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("create_document {}", req.title));
         if req.title == "taken" {
-            return Err(CreateDocumentErrorDraft::TitleTaken.validate().unwrap());
+            return Err(CreateDocumentError::TitleTaken);
         }
         Ok(CreateDocumentResponseDraft {
             document_id: format!("doc-{}", req.title),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn explode(
@@ -1501,9 +1497,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("explode {document_id}"));
         came_apart(&document_id);
-        Ok(CreateDocumentResponseDraft { document_id }
-            .validate()
-            .unwrap())
+        Ok(CreateDocumentResponseDraft { document_id }.into())
     }
 
     async fn flag_document(
@@ -1514,11 +1508,9 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("flag_document {document_id}"));
         match document_id.as_str() {
-            "missing" => Err(FlagErrorDraft::NotFound.validate().unwrap()),
-            "again" => Err(FlagErrorDraft::AlreadyFlagged.validate().unwrap()),
-            _ => Ok(CreateDocumentResponseDraft { document_id }
-                .validate()
-                .unwrap()),
+            "missing" => Err(FlagError::NotFound),
+            "again" => Err(FlagError::AlreadyFlagged),
+            _ => Ok(CreateDocumentResponseDraft { document_id }.into()),
         }
     }
 
@@ -1533,8 +1525,7 @@ impl DocumentService<()> for DocumentBackEnd {
         Ok(VersionResponseDraft {
             content: format!("{document_id}@{byte_range}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn get_thumbnail(
@@ -1545,7 +1536,7 @@ impl DocumentService<()> for DocumentBackEnd {
         ready(()).await;
         self.reach(format!("get_thumbnail {document_id}"));
         if document_id == "missing" {
-            return Err(ThumbnailErrorDraft::NotFound.validate().unwrap());
+            return Err(ThumbnailError::NotFound);
         }
         Ok((
             vec![0x89, 0x50, 0x4e, 0x47],
@@ -1566,17 +1557,16 @@ impl DocumentService<()> for DocumentBackEnd {
             "get_version {document_id} {version_id} {byte_range:?}"
         ));
         if document_id == "missing" {
-            return Err(GetVersionErrorDraft::NotFound.validate().unwrap());
+            return Err(GetVersionError::NotFound);
         }
         if document_id == "gone" {
-            return Err(GetVersionErrorDraft::VersionGone.validate().unwrap());
+            return Err(GetVersionError::VersionGone);
         }
         Ok((
             VersionResponseDraft {
                 content: format!("{document_id}@{version_id}"),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "v7".to_owned(),
         ))
     }
@@ -1597,14 +1587,13 @@ impl DocumentService<()> for DocumentBackEnd {
         Ok(SearchDocumentsResultDraft {
             matches: vec![format!("verified={verified:?}"), format!("limit={limit:?}")],
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn sweep_documents(&self, _ctx: &()) -> Result<SweepReport, SweepError> {
         ready(()).await;
         self.reach("sweep_documents".to_owned());
-        Ok(SweepReportDraft { swept: 3 }.validate().unwrap())
+        Ok(SweepReportDraft { swept: 3 }.into())
     }
 }
 
@@ -1645,7 +1634,13 @@ impl http_rest_transport::FaultHandler for RecordingFaultHandler {
         http_rest_transport::OutgoingResponse::new(
             status,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }
@@ -1797,24 +1792,21 @@ fn a_payload_carrying_the_wrong_type_of_value_becomes_a_fault_and_reaches_no_imp
         probe_service_schema::ServiceFaultKind::FailedValidation,
         "the bytes read as a document and did not match the message, which is a value someone \
          supplied rather than a sender whose serialization is broken — and is the kind the \
-         TypeScript service serving the same operation answers it under. Got detail: {}",
-        reported.detail()
+         TypeScript service serving the same operation answers it under. Got: {reported}"
     );
     assert_eq!(reported.operation(), "get-balance");
     assert_eq!(
-        reported.field(),
-        Some("customer_id"),
-        "a type mismatch names the path serde was at when it came. Got: {}",
-        reported.detail()
-    );
-    assert_eq!(
-        reported.detail(),
-        "'customer_id': invalid type: integer `42`, expected a string"
+        reported.issues(),
+        [probe_service_schema::ServiceFaultIssue::new(
+            Some("customer_id"),
+            "invalid type: integer `42`, expected a string"
+        )],
+        "a type mismatch names the path serde was at when it came. Got: {reported}"
     );
     assert!(
-        !reported.detail().contains("at line"),
-        "the byte offset locates the failure inside an encoding the caller never saw. Got: {}",
-        reported.detail()
+        !reported.to_string().contains("at line"),
+        "the byte offset locates the failure inside an encoding the caller never saw. Got: \
+         {reported}"
     );
 }
 
@@ -1852,7 +1844,7 @@ fn the_operation_is_read_from_the_name_it_was_given_and_never_out_of_the_payload
         probe_service_schema::ServiceFaultKind::FailedValidation
     );
     assert_eq!(reported.operation(), "sweep");
-    assert_eq!(reported.field(), Some("operation"));
+    assert_eq!(reported.issues()[0].field(), Some("operation"));
     let (swept, _) = dispatched("sweep", "{}");
     assert_eq!(swept, vec!["sweep".to_owned()]);
 }
@@ -1888,15 +1880,14 @@ fn a_message_that_fails_its_own_validator_never_reaches_it_and_the_fault_names_t
         probe_service_schema::ServiceFaultKind::FailedValidation
     );
     assert_eq!(
-        reported.field(),
+        reported.issues()[0].field(),
         Some("customer_id"),
         "the caller has to be told which field it got wrong"
     );
     assert_eq!(reported.operation(), "admit");
     assert!(
-        reported.detail().contains("too short"),
-        "got: {}",
-        reported.detail()
+        reported.issues()[0].detail().contains("too short"),
+        "got: {reported}"
     );
 }
 
@@ -1920,7 +1911,7 @@ fn a_handler_that_panics_becomes_a_fault_rather_than_unwinding_out_of_dispatch()
     assert_eq!(reported.field(), None, "a panic names no field");
     assert_eq!(
         reported.detail(),
-        "the ledger is not a ledger",
+        Some("the ledger is not a ledger"),
         "a literal panic message arrives as a `&str`, and the detail is what a receiver has to \
          page a human with"
     );
@@ -1961,7 +1952,7 @@ fn a_formatted_panic_message_reaches_the_fault_as_the_message_rather_than_as_its
     );
     assert_eq!(
         reported.detail(),
-        "the ledger for formatted is not a ledger",
+        Some("the ledger for formatted is not a ledger"),
         "a formatted panic message arrives as a `String`, and a fault that could only read a \
          `&str` would report nothing for the half of panics that carry one"
     );
@@ -2027,7 +2018,7 @@ fn a_request_and_reply_panic_is_written_down_as_well_as_answered() {
          operation was declared, so both outcomes write the same event."
     );
     assert_eq!(
-        written[0].detail,
+        Some(written[0].detail.as_str()),
         reported.detail(),
         "one panic, one account of what it said, so a record and a fault cannot disagree about it"
     );
@@ -2247,8 +2238,10 @@ fn an_absent_required_header_in_is_refused_by_name_rather_than_reaching_the_impl
     assert_eq!(response.status(), 400);
     let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "range");
-    assert_eq!(fault["detail"], "a required header was not carried");
+    assert_eq!(
+        fault["issues"],
+        serde_json::json!([{ "detail": "a required header was not carried", "field": "range" }])
+    );
 }
 
 #[test]

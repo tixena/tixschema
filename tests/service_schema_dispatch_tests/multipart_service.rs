@@ -93,13 +93,12 @@ impl UploadService<()> for UploadBackEnd {
             .unwrap()
             .push((folder_id, title.clone(), description, drained));
         if title == "toolarge" {
-            return Err(UploadErrorDraft::TooLarge.validate().unwrap());
+            return Err(UploadError::TooLarge);
         }
         Ok(UploadResponseDraft {
             document_id: format!("doc-{title}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -128,7 +127,13 @@ impl multipart_http_rest_transport::FaultHandler for RecordingFaultHandler {
         multipart_http_rest_transport::OutgoingResponse::new(
             499,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
-            format!("handled: {}", fault.detail()).into_bytes(),
+            format!(
+                "handled: {}",
+                fault
+                    .detail()
+                    .map_or_else(|| fault.to_string(), str::to_owned)
+            )
+            .into_bytes(),
         )
     }
 }
@@ -265,7 +270,7 @@ fn a_missing_required_file_part_answers_a_fault_rather_than_reaching_the_impleme
     assert_eq!(response.status(), 400);
     let fault: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
     assert_eq!(fault["kind"], "failed-validation");
-    assert_eq!(fault["field"], "file");
+    assert_eq!(fault["issues"][0]["field"], "file");
 }
 
 #[test]

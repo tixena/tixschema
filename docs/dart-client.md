@@ -8,8 +8,8 @@ A struct, a tuple struct, a unit struct and every enum, a plain enum included, a
 (`struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens` write the pair). The class the
 emitter wrote before is the draft, named `{Name}Draft` (`draft_name`): its constructor, its fields,
 its one read, `toJson` and `validationIssues()` are the class as it was, and `validate_method` adds
-`{Name} validate()`, which answers `{Name}._(this)` where `validationIssues()` is empty and throws a
-`FormatException` of the issues joined by `; ` otherwise. `valid_class` writes `{Name}`: the only
+`{Name} validate()`, which answers `{Name}._(this)` where `validationIssues()` is empty and throws
+`{Name}Refusal` holding the issues otherwise. `valid_class` writes `{Name}`: the only
 constructor `const {Name}._(this._draft)`, a getter for each member of the draft
 (`forwarding_getters`; `value` for a tuple struct, none for an enum), `toDraft()`, `fromJson`, which
 is `judged_body_returning` over the draft's read, `fromJsonUnjudged`, which is `{Name}._` over it
@@ -45,9 +45,26 @@ with a parameter (`GenericCodec::to_json_args`), and `validationIssues()`.
   taken in a plain enum (`DART_ENUM_NAMES_TAKEN`).
 - **The tests.** `tests/service_schema_emitted_client_tests/run_dart_valid_types.rs` analyzes a
   second library that writes `Cargo(...)`, `const Cargo(...)` and `Cargo._(draft)`, and runs one
-  that builds through the draft: the getters, `toDraft()`, `toJson()`, a `validate()` whose message
-  is the Rust `validation_issues()` joined by `; `, and a holder in another library that reads
+  that builds through the draft: the getters, `toDraft()`, `toJson()`, a `validate()` whose refusal
+  holds the Rust `validation_issues()`, and a holder in another library that reads
   through `fromJsonUnjudged`.
+
+#### The refusal of a type
+
+`validate()`, `of(..)` and every judged read throw `{Name}Refusal`, named after the valid type the
+item is published as (`refusals::refusal_name`, `src/features/refusals.rs`), with the list
+`validationIssues()` answered. `enter_refusal` makes it the refusal of the item being emitted
+(`DART_REFUSAL`), from `struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens`, and
+`judged_body_returning` and `validate_method` throw it, a variant's class the enum's.
+`dart_module_tokens` declares the class (`refusal_class`) at the head of the type's text where the
+text throws it, so a type with no judged read, a plain enum with no check that a service writes,
+declares none, and records it in `DART_REFUSALS` under the Rust ident; `alias_dart_tokens` adds the
+refusals of what an alias reads judged. `dart_refusals_of` answers what a read of a `FieldDef`
+throws, through a list, a set, a map, an option, a tuple and a `Result`, for the service surfaces.
+A type of the consumer's published under the name collides as one published as `{Name}Draft` does,
+and the expansion refuses neither: `dart analyze` does. `tests/service_schema_emitted_client_tests/
+run_dart_refusal_classes.rs` holds a struct, an enum, a generic type, a brand and an alias in one
+file to `dart analyze`, and each refusal's `issues` to the Rust `validate()` of the same value.
 
 #### `validationIssues()` on the Dart types
 
@@ -102,8 +119,12 @@ Dart" section is the consumer's view; this is what a change has to keep.
   `if (x case final held?)`), each level of a list and of a set (`item_elements`, the index a
   step of the place), a map's values (the key's text from `dart_map_key_text`), a tuple's
   positions (`slot_elements`) and a declared type, whose `validate()` is called with no knowledge
-  of what it declares. A type parameter is not reached. A binder is named by its depth
-  (`binder`): `held`, `index` and `entry`, then `held1`.
+  of what it declares. A value behind one of the type's own parameters is handed to the check of
+  it, `issuesOf{Parameter}`, which `validationIssuesWith` takes (`walked_parameters`); a generic
+  type at a filling is asked `validationIssuesWith`, handed the check of each argument
+  (`argument_check`), and read with the converter of each argument's unjudged read
+  (`argument_converters`). A binder is named by its depth (`binder`): `held`, `index` and
+  `entry`, then `held1`.
 - **A place is the steps serde writes on the way to the value** (`Step`): a key, a position in an
   array, or nothing. `tagged_variant_steps` answers a variant's: the content key, nothing beside a
   tag, and otherwise the name the variant is written under. A tuple struct that declares one slot,
@@ -131,8 +152,8 @@ Dart" section is the consumer's view; this is what a change has to keep.
 #### The Dart read refuses what `validate()` refuses
 
 `fromJson` of every type `src/features/dart.rs` writes is its own unjudged read followed by its
-`validationIssues()`, and throws a `FormatException` whose message is the list joined by `; `, as the Rust
-read joins it. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
+`validationIssues()`, and throws `{Name}Refusal` holding the list, the one the Rust
+`validation_issues()` answers. `docs/guide/dart.md`'s "The Dart read refuses what `validate()` refuses" section is the
 consumer's view; this is what a change has to keep.
 
 - **One writer of the read.** A draft holds one read, `draft_read`: `fromJson` over the body
@@ -142,8 +163,8 @@ consumer's view; this is what a change has to keep.
   static `fromJson` of a plain enum draft takes too. A generic type takes its converters in each read.
 - **A brand is sealed.** `struct_dart_tokens` hands `value_wrapper_tokens` `Held::Brand` for a
   brand alone: the class writes `const X._(this.value)`, the only constructor, and `factory X.of(value)`
-  (`judged_body` over `X._(value)`, so it throws the `FormatException` `fromJson` throws, the messages
-  of `validationIssues()` joined by `; `). `fromJsonUnjudged` stays public under that name and builds through
+  (`judged_body` over `X._(value)`, so it throws the `XRefusal` `fromJson` throws, holding the
+  messages of `validationIssues()`). `fromJsonUnjudged` stays public under that name and builds through
   `X._`, as Rust keeps `model_schema_read_unjudged` public: a holder in another file, which is another
   library, or in another crate calls it, so a holder reads a brand as it reads any type. A name
   starting with an underscore is private to the library, so a second library builds a brand through
@@ -169,9 +190,7 @@ consumer's view; this is what a change has to keep.
   at each level, before it maps the items, where a level of no recorded length is read as it
   was; `own_tag_held` a struct's own tag; and `named_by_aliases` a member under two of its names. A
   cast's `TypeError` below the payload is refused with a `FormatException` of its words (`_readAt`
-  below), and every other error a Dart operation throws on its own is the language's. So an enum
-  declared below its holder, handed the object without the holder's own
-  keys, is refused where that object holds another key beside its entry, which serde reads.
+  below), and every other error a Dart operation throws on its own is the language's.
   `run_dart_refusals.rs` reads each refusal under the Dart SDK, beside serde's refusal of the same
   payload.
 - **Each value read under a step is read through `_readAt`** (`READ_AT_BODY`): a member under
@@ -192,9 +211,17 @@ consumer's view; this is what a change has to keep.
   `FormatException` of its words, and a Dart parser's refusal one with the path. A flattened
   member is read through `_readFlattened` (`READ_FLATTENED`, which a class with one declares),
   which drops the path of its refusal but for the key a `missing field` or an unknown key names,
-  so the holder's step is the place, as serde names the holder. The `ws_rpc` attachment and
-  client name the joined path as the fault's `field`, or the place a `validate()` message opens
-  with (`refused_at_fn` in `dart_ws_client.rs`).
+  so the holder's step is the place, as serde names the holder. A type's refusal a value read
+  judged below the top throws keeps its class, and the helper places each of its issues under its
+  step: no refusal class is shared to name, so the helper reads `issues` through `dynamic` and
+  rewrites the list in place. The `ws_rpc`
+  attachment and client list each issue of a refusal of a type the service reads, cut at the
+  place it opens with, or the one refusal at the joined path (`refused_at_fn` in
+  `dart_ws_client.rs`, which writes `_WsRefusedAt`, `_WsIssue`, `_WsRefusal` and
+  `_WsRefusedIssues`; `_WsRefusal` names each refusal class `dart_read_refusals` finds through
+  `dart_refusals_of`, the registry of what each type emitted before it throws, and a type the
+  expansion has not met is answered as any other refusal). The `mcp` server answers a refusal
+  `_WsRefusal` names as `failed-validation` through `_WsIssue` as well.
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever
@@ -234,8 +261,10 @@ consumer's view; this is what a change has to keep.
   holds a number beyond an `f64` is dropped, as the Rust transports drop it. It reads the frame
   after `_{service}WsSignedZeros` writes each `-0` outside a string as `-0.0` (`signed_zeros_fn`,
   `SIGNED_ZERO`): `jsonDecode` reads `-0` as the `int` 0, and serde as the float `-0.0`, so the
-  cast of an integer's read refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
-  reads as a `double`. Every Dart read of a JSON text passes it through such a function first, one
+  read of an integer refuses it, as it refuses `1.0`, `1e2` and `-0.0`, which `jsonDecode`
+  reads as a `double`, with ``invalid type: floating point `-0.0`, expected u32``, serde's words
+  (`integer_read`: the float spelled as `serde_json` spells it, plainly from `0.00001` to below
+  `1e16`, `1e+16` beyond, and `number out of range` for an infinity). Every Dart read of a JSON text passes it through such a function first, one
   declared in each text that reads JSON (`signed_zeros_call`): the `http_rest` client reads a
   response's body and a fault's through `_{service}HttpSignedZeros` (`response_json`), the `mcp`
   server each message through `_{service}WsSignedZeros`, and the `mcp` client each answer and the
@@ -261,23 +290,18 @@ consumer's view; this is what a change has to keep.
 - **A tagged enum** dispatches in the base's unjudged read: to `fromJsonUnjudged` of a variant
   with named members, and to the constructor of a variant that holds a value or none, its
   payload read as a member is.
-- **An untagged enum takes the variant serde takes.** `variant_bounds` writes `_bounds()` ahead
-  of a variant's `validate()`, and the attempt takes the variant where it answers nothing.
-  `Asked` is what one walk is asked: `Rules` for `validate()`, and `Bound` for the member's own
-  bounds under no place, then `_heldBound(...)` of each declared type the walk reaches, with no
-  check. `_heldBound` calls `validateBound()` through `dynamic` and answers nothing for a value
-  with no such method. `brand_validate` writes that method on a brand that carries a bound: the
-  bound alone. So a brand's bound chooses a variant whether the brand is declared above the
-  enum, below it or in another file, and nothing a check or a model reports does. A variant
-  with nothing to ask keeps `try { return ...; } catch (_) {}`.
-- **A plain enum** is `plain_enum_dart_source`: the enhanced enum `{Name}Draft`, whose static
+- **An untagged enum takes the variant serde takes.** Each variant is tried as
+  `try { return ...; } catch (_) {}`, and the first whose payload decodes is taken: no bound, no
+  check and nothing a model reports chooses one, and `fromJson` then refuses the value.
+  `Asked` is what one walk is asked: `Rules` for `validate()`.
+- **A plain enum with no `check`** is `undrafted_plain_enum_dart_source`: the enhanced enum `{Name}` alone, with its `fromJson`, `fromJsonUnjudged`, `toJson` and `validationIssues()`.
+- **A plain enum that names a `check`** is `plain_enum_dart_source`: the enhanced enum `{Name}Draft`, whose static
   `fromJson` is the unjudged read and which declares `validationIssues()` and `validate_method`, and
   the `valid_class` `{Name}` with `Pair::by_draft`, which adds `operator ==` and `hashCode` over the
   draft. `{Name}.fromJson` judges through `judged_body_returning`, and `{Name}.fromJsonUnjudged`, the
   name a holder reads every declared type by, runs no check. A map key reads through
   `{Name}.fromJson` and writes through `toJson`.
-- **`validate()` stays the last member of a class**: `validateBound()` and `_bounds()` are
-  written ahead of it.
+- **`validate()` stays the last member of a class.**
 - **A member serde never writes is read and has no entry in `toJson`.** `DartField::never_written`
   is `has_serde_skip_serializing`: `skip_serializing`, never `skip_serializing_if`.
   `class_body_parts` writes no entry for it, a flattened one spreading nothing, a variant with
@@ -375,8 +399,8 @@ consumer's view; this is what a change has to keep.
     serde reads `None`, and a variant's member with no tag reads `null`, as serde reads it. An
     enum under a tag alone takes no key: a member flattened after it is handed what it was. An
     untagged
-    enum, one declared below its holder and one that names a function on itself have no key to
-    be looked for by, and are read in the closure.
+    enum, an enum under a tag alone declared below its holder and one that names a function on
+    itself have no key to be looked for by, and are read in the closure.
   - A type parameter: an optional one is looked for by the keys of what fills it, which the type
     that fills it hands. `record_flattenings` notes in `DART_LOOKED_UP` each parameter a type
     reads flattened under an `Option`, itself or through a type it hands the parameter to, with
@@ -387,9 +411,16 @@ consumer's view; this is what a change has to keep.
     `(heldKeys == null ? <the closure> : (handed.keys.any(heldKeys.contains) ? ... : null))`.
 
   A struct that names a `preprocess` on itself is read by serde as a value, and one with a
-  flattened member of its own as a map: each records none. A type the emitter has not written
-  takes none, so a member after a struct declared below its holder is handed the struct's keys,
-  and an optional one is read in the closure, and the guide states both. `toJson` writes each
+  flattened member of its own as a map: each records none. A type declared below its holder or in
+  another crate publishes what it takes: `__TIXSCHEMA_TAKEN` (a struct's keys, an enum's tag and
+  content key), `__TIXSCHEMA_ENTRIES` (the names each variant of an externally tagged enum is read
+  under, one list per variant) and `__TIXSCHEMA_UNITS` (the first name of each unit variant, which
+  the Swift read uses), written by `model_schema/flatten_order/published.rs`. The holder names each by a placeholder
+  (`member_keys::taken_of`, `entries_of`, `units_of`) that `dart_definition()` replaces, and
+  `late_flattened_decode` reads the member as the type's entries and keys say at run time: from the
+  first entry under a variant's name where there are entries, from the keys taken where there are
+  keys, and as a type whose keys are not known otherwise. So the read of such a member is the one
+  a type declared above takes. `toJson` writes each
   flattened member at its place; a key two of them hold is refused at expansion
   (`model_schema/flatten_order.rs`), so no holder the emitter writes holds one. `run_dart_flattened_options.rs` pins the read of a flattened
   `Option` of a struct and of an enum of each tagging and runs it under the Dart SDK, over the
@@ -402,8 +433,9 @@ consumer's view; this is what a change has to keep.
   slot of a variant under a tag alone, writes as it is where `writes_an_object` answers: a map, the
   guide's `ObjectId`, and a struct `DART_WRITES_AN_OBJECT` notes, a class whose `toJson` is
   `Map<String, dynamic>`. An optional one is cast to the map it holds. A brand, an alias, a tuple struct and an enum answer `dynamic` from
-  `toJson` and are spread through `as Map<String, dynamic>`, and so is a type the emitter has not
-  written: a struct declared below its holder keeps the cast, which the analyzer reports. A
+  `toJson` and are spread through `as Map<String, dynamic>`. A type the emitter has not written, one
+  declared below its holder or in another crate, is spread through a `switch` over an `Object?`
+  that writes a `String` as `{name: null}` and a map as it is, which holds no cast. A
   flattened map is read off the object it is handed (`map_decode`), which the read types
   `Map<String, dynamic>`, and a map under a key off `json['key'] as Map<String, dynamic>`.
   `run_dart_validate.rs`, `run_dart_ranges.rs`, `run_dart_results.rs`, `run_dart_object_ids.rs`,
@@ -419,7 +451,7 @@ consumer's view; this is what a change has to keep.
   newtype variant under a tag alone, which serde writes beside the tag as it writes it flattened.
   `value_wrapper_tokens` records an alias, a brand and a struct of one slot over such an enum as
   well. A holder of any other flattened
-  member, and of an enum declared below it, writes the spread it wrote. The enum's map branch
+  member writes the spread it wrote. The enum's map branch
   reads a unit variant from its entry, under each of its names, where the value is `null`, and
   refuses any other value: the Zod schema takes the entry over `null` alone, where serde's
   flattened read takes an empty object too. So does the enum read alone, as serde reads it.

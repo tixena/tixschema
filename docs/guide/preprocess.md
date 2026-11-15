@@ -271,7 +271,7 @@ With those two functions, `Parcel.fromJson` and `Manifest.fromJson` answer for t
 | # | A Dart read |
 |---|---|
 | 1 | read; `label` is `"A"` |
-| 2 | refused with a `FormatException`: `'label': too short: minimum length is 1, got 0` |
+| 2 | refused with a `ParcelRefusal`: `['label': too short: minimum length is 1, got 0]` |
 | 3 | read; `fragile_item_codes` is `[]` |
 | 5 | read; `parcel.label` is `"A"` |
 
@@ -333,7 +333,7 @@ The Swift read answers the sample as the Rust read does:
 | # | Payload | A Swift read |
 |---|---|---|
 | 1 | `{"label":"  A  ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | read; `label` is `"A"` |
-| 2 | `{"label":"   ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | thrown, `DecodingError.dataCorrupted`: `'label': too short: minimum length is 1, got 0` |
+| 2 | `{"label":"   ","itemCodeList":["x"],"fragileItemCodes":["x"]}` | thrown, `ParcelRefusal`: `["'label': too short: minimum length is 1, got 0"]` |
 | 3 | `{"label":"A","itemCodeList":["x"]}` | read; `fragileItemCodes` is `[]` |
 | 5 | row 1 inside `Manifest`, under `parcel` | read; `parcel.label` is `"A"` |
 
@@ -345,11 +345,11 @@ private init(swiftSchemaCorrected decoder: Decoder) throws {
   self.fragileItemCodes = try container.decode([String].self, forKey: .fragileItemCodes)
   self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList)
   let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value
-  self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label])
+  self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), at: container.codingPath + [CodingKeys.label], within: decoder)
 }
 
 fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws {
-  self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath).value
+  self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, from: withoutFragile(try SwiftSchemaPayload(from: decoder, without: taken).value), at: decoder.codingPath, within: decoder).value
 }
 
 fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws {

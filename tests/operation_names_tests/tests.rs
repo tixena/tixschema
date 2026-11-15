@@ -245,7 +245,7 @@ fn each_variant_names_its_entry() {
 }
 
 fn not_found() -> NamesError {
-    NamesErrorDraft::NotFound.validate().unwrap()
+    NamesError::NotFound
 }
 
 fn of_content<S>(_: &S) -> &'static [&'static str]

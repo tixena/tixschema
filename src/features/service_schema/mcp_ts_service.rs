@@ -14,6 +14,7 @@ use crate::service_schema::parse::{
     ServiceDef, is_unit_type, wire_key, written,
 };
 use crate::service_schema::skills::written_frontmatter;
+use crate::service_schema::support::fault_issue_name;
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use syn::Type;
@@ -845,7 +846,7 @@ function __p__McpListed(
   });
 }
 
-/** The fault of a message that does not read as `schema`: `failed-validation` naming `answers` where a form answer does not read, `undeserializable-payload` naming no field where the first value that does not read is a key that is no number, and otherwise `failed-validation` naming the path of the first value that does not read and listing every value that does not read where there are several, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
+/** The fault of a message that does not read as `schema`: `failed-validation` listing each answer of the form under `answers` that does not read, `undeserializable-payload` naming no field where the first value that does not read is a key that is no number, and otherwise `failed-validation` listing every value that does not read at its path, an unknown key at its own path; none where it reads or only the validator refuses it, whose bounds wait for a read that succeeds. */
 function __p__McpUnread(
   schema: ZodType,
   payload: unknown,
@@ -856,28 +857,19 @@ function __p__McpUnread(
   if (read.success) return undefined;
   const issues = read.error.issues;
   if (answers !== undefined && issues.some((issue) => issue.path[0] === answers)) {
-    const detail = issues
-      .filter((issue) => issue.path[0] === answers)
-      .map((issue) => (issue.path.length === 1 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`))
-      .join("; ");
-    return __FAULT__("failed-validation", operation, detail, answers);
+    return __FAILED__(
+      operation,
+      issues
+        .filter((issue) => issue.path[0] === answers)
+        .map((issue) => ({ detail: issue.message, field: issue.path.join(".") })),
+    );
   }
   const unreadable = issues.filter(__p__McpUnreadableIssue);
   const unread = unreadable[0];
   if (unread === undefined) return undefined;
   const noNumber = __p__McpNoNumber(unread);
   if (noNumber !== undefined) return __FAULT__("undeserializable-payload", operation, noNumber);
-  const steps = __p__McpSteps(unread);
-  const detail = unreadable
-    .flatMap((issue) =>
-      issue.code === "unrecognized_keys" && issue.keys !== undefined
-        ? issue.keys.map((key) => `'${[...issue.path, key].join(".")}': Unrecognized key: "${key}"`)
-        : [issue.path.length === 0 ? issue.message : `'${issue.path.join(".")}': ${issue.message}`],
-    )
-    .join("; ");
-  const fault = __FAULT__("failed-validation", operation, detail, steps.length === 0 ? undefined : steps.join("."));
-  const listed = __p__McpListed(unreadable);
-  return listed.length < 2 ? fault : { ...fault, issues: listed };
+  return __FAILED__(operation, __p__McpListed(unreadable));
 }
 
 /** The `-32603` answer of a handler that came apart. */
@@ -963,7 +955,7 @@ __ANSWERS__      payload = operation.wrapped ? held.value : rest;
       held === undefined && given !== null
         ? __FAULT__("undeserializable-payload", operation.tool, "the arguments are not a JSON object")
         : operation.wrapped && held !== undefined && held.value === undefined
-          ? __FAULT__("failed-validation", operation.tool, "'value': missing field `value`", "value")
+          ? __FAILED__(operation.tool, [{ detail: "missing field `value`", field: "value" }])
           : undefined;
     const unread = refused ?? __p__McpUnread(operation.schema, payload, operation.tool, operation.interview?.answers);
     const attempt =
@@ -2645,18 +2637,31 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
 
 fn fault_fn(named: &str, prefix: &str) -> String {
     format!(
-        "/** A `{named}Fault` of the kind given. */\n\
-         function {prefix}McpFault(kind: {named}FaultKind, operation: string, detail: string, field?: string): \
+        "/** A `{named}Fault` of the kind given, in the words `detail` holds. */\n\
+         function {prefix}McpFault(kind: {named}FaultKind, operation: string, detail: string): \
          {named}Fault {{\n\
          {minted}\n\
+         }}\n\n\
+         /** The `failed-validation` fault of `operation`, listing every problem it found. */\n\
+         function {prefix}McpFailedValidation(operation: string, issues: Array<{issue}>): {named}Fault {{\n\
+         {listed}\n\
          }}",
-        minted = fault::minted(named, "    detail,\n    field,\n    kind,\n    operation,"),
+        minted = fault::minted(
+            named,
+            "    detail,\n    field: undefined,\n    kind,\n    operation,"
+        ),
+        listed = fault::minted(
+            named,
+            "    detail: undefined,\n    field: undefined,\n    issues,\n    kind: \"failed-validation\",\n    operation,"
+        ),
+        issue = fault_issue_name(named),
     )
 }
 
 fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
     let driven = enveloped_impl(service);
     let fault = format!("{prefix}McpFault");
+    let failed = format!("{prefix}McpFailedValidation");
     let asks = service
         .operations
         .iter()
@@ -2694,6 +2699,7 @@ fn route(service: &ServiceDef, named: &str, prefix: &str) -> String {
         .replace("__ASKING__", if asks { ASKING } else { "" })
         .replace("__DRIVEN__", &driven)
         .replace("__FAULT__", &fault)
+        .replace("__FAILED__", &failed)
         .replace("__EXPECTED_NUMERIC_KEY__", EXPECTED_NUMERIC_KEY)
         .replace("__EXPECTED_QUOTE__", &EXPECTED_QUOTE.replace('"', "\\\""))
         .replace("__N__", named)

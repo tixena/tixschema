@@ -20,7 +20,7 @@ use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
-use crate::field_type::{FieldDef, FieldDefType, MissingKey, Scope, get_field_def};
+use crate::field_type::{FieldDef, FieldDefType, MissingKey, Scope, Zone, get_field_def};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
 #[cfg(feature = "serde")]
@@ -40,11 +40,6 @@ use syn::{Error, Meta};
 const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invisible to \
      model_schema and will be silently ignored by the generator; write #[serde(...)] \
      unconditionally (serde attrs are inert without the serde derive)";
-
-/// What the name of every read hook generated to name a field in its type's refusal starts with.
-/// The recovering decode reads past such a hook, which changes a message and never a verdict.
-#[cfg(feature = "serde")]
-pub const NAMED_READ_HOOK_PREFIX: &str = "deserialize_named_";
 
 /// The container keys that put a conversion of the author's between an item and what serde reads
 /// or writes for it.
@@ -335,6 +330,7 @@ where
         set_levels: Vec::new(),
         scope: Scope::default(),
         type_span: Span::call_site(),
+        zone: Zone::Utc,
     }
 }
 

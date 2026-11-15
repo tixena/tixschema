@@ -169,8 +169,7 @@ pub fn spanned() -> Spanned {
         span: 8..13,
         to: ..13,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A range in each position, with `maybe` holding one where `held` says so.
@@ -182,8 +181,7 @@ pub fn positioned(held: bool) -> Positioned {
         maybe: held.then_some(9..10),
         paired: (11..12, "b".to_owned()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A range of a model and one of a brand: where `broken` says so, the start of the first and both
@@ -284,8 +282,7 @@ pub fn rostered() -> Rostered {
         shift: "2026-10-16T12:00:00.125Z".parse().unwrap()
             .."2026-10-16T13:30:00.250Z".parse().unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// What serde writes of a value of each model that holds a range of a number or of a date.
@@ -298,7 +295,7 @@ pub fn read_payloads() -> Vec<Payload> {
             "a second holder of a range in a type argument",
             "Detour",
             &DetourDraft {
-                filled: ItineraryDraft { held: 2..3 }.validate().unwrap(),
+                filled: ItineraryDraft { held: 2..3 }.into(),
             },
         ),
         written(

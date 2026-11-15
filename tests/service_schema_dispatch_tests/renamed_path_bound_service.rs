@@ -389,17 +389,17 @@ impl FaultHandler for Noted {
         OutgoingResponse::new(
             499,
             vec![("x-fault".to_owned(), format!("{}", fault.kind()))],
-            fault.detail().as_bytes().to_vec(),
+            fault.to_string().into_bytes(),
         )
     }
 }
 
 fn refused() -> BoundRefused {
-    BoundRefusedDraft::Nope.validate().unwrap()
+    BoundRefused::Nope
 }
 
 fn answer(id: String) -> BoundAnswer {
-    BoundAnswerDraft { id }.validate().unwrap()
+    BoundAnswerDraft { id }.into()
 }
 
 fn answered(id: String) -> Result<BoundAnswer, BoundRefused> {
@@ -516,10 +516,13 @@ fn a_path_text_its_form_does_not_read_is_refused_on_the_member() {
     let (status, body) = put("/typed/many/true/1/12", r#"{"label":"l","pages":[]}"#);
     assert_eq!(status, 400, "{body}");
     let refused: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(refused["field"], "pageSize", "{body}");
     assert_eq!(
-        refused["detail"],
-        r#"'pageSize': invalid type: string "many", expected u32"#
+        refused["issues"],
+        serde_json::json!([{
+            "detail": r#"invalid type: string "many", expected u32"#,
+            "field": "pageSize",
+        }]),
+        "{body}"
     );
 }
 
@@ -623,8 +626,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
                     document_id: id.clone(),
                     title: title.clone(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         poll_once(client.renamed(renamed().validate().unwrap())),
@@ -634,8 +636,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
                     document_id: id.clone(),
                     title: title.clone(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         poll_once(
@@ -644,8 +645,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
                     document_id: id.clone(),
                     held: title.clone(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         poll_once(client.aliased(renamed().validate().unwrap())),
@@ -659,8 +659,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
                     .validate()
                     .unwrap(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         poll_once(
@@ -669,8 +668,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
                     title: title.clone(),
                     r#type: id.clone(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         poll_once(client.unlisted(BoundUnlisted {
@@ -682,8 +680,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
                 BoundTaggedDraft::Only {
                     document_id: id.clone(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             ),
         ),
         poll_once(client.generated(id.clone(), title.clone())),
@@ -691,7 +688,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
     for answer in called {
         assert_eq!(
             answer.unwrap().ok(),
-            Some(BoundAnswerDraft { id: id.clone() }.validate().unwrap()),
+            Some(BoundAnswerDraft { id: id.clone() }.into()),
             "a client call answered another id"
         );
     }
@@ -703,8 +700,7 @@ fn the_rust_client_and_dispatcher_round_trip_each_member() {
             BoundAnswerDraft {
                 id: "d1|t".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
 }
@@ -722,8 +718,7 @@ fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
                 pinned: true,
                 tally: -9_123_456_789_012_345,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -733,8 +728,7 @@ fn the_rust_client_writes_each_member_the_path_reads_as_its_text() {
             BoundAnswerDraft {
                 id: "7|true|-9123456789012345|Some(12)".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(
@@ -752,8 +746,7 @@ fn typed_with_pages(pages: Vec<u16>) -> BoundTyped {
         pinned: true,
         tally: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -766,8 +759,7 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
             BoundAnswerDraft {
                 id: "[1, 2, 3]".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let generated = poll_once(client.gen_list(vec![1, 2, 3], "t".to_owned())).unwrap();
@@ -777,8 +769,7 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
             BoundAnswerDraft {
                 id: "[1, 2, 3]".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     let labelled = poll_once(
@@ -787,8 +778,7 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
                 labels: vec!["a b".to_owned(), "c/d".to_owned()],
                 title: "t".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -798,8 +788,7 @@ fn the_rust_client_writes_a_list_the_path_binds_as_the_dispatcher_reads_it() {
             BoundAnswerDraft {
                 id: "a b|c/d".to_owned()
             }
-            .validate()
-            .unwrap()
+            .into()
         )
     );
     assert_eq!(
@@ -821,8 +810,7 @@ fn the_rust_client_refuses_a_list_item_holding_a_comma_before_sending() {
                 labels: vec!["a,b".to_owned(), "c".to_owned()],
                 title: "t".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();
@@ -831,17 +819,21 @@ fn the_rust_client_refuses_a_list_item_holding_a_comma_before_sending() {
             .unwrap();
     for answer in [declared, generated] {
         let refusal = match answer {
-            Err(CallError::Fault(fault)) => {
-                Some((fault.field().map(str::to_owned), fault.detail().to_owned()))
-            }
+            Err(CallError::Fault(fault)) => Some(
+                fault
+                    .issues()
+                    .iter()
+                    .map(|issue| (issue.field().map(str::to_owned), issue.detail().to_owned()))
+                    .collect::<Vec<_>>(),
+            ),
             Ok(_) | Err(CallError::Operation(_)) => None,
         };
         assert_eq!(
             refusal,
-            Some((
+            Some(vec![(
                 Some("labels".to_owned()),
                 "a list item holds a comma, which a path would read as two items".to_owned()
-            ))
+            )])
         );
     }
     assert!(client.transport().carried.lock().unwrap().is_empty());
@@ -857,8 +849,7 @@ fn a_renamed_member_still_answers_the_declared_error() {
                 document_id: "refused".to_owned(),
                 title: "t".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     )
     .unwrap();

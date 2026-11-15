@@ -27,7 +27,7 @@ use syn::punctuated::Punctuated;
 use syn::{Expr, ExprLit, ExprMacro, ExprMethodCall, Lit};
 
 /// A literal of each kind, the string one holding what each spelling escapes.
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", any(feature = "kotlin", feature = "swift")))]
 fn literals() -> [LiteralValue; 4] {
     [
         LiteralValue::Bool(true),
@@ -239,43 +239,6 @@ fn kotlin_reports_each_bound_in_the_sentence_rust_reports_it_in() {
         kotlin_violation(Bound::Pattern("^[a-z]+$"), None, "label.length"),
         r#""does not match pattern '^[a-z]+\$'""#
     );
-}
-
-/// The list a reader tells this crate's sentences by, held against the sentences themselves.
-#[cfg(feature = "serde")]
-#[test]
-fn every_sentence_opens_with_a_stem_the_list_spells_and_no_stem_is_unwritten() {
-    let written = [
-        Bound::MaxItems(3),
-        Bound::MaxLength(50),
-        Bound::Maximum("120"),
-        Bound::MinItems(1),
-        Bound::MinLength(3),
-        Bound::Minimum("0"),
-        Bound::Pattern("^[a-z]+$"),
-    ];
-    let held = literals();
-    let stated_bounds: Vec<Bound<'_>> = written
-        .into_iter()
-        .chain(held.iter().map(Bound::Literal))
-        .collect();
-    for bound in stated_bounds.iter().copied() {
-        let stated = bound.stated();
-        assert!(
-            super::VIOLATION_STEMS
-                .iter()
-                .any(|stem| stated.starts_with(stem)),
-            "no stem in the list opens: {stated}"
-        );
-    }
-    for stem in super::VIOLATION_STEMS {
-        assert!(
-            stated_bounds
-                .iter()
-                .any(|bound| bound.stated().starts_with(stem)),
-            "no bound writes the stem: {stem}"
-        );
-    }
 }
 
 #[cfg(feature = "dart")]

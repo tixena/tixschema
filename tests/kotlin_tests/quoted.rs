@@ -91,7 +91,7 @@ fn an_enums_names_are_escaped_in_its_kotlin_text() {
         &excised_kotlin::kotlin_definition(),
         &[
             r#"@SerialName("hi'gh") High, @SerialName("lo\$w") Low"#,
-            r#""lo\$w" -> ExcisedDraft.Low"#,
+            r#""lo\$w" -> Excised.Low"#,
         ],
     );
     holds_each(

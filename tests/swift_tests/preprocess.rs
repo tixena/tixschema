@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-use crate::swift_plain_enum::plain_enum_read;
+use crate::swift_plain_enum::{PLACED, plain_enum_read};
 use crate::swift_valid;
 
 /// What opens the payload type, written into each type that names a function.
@@ -353,15 +353,15 @@ fn corrected_reads(named: &str, called: &str, closing: &str, corrected: &str) ->
 
 /// [`corrected_reads`] of a type whose own reads are declared under `reach`.
 fn reads_reached(named: &str, called: &str, closing: &str, corrected: &str, reach: &str) -> String {
-    let alone = ALONE.replacen("public", reach, 1);
-    let beside = BESIDE.replacen("public", reach, 1);
+    let alone = ALONE.replacen("fileprivate", reach, 1);
+    let beside = BESIDE.replacen("fileprivate", reach, 1);
     format!(
         "private struct SwiftSchemaRead: Decodable {{ let value: {named}; \
          init(from decoder: Decoder) throws {{ value = try {named}(swiftSchemaCorrected: decoder) }} }}; \
          private init(swiftSchemaCorrected decoder: Decoder) throws {{ {corrected} }}; \
          {beside} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
          from: {called}try SwiftSchemaPayload(from: decoder, without: taken).value{closing}, \
-         at: decoder.codingPath).value }}; {alone}public init(from decoder: Decoder) throws {{ "
+         at: decoder.codingPath, within: decoder).value }}; {alone}public init(from decoder: Decoder) throws {{ "
     )
 }
 
@@ -381,7 +381,7 @@ fn a_struct_calls_the_function_of_a_member_and_its_own() {
             "self.itemCodeList = try container.decode([String].self, forKey: .itemCodeList); ",
             "let labelPayload = try container.decode(SwiftSchemaPayload.self, forKey: .label).value; ",
             "self.label = try SwiftSchemaPayload.read(String.self, from: trimmed(labelPayload), ",
-            "at: container.codingPath + [CodingKeys.label])",
+            "at: container.codingPath + [CodingKeys.label], within: decoder)",
         ),
     );
     assert!(swift.contains(&written), "{written} is not in: {swift}");
@@ -423,7 +423,7 @@ fn the_payload_type_reads_any_value_and_reads_a_type_back_from_one() {
                 "for key in taken { members.removeValue(forKey: key) }; value = members }; ",
             ),
             concat!(
-                "static func decoder(for payload: Any) -> JSONDecoder { ",
+                "static func decoder(for payload: Any, outer: [String]) -> JSONDecoder { ",
                 "func floated(_ value: Any, _ path: [String]) -> Set<[String]> { ",
                 "var found: Set<[String]> = []; ",
                 "if let members = value as? [String: Any] { for (key, member) in members { ",
@@ -434,11 +434,13 @@ fn the_payload_type_reads_any_value_and_reads_a_type_back_from_one() {
                 "else if value is Double, !(value is Int64) { found.insert(path) }; ",
                 "return found }; let reader = JSONDecoder(); ",
                 r#"reader.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFloated")!] = "#,
-                "floated(payload, []); return reader }; ",
+                "floated(payload, []); ",
+                r#"reader.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaOuter")!] = outer; "#,
+                "return reader }; ",
             ),
             concat!(
                 "static func read<Read: Decodable>(_ type: Read.Type, from payload: Any, ",
-                "at path: [CodingKey]) throws -> Read { ",
+                "at path: [CodingKey], within held: Decoder) throws -> Read { ",
                 "guard JSONSerialization.isValidJSONObject([payload]), ",
                 "let written = try? JSONSerialization.data(withJSONObject: payload, ",
                 "options: [.fragmentsAllowed]) else { ",
@@ -446,7 +448,13 @@ fn the_payload_type_reads_any_value_and_reads_a_type_back_from_one() {
                 r#"debugDescription: "a preprocess answered a value that is not JSON")) }; "#,
             ),
             concat!(
-                "let reader = decoder(for: payload); ",
+                r#"let outer = (held.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaOuter")!] "#,
+                "as? [String] ?? []) + path.map { $0.intValue.map(String.init) ?? $0.stringValue }; ",
+                "func placed(_ context: DecodingError.Context) -> DecodingError.Context { ",
+                "DecodingError.Context(codingPath: path + context.codingPath, ",
+                "debugDescription: context.debugDescription, ",
+                "underlyingError: context.underlyingError) }; ",
+                "let reader = decoder(for: payload, outer: outer); ",
                 r#"reader.userInfo[CodingUserInfoKey(rawValue: "swiftSchemaFlat")!] = true; "#,
                 "do { return try reader.decode(type, from: written) } ",
                 "catch DecodingError.typeMismatch(let asked, let context) { ",
@@ -539,42 +547,42 @@ fn a_member_is_read_from_what_its_functions_answer_in_the_way_it_was_read() {
             concat!(
                 "let byNumberPayload = try container.decode(SwiftSchemaPayload.self, forKey: .byNumber).value; ",
                 "let wireByNumber = try SwiftSchemaPayload.read(PalletByNumberKeyedMap.self, ",
-                "from: unwrapped(byNumberPayload), at: container.codingPath + [CodingKeys.byNumber]); ",
+                "from: unwrapped(byNumberPayload), at: container.codingPath + [CodingKeys.byNumber], within: decoder); ",
                 "self.byNumber = wireByNumber.storage; ",
             ),
             concat!(
                 "let cartonListPayload = try container.decode(SwiftSchemaPayload.self, forKey: .cartonList).value; ",
                 "self.cartonList = try SwiftSchemaPayload.read(SwiftSchemaReadCartonList.self, ",
-                "from: unwrapped(cartonListPayload), at: container.codingPath + [CodingKeys.cartonList]).value; ",
+                "from: unwrapped(cartonListPayload), at: container.codingPath + [CodingKeys.cartonList], within: decoder).value; ",
             ),
             concat!(
                 "let firstCartonPayload = try container.decode(SwiftSchemaPayload.self, forKey: .firstCarton).value; ",
                 "self.firstCarton = try SwiftSchemaPayload.read(SwiftSchemaReadFirstCarton.self, ",
-                "from: unwrapped(firstCartonPayload), at: container.codingPath + [CodingKeys.firstCarton]).value; ",
+                "from: unwrapped(firstCartonPayload), at: container.codingPath + [CodingKeys.firstCarton], within: decoder).value; ",
             ),
             concat!(
                 "if container.contains(.quayNote) { ",
                 "let quayNotePayload = try container.decode(SwiftSchemaPayload.self, forKey: .quayNote).value; ",
                 "self.quayNote = try SwiftSchemaPayload.read(String?.self, from: orUnnamed(quayNotePayload), ",
-                "at: container.codingPath + [CodingKeys.quayNote]) } else { self.quayNote = nil }; ",
+                "at: container.codingPath + [CodingKeys.quayNote], within: decoder) } else { self.quayNote = nil }; ",
             ),
             concat!(
                 "if container.contains(.spareCarton) { ",
                 "let spareCartonPayload = try container.decode(SwiftSchemaPayload.self, forKey: .spareCarton).value; ",
                 "self.spareCarton = try SwiftSchemaPayload.read(SwiftSchemaReadSpareCarton.self, ",
-                "from: unwrapped(spareCartonPayload), at: container.codingPath + [CodingKeys.spareCarton]).value } ",
+                "from: unwrapped(spareCartonPayload), at: container.codingPath + [CodingKeys.spareCarton], within: decoder).value } ",
                 "else { self.spareCarton = nil }; ",
             ),
             concat!(
                 "if container.contains(.spareNote) { ",
                 "let spareNotePayload = try container.decode(SwiftSchemaPayload.self, forKey: .spareNote).value; ",
                 "self.spareNote = try SwiftSchemaPayload.read(String?.self, from: orUnnamed(spareNotePayload), ",
-                "at: container.codingPath + [CodingKeys.spareNote]) } else { self.spareNote = nil }; ",
+                "at: container.codingPath + [CodingKeys.spareNote], within: decoder) } else { self.spareNote = nil }; ",
             ),
             concat!(
                 "let titlePayload = try container.decode(SwiftSchemaPayload.self, forKey: .title).value; ",
                 "self.title = try SwiftSchemaPayload.read(String.self, from: trimmed(unwrapped(titlePayload)), ",
-                "at: container.codingPath + [CodingKeys.title]) }; ",
+                "at: container.codingPath + [CodingKeys.title], within: decoder) }; ",
             ),
             concat!(
                 "private struct SwiftSchemaReadCartonList: Decodable { let value: [Carton]; ",
@@ -613,7 +621,7 @@ fn a_date_is_read_from_what_its_function_answers_as_the_text_it_is_written_as() 
         &[concat!(
             "let atPayload = try container.decode(SwiftSchemaPayload.self, forKey: .at).value; ",
             "let wireAt = try SwiftSchemaPayload.read(String.self, from: unwrapped(atPayload), ",
-            "at: container.codingPath + [CodingKeys.at]); ",
+            "at: container.codingPath + [CodingKeys.at], within: decoder); ",
             "self.at = try Self.swiftSchemaParseIso8601Date(wireAt, codingPath: decoder.codingPath) }; ",
         )],
     );
@@ -668,7 +676,7 @@ fn a_type_read_from_the_decoder_of_its_holder_is_handed_the_keys_taken() {
                 "do { let bayPayload = try SwiftSchemaPayload(from: decoder, ",
                 r#"without: taken + ["dock"]).value; "#,
                 "self.bay = try SwiftSchemaPayload.readRefusing(Bay.self, ",
-                "from: withItsKeys(bayPayload), at: decoder.codingPath) } ",
+                "from: withItsKeys(bayPayload), at: decoder.codingPath, within: decoder) } ",
                 "catch let refused as DecodingError { throw ",
                 "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
             ),
@@ -687,9 +695,9 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
     let read = format!(
         "{} {{ self.value = try Carton(swiftSchemaUnjudged: decoder, \
          swiftSchemaWithout: taken); let held = value.validate(); if !held.isEmpty {{ \
-         throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
-         debugDescription: held.joined(separator: \"; \"))) }} }}; {}",
+         throw CartonRefusal(issues: {}) }} }}; {}",
         BESIDE.replacen("public", "fileprivate", 1),
+        PLACED.replace("violations", "held"),
         ALONE.replacen("public", "fileprivate", 1)
     );
     assert!(wrap.contains(&read), "{read} is not in: {wrap}");
@@ -715,15 +723,7 @@ fn a_brand_and_an_alias_hand_the_keys_and_a_type_declared_below_is_handed_a_payl
                 "init(from decoder: Decoder) throws { ",
                 "self.value = try Behind(swiftSchemaUnjudged: decoder) } }",
             ),
-            concat!(
-                "do { let behindPayload = try SwiftSchemaPayload(from: decoder, ",
-                r#"without: taken + ["dock"]).value; "#,
-                "self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, ",
-                "from: SwiftSchemaPayload.flat(SwiftSchemaReadBehind.self, behindPayload, ",
-                "at: decoder.codingPath), at: decoder.codingPath).value } ",
-                "catch let refused as DecodingError { throw ",
-                "Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; ",
-            ),
+            r#"var behindFound: [String] = []; let behindGroups: [[String]] = []; let behindUnits: [String] = []; if behindGroups.isEmpty { do { let behindPayload = try SwiftSchemaPayload(from: decoder, without: taken + ["dock"]).value; self.behind = try SwiftSchemaPayload.read(SwiftSchemaReadBehind.self, from: SwiftSchemaPayload.flat(SwiftSchemaReadBehind.self, behindPayload, at: decoder.codingPath, within: decoder), at: decoder.codingPath, within: decoder).value } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) } } else {"#,
         ],
     );
     assert!(
@@ -773,7 +773,7 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "let container = try decoder.container(keyedBy: CodingKeys.self); \
                  let codesPayload = try container.decode(SwiftSchemaPayload.self, forKey: .codes).value; \
                  self.codes = try SwiftSchemaPayload.read([CodeType].self, from: unwrapped(codesPayload), \
-                 at: container.codingPath + [CodingKeys.codes]); \
+                 at: container.codingPath + [CodingKeys.codes], within: decoder); \
                  self.label = try container.decode(String.self, forKey: .label)",
             ),
         ),
@@ -801,11 +801,11 @@ fn every_struct_shape_calls_its_own_function_on_the_whole_payload() {
                 "let slot0Decoder = try container.superDecoder(); ",
                 "let slot0Payload = try SwiftSchemaPayload(from: slot0Decoder).value; ",
                 "slot0 = try SwiftSchemaPayload.read(String.self, from: trimmed(slot0Payload), ",
-                "at: slot0Decoder.codingPath); ",
+                "at: slot0Decoder.codingPath, within: decoder); ",
                 "let slot1Decoder = try container.superDecoder(); ",
                 "let slot1Payload = try SwiftSchemaPayload(from: slot1Decoder).value; ",
                 "slot1 = try SwiftSchemaPayload.read(SwiftSchemaReadSlot1.self, ",
-                "from: unwrapped(slot1Payload), at: slot1Decoder.codingPath).value; ",
+                "from: unwrapped(slot1Payload), at: slot1Decoder.codingPath, within: decoder).value; ",
                 "slot2 = try container.decode(SwiftSchemaFit<UInt32>.self).value;  }; ",
             ),
             concat!(
@@ -829,7 +829,7 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
         ")",
         "let valuePayload = try SwiftSchemaPayload(from: decoder).value; \
          self.value = try SwiftSchemaPayload.read(String.self, from: trimmed(valuePayload), \
-         at: decoder.codingPath)",
+         at: decoder.codingPath, within: decoder)",
     );
     assert!(hoisted.contains(&read), "{read} is not in: {hoisted}");
     holds(
@@ -844,7 +844,7 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
                 "fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { ",
                 "let valuePayload = try SwiftSchemaPayload(from: decoder, without: taken).value; ",
                 "self.value = try SwiftSchemaPayload.read(SwiftSchemaReadValue.self, ",
-                "from: unwrapped(valuePayload), at: decoder.codingPath).value }; ",
+                "from: unwrapped(valuePayload), at: decoder.codingPath, within: decoder).value }; ",
             ),
             ALONE,
         ],
@@ -862,15 +862,15 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
     let written = json!({ "label": "  A  ", "itemCodeList": ["x"] });
     assert_eq!(
         serde_json::from_value::<Hoisted>(json!({ "payload": "  A  " })).unwrap(),
-        HoistedDraft("A".to_owned()).validate().unwrap()
+        HoistedDraft("A".to_owned()).into()
     );
     assert_eq!(
         serde_json::from_value::<Lugged>(json!({ "payload": written })).unwrap(),
-        LuggedDraft(carton()).validate().unwrap()
+        LuggedDraft(carton()).into()
     );
     assert_eq!(
         serde_json::from_value::<Toted>(written).unwrap(),
-        TotedDraft(carton()).validate().unwrap()
+        TotedDraft(carton()).into()
     );
 }
 
@@ -879,7 +879,13 @@ fn a_struct_of_one_slot_calls_the_function_of_its_slot_on_its_own_payload() {
 #[test]
 fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
     let tier = tier_swift::swift_definition();
-    let read = corrected_reads("Tier", "unwrapped(", ")", &plain_enum_read("TierDraft"));
+    let read = reads_reached(
+        "Tier",
+        "unwrapped(",
+        ")",
+        &plain_enum_read("Tier"),
+        "public",
+    );
     assert!(tier.contains(&read), "{read} is not in: {tier}");
 
     for (named, swift, opening) in [
@@ -899,7 +905,7 @@ fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
         let called = format!(
             "{BESIDE} {{ self = try SwiftSchemaPayload.read(SwiftSchemaRead.self, \
              from: unwrapped(try SwiftSchemaPayload(from: decoder, without: taken).value), \
-             at: decoder.codingPath).value }}; {ALONE}"
+             at: decoder.codingPath, within: decoder).value }}; {ALONE}"
         );
         holds(&swift, &[&opened, &called]);
         assert!(
@@ -926,7 +932,7 @@ fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
                 r#"case "Named": let namedPayload = try SwiftSchemaPayload(from: decoder, "#,
                 r#"without: taken + ["kind"]).value; "#,
                 "self = .named(try SwiftSchemaPayload.read(Bay.self, from: withItsKeys(namedPayload), ",
-                "at: decoder.codingPath)); ",
+                "at: decoder.codingPath, within: decoder)); ",
             ),
         ],
     );
@@ -938,7 +944,7 @@ fn every_enum_calls_its_own_function_ahead_of_the_choice_of_a_variant() {
                 "throws -> String { ",
                 "let namedPayload = try SwiftSchemaPayload(from: decoder, without: taken).value; ",
                 "return try SwiftSchemaPayload.read(String.self, from: trimmed(namedPayload), ",
-                "at: decoder.codingPath) }; ",
+                "at: decoder.codingPath, within: decoder) }; ",
             ),
             concat!(
                 "private init(swiftSchemaCorrected decoder: Decoder) throws { ",
@@ -961,12 +967,12 @@ fn a_member_of_a_variant_calls_its_function_on_its_own_payload() {
             concat!(
                 r#"case "Rail": let railPayload = try container.decode(SwiftSchemaPayload.self, "#,
                 "forKey: key).value; self = .rail(try SwiftSchemaPayload.read(String.self, ",
-                "from: trimmed(railPayload), at: container.codingPath + [key])); ",
+                "from: trimmed(railPayload), at: container.codingPath + [key], within: decoder)); ",
             ),
             concat!(
                 "let platePayload = try container.decode(SwiftSchemaPayload.self, forKey: .plate).value; ",
                 "self.plate = try SwiftSchemaPayload.read(String.self, from: trimmed(platePayload), ",
-                "at: container.codingPath + [CodingKeys.plate]) }; ",
+                "at: container.codingPath + [CodingKeys.plate], within: decoder) }; ",
             ),
         ],
     );
@@ -976,7 +982,7 @@ fn a_member_of_a_variant_calls_its_function_on_its_own_payload() {
             r#"case "Left": let leftPayload = try container.decode(SwiftSchemaPayload.self, "#,
             "forKey: .swiftSchemaContent).value; ",
             "self = .left(try SwiftSchemaPayload.read(String.self, from: trimmed(leftPayload), ",
-            "at: container.codingPath + [SwiftSchemaAdjacentCodingKeys.swiftSchemaContent])); ",
+            "at: container.codingPath + [SwiftSchemaAdjacentCodingKeys.swiftSchemaContent], within: decoder)); ",
         )],
     );
 }
@@ -1037,8 +1043,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             first_carton: carton(),
             spare_carton: None,
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Pallet>(json!({
@@ -1059,8 +1064,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             spare_note: None,
             title: "T".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Stacked>(json!({
@@ -1077,8 +1081,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             tier: "t".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Bayed>(json!({ "dock": "north", "tag": "t" })).unwrap(),
@@ -1090,8 +1093,7 @@ fn every_holder_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             dock: "north".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -1109,8 +1111,7 @@ fn the_aliased_and_wrapped_holders_of_this_file_are_read_by_serde_through_their_
             carton: carton(),
             dock: "north".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Ahead>(json!({ "dock": "north", "tag": "t" })).unwrap(),
@@ -1122,8 +1123,7 @@ fn the_aliased_and_wrapped_holders_of_this_file_are_read_by_serde_through_their_
             .unwrap(),
             dock: "north".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Wrap>(written).unwrap(),
@@ -1141,7 +1141,7 @@ fn every_struct_shape_of_this_file_is_read_by_serde_through_its_functions() {
     );
     assert_eq!(
         serde_json::from_value::<Heap>(json!({ "payload": ["  A  ", enveloped, 2_u32] })).unwrap(),
-        HeapDraft("A".to_owned(), carton(), 2).validate().unwrap()
+        HeapDraft("A".to_owned(), carton(), 2).into()
     );
     assert_eq!(
         serde_json::from_value::<Tagline>(json!({ "payload": "  A  " })).unwrap(),
@@ -1160,12 +1160,11 @@ fn every_struct_shape_of_this_file_is_read_by_serde_through_its_functions() {
             codes: vec![7],
             label: "b".to_owned(),
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_value::<Tier>(json!({ "payload": "Express" })).unwrap(),
-        TierDraft::Express.validate().unwrap()
+        Tier::Express
     );
 }
 
@@ -1179,13 +1178,12 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Hop>(json!({ "Road": { "plate": "  A  " } })).unwrap(),
         ],
         [
-            HopDraft::Held.validate().unwrap(),
-            HopDraft::Rail("A".to_owned()).validate().unwrap(),
+            Hop::Held,
+            HopDraft::Rail("A".to_owned()).into(),
             HopDraft::Road {
                 plate: "A".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ]
     );
     assert_eq!(
@@ -1198,17 +1196,15 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Gated>(json!({ "kind": "Named", "tag": "t" })).unwrap(),
         ],
         [
-            GatedDraft::Held(carton()).validate().unwrap(),
-            GatedDraft::Lost.validate().unwrap(),
+            GatedDraft::Held(carton()).into(),
+            Gated::Lost,
             GatedDraft::Named(
                 BayDraft {
                     keys: vec!["tag".to_owned()],
                 }
-                .validate()
-                .unwrap()
+                .into()
             )
-            .validate()
-            .unwrap(),
+            .into(),
         ]
     );
     assert_eq!(
@@ -1219,10 +1215,7 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             .unwrap(),
             serde_json::from_value::<Lane>(json!({ "kind": "Lost" })).unwrap(),
         ],
-        [
-            LaneDraft::Held(carton()).validate().unwrap(),
-            LaneDraft::Lost.validate().unwrap()
-        ]
+        [LaneDraft::Held(carton()).into(), Lane::Lost]
     );
     assert_eq!(
         [
@@ -1234,8 +1227,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
                 .unwrap(),
         ],
         [
-            LegDraft::Left("door".to_owned()).validate().unwrap(),
-            LegDraft::Signed { by: "A".to_owned() }.validate().unwrap(),
+            LegDraft::Left("door".to_owned()).into(),
+            LegDraft::Signed { by: "A".to_owned() }.into(),
         ]
     );
     assert_eq!(
@@ -1245,8 +1238,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
                 .unwrap(),
         ],
         [
-            PickDraft::Named("A".to_owned()).validate().unwrap(),
-            PickDraft::Whole(carton()).validate().unwrap()
+            PickDraft::Named("A".to_owned()).into(),
+            PickDraft::Whole(carton()).into()
         ]
     );
     assert_eq!(
@@ -1255,8 +1248,8 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
             serde_json::from_value::<Culled>(json!("  A  ")).unwrap(),
         ],
         [
-            CulledDraft::Maybe(None).validate().unwrap(),
-            CulledDraft::Maybe(Some("A".to_owned())).validate().unwrap()
+            CulledDraft::Maybe(None).into(),
+            CulledDraft::Maybe(Some("A".to_owned())).into()
         ]
     );
 }

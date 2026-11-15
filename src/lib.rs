@@ -438,7 +438,7 @@ fn kotlin_file() -> String {
 fn main() {
     let dart = dart_file();
     assert!(dart.contains("factory Invoice.fromJson(Map<String, dynamic> json)"));
-    assert!(dart.contains("throw FormatException(violations.join('; '))"));
+    assert!(dart.contains("throw InvoiceRefusal(violations)"));
 
     let swift = swift_file();
     assert!(swift.contains("public struct Invoice: Codable, Sendable"));
@@ -535,9 +535,9 @@ pub struct OrderBook;
 impl Orders<()> for OrderBook {
     async fn get_order(&self, _ctx: &(), req: OrderLookup) -> Result<OrderSummary, OrderError> {
         if req.order_id == "A-1" {
-            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.validate().unwrap())
+            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.into())
         } else {
-            Err(OrderErrorDraft::NotFound.validate().unwrap())
+            Err(OrderError::NotFound)
         }
     }
 }
@@ -582,7 +582,7 @@ fn main() {
         r#"{"kind":"request","id":"3","service":"Orders","operation":"get-order","payload":{"orderId":""}}"#,
     );
     assert_eq!(refused["error"]["fault"]["kind"], "failed-validation");
-    assert_eq!(refused["error"]["fault"]["field"], "orderId");
+    assert_eq!(refused["error"]["fault"]["issues"][0]["field"], "orderId");
 }
 ```
 "##
@@ -649,7 +649,7 @@ fn to_chase(above: f64) -> Result<Filter<Invoice>, WriteError> {
     let paths = Invoice::MONGO_FIELDS;
     Ok(paths
         .status()
-        .eq(InvoiceStatusDraft::PastDue.validate().unwrap())?
+        .eq(InvoiceStatus::PastDue)?
         .or(paths.total().gt(above)?)
         .and(paths.paid_at().exists(false)))
 }
@@ -732,7 +732,7 @@ fn main() {
     });
     assert_eq!(
         read.ok(),
-        Some(OrderLineDraft { sku: "BK-101".to_owned(), quantity: 3 }.validate().unwrap())
+        Some(OrderLineDraft { sku: "BK-101".to_owned(), quantity: 3 }.into())
     );
 }
 ```
@@ -883,6 +883,8 @@ mod emitted_names_tests;
 mod features;
 mod field_type;
 mod foundation;
+#[cfg(test)]
+mod joined_messages_tests;
 mod model_schema;
 mod rename_rule;
 mod service_schema;
@@ -943,6 +945,11 @@ use service_schema::exec_service_schema;
 ///   them. Written beside a `#[serde(deny_unknown_fields)]` of yours it is refused.
 /// - `no_display`, or `no_display = true` or `no_display = false`: drops the `Display` impl a
 ///   branded newtype gets, for a brand whose inner type has no `Display`.
+/// - `new = true` or `new = false`: whether the macro writes `new` on the valid type of a struct,
+///   which takes the fields and answers what `validate()` answers. Left out, it is written for a
+///   struct of at most seven parameters (a field a `literal` fixes is none); `new = true` writes it
+///   at any width, under `#[allow(clippy::too_many_arguments)]` past seven; `new = false` writes
+///   none, for a struct whose own `impl` declares `new`.
 /// - `check = ["withinBudget"]`: functions of yours that judge the whole value, each named once.
 ///   Rust's `validate()` calls `within_budget`, which takes `&T` and returns
 ///   `Result<(), Vec<String>>`, and Zod, Dart, Swift and Kotlin call `withinBudget`. A type that
@@ -994,7 +1001,9 @@ use service_schema::exec_service_schema;
 ///   rule, with the messages joined by `; `. `T::model_schema_read_unjudged` is the read alone.
 /// - `T::schema_examples()` (`zod`, or `enable = ["jsonschema"]`) and `T::schema_example()`
 ///   (`zod`), on a type whose doc comment holds code blocks fenced as `rust example`: each block is
-///   compiled as a value of `T`, and the values are also written into Zod's `.meta({ examples })`.
+///   compiled as a value of `T` (its draft, or the valid type through a constant, `.into()` or
+///   `.validate()?`), with `?` allowed in the block, and the values are also written into Zod's
+///   `.meta({ examples })`.
 /// - `T::enum_members() -> Vec<String>`, on an enum whose variants carry no data, in every build:
 ///   the names serde writes.
 /// - `T::wire_name(&self) -> &'static str`, a `const fn` on the draft of an enum whose variants are
@@ -1070,6 +1079,10 @@ export type UserDraft = {
 };
 
 export type User = Readonly<UserDraft> & $brand<"User">;
+
+export function UserDraft$valid(draft: UserDraft): User {
+  return draft as unknown as User;
+}
 ```"#]
 ///
 /// `User::zod_schema()`:
@@ -1117,12 +1130,16 @@ export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta(User
  * Status
  * 
  */
-export type StatusDraft =
+export type Status =
   | "active"
   | "inactive"
   | "pending";
 
-export type Status = Readonly<StatusDraft> & $brand<"Status">;
+export const Status = {
+  Active: "active",
+  Inactive: "inactive",
+  Pending: "pending",
+} as const satisfies Record<string, Status>;
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Status$Variant(value: unknown): string {
@@ -1138,14 +1155,12 @@ export function Status$Variant(value: unknown): string {
 /// `Status::zod_schema()`:
 ///
 #[doc = r#"```typescript
-const StatusDraft$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
+const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
   description: "Status",
   examples: [],
 });
 
-export const StatusDraft$Schema: ZodType<StatusDraft> = StatusDraft$RawSchema;
-
-export const Status$Schema = StatusDraft$Schema.readonly().brand<"Status">().meta(StatusDraft$Schema.meta() ?? {});
+export const Status$Schema: ZodType<Status> = Status$RawSchema;
 ```"#]
 ///
 /// ## A tagged enum
@@ -1218,6 +1233,10 @@ export type EventDraft = {
 };
 
 export type Event = Readonly<EventDraft> & $brand<"Event">;
+
+export function EventDraft$valid(draft: EventDraft): Event {
+  return draft as unknown as Event;
+}
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Event$Variant(value: unknown): string {
@@ -1437,6 +1456,10 @@ export type DocumentDraft = {
 };
 
 export type Document = Readonly<DocumentDraft> & $brand<"Document">;
+
+export function DocumentDraft$valid(draft: DocumentDraft): Document {
+  return draft as unknown as Document;
+}
 ```
 
 `Document::zod_schema()`:
@@ -2072,8 +2095,8 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///   fault for a defect no operation declared, with `kind()`, `operation()`, `field()`,
 ///   `issues()` and `detail()` and one public constructor per kind; `ServiceFaultKind`, written on
 ///   the wire as `failed-validation`, `handler-panic`, `transport-failure`,
-///   `undeserializable-payload` or `unknown-operation`; `ServiceFaultIssue`, one problem of a fault
-///   that lists several; and `CallError<E>`, the failure of a Rust client call, which is
+///   `undeserializable-payload` or `unknown-operation`; `ServiceFaultIssue`, one problem a failed
+///   validation lists; and `CallError<E>`, the failure of a Rust client call, which is
 ///   `Fault(ServiceFault)` or `Operation(E)`. For a dispatcher written by hand it also holds, per
 ///   operation, `{Operation}Message`, `unjudged_{operation}` (the message's read alone) and
 ///   `validated_{operation}` (the message's `validate()`, or `Ok(())` where it has none).
@@ -2308,9 +2331,9 @@ pub struct OrderBook;
 impl Orders<()> for OrderBook {
     async fn get_order(&self, _ctx: &(), req: OrderLookup) -> Result<OrderSummary, OrderError> {
         if req.order_id == "A-1" {
-            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.validate().unwrap())
+            Ok(OrderSummaryDraft { order_id: req.order_id.clone(), total_cents: 4250 }.into())
         } else {
-            Err(OrderErrorDraft::NotFound.validate().unwrap())
+            Err(OrderError::NotFound)
         }
     }
 }
@@ -2368,16 +2391,17 @@ fn run<F: std::future::Future>(call: F) -> F::Output {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Vec<String>> {
     let client = orders_client::OrdersClient::new(InMemory);
 
-    let lookup = |order_id: &str| OrderLookupDraft { order_id: order_id.to_owned() }.validate().unwrap();
+    let lookup = |order_id: &str| OrderLookup::new(order_id.to_owned());
 
-    let found = run(client.get_order(lookup("A-1")));
+    let found = run(client.get_order(lookup("A-1")?));
     assert!(matches!(&found, Ok(summary) if summary.total_cents == 4250));
 
-    let missing = run(client.get_order(lookup("B-7")));
+    let missing = run(client.get_order(lookup("B-7")?));
     assert!(matches!(&missing, Err(CallError::Operation(error)) if matches!(&**error, OrderErrorDraft::NotFound)));
+    Ok(())
 }
 ```
 "#

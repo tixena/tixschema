@@ -20,10 +20,22 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// with, where `named` asks for them. An untagged enum refuses a payload no variant reads with
 /// `typeMismatch`, and any other error is printed whole.
 const TOLD: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func told<Read: Decodable>(_ name: String, _ named: Bool, _ type: Read.Type, _ payload: String) {
   do {
     _ = try JSONDecoder().decode(type, from: Data(payload.utf8))
     print("\(name): read")
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    print("\(name): refused")
+    if named {
+      for violation in issues {
+        print("    \(violation)")
+      }
+    }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused")
     if named {

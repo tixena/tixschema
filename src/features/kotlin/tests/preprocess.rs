@@ -2,9 +2,23 @@
 //! name is called, shape by shape, as the emitter writes the call.
 
 use super::*;
+use crate::utils::note_rule_less;
 
 /// What the draft of a type with no rule answers.
 const NO_ISSUES: &str = "fun validationIssues(): List<String> = emptyList()";
+
+/// The walk of a draft over `codes: Vec<CodeType>`, then `more`, each value behind the parameter
+/// handed to its check.
+fn walked_codes(more: &str) -> String {
+    format!(
+        "fun validationIssues(): List<String> = validationIssuesWith({{ emptyList() }}); fun \
+         validationIssuesWith(issuesOfCodeType: (CodeType) -> List<String>): List<String> {{ val \
+         violations = mutableListOf<String>(); codes.forEachIndexed {{ index, held -> \
+         violations.addAll(issuesOfCodeType(held).map {{ kotlinSchemaUnder(\"codes.$index\", it) \
+         }}) }}{more}; return violations }}; {}",
+        super::UNDER
+    )
+}
 
 /// The functions `names` name, as an attribute writes them.
 fn named(names: &[&str]) -> Vec<FunctionName> {
@@ -113,23 +127,28 @@ fn the_readme_shows_what_the_parcel_of_its_preprocess_emits() {
 /// parameter, whose serializer stays a class over one serializer per parameter.
 #[test]
 fn a_types_functions_are_called_by_its_unjudged_serializer() {
+    note_rule_less(true);
     let parcel: ItemStruct = syn::parse_quote! {
         struct Parcel { label: String }
     };
     assert_eq!(
         corrected_by(&parcel, &["unwrapped", "withoutFragile"]),
         format!(
-            "{} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} \
+            "{} {} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} \
              @OptIn(ExperimentalSerializationApi::class) object ParcelDraftUnjudged : \
              KSerializer<ParcelDraft> {} {} {} {}",
+            refusal("Parcel"),
             kept_draft("Parcel"),
-            to_valid("Parcel", ""),
+            to_valid_free("Parcel", ""),
             transform(
                 "ParcelDraft",
                 "ParcelDraft.generatedSerializer()",
                 "withoutFragile(unwrapped(element))"
             ),
-            valid_class("Parcel", "val label: String get() = draft.label; "),
+            with_of(
+                valid_class("Parcel", "val label: String get() = draft.label; "),
+                "fun of(label: String): Parcel = ParcelDraft(label = label).validate()"
+            ),
             valid_unjudged("Parcel"),
             judged_valid("Parcel")
         )
@@ -140,17 +159,23 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
     assert_eq!(
         corrected_by(&closed, &["unwrapped"]),
         format!(
-            "{} object ClosedDockDraft {{ {NO_ISSUES} {} }} \
+            "{} {} object ClosedDockDraft {{ {NO_ISSUES} {} }} \
              @OptIn(ExperimentalSerializationApi::class) object ClosedDockDraftUnjudged : \
              KSerializer<ClosedDockDraft> {} {} {} {}",
+            refusal("ClosedDock"),
             kept_draft("ClosedDock"),
-            to_valid("ClosedDock", ""),
+            to_valid_free("ClosedDock", ""),
             transform(
                 "ClosedDockDraft",
                 "ClosedDockDraft.generatedSerializer()",
                 "unwrapped(element)"
             ),
-            valid_class("ClosedDock", ""),
+            valid_class_with(
+                "ClosedDock",
+                "",
+                "; val instance = checked(ClosedDockDraft); fun of(): ClosedDock = \
+                 ClosedDockDraft.validate()"
+            ),
             valid_unjudged("ClosedDock"),
             judged_valid("ClosedDock")
         )
@@ -161,21 +186,27 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
     assert_eq!(
         corrected_by(&generic, &["unwrapped"]),
         format!(
-            "{} data class CrateDraft<CodeType>(val codes: List<CodeType>) {{ {NO_ISSUES} {} }} \
+            "{} {} data class CrateDraft<CodeType>(val codes: List<CodeType>) {{ {} {} }} \
              @OptIn(ExperimentalSerializationApi::class) class \
              CrateDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
              KSerializer<CrateDraft<CodeType>> {} {} {} {}",
+            refusal("Crate"),
             kept_draft("Crate"),
-            to_valid("Crate", "<CodeType>"),
+            walked_codes(""),
+            to_valid_free("Crate", "<CodeType>"),
             transform(
                 "CrateDraft<CodeType>",
                 "CrateDraft.generatedSerializer(codeTypeSerializer)",
                 "unwrapped(element)"
             ),
-            valid_class_over(
-                "Crate",
-                "<CodeType>",
-                "val codes: List<CodeType> get() = draft.codes; "
+            with_of(
+                valid_class_over(
+                    "Crate",
+                    "<CodeType>",
+                    "val codes: List<CodeType> get() = draft.codes; "
+                ),
+                "fun <CodeType> of(codes: List<CodeType>): Crate<CodeType> = \
+                 CrateDraft<CodeType>(codes = codes).validate()"
             ),
             valid_unjudged_over("Crate", "CodeType", "", "codeTypeSerializer"),
             judged_valid_over("Crate", "CodeType", "", "codeTypeSerializer")
@@ -186,17 +217,22 @@ fn a_types_functions_are_called_by_its_unjudged_serializer() {
 /// A type that names no function is written as it is written without the key.
 #[test]
 fn a_type_that_names_no_function_keeps_the_plugins_serializer_under_its_name() {
+    note_rule_less(true);
     let parcel: ItemStruct = syn::parse_quote! {
         struct Parcel { label: String }
     };
     assert_eq!(
         corrected_by(&parcel, &[]),
         format!(
-            "{} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} {} {} {} {}",
+            "{} {} data class ParcelDraft(val label: String) {{ {NO_ISSUES} {} }} {} {} {} {}",
+            refusal("Parcel"),
             kept_draft("Parcel"),
-            to_valid("Parcel", ""),
+            to_valid_free("Parcel", ""),
             generated("ParcelDraft"),
-            valid_class("Parcel", "val label: String get() = draft.label; "),
+            with_of(
+                valid_class("Parcel", "val label: String get() = draft.label; "),
+                "fun of(label: String): Parcel = ParcelDraft(label = label).validate()"
+            ),
             valid_unjudged("Parcel"),
             judged_valid("Parcel")
         )
@@ -260,12 +296,13 @@ fn a_brands_functions_are_handed_the_payload_of_its_value() {
 /// reads the payload the functions it names answer.
 #[test]
 fn a_plain_enum_is_read_by_its_unjudged_serializer() {
+    note_rule_less(true);
     let grade: ItemEnum = syn::parse_quote! {
         enum Grade { Express, Standard }
     };
     let members = format!(
         "enum class GradeDraft {{ Express, Standard; {NO_ISSUES} {} }}",
-        to_valid("Grade", "")
+        to_valid_free("Grade", "")
     );
     for (functions, correction) in [
         (&["unwrapped"][..], "unwrapped(element)"),
@@ -274,10 +311,15 @@ fn a_plain_enum_is_read_by_its_unjudged_serializer() {
         assert_eq!(
             choice_corrected_by(&grade, functions),
             format!(
-                "{} {members} {} {} {} {}",
+                "{} {} {members} {} {} {} {}",
+                refusal("Grade"),
                 kept_plain_draft("Grade"),
                 plain_enum_unjudged("GradeDraft", &["Express", "Standard"], correction),
-                valid_class("Grade", ""),
+                valid_class_with(
+                    "Grade",
+                    "",
+                    "; val Express = checked(GradeDraft.Express); val Standard = checked(GradeDraft.Standard)"
+                ),
                 valid_unjudged("Grade"),
                 judged_valid("Grade")
             )
@@ -398,23 +440,30 @@ fn a_member_the_plugin_reads_is_read_through_a_serializer_of_its_own() {
     };
     let kotlin = plain(&chit);
     let opens = format!(
-        "{} data class ChitDraft(@Serializable(with = ChitCodePreprocess::class) val code: String, \
-         @Serializable(with = ChitNotePreprocess::class) val note: String? = null, \
+        "{} {} {} data class ChitDraft(@Serializable(with = ChitCodePreprocess::class) val code: \
+         String, @Serializable(with = ChitNotePreprocess::class) val note: String? = null, \
          @Serializable(with = ChitParcelsPreprocess::class) val parcels: List<Parcel>, val \
          plain: String, @SerialName(\"spare_parcel\") @Serializable(with = \
          ChitSpareParcelPreprocess::class) val spareParcel: Parcel? = null) {{ fun \
          validationIssues(): ",
+        refusal("Chit"),
+        held("KotlinHeld1", "Parcel"),
         kept_draft("Chit")
     );
     assert!(kotlin.starts_with(&opens), "got: {kotlin}");
     let closes = format!(
         "}} {} {} {} {} {} {} {} {}",
         generated("ChitDraft"),
-        valid_class(
-            "Chit",
-            "val code: String get() = draft.code; val note: String? get() = draft.note; val \
-             parcels: List<Parcel> get() = draft.parcels; val plain: String get() = draft.plain; \
-             val spareParcel: Parcel? get() = draft.spareParcel; "
+        with_of(
+            valid_class(
+                "Chit",
+                "val code: String get() = draft.code; val note: String? get() = draft.note; val \
+                 parcels: List<Parcel> get() = draft.parcels; val plain: String get() = \
+                 draft.plain; val spareParcel: Parcel? get() = draft.spareParcel; "
+            ),
+            "fun of(code: String, note: String? = null, parcels: List<Parcel>, plain: String, \
+             spareParcel: Parcel? = null): Chit = ChitDraft(code = code, note = note, parcels = \
+             parcels, plain = plain, spareParcel = spareParcel).validate()"
         ),
         valid_unjudged("Chit"),
         judged_valid("Chit"),
@@ -435,14 +484,14 @@ fn a_member_the_plugin_reads_is_read_through_a_serializer_of_its_own() {
         member(
             "ChitParcelsPreprocess",
             "List<Parcel>",
-            "ListSerializer(ParcelUnjudged)",
+            "ListSerializer(KotlinHeld1)",
             "unwrapped(element)",
             "parcels"
         ),
         member(
             "ChitSpareParcelPreprocess",
             "Parcel?",
-            "ParcelUnjudged.nullable",
+            "KotlinHeld1.nullable",
             "unwrapped(element)",
             "spare_parcel"
         )
@@ -477,6 +526,7 @@ fn a_tuple_member_that_names_a_function_names_one_wrapper() {
 /// the type's own. A member of the same type that reaches none keeps a serializer of its own.
 #[test]
 fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
+    note_rule_less(true);
     let hamper: ItemStruct = syn::parse_quote! {
         struct Hamper<CodeType> {
             #[model_schema_prop(preprocess = ["unwrapped"])]
@@ -495,23 +545,32 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
         assert_eq!(
             corrected_by(&hamper, functions),
             format!(
-                "{} data class HamperDraft<CodeType>(val codes: List<CodeType>, val held: CodeType, \
-                 @Serializable(with = HamperLabelPreprocess::class) val label: String) {{ \
-                 {NO_ISSUES} {} }} @OptIn(ExperimentalSerializationApi::class) class \
+                "{} {} data class HamperDraft<CodeType>(val codes: List<CodeType>, val held: \
+                 CodeType, @Serializable(with = HamperLabelPreprocess::class) val label: String) \
+                 {{ {} {} }} @OptIn(ExperimentalSerializationApi::class) class \
                  HamperDraftUnjudged<CodeType>(codeTypeSerializer: KSerializer<CodeType>) : \
                  KSerializer<HamperDraft<CodeType>> {} {} {} {} {}",
+                refusal("Hamper"),
                 kept_draft("Hamper"),
-                to_valid("Hamper", "<CodeType>"),
+                walked_codes(
+                    "; violations.addAll(issuesOfCodeType(held).map { kotlinSchemaUnder(\"held\", it) })"
+                ),
+                to_valid_free("Hamper", "<CodeType>"),
                 transform(
                     "HamperDraft<CodeType>",
                     "HamperDraft.generatedSerializer(codeTypeSerializer)",
                     &keyed(whole, arms)
                 ),
-                valid_class_over(
-                    "Hamper",
-                    "<CodeType>",
-                    "val codes: List<CodeType> get() = draft.codes; val held: CodeType get() = \
-                     draft.held; val label: String get() = draft.label; "
+                with_of(
+                    valid_class_over(
+                        "Hamper",
+                        "<CodeType>",
+                        "val codes: List<CodeType> get() = draft.codes; val held: CodeType get() = \
+                         draft.held; val label: String get() = draft.label; "
+                    ),
+                    "fun <CodeType> of(codes: List<CodeType>, held: CodeType, label: String): \
+                     Hamper<CodeType> = HamperDraft<CodeType>(codes = codes, held = held, label = \
+                     label).validate()"
                 ),
                 valid_unjudged_over("Hamper", "CodeType", "", "codeTypeSerializer"),
                 judged_valid_over("Hamper", "CodeType", "", "codeTypeSerializer"),
@@ -552,7 +611,7 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
          ?: throw SerializationException(\"missing field `dock`\"))), \"dock\", \".dock\");",
         "val note = obj[\"note\"]?.let { kotlinSchemaDecoded(input.json, serializer<String?>(), \
          lowered(trimmed(it)), \"note\", \".note\") };",
-        "val parcel = kotlinSchemaFlattened { input.json.decodeFromString(ParcelUnjudged, \
+        "val parcel = kotlinSchemaFlattened { input.json.decodeFromString(KotlinHeld1, \
          JsonObject(obj.filterKeys { it in setOf(\"label\") }).toString()) };",
     ] {
         assert!(kotlin.contains(held), "no `{held}` in: {kotlin}");
@@ -604,17 +663,17 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     };
     let kotlin = plain(&fastened);
     let rest = "JsonObject(obj - setOf(\"dock\", \"gate\") - baseKeys)";
-    let whole = "val base = kotlinSchemaFlattened { input.json.decodeFromString(BaseUnjudged, \
+    let whole = "val base = kotlinSchemaFlattened { input.json.decodeFromString(KotlinHeld1, \
                  JsonObject(obj.filterKeys { it in setOf(\"name\") }).toString()) };";
     for held in [
         whole.to_owned(),
         format!(
-            "val keyed = kotlinSchemaFlattened {{ lenient.decodeFromString(KeyedUnjudged, \
+            "val keyed = kotlinSchemaFlattened {{ lenient.decodeFromString(KotlinHeld2, \
              {rest}.toString()) }};"
         ),
         format!(
-            "val later = kotlinSchemaFlattened {{ lenient.decodeFromString(serializer<Later>(), \
-             kotlinSchemaFlat(serializer<Later>(), {rest}).toString()) }};"
+            "val later = kotlinSchemaFlattened {{ lenient.decodeFromString(KotlinHeld3, \
+             kotlinSchemaFlat(KotlinHeld3, {rest}).toString()) }};"
         ),
         whole.replace("val base", "val again"),
     ] {
@@ -631,7 +690,7 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let around = plain(&outer);
     assert!(
         around.contains(
-            "val fastened = kotlinSchemaFlattened { lenient.decodeFromString(FastenedUnjudged, \
+            "val fastened = kotlinSchemaFlattened { lenient.decodeFromString(KotlinHeld4, \
              JsonObject(obj - setOf(\"yard\")).toString()) };"
         ),
         "got: {around}"
@@ -647,7 +706,7 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let named_by_the_member = plain(&girdled);
     assert!(
         named_by_the_member.contains(
-            "val base = kotlinSchemaFlattened { lenient.decodeFromString(BaseUnjudged, \
+            "val base = kotlinSchemaFlattened { lenient.decodeFromString(KotlinHeld5, \
              withItsKeys(JsonObject(obj - setOf(\"dock\"))).toString()) };"
         ),
         "got: {named_by_the_member}"
@@ -725,7 +784,7 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
     };
     let lift = definition(enum_kotlin_tokens(&under_a_tag, &plain_args()));
     for held in [
-        "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, ParcelUnjudged, \
+        "\"Boxed\" -> LiftBoxed(kotlinSchemaDecoded(input.json, KotlinHeld1, \
          unwrapped(JsonObject(obj - \"kind\")), \"Boxed\", \"\")); "
             .to_owned(),
         "\"Loose\" -> kotlinSchemaFlattened { kotlinSchemaInner(input.json, \"\", \
@@ -763,7 +822,7 @@ fn an_untagged_enum_corrects_each_variant_as_it_tries_it() {
         ".recoverCatching { input.json.decodeFromJsonElement(serializer<GuessCoded>(), element) \
          as GuessDraft }",
         ".recoverCatching { input.json.decodeFromJsonElement(serializer<GuessShort>(), \
-         trimmed(element)).also { chosen -> ",
+         trimmed(element)) as GuessDraft }",
         ".recoverCatching { input.json.decodeFromJsonElement(serializer<GuessWhole>(), element) \
          as GuessDraft }",
     ] {

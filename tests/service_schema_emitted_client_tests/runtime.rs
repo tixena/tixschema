@@ -462,6 +462,19 @@ fn kotlin_compiled(
     Some(compiled)
 }
 
+/// The name of the private serializer `definition` declares for a holder to read the type `class`
+/// unjudged through: the counter that numbers it runs across the items of a crate.
+#[cfg(feature = "kotlin")]
+pub fn held_through(definition: &str, class: &str) -> String {
+    let declared = regex::Regex::new(&format!(
+        r"(KotlinHeld\d+[A-Za-z]*)(?:<[^>]*>\([^)]*\))? : KSerializer<{class}[<>]"
+    ))
+    .unwrap();
+    declared
+        .captures(definition)
+        .map_or_else(String::new, |found| found[1].to_owned())
+}
+
 /// What the compiler says of a `source` it refuses, compiled as [`ran_kotlin`] compiles one.
 /// `None` says no toolchain piece was reachable.
 #[cfg(feature = "kotlin")]

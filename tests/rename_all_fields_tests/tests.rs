@@ -160,8 +160,7 @@ fn external_value() -> ExternalFieldCasing {
         another_one: 2,
         my_field: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn internal_value() -> InternalFieldCasing {
@@ -169,8 +168,7 @@ fn internal_value() -> InternalFieldCasing {
         another_one: 2,
         my_field: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn adjacent_value() -> AdjacentFieldCasing {
@@ -178,8 +176,7 @@ fn adjacent_value() -> AdjacentFieldCasing {
         another_one: 2,
         my_field: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn untagged_value() -> UntaggedFieldCasing {
@@ -187,8 +184,7 @@ fn untagged_value() -> UntaggedFieldCasing {
         another_one: 2,
         my_field: 1,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -278,7 +274,7 @@ fn a_tuple_variant_carries_no_member_to_case() {
 #[test]
 fn a_plain_variant_carries_no_member_to_case() {
     assert_eq!(
-        serde_json::to_value(PlainVariantCasingDraft::AlphaOne).unwrap(),
+        serde_json::to_value(PlainVariantCasing::AlphaOne).unwrap(),
         serde_json::json!("AlphaOne")
     );
     assert_eq!(

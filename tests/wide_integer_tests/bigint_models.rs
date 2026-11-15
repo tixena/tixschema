@@ -90,7 +90,7 @@ pub struct Narrow {
 /// A date under `as_number`, which publishes a `number`.
 ///
 /// ```rust example
-/// StampedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap() }
+/// StampedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).ok_or("a date")? }
 /// ```
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -103,7 +103,7 @@ pub struct Stamped {
 /// A date written by a function of its author's, as the milliseconds of its epoch.
 ///
 /// ```rust example
-/// HookedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).unwrap(), text: "123".to_owned() }
+/// HookedDraft { at: chrono::DateTime::from_timestamp_millis(1_700_000_000_000).ok_or("a date")?, text: "123".to_owned() }
 /// ```
 #[cfg(feature = "chrono")]
 #[model_schema()]
@@ -154,18 +154,18 @@ pub struct Deep {
 ///
 /// ```rust example
 /// PositionsDraft {
-///     adjacent: AdjacentDraft::Held(9).validate().unwrap(),
+///     adjacent: AdjacentDraft::Held(9).into(),
 ///     boxed: Box::new(10),
 ///     counted: Rc::new(14),
-///     deep: DeepDraft { deep: 13 }.validate().unwrap(),
+///     deep: DeepDraft { deep: 13 }.into(),
 ///     keyed: BTreeMap::from([("a".to_owned(), 1)]),
 ///     maybe: Some(5),
-///     named: WrapperDraft::Named { n: 5 }.validate().unwrap(),
-///     pair: WrapperDraft::Pair(3, 4).validate().unwrap(),
+///     named: WrapperDraft::Named { n: 5 }.into(),
+///     pair: WrapperDraft::Pair(3, 4).into(),
 ///     plain: Plain::new(8).unwrap(),
 ///     shared: Arc::new(15),
-///     tag: TagDraft(6).validate().unwrap(),
-///     wrapped: WrapperDraft::Wrapped(2).validate().unwrap(),
+///     tag: TagDraft(6).into(),
+///     wrapped: WrapperDraft::Wrapped(2).into(),
 /// }
 /// ```
 #[model_schema()]
@@ -216,7 +216,7 @@ pub enum EitherOne {
 /// A transparent struct beyond what a JavaScript `number` holds exactly.
 ///
 /// ```rust example
-/// FarPlain::new(far()).unwrap()
+/// FarPlain::new(far())?
 /// ```
 #[model_schema(no_display)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -24,8 +24,7 @@ fn path(segments: &[&str]) -> Path {
     PathDraft {
         segments: segments.iter().map(|&segment| segment.to_owned()).collect(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]

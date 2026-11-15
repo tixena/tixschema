@@ -24,12 +24,18 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// `dataCorrupted` the read throws, or any other error; the default a read takes for an absent
 /// key; and what `validate()` answers of a value read with no judgement.
 const TOLD: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func told<Read: Codable>(_ at: Int, _ type: Read.Type, _ payload: String) {
   do {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     let read = try JSONDecoder().decode(type, from: Data(payload.utf8))
     print("\(at): read \(String(data: try encoder.encode(read), encoding: .utf8)!)")
+  } catch let refused where issuesOf(refused) != nil {
+    print("\(at): \(Swift.type(of: refused)): \(issuesOf(refused)!.joined(separator: "; "))")
   } catch DecodingError.dataCorrupted(let context) {
     print("\(at): dataCorrupted: \(context.debugDescription)")
   } catch {
@@ -53,14 +59,15 @@ func validated(_ at: Int, _ bounded: UInt64) throws {
 }
 "#;
 
-/// The Swift read of each payload of [`REFUSED`], in its order: each refusal in serde's words.
+/// The Swift read of each payload of [`REFUSED`], in its order: each refusal in serde's words, and
+/// a value a bound or a literal refuses with its type's own refusal.
 const SWIFT_REFUSED: [&str; 6] = [
     "dataCorrupted: invalid value: integer `-1`, expected usize",
     "dataCorrupted: invalid type: floating point `1.8446744073709552e+19`, expected usize",
     "dataCorrupted: invalid type: floating point `1.5`, expected usize",
-    "dataCorrupted: 'bounded': too small: minimum is 1, got 0",
-    "dataCorrupted: 'bounded': too large: maximum is 4096, got 4097",
-    "dataCorrupted: 'pinned': not the literal 18446744073709551615, got 9223372036854775808",
+    "OffsetsRefusal: 'bounded': too small: minimum is 1, got 0",
+    "OffsetsRefusal: 'bounded': too large: maximum is 4096, got 4097",
+    "PlacedRefusal: 'pinned': not the literal 18446744073709551615, got 9223372036854775808",
 ];
 
 /// `json` with the keys of every object sorted, as the Swift encoder of the run writes them.

@@ -44,16 +44,15 @@ fun validated(at: Int, bounded: ULong) {
 "#;
 
 /// The Kotlin read of each payload of [`REFUSED`], in its order: each refusal in serde's words, at
-/// the path of the number.
+/// the path of the number, and a value a bound or a literal refuses with its type's own refusal.
 const KOTLIN_REFUSED: [&str; 6] = [
     "SerializationException: invalid value: integer `-1`, expected usize at path: $.at",
     "SerializationException: invalid type: floating point `1.8446744073709552e+19`, expected \
      usize at path: $.at",
     "SerializationException: invalid type: floating point `1.5`, expected usize at path: $.at",
-    "SerializationException: 'bounded': too small: minimum is 1, got 0",
-    "SerializationException: 'bounded': too large: maximum is 4096, got 4097",
-    "SerializationException: 'pinned': not the literal 18446744073709551615, got \
-     9223372036854775808",
+    "OffsetsRefusal: ['bounded': too small: minimum is 1, got 0]",
+    "OffsetsRefusal: ['bounded': too large: maximum is 4096, got 4097]",
+    "PlacedRefusal: ['pinned': not the literal 18446744073709551615, got 9223372036854775808]",
 ];
 
 /// Each payload serde writes is read and written back as serde writes it back, each payload serde

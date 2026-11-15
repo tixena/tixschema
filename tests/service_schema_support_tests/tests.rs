@@ -271,31 +271,37 @@ fn a_call_error_carries_the_error_the_operation_declared() {
 
 #[test]
 fn every_kind_of_fault_is_built_through_its_own_constructor_from_outside_the_module() {
-    use sweep_service_schema::{ServiceFault, ServiceFaultKind};
+    use sweep_service_schema::{ServiceFault, ServiceFaultIssue, ServiceFaultKind};
 
-    let refused = ServiceFault::failed_validation("sweep", Some("customer_id"), "is empty");
+    let issues = vec![
+        ServiceFaultIssue::new(Some("customer_id"), "is empty"),
+        ServiceFaultIssue::new(None, "a sweep names a customer"),
+    ];
+    let refused = ServiceFault::failed_validation("sweep", issues.clone());
     assert_eq!(refused.kind(), ServiceFaultKind::FailedValidation);
     assert_eq!(refused.operation(), "sweep");
-    assert_eq!(refused.field(), Some("customer_id"));
-    assert_eq!(refused.detail(), "is empty");
+    assert_eq!(refused.field(), None, "each problem names its own field");
+    assert_eq!(refused.detail(), None, "each problem says its own words");
+    assert_eq!(refused.issues(), issues.as_slice());
 
     let unread = ServiceFault::undeserializable_payload("sweep", "expected value at line 1");
     assert_eq!(unread.kind(), ServiceFaultKind::UndeserializablePayload);
     assert_eq!(unread.operation(), "sweep");
     assert_eq!(unread.field(), None, "nothing was read far enough to name");
-    assert_eq!(unread.detail(), "expected value at line 1");
+    assert_eq!(unread.detail(), Some("expected value at line 1"));
+    assert_eq!(unread.issues(), []);
 
     let panicked = ServiceFault::handler_panic("purge", "index out of bounds");
     assert_eq!(panicked.kind(), ServiceFaultKind::HandlerPanic);
     assert_eq!(panicked.operation(), "purge");
     assert_eq!(panicked.field(), None);
-    assert_eq!(panicked.detail(), "index out of bounds");
+    assert_eq!(panicked.detail(), Some("index out of bounds"));
 
     let uncarried = ServiceFault::transport_failure("sweep", "the connection went away");
     assert_eq!(uncarried.kind(), ServiceFaultKind::TransportFailure);
     assert_eq!(uncarried.operation(), "sweep");
     assert_eq!(uncarried.field(), None);
-    assert_eq!(uncarried.detail(), "the connection went away");
+    assert_eq!(uncarried.detail(), Some("the connection went away"));
 
     let unrecognised = ServiceFault::unknown_operation("rebuild");
     assert_eq!(unrecognised.kind(), ServiceFaultKind::UnknownOperation);
@@ -303,7 +309,7 @@ fn every_kind_of_fault_is_built_through_its_own_constructor_from_outside_the_mod
     assert_eq!(unrecognised.field(), None);
     assert_eq!(
         unrecognised.detail(),
-        "the service answers to no operation by that name",
+        Some("the service answers to no operation by that name"),
         "the one constructor that writes its own detail, the name being all it was given"
     );
 }

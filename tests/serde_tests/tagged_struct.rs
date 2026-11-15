@@ -82,8 +82,7 @@ mod on_a_schema_surface {
         let expected = TaggedDraft {
             name: "x".to_owned(),
         }
-        .validate()
-        .unwrap();
+        .into();
         for stored in [
             serde_json::json!({ "kind": "Tagged", "name": "x" }),
             serde_json::json!({ "name": "x" }),
@@ -99,8 +98,7 @@ mod on_a_schema_surface {
             tagged: TaggedDraft {
                 name: "x".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         })
         .unwrap();
         assert_eq!(
@@ -145,6 +143,8 @@ mod on_a_schema_surface {
 mod on_a_mobile_surface {
     #[cfg(feature = "kotlin")]
     use super::super::kotlin_pathed::PATHED;
+    #[cfg(feature = "kotlin")]
+    use super::super::kotlin_thrown::THROWN;
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
 
@@ -225,16 +225,19 @@ mod on_a_mobile_surface {
         assert_eq!(
             tagged_mobile_kotlin::kotlin_definition(),
             format!(
-                "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
-                 TaggedMobileDraftUnjudged::class) @KeepGeneratedSerializer @JsonIgnoreUnknownKeys \
-                 data class TaggedMobileDraft(val name: String) {{ @SerialName(\"kind\") \
-                 @EncodeDefault val kotlinSchemaTag: String = \"TaggedMobile\"; fun \
-                 validationIssues(): List<String> = emptyList() fun validate(): TaggedMobile {{ \
-                 val violations = validationIssues(); if (violations.isNotEmpty()) throw \
-                 SerializationException(violations.joinToString(\"; \"), \
-                 IllegalArgumentException(\"validate()\")); return TaggedMobile.checked(this) }} \
-                 }} @OptIn(ExperimentalSerializationApi::class) object TaggedMobileDraftUnjudged : \
-                 KSerializer<TaggedMobileDraft> {{ private val held = \
+                "class TaggedMobileRefusal(val issues: List<String>) : \
+                 SerializationException(\"$issues\", \
+                 IllegalArgumentException(\"validate()\")) \
+                 @OptIn(ExperimentalSerializationApi::class) @Serializable(with = \
+                 TaggedMobileDraftUnjudged::class) @KeepGeneratedSerializer \
+                 @JsonIgnoreUnknownKeys data class TaggedMobileDraft(val name: String) {{ \
+                 @SerialName(\"kind\") @EncodeDefault val kotlinSchemaTag: String = \
+                 \"TaggedMobile\"; fun validationIssues(): List<String> = emptyList() fun \
+                 validate(): TaggedMobile {{ val violations = validationIssues(); if \
+                 (violations.isNotEmpty()) throw TaggedMobileRefusal(violations); return \
+                 TaggedMobile.checked(this) }} fun toValid(): TaggedMobile = \
+                 TaggedMobile.checked(this) }} @OptIn(ExperimentalSerializationApi::class) object \
+                 TaggedMobileDraftUnjudged : KSerializer<TaggedMobileDraft> {{ private val held = \
                  TaggedMobileDraft.generatedSerializer(); override val descriptor: \
                  SerialDescriptor = held.descriptor; override fun serialize(encoder: Encoder, \
                  value: TaggedMobileDraft) {{ val output = encoder as JsonEncoder; \
@@ -249,36 +252,39 @@ mod on_a_mobile_surface {
                  SerializationException(\"missing field `kind`\"); else -> throw \
                  SerializationException(\"expected tag \\\"TaggedMobile\\\", found \" + \
                  whole[\"kind\"]) }} }}; private fun transformSerialize(element: JsonElement): \
-                 JsonElement = JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) \
-                 + element.jsonObject) }} @ConsistentCopyVisibility @Serializable(with = \
-                 TaggedMobileSerializer::class) data class TaggedMobile private constructor(val \
-                 draft: TaggedMobileDraft) {{ val name: String get() = draft.name; fun \
-                 validationIssues(): List<String> = draft.validationIssues(); fun \
-                 kotlinSchemaChecked(): TaggedMobileDraft = draft; companion object {{ internal fun \
-                 checked(draft: TaggedMobileDraft): TaggedMobile = \
-                 TaggedMobile(draft) }} }} @OptIn(ExperimentalSerializationApi::class) private \
-                 object TaggedMobileUnjudged : KSerializer<TaggedMobile> {{ override val \
-                 descriptor: SerialDescriptor = TaggedMobileDraftUnjudged.descriptor; override fun \
+                 JsonElement = JsonObject(mapOf(\"kind\" to \
+                 element.jsonObject.getValue(\"kind\")) + element.jsonObject) }} \
+                 @ConsistentCopyVisibility @Serializable(with = TaggedMobileSerializer::class) \
+                 data class TaggedMobile private constructor(val draft: TaggedMobileDraft) {{ val \
+                 name: String get() = draft.name; fun validationIssues(): List<String> = \
+                 draft.validationIssues(); fun kotlinSchemaChecked(): TaggedMobileDraft = draft; \
+                 companion object {{ internal fun checked(draft: TaggedMobileDraft): TaggedMobile \
+                 = TaggedMobile(draft); internal fun kotlinSchemaUnjudged(own: \
+                 KSerializer<TaggedMobile>): KSerializer<TaggedMobile> = TaggedMobileUnjudged; \
+                 fun of(name: String): TaggedMobile = TaggedMobileDraft(name = name).validate() \
+                 }} }} @OptIn(ExperimentalSerializationApi::class) private object \
+                 TaggedMobileUnjudged : KSerializer<TaggedMobile> {{ override val descriptor: \
+                 SerialDescriptor = TaggedMobileDraftUnjudged.descriptor; override fun \
                  serialize(encoder: Encoder, value: TaggedMobile) = \
                  TaggedMobileDraftUnjudged.serialize(encoder, value.draft); override fun \
                  deserialize(decoder: Decoder): TaggedMobile = TaggedMobile.checked(try {{ \
                  TaggedMobileDraftUnjudged.deserialize(decoder) }} catch (refused: \
                  SerializationException) {{ val named = \
                  TaggedMobileDraftUnjudged.descriptor.serialName; val said = \
-                 refused.message.orEmpty(); if (\"'\" + named + \"'\" !in said) throw refused; val \
-                 declared = named.removeSuffix(\"Draft\"); throw if (refused is \
+                 refused.message.orEmpty(); if (\"'\" + named + \"'\" !in said) throw refused; \
+                 val declared = named.removeSuffix(\"Draft\"); throw if (refused is \
                  MissingFieldException) MissingFieldException(refused.missingFields, declared) \
                  else SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared \
                  + \"'\"), refused.cause) }}) }} object TaggedMobileSerializer : \
-                 KSerializer<TaggedMobile>, () -> KSerializer<TaggedMobile> {{ override fun \
+                 KSerializer<TaggedMobile>, () -> KSerializer<TaggedMobile> {{ {THROWN}override fun \
                  invoke(): KSerializer<TaggedMobile> = TaggedMobileUnjudged; override val \
                  descriptor: SerialDescriptor = TaggedMobileUnjudged.descriptor; override fun \
                  serialize(encoder: Encoder, value: TaggedMobile) = \
-                 TaggedMobileUnjudged.serialize(encoder, value); override fun deserialize(decoder: \
-                 Decoder): TaggedMobile {{ val read = TaggedMobileUnjudged.deserialize(decoder); \
-                 val violations = read.validationIssues(); if (violations.isNotEmpty()) throw \
-                 SerializationException(violations.joinToString(\"; \"), \
-                 IllegalArgumentException(\"validate()\")); return read }} }}"
+                 TaggedMobileUnjudged.serialize(encoder, value); override fun \
+                 deserialize(decoder: Decoder): TaggedMobile {{ val read = \
+                 TaggedMobileUnjudged.deserialize(decoder); val violations = \
+                 read.validationIssues(); if (violations.isNotEmpty()) throw \
+                 kotlinSchemaThrown(decoder, TaggedMobileRefusal(violations)); return read }} }}"
             )
         );
     }

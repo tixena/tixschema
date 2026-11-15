@@ -13,6 +13,11 @@ mod tests;
 #[path = "support/kotlin_pathed.rs"]
 mod kotlin_pathed;
 
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[path = "support/kotlin_thrown.rs"]
+mod kotlin_thrown;
+
 /// The serializer the emitter writes for a plain enum.
 #[cfg(test)]
 #[cfg(feature = "kotlin")]

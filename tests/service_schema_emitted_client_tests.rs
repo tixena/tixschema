@@ -136,6 +136,30 @@ mod run_dart_sealed_brands;
 #[path = "service_schema_emitted_client_tests/run_dart_valid_types.rs"]
 mod run_dart_valid_types;
 
+/// The `of` factory of a valid Dart type.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_of.rs"]
+mod run_dart_of;
+
+/// The models the refusal class of each Dart, Swift and Kotlin type is held to.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/refusal_class_models.rs"]
+mod refusal_class_models;
+
+/// The refusal class each Dart type declares in its own text.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_refusal_classes.rs"]
+mod run_dart_refusal_classes;
+
+/// The constants of a valid Dart enum and the `toValid()` of a draft with no rule.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_valid_constants.rs"]
+mod run_dart_valid_constants;
+
 /// The read of each emitted Dart type, which refuses what its `validate()` refuses.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_read.rs"]
@@ -339,6 +363,23 @@ mod run_swift_sealed_brands;
 #[path = "service_schema_emitted_client_tests/run_swift_valid_types.rs"]
 mod run_swift_valid_types;
 
+/// The `of` function of a valid Swift type.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_of.rs"]
+mod run_swift_of;
+
+/// The refusal struct each Swift type declares in its own text.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_refusal_classes.rs"]
+mod run_swift_refusal_classes;
+
+/// The constants of a valid Swift enum and the `valid` of a draft with no rule.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_valid_constants.rs"]
+mod run_swift_valid_constants;
+
 /// The models a map under a key Swift holds as its text is written on.
 #[cfg(all(test, feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys_models.rs"]
@@ -449,9 +490,21 @@ mod run_swift_fitted_parameters;
 mod run_swift_float_reads;
 
 /// The models a number written with a fraction or an exponent is read on for an integer.
-#[cfg(all(test, feature = "swift"))]
+#[cfg(all(test, any(feature = "dart", feature = "swift")))]
 #[path = "service_schema_emitted_client_tests/integral_float_models.rs"]
 mod integral_float_models;
+
+/// The text the Dart emitter reads an integer with.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "support/dart_integer_read.rs"]
+mod dart_integer_read;
+
+/// A number written with a fraction or an exponent, refused for an integer by the emitted Dart
+/// types where serde refuses it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_dart_integral_floats.rs"]
+mod run_dart_integral_floats;
 
 /// A number written with a fraction or an exponent, refused for an integer by the emitted Swift
 /// types where serde refuses it.
@@ -502,6 +555,12 @@ mod run_dart_lone_slots;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_lone_slots.rs"]
 mod run_kotlin_lone_slots;
+
+/// A generic enum's tuple variants and a nested tuple that reach its parameter, read and written by
+/// the emitted Kotlin types.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_generic_tuples.rs"]
+mod run_kotlin_generic_tuples;
 
 /// The same, read by the generated Zod schema under node.
 #[cfg(test)]
@@ -805,6 +864,12 @@ mod run_dart_dates;
 #[path = "service_schema_emitted_client_tests/run_kotlin_dates.rs"]
 mod run_kotlin_dates;
 
+/// A `DateTime<Utc>` and a `DateTime<FixedOffset>` written by the emitted Kotlin types as chrono
+/// writes them.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_offset_instants.rs"]
+mod run_kotlin_offset_instants;
+
 /// A date read and written back by the emitted Swift types against serde, in every position.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_swift_dates.rs"]
@@ -847,6 +912,24 @@ mod run_kotlin_sealed_brands;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_valid_types.rs"]
 mod run_kotlin_valid_types;
+
+/// The `of` function of a valid Kotlin type.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_of.rs"]
+mod run_kotlin_of;
+
+/// The refusal class each Kotlin type declares in its own text.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_refusal_classes.rs"]
+mod run_kotlin_refusal_classes;
+
+/// The constants of a valid Kotlin enum and the `toValid()` of a draft with no rule.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_valid_constants.rs"]
+mod run_kotlin_valid_constants;
 
 /// A map flattened as the one member of its struct, optional or not and keyed by a plain enum, a
 /// flattened struct beside a member of its own, an optional member beside a flattened one with its
@@ -1187,6 +1270,11 @@ mod run_dart_integer_limits;
 #[path = "service_schema_emitted_client_tests/run_swift_integer_limits.rs"]
 mod run_swift_integer_limits;
 
+/// A float quoted back by the Swift `validate()`, written as Rust writes it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_swift_float_text.rs"]
+mod run_swift_float_text;
+
 /// The limits, held by the emitted Kotlin types.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_integer_limits.rs"]
@@ -1340,6 +1428,21 @@ mod run_swift_flattened_options;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_flattened_options.rs"]
 mod run_dart_flattened_options;
+
+/// The holders `run_late_flattened.rs` runs, each with the types it flattens declared above it,
+/// below it and in another crate.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/late_flattened_models.rs"]
+mod late_flattened_models;
+
+/// A flattened struct and externally tagged enum, and an `Option` of each, read and written back
+/// by the emitted Dart and Swift types alike whether their types are declared above their holder,
+/// below it or in another crate.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "swift"))]
+#[path = "service_schema_emitted_client_tests/run_late_flattened.rs"]
+mod run_late_flattened;
 
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
@@ -1636,6 +1739,18 @@ mod run_kotlin_plain_enum_reads;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_check_order.rs"]
 mod run_kotlin_check_order;
+
+/// A holder that reads each model it holds unjudged, whatever the order the model is declared in,
+/// and in whatever crate.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_kotlin_held_models.rs"]
+mod run_kotlin_held_models;
+
+/// A holder that judges what fills a type parameter of a generic model it holds, in Dart, Kotlin
+/// and Swift as in Rust.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_parameter_holders.rs"]
+mod run_parameter_holders;
 
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.

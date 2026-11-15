@@ -11,7 +11,7 @@ use core::fmt::Write as _;
 
 #[cfg(feature = "mongodb")]
 use super::object_id_runs::readme_object_id;
-use super::runtime::ran_kotlin;
+use super::runtime::{held_through, ran_kotlin};
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -270,22 +270,34 @@ fn a_slot_beside_the_tag_is_read_and_written_by_kotlin_as_serde_and_zod_read_it(
 #[test]
 fn the_kotlin_text_reads_and_writes_the_slot_beside_the_tag() {
     let docketed = docketed_kotlin::kotlin_definition();
+    let tonnage = held_through(&docketed, "Tonnage");
+    let paletted = held_through(&docketed, "Palleted");
     for held in [
-        "@SerialName(\"Weighed\") @Serializable data class DocketedWeighed(@Serializable(with = \
-         TonnageUnjudged::class) val value: Tonnage) : DocketedDraft {",
-        "is DocketedWeighed -> buildJsonObject { put(\"kind\", \"Weighed\"); \
-         output.json.encodeToJsonElement(TonnageUnjudged, value.value).jsonObject.forEach { (k, \
-         v) -> put(k, v) } }",
-        "\"Weighed\" -> DocketedWeighed(kotlinSchemaDecoded(input.json, TonnageUnjudged, \
-         JsonObject(obj - \"kind\"), \"Weighed\", \"\"))",
-        "is DocketedExternal -> buildJsonObject { put(\"kind\", \"External\"); when (val written \
-         = output.json.encodeToJsonElement(PalletedUnjudged, value.value)) { is JsonPrimitive -> \
-         put(written.content, JsonNull); else -> written.jsonObject.forEach { (k, v) -> put(k, \
-         v) } } }",
-        "\"Trimmed\" -> DocketedTrimmed(kotlinSchemaDecoded(input.json, TonnageUnjudged, \
-         lightened(JsonObject(obj - \"kind\")), \"Trimmed\", \"\"))",
+        format!(
+            "@SerialName(\"Weighed\") @Serializable data class DocketedWeighed(@Serializable(with \
+             = {tonnage}::class) val value: Tonnage) : DocketedDraft {{"
+        ),
+        format!(
+            "is DocketedWeighed -> buildJsonObject {{ put(\"kind\", \"Weighed\"); \
+             output.json.encodeToJsonElement({tonnage}, value.value).jsonObject.forEach {{ (k, \
+             v) -> put(k, v) }} }}"
+        ),
+        format!(
+            "\"Weighed\" -> DocketedWeighed(kotlinSchemaDecoded(input.json, {tonnage}, \
+             JsonObject(obj - \"kind\"), \"Weighed\", \"\"))"
+        ),
+        format!(
+            "is DocketedExternal -> buildJsonObject {{ put(\"kind\", \"External\"); when (val \
+             written = output.json.encodeToJsonElement({paletted}, value.value)) {{ is \
+             JsonPrimitive -> put(written.content, JsonNull); else -> \
+             written.jsonObject.forEach {{ (k, v) -> put(k, v) }} }} }}"
+        ),
+        format!(
+            "\"Trimmed\" -> DocketedTrimmed(kotlinSchemaDecoded(input.json, {tonnage}, \
+             lightened(JsonObject(obj - \"kind\")), \"Trimmed\", \"\"))"
+        ),
     ] {
-        assert!(docketed.contains(held), "no `{held}` in: {docketed}");
+        assert!(docketed.contains(&held), "no `{held}` in: {docketed}");
     }
     assert!(
         !docketed.contains("\"value\" ->"),

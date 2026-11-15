@@ -526,8 +526,9 @@ fn minted_fn(named: &str, prefix: &str, suffix: &str, kind: &str) -> String {
 }
 
 fn fault_of_fn(named: &str, prefix: &str) -> String {
-    let members = "      detail,\n      field,\n      kind: kind as __N__FaultKind,\n      operation,\n      \
-                   ...(listed === undefined ? {} : { issues: listed }),"
+    let members = "      detail: failed ? undefined : said,\n      field: undefined,\n      \
+                   ...(failed ? { issues: listed ?? [] } : {}),\n      \
+                   kind: kind as __N__FaultKind,\n      operation,"
         .replace("__N__", named);
     format!(
         "/** The problems a fault lists, `undefined` where one of them is no problem. */\n\
@@ -547,8 +548,10 @@ fn fault_of_fn(named: &str, prefix: &str) -> String {
          function {prefix}FaultOf(value: unknown): {named}Fault | undefined {{\n  \
          const held = {prefix}Object(value);\n  \
          if (held === undefined) return undefined;\n  \
-         const {{ detail, field, issues, kind, operation }} = held;\n  \
-         const listed = issues === undefined ? undefined : {prefix}IssuesOf(issues);\n  \
+         const {{ detail, issues, kind, operation }} = held;\n  \
+         const failed = kind === \"failed-validation\";\n  \
+         const said = typeof detail === \"string\" ? detail : undefined;\n  \
+         const listed = failed ? {prefix}IssuesOf(issues) : undefined;\n  \
          const kinds: ReadonlyArray<unknown> = [\n    \
          \"failed-validation\",\n    \
          \"handler-panic\",\n    \
@@ -557,9 +560,7 @@ fn fault_of_fn(named: &str, prefix: &str) -> String {
          \"unknown-operation\",\n  \
          ];\n  \
          if (\n    \
-         typeof detail === \"string\" &&\n    \
-         (field === undefined || typeof field === \"string\") &&\n    \
-         (issues === undefined || listed !== undefined) &&\n    \
+         (failed ? listed !== undefined : said !== undefined) &&\n    \
          typeof kind === \"string\" &&\n    \
          kinds.includes(kind) &&\n    \
          typeof operation === \"string\"\n  \
@@ -588,10 +589,11 @@ fn refused_fn(named: &str, prefix: &str) -> String {
     format!(
         "function {prefix}Refused(fault: {named}Fault): {named}McpRefusal {{\n  \
          return Object.assign(\n    \
-         new Error(`${{fault.kind}} in operation \\`${{fault.operation}}\\`: ${{fault.detail}}`),\n    \
+         new Error(`${{fault.kind}} in operation \\`${{fault.operation}}\\`: ${{{said}}}`),\n    \
          {{ fault }},\n  \
          );\n\
-         }}"
+         }}",
+        said = fault::said("fault")
     )
 }
 

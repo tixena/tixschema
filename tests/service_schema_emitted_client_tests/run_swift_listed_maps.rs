@@ -21,7 +21,7 @@ use serde_json::Value;
 use super::listed_maps_models::{
     AdjacentGalleyDraft, AdjacentStowedGalleyDraft, AtticDraft, CaddyDraft, CellarDraft, Creel,
     CupboardDraft, DresserDraft, GalleyDraft, Hopper, LarderDraft, Pantry, PantryDraft, Rung,
-    RungDraft, SideboardDraft, StowedAtticDraft, StowedCaddyDraft, StowedCellarDraft, StowedCreel,
+    SideboardDraft, StowedAtticDraft, StowedCaddyDraft, StowedCellarDraft, StowedCreel,
     StowedCupboardDraft, StowedDresserDraft, StowedGalleyDraft, StowedLarderDraft, StowedPantry,
     StowedPantryDraft, StowedSideboardDraft, TaggedGalleyDraft, TaggedStowedGalleyDraft, Trug,
     UntaggedGalleyDraft, UntaggedStowedGalleyDraft, adjacent_galley_swift,
@@ -211,10 +211,7 @@ fn rungs<Held>(held: &Held) -> HashMap<Rung, Held>
 where
     Held: Clone,
 {
-    HashMap::from([
-        (RungDraft::Low.validate().unwrap(), held.clone()),
-        (RungDraft::High.validate().unwrap(), held.clone()),
-    ])
+    HashMap::from([(Rung::Low, held.clone()), (Rung::High, held.clone())])
 }
 
 /// The text `a`.
@@ -240,8 +237,7 @@ fn pantry(present: bool) -> Pantry {
         rung_lists_or_none: vec![Some(rungs(&text())), None],
         verbatim_lists: vec![numbered(&text())],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// [`StowedPantry`] holding each shape, or none of the optionals.
@@ -262,8 +258,7 @@ fn stowed_pantry(present: bool) -> StowedPantry<String> {
         rung_lists_or_none: vec![None],
         verbatim_lists: vec![numbered(&text())],
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The JSON serde writes for `held`, without the key `defaulted`.
@@ -395,8 +390,8 @@ fn holder_rows() -> Vec<Row> {
                     ("n".to_owned(), None),
                 ]),
                 maybe_rungs_by_rung: HashMap::from([
-                    (RungDraft::Low.validate().unwrap(), Some(rungs(&text()))),
-                    (RungDraft::High.validate().unwrap(), None),
+                    (Rung::Low, Some(rungs(&text()))),
+                    (Rung::High, None),
                 ]),
                 number_lists_by_name: HashMap::from([("n".to_owned(), vec![numbered(&text())])]),
                 rung_lists_or_none_by_name: HashMap::from([(
@@ -412,8 +407,8 @@ fn holder_rows() -> Vec<Row> {
                 flag_lists_by_number: numbered(&vec![flagged(&text())]),
                 maybe_number_lists_by_name: HashMap::from([("n".to_owned(), None)]),
                 maybe_rungs_by_rung: HashMap::from([
-                    (RungDraft::Low.validate().unwrap(), Some(rungs(&text()))),
-                    (RungDraft::High.validate().unwrap(), None),
+                    (Rung::Low, Some(rungs(&text()))),
+                    (Rung::High, None),
                 ]),
                 number_lists_by_name: HashMap::new(),
                 rung_lists_or_none_by_name: HashMap::from([("r".to_owned(), vec![None])]),

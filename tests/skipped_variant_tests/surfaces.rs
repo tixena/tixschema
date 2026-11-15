@@ -33,6 +33,10 @@ export type BerthageDraft = {
 
 export type Berthage = Readonly<BerthageDraft> & $brand<"Berthage">;
 
+export function BerthageDraft$valid(draft: BerthageDraft): Berthage {
+  return draft as unknown as Berthage;
+}
+
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Berthage$Variant(value: unknown): string {
   if (typeof value !== "object" || value === null) return "";

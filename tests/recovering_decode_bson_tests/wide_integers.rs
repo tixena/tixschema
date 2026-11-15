@@ -58,8 +58,7 @@ fn row() -> WideRow {
         paired: (9, "x".to_owned()),
         total: -(1_i64 << 60_i32),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// What the row is stored as.

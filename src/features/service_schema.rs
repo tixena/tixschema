@@ -491,6 +491,40 @@ fn left_to_http_rest(
     ))
 }
 
+/// The refusal classes the Dart, Swift and Kotlin surfaces of `service` read the list of broken
+/// rules off: that of each message the macro declares, named by `message` from the message's
+/// ident, and those `named` answers of each message an operation names and of each success and
+/// declared error, in the order the operations are declared, each once.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+fn read_refusals(
+    service: &ServiceDef,
+    message: &dyn Fn(&proc_macro2::Ident) -> String,
+    named: &dyn Fn(&syn::Type) -> Vec<String>,
+) -> Vec<String> {
+    use crate::service_schema::parse::{OperationInputs, OperationOutcome};
+    let mut found: Vec<String> = Vec::new();
+    for operation in &service.operations {
+        let mut listed = match &operation.inputs {
+            OperationInputs::Named(declared) => named(declared),
+            OperationInputs::Empty | OperationInputs::Generated(_) => operation
+                .generated_message_ident()
+                .map(|ident| message(&ident))
+                .into_iter()
+                .collect(),
+        };
+        if let OperationOutcome::Reply { error, success } = &operation.outcome {
+            listed.extend(named(success));
+            listed.extend(named(error));
+        }
+        for refusal in listed {
+            if !found.contains(&refusal) {
+                found.push(refusal);
+            }
+        }
+    }
+    found
+}
+
 /// The type of each value `operation` writes as text, where the macro sees it: a path
 /// placeholder's (a generated field's, or the whole message bound to the one placeholder), each
 /// field a query or a text part carries, and each `header_in`'s. A field of a named message, whose

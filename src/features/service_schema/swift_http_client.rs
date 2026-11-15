@@ -14,7 +14,7 @@ use crate::service_schema::parse::{
     service_declares_a_stream, service_declares_multipart, tuple_elements, vec_inner, wire_key,
     written,
 };
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use crate::utils::{WireScalarKind, wire_scalar_kind};
 use core::fmt::Write as _;
 use syn::{Ident, Type};
@@ -1430,13 +1430,14 @@ fn legal_header_value_fn(fn_prefix: &str) -> String {
 fn outbound_fault_fn(named: &str, fn_prefix: &str) -> String {
     let fields = fault_fields_typescript_name(named);
     let kind = format!("{named}FaultKind");
+    let issue = fault_issue_name(named);
     format!(
         "/// The fault a `{named}` HTTP client answers with when a `header_in` value fails its\n\
          /// own safety check or a path list holds a comma, before the transport is ever reached.\n\
          func {fn_prefix}HttpOutboundFault(_ operation: String, _ field: String, _ detail: \
          String) -> {fields} {{\n  \
-         {fields}(detail: detail, field: field, issues: nil, kind: {kind}.failedValidation, operation: \
-         operation)\n\
+         {fields}(detail: nil, field: nil, issues: [{issue}(detail: detail, field: field)], kind: \
+         {kind}.failedValidation, operation: operation)\n\
          }}"
     )
 }

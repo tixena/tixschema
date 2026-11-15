@@ -1,4 +1,4 @@
-//! A check a member names takes the draft of a member typed with a model, whether the member's
+//! A check a member names takes the draft of a member typed with a model that has one, whether the member's
 //! type is declared below the holder, above it or in another crate: the emitted Kotlin is
 //! compiled with `-Werror` and run.
 
@@ -72,8 +72,8 @@ mod below {
     }
 
     pub fn built() -> bool {
-        let rating = ZedBelowDraft::B.validate().unwrap();
-        let other = ZedBagBelowDraft { count: 1 }.validate().unwrap();
+        let rating = ZedBelow::B;
+        let other = ZedBagBelowDraft { count: 1 }.into();
         HolderBelowDraft {
             other,
             rating,
@@ -156,8 +156,8 @@ mod above {
     }
 
     pub fn built() -> bool {
-        let rating = ZedAboveDraft::B.validate().unwrap();
-        let other = ZedBagAboveDraft { count: 1 }.validate().unwrap();
+        let rating = ZedAbove::B;
+        let other = ZedBagAboveDraft { count: 1 }.into();
         HolderAboveDraft {
             other,
             rating,
@@ -173,9 +173,7 @@ mod above {
 }
 
 mod apart {
-    use kotlin_members_apart::{
-        ServedApart, TagApart, ZedApart, ZedApartDraft, ZedBagApart, ZedBagApartDraft,
-    };
+    use kotlin_members_apart::{ServedApart, TagApart, ZedApart, ZedBagApart, ZedBagApartDraft};
 
     use super::{
         Debug, Deserialize, Serialize, from_str, model_schema, served_apart_kotlin,
@@ -223,8 +221,8 @@ mod apart {
     }
 
     pub fn built() -> bool {
-        let rating = ZedApartDraft::B.validate().unwrap();
-        let other = ZedBagApartDraft { count: 1 }.validate().unwrap();
+        let rating = ZedApart::B;
+        let other = ZedBagApartDraft { count: 1 }.into();
         HolderApartDraft {
             other,
             rating,
@@ -284,7 +282,7 @@ fn compiled_and_run(definitions: &[String], suffix: &str) {
 fn checks(suffix: &str) -> String {
     format!(
         r#"
-fun ok(value: Zed{suffix}Draft): List<String> = listOf("rating is ${{value.name}}")
+fun ok(value: Zed{suffix}): List<String> = listOf("rating is ${{value.name}}")
 fun ok(value: ZedBag{suffix}Draft): List<String> = listOf("other is ${{value.count}}")
 fun ok(value: Tag{suffix}): List<String> = listOf("tag is ${{value.value}}")
 fun ok(value: Served{suffix}): List<String> = listOf("served is ${{value.note}}")

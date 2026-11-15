@@ -167,16 +167,14 @@ impl LedgerBackEnd {
                 id: "tx-1".to_owned(),
                 memo: "seed one".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             TransactionDraft {
                 account_id: "acc-1".to_owned(),
                 amount_cents: 1_200,
                 id: "tx-2".to_owned(),
                 memo: "seed two".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ];
         let key = ("u-1".to_owned(), "acc-1".to_owned());
         Self {
@@ -212,8 +210,7 @@ impl Ledger<Session> for LedgerBackEnd {
                 TransactionPostedDraft {
                     transaction: transaction.clone(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             )
             .await;
         Ok(transaction)
@@ -226,8 +223,8 @@ impl Ledger<Session> for LedgerBackEnd {
     ) -> impl Future<Output = Result<TransactionList, ListError>> {
         let outcome = self
             .transactions(&ctx.user_id, &req.account_id)
-            .ok_or_else(|| ListErrorDraft::AccountNotFound.validate().unwrap())
-            .map(|items| TransactionListDraft { items }.validate().unwrap());
+            .ok_or(ListError::AccountNotFound)
+            .map(|items| TransactionListDraft { items }.into());
         ready(outcome)
     }
 
@@ -382,8 +379,7 @@ async fn list_transactions_answers_the_seeded_list_and_a_created_transaction_rea
             ListTransactionsRequestDraft {
                 account_id: "acc-1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
         .await
         .unwrap();
@@ -396,8 +392,7 @@ async fn list_transactions_answers_the_seeded_list_and_a_created_transaction_rea
                 amount_cents: 1_250,
                 memo: "coffee".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
         .await
         .unwrap();
@@ -418,8 +413,7 @@ async fn mark_seen_is_one_way_and_the_store_records_it() {
             MarkSeenDraft {
                 transaction_id: "tx-1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
         .await
         .unwrap();
@@ -430,8 +424,7 @@ async fn mark_seen_is_one_way_and_the_store_records_it() {
             ListTransactionsRequestDraft {
                 account_id: "acc-1".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
         .await
         .unwrap();
@@ -452,8 +445,7 @@ async fn create_transaction_for_an_unknown_account_answers_the_declared_error() 
                 amount_cents: 100,
                 memo: "n/a".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
         .await;
     assert!(
@@ -539,8 +531,7 @@ async fn dropping_the_server_settles_a_waiting_call_with_a_transport_failure_fau
                 ListTransactionsRequestDraft {
                     account_id: "acc-1".to_owned(),
                 }
-                .validate()
-                .unwrap(),
+                .into(),
             )
             .await
     });
@@ -702,10 +693,9 @@ fn created(id: u64, req: &CreateTransactionRequest) -> Transaction {
         id: format!("tx-{id}"),
         memo: req.memo.clone(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn account_not_found() -> CreateError {
-    CreateErrorDraft::AccountNotFound.validate().unwrap()
+    CreateError::AccountNotFound
 }

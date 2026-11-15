@@ -20,5 +20,10 @@ mod rust;
 
 #[cfg(test)]
 #[cfg(feature = "dart")]
+#[path = "support/dart_integer_read.rs"]
+mod dart_integer_read;
+
+#[cfg(test)]
+#[cfg(feature = "dart")]
 #[path = "bytes_tests/dart.rs"]
 mod dart;

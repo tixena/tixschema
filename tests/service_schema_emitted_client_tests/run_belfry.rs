@@ -110,7 +110,7 @@ const strayReply = { strokes: 1, stray: 1 };
 function told(answered) {
   if (answered.ok) return { read: answered.value };
   if (!answered.error.isServiceFault) return { declared: answered.error };
-  return { kind: answered.error.fault.kind, field: answered.error.fault.field ?? null };
+  return { kind: answered.error.fault.kind, field: answered.error.fault.issues?.[0]?.field ?? null };
 }
 
 async function calls(client) {
@@ -282,10 +282,13 @@ fn assert_answered_as_rust(reply: &Value, rung: &Value, (operation, payload): (&
             "{operation} {payload}: {reply}"
         );
         assert_eq!(
-            fault["field"], rust_fault["field"],
+            fault["issues"][0]["field"], rust_fault["issues"][0]["field"],
             "{operation} {payload}: {reply}"
         );
-        assert!(fault["field"].is_string(), "{operation} {payload}: {reply}");
+        assert!(
+            fault["issues"][0]["field"].is_string(),
+            "{operation} {payload}: {reply}"
+        );
     }
 }
 
@@ -386,7 +389,7 @@ fn the_typescript_dispatchers_read_each_message_and_name_the_field_they_refuse()
                 "http {operation} {payload}: {served}"
             );
             assert_eq!(
-                served["body"]["field"], body["field"],
+                served["body"]["issues"][0]["field"], body["issues"][0]["field"],
                 "http {operation} {payload}: {served}"
             );
         }
@@ -418,7 +421,7 @@ fn the_typescript_clients_name_a_key_no_member_declares() {
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
     let refused = |operation: &str, payload: &str| {
         let (answered, _) = over_ws(operation, payload);
-        json!({ "kind": "failed-validation", "field": answered["error"]["fault"]["field"] })
+        json!({ "kind": "failed-validation", "field": answered["error"]["fault"]["issues"][0]["field"] })
     };
     let expected = json!([
         { "read": { "strokes": 1_u8 } },

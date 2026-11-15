@@ -19,8 +19,8 @@ use serde::de::DeserializeOwned;
 use super::run_swift_read::normalized;
 use super::runtime::judged;
 use super::wrapped_keys_models::{
-    AdjacentConvoyDraft, AdjacentSquadronDraft, ArmadaDraft, BerthingDraft, Burgee, Callsign,
-    Cleat, CleatDraft, ConvoyDraft, DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal,
+    AdjacentConvoyDraft, AdjacentSquadronDraft, ArmadaDraft, Berthing, Burgee, Callsign, Cleat,
+    CleatDraft, ConvoyDraft, DockageDraft, Hull, Lanyard, Logroll, Logroster, Signal,
     SquadronDraft, StowedTaskforceDraft, TaggedConvoyDraft, TaggedSquadronDraft, Taskforce,
     TaskforceDraft, Unhashed, UntaggedConvoyDraft, UntaggedSquadronDraft, adjacent_convoy_swift,
     adjacent_squadron_swift, armada_swift, berthing_swift, burgee_swift, callsign_swift,
@@ -41,12 +41,20 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// What a run reads a payload with, and prints the answer with: the value written back, or each
 /// message of a refusal.
 const HARNESS: &str = r#"
+func issuesOf(_ refused: Error) -> [String]? {
+  Mirror(reflecting: refused).children.first { $0.label == "issues" }?.value as? [String]
+}
+
 func row<Read: Codable>(_ name: String, _ type: Read.Type, _ payload: String) {
   do {
     let held = try JSONDecoder().decode(type, from: Data(payload.utf8))
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     print("\(name): read \(String(data: try encoder.encode(held), encoding: .utf8)!)")
+  } catch let refused where issuesOf(refused) != nil {
+    let issues = issuesOf(refused)!
+    print("\(name): refused")
+    for line in issues { print("    \(line)") }
   } catch DecodingError.dataCorrupted(let context) {
     print("\(name): refused")
     for line in context.debugDescription.components(separatedBy: "; ") { print("    \(line)") }
@@ -143,11 +151,7 @@ where
 /// [`Taskforce`] with every map holding entries.
 fn taskforce() -> Taskforce {
     TaskforceDraft {
-        berthing: under(
-            BerthingDraft::Port.validate().unwrap(),
-            BerthingDraft::Starboard.validate().unwrap(),
-            &1,
-        ),
+        berthing: under(Berthing::Port, Berthing::Starboard, &1),
         callsign: callsigns(&1),
         hailer: under(
             Callsign::new("charlie".to_owned()).unwrap(),
@@ -164,8 +168,7 @@ fn taskforce() -> Taskforce {
         burgee: under(Burgee::new(5_u32).unwrap(), Burgee::new(6_u32).unwrap(), &6),
         signal: under(Signal::new(true).unwrap(), Signal::new(false).unwrap(), &7),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// [`Taskforce`] with every map empty.
@@ -180,8 +183,7 @@ fn empty_taskforce() -> Taskforce {
         burgee: HashMap::new(),
         signal: HashMap::new(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// The payloads of each struct, brand and list or optional of maps.

@@ -108,7 +108,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     let open = || "n".to_owned();
     assert_eq!(
         read::<Stevedorage>(r#"{"Open":{"note":"n"}}"#),
-        Ok(StevedorageDraft::Open { note: open() }.validate().unwrap()),
+        Ok(StevedorageDraft::Open { note: open() }.into()),
         "Stevedorage"
     );
     assert_eq!(
@@ -118,7 +118,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert_eq!(
         read::<Wharfinger>(r#"{"Open":{"note":"n"}}"#),
-        Ok(WharfingerDraft::Open { note: open() }.validate().unwrap()),
+        Ok(WharfingerDraft::Open { note: open() }.into()),
         "Wharfinger"
     );
     assert_eq!(
@@ -128,7 +128,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert_eq!(
         read::<Ballastage>(r#"{"kind":"Open","note":"n"}"#),
-        Ok(BallastageDraft::Open { note: open() }.validate().unwrap()),
+        Ok(BallastageDraft::Open { note: open() }.into()),
         "Ballastage"
     );
     assert_eq!(
@@ -138,7 +138,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert_eq!(
         read::<Tallyman>(r#"{"kind":"Open","body":{"note":"n"}}"#),
-        Ok(TallymanDraft::Open { note: open() }.validate().unwrap()),
+        Ok(TallymanDraft::Open { note: open() }.into()),
         "Tallyman"
     );
     assert_eq!(
@@ -148,7 +148,7 @@ fn a_variant_serde_never_reads_is_refused_as_serdes_derive_refuses_it() {
     );
     assert_eq!(
         read::<Lockage>(r#"{"note":"n"}"#),
-        Ok(LockageDraft::Open { note: open() }.validate().unwrap()),
+        Ok(LockageDraft::Open { note: open() }.into()),
         "Lockage"
     );
     assert_eq!(
@@ -221,8 +221,7 @@ fn a_variant_serde_neither_writes_nor_reads_is_not_written() {
                 cache: ChandleryDraft {
                     note: "n".to_owned()
                 }
-                .validate()
-                .unwrap()
+                .into()
             }
             .validate()
             .unwrap()

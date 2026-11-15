@@ -2318,15 +2318,7 @@ fn a_bson_walker_with_no_field_to_walk_leaves_the_issue_list_unbound() {
 }
 
 #[test]
-fn a_generated_named_hook_is_read_past_and_an_authors_hook_is_read_through() {
-    let generated = fields_walk_of(
-        "pub struct Holder { \
-         #[serde(deserialize_with = \"holder_schema::deserialize_named_inner\")] pub inner: Inner }",
-    );
-    assert!(
-        generated.contains("< Inner > :: decode_with_value_issues (held ,"),
-        "got: {generated}"
-    );
+fn an_authors_hook_is_read_through() {
     let authored = fields_walk_of(
         "pub struct Holder { #[serde(deserialize_with = \"lenient\")] pub inner: Inner }",
     );
@@ -2903,10 +2895,6 @@ fn a_transparent_struct_with_a_named_field_is_walked_as_a_single_slot_struct_is(
         (
             "{ #[serde(with = \"as_text\")] pub inner: Vec<Inner> }",
             "(#[serde(with = \"as_text\")] pub Vec<Inner>);",
-        ),
-        (
-            "{ #[serde(deserialize_with = \"code_schema::deserialize_named_inner\")] pub inner: Inner }",
-            "(pub Inner);",
         ),
     ] {
         assert_eq!(
@@ -6738,4 +6726,24 @@ fn two_values_that_read_as_one_under_a_digit_led_tag_key_are_refused_by_the_name
             "Second".to_owned()
         )]
     );
+}
+
+/// What holds a value to the bound its field declares answers one issue for each violation, with
+/// the reason of that violation alone, in a JSON read and in a BSON one.
+#[test]
+fn a_bound_lists_one_issue_for_each_violation() {
+    let written = [
+        super::bound_items().to_string(),
+        #[cfg(feature = "bson")]
+        super::bson_bound_items().to_string(),
+    ];
+    for items in written {
+        assert!(
+            items.contains(
+                "violations . into_iter () . map (| reason | issue (\"Invalid\" , path . clone () ,"
+            ),
+            "got: {items}"
+        );
+        assert!(!items.contains("join"), "got: {items}");
+    }
 }

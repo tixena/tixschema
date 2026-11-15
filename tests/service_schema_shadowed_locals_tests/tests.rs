@@ -73,7 +73,7 @@ impl ShadowService<()> for ShadowBackEnd {
     ) -> Result<ShadowHanded, ShadowFailure> {
         ready(()).await;
         if sending.is_empty() {
-            return Err(ShadowFailureDraft::Empty.validate().unwrap());
+            return Err(ShadowFailure::Empty);
         }
         Ok(ShadowHandedDraft {
             handed: [Some(sending), Some(headers), Some(path), query]
@@ -81,8 +81,7 @@ impl ShadowService<()> for ShadowBackEnd {
                 .flatten()
                 .collect(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn shadow_request(
@@ -96,13 +95,12 @@ impl ShadowService<()> for ShadowBackEnd {
     ) -> Result<ShadowHanded, ShadowFailure> {
         ready(()).await;
         if message.is_empty() {
-            return Err(ShadowFailureDraft::Empty.validate().unwrap());
+            return Err(ShadowFailure::Empty);
         }
         Ok(ShadowHandedDraft {
             handed: vec![message, captured, body, handler, request],
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 

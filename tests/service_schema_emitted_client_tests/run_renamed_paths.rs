@@ -560,8 +560,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn keyed_gen_labelled(
@@ -574,8 +573,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: labels.join("|"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn keyed_gen_list(
@@ -588,8 +586,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: format!("{pages:?}"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn keyed_generated(
@@ -599,7 +596,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         _title: String,
     ) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
-        Ok(KeyedAnswerDraft { id: document_id }.validate().unwrap())
+        Ok(KeyedAnswerDraft { id: document_id }.into())
     }
 
     async fn labelled(&self, _ctx: &(), req: KeyedLabelled) -> Result<KeyedAnswer, KeyedRefused> {
@@ -607,8 +604,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.labels.join("|"),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn listed(&self, _ctx: &(), req: KeyedListed) -> Result<KeyedAnswer, KeyedRefused> {
@@ -616,8 +612,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: format!("{:?}", req.pages),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn own_key(&self, _ctx: &(), req: KeyedOwn) -> Result<KeyedAnswer, KeyedRefused> {
@@ -625,8 +620,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn paged(&self, _ctx: &(), req: KeyedPaged) -> Result<KeyedAnswer, KeyedRefused> {
@@ -634,8 +628,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.page_size.to_string(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn pinned(&self, _ctx: &(), req: KeyedPinned) -> Result<KeyedAnswer, KeyedRefused> {
@@ -643,8 +636,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.pinned.to_string(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn plain(&self, _ctx: &(), req: KeyedPlain) -> Result<KeyedAnswer, KeyedRefused> {
@@ -652,8 +644,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn quoted_key(&self, _ctx: &(), req: KeyedQuoted) -> Result<KeyedAnswer, KeyedRefused> {
@@ -661,20 +652,18 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn renamed(&self, _ctx: &(), req: KeyedRenamed) -> Result<KeyedAnswer, KeyedRefused> {
         ready(()).await;
         if req.document_id == "refused" {
-            return Err(KeyedRefusedDraft::Nope.validate().unwrap());
+            return Err(KeyedRefused::Nope);
         }
         Ok(KeyedAnswerDraft {
             id: req.document_id.clone(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn tallied(&self, _ctx: &(), req: KeyedTally) -> Result<KeyedAnswer, KeyedRefused> {
@@ -682,8 +671,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: req.tally.to_string(),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn two_placeholders(
@@ -695,8 +683,7 @@ impl KeyedPathClientService<()> for KeyedBackEnd {
         Ok(KeyedAnswerDraft {
             id: format!("{}|{}", req.document_id, req.title),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 }
 
@@ -802,10 +789,15 @@ fn the_rust_dispatcher_reads_each_member_in_the_form_it_publishes() {
         );
     }
     let (status, refused) = rust_answered("PUT", UNREAD.0, "", UNREAD.1);
-    assert_eq!((status, &refused["field"]), (400, &json!("page_size")));
     assert_eq!(
-        refused["detail"],
-        r#"'page_size': invalid type: string "abc", expected u32"#
+        (status, &refused["issues"]),
+        (
+            400,
+            &json!([{
+                "detail": r#"invalid type: string "abc", expected u32"#,
+                "field": "page_size",
+            }])
+        )
     );
 }
 
@@ -907,15 +899,13 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
         ran["refusedSent"], 0_u8,
         "a refused list was sent: {printed}"
     );
+    let comma = json!([{
+        "detail": "a list item holds a comma, which a path would read as two items",
+        "field": "labels",
+    }]);
     for refusal in ran["commaRefusals"].as_array().unwrap() {
         assert_eq!(refusal["ok"], false, "{printed}");
-        let fault = &refusal["error"]["fault"];
-        assert_eq!(fault["field"], "labels", "{printed}");
-        assert_eq!(
-            fault["detail"],
-            "'labels': a list item holds a comma, which a path would read as two items",
-            "{printed}"
-        );
+        assert_eq!(refusal["error"]["fault"]["issues"], comma, "{printed}");
     }
     let answered: Vec<Value> = CARRIED
         .iter()
@@ -939,7 +929,7 @@ fn the_typescript_client_and_dispatcher_carry_the_field_under_its_key() {
     assert_eq!(ran["typed"], Value::Array(typed), "{printed}");
     assert_eq!(ran["unread"]["status"], 400_u16, "{printed}");
     let refused: Value = serde_json::from_str(ran["unread"]["body"].as_str().unwrap()).unwrap();
-    assert_eq!(refused["field"], "page_size", "{printed}");
+    assert_eq!(refused["issues"][0]["field"], "page_size", "{printed}");
 }
 
 #[cfg(feature = "dart")]

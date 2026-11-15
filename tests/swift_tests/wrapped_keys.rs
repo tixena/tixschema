@@ -18,6 +18,17 @@ use super::wrapped_keys_models::{
 #[cfg(feature = "chrono")]
 use super::wrapped_keys_models::{postmark_swift, regatta_swift, stowed_regatta_swift};
 
+/// The broken rules of a key's brand, each placed under the path of the key's entry.
+const KEY_PLACED: &str = concat!(
+    r#"{ () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: "#,
+    r#""swiftSchemaOuter")!] as? [String] ?? []) + (container.codingPath + [codingKey]).map { "#,
+    r#"$0.intValue.map(String.init) ?? $0.stringValue }).joined(separator: "."); return at.isEmpty "#,
+    r#"? violations : violations.map { said in guard said.hasPrefix("'"), let end = "#,
+    r#"said.dropFirst().firstIndex(of: "'") else { return "'\(at)': \(said)" }; return "#,
+    r#""'\(at).\(said[said.index(after: said.startIndex)..<end])'\(said[said.index(after: "#,
+    r#"end)...])" } }()"#,
+);
+
 /// A brand over a string with a check, which a brand with a check holds.
 #[model_schema(check = ["turning"])]
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -232,10 +243,11 @@ fn a_wrapper_judges_the_brand_a_brand_key_holds_and_the_walk_the_key_itself() {
     holds(
         &swift,
         &[
-            "let key = Gaff(value: Sheave(value: wireKey)); do { let violations = \
-             key.value.validate(); if !violations.isEmpty { throw \
-             DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \
-             violations.joined(separator: \"; \")) } }; result[key] = ",
+            &format!(
+                "let key = Gaff(value: Sheave(value: wireKey)); do {{ let violations = \
+                 key.value.validate(); if !violations.isEmpty {{ throw SheaveRefusal(issues: \
+                 {KEY_PLACED}) }} }}; result[key] = "
+            ),
             "errors += key.validate().map { TopmastDraft.swiftSchemaUnder(\"gaffs.\\(key.value.value)\", $0) }",
         ],
     );

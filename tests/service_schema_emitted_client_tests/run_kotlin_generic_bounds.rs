@@ -34,24 +34,30 @@ fun report(name: String, violations: List<String>) {
 
 /// The messages `of` throws for a value that breaks a rule, none for one that keeps them.
 const REFUSED_BY: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 fun refusedBy(build: () -> Any?): List<String> =
     try {
         build()
         emptyList()
     } catch (refused: SerializationException) {
-        refused.message.orEmpty().split("; ")
+        issuesOf(refused)
     }
 "#;
 
 /// What the read of a payload prints: `passes`, or `refused` and each message the read throws.
 const READ: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 inline fun <reified T> read(name: String, payload: String) {
     try {
         Json.decodeFromString<T>(payload)
         println("$name: passes")
     } catch (thrown: SerializationException) {
         println("$name: refused")
-        thrown.message!!.split("; ").forEach { println("    $it") }
+        issuesOf(thrown).forEach { println("    $it") }
     }
 }
 "#;
@@ -274,15 +280,12 @@ fn rows() -> Vec<Row> {
         },
         Row {
             dart: "ShelfDraft<Slot>(by_slot: {'north-dock': Item.fromJsonUnjudged({'label': ''}), 'south-dock': Item.fromJsonUnjudged({'label': 'a'})}).validationIssues()",
-            kotlin: "ShelfDraft<Slot>(mapOf(SlotDraft.NorthDock.validate() to Item.checked(ItemDraft(\"\")), SlotDraft.SouthDock.validate() to Item.checked(ItemDraft(\"a\")))).validationIssues()",
+            kotlin: "ShelfDraft<Slot>(mapOf(Slot.NorthDock to Item.checked(ItemDraft(\"\")), Slot.SouthDock to Item.checked(ItemDraft(\"a\")))).validationIssues()",
             swift: "ShelfDraft<Slot>(bySlot: [\"north-dock\": Item(draft: ItemDraft(label: \"\")), \"south-dock\": Item(draft: ItemDraft(label: \"a\"))]).validationIssues()",
             name: "a map keyed by a plain enum",
-            rust: shelf(vec![
-                (SlotDraft::NorthDock.validate().unwrap(), ""),
-                (SlotDraft::SouthDock.validate().unwrap(), "a"),
-            ])
-            .validate()
-            .map(|_valid| ()),
+            rust: shelf(vec![(Slot::NorthDock, ""), (Slot::SouthDock, "a")])
+                .validate()
+                .map(|_valid| ()),
         },
         Row {
             dart: "ShelfDraft<Berth>(by_slot: {'b1': Item.fromJsonUnjudged({'label': ''})}).validationIssues()",

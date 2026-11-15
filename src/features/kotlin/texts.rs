@@ -18,9 +18,7 @@ use core::fmt::Write as _;
 use std::collections::{HashMap, HashSet};
 
 use super::read::PATHED;
-use super::{
-    KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_quoted, kotlin_template_text, validate,
-};
+use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_quoted, kotlin_template_text};
 use crate::features::text_forms::TextForm;
 use crate::field_type::{
     EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, FieldDef, FieldDefType, INVALID_NUMBER,
@@ -51,6 +49,11 @@ thread_local! {
 /// The least `i64` and the greatest `u64`: serde reads digits beyond them as a float.
 const I64_LEAST: &str = "-9223372036854775808";
 const U64_MOST: &str = "18446744073709551615";
+
+/// The member that writes a date and time with its zone as chrono does: whole seconds, then a
+/// fraction of three, six or nine digits where it has one, then `Z` for no offset. `utc` converts
+/// to UTC first.
+const ZONED_WRITER: &str = r#"private fun written(text: String, utc: Boolean): String { val moment = try { java.time.OffsetDateTime.parse(text.replace(Regex("(\\.\\d{9})\\d+"), "\$1")) } catch (refused: java.time.format.DateTimeParseException) { throw SerializationException("expected a date and time with its zone, found " + JsonPrimitive(text)) }; val at = if (utc) moment.withOffsetSameInstant(java.time.ZoneOffset.UTC) else moment; val nanos = at.nano; val fraction = when { nanos == 0 -> ""; nanos % 1000000 == 0 -> "." + (nanos / 1000000).toString().padStart(3, '0'); nanos % 1000 == 0 -> "." + (nanos / 1000).toString().padStart(6, '0'); else -> "." + nanos.toString().padStart(9, '0') }; val seconds = at.offset.totalSeconds; val zone = if (seconds == 0) "Z" else (if (seconds < 0) "-" else "+") + String.format(java.util.Locale.ROOT, "%02d:%02d", kotlin.math.abs(seconds) / 3600, kotlin.math.abs(seconds) % 3600 / 60); return at.format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss")) + fraction + zone }; "#;
 
 /// The private function of an integer's serializer that spells a float as serde does: its shortest
 /// digits, laid out plainly from `0.00001` to below `1e16`, with `.0` where they hold no fraction.
@@ -317,6 +320,21 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
     )
 }
 
+/// Whether a text of `form` is written through [`ZONED_WRITER`], and if so, in UTC.
+#[cfg(feature = "chrono")]
+const fn zone_written(form: TextForm) -> Option<bool> {
+    match form {
+        TextForm::Zoned => Some(true),
+        TextForm::Offset => Some(false),
+        TextForm::Char | TextForm::Date | TextForm::DateTime | TextForm::Time => None,
+    }
+}
+
+#[cfg(not(feature = "chrono"))]
+const fn zone_written(_form: TextForm) -> Option<bool> {
+    None
+}
+
 /// The `object` named `named` that reads a text of `form`, refusing one Zod refuses, and writes
 /// it in the form serde writes, refusing one no rewrite turns into that form.
 fn object_declared(form: TextForm, named: &str) -> String {
@@ -374,11 +392,15 @@ fn object_declared(form: TextForm, named: &str) -> String {
         },
         |_| format!("if (!form.matches(text)) {}; ", refused("text")),
     );
+    let (writer, sent_text) = zone_written(form).map_or_else(
+        || ("", current.to_owned()),
+        |utc| (ZONED_WRITER, format!("written({current}, {utc})")),
+    );
     format!(
-        "object {named} : KSerializer<String> {{ {members}override val descriptor: \
+        "object {named} : KSerializer<String> {{ {members}{writer}override val descriptor: \
          SerialDescriptor = PrimitiveSerialDescriptor(\"{named}\", PrimitiveKind.STRING); \
          override fun serialize(encoder: Encoder, value: String) {{ {steps}if ({held}) {}; \
-         encoder.encodeString({current}) }} {PATHED}override fun deserialize(decoder: Decoder): \
+         encoder.encodeString({sent_text}) }} {PATHED}override fun deserialize(decoder: Decoder): \
          String {{ val text = decoder.decodeString(); return kotlinSchemaAt(decoder) {{ \
          {checked_read}text }} }} }}",
         refused("value")
@@ -428,7 +450,7 @@ fn walk(field: &FieldDef, written: bool, sought: fn(&FieldDef, bool) -> bool, ke
         } else if arguments.is_empty() {
             written && named_by(name).is_some_and(|target| found(&target))
         } else {
-            (!written || validate::reads_unjudged(name))
+            (!written || super::read::reads_unjudged(name))
                 && arguments
                     .iter()
                     .any(|argument| walk(argument, written, sought, false))

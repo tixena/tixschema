@@ -52,8 +52,7 @@ fn path_fields() -> PathFields {
         owned: PathBuf::from("/etc/hosts"),
         rced: Rc::from(Path::new("/etc/hosts")),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 fn plain_path_fields() -> PlainPathFields {
@@ -64,8 +63,7 @@ fn plain_path_fields() -> PlainPathFields {
         owned: PathBuf::from("/etc/hosts"),
         rced: PathBuf::from("/etc/hosts"),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -91,7 +89,9 @@ fn test_a_borrowed_path_field_round_trips_through_the_owned_wire_form() {
 fn ts_field_declarations(definition: &str) -> Vec<String> {
     definition
         .lines()
-        .filter(|line| line.starts_with("  ") && line.ends_with(';'))
+        .filter(|line| {
+            line.starts_with("  ") && line.ends_with(';') && !line.starts_with("  return ")
+        })
         .map(ToOwned::to_owned)
         .collect()
 }

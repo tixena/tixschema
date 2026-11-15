@@ -9,6 +9,7 @@
 
 use core::fmt::Write as _;
 
+use super::dart_integer_read::integer_read;
 use super::flattened_models::{
     DRESSING_TAGS, Dressing, FLAG_TAGS, Flag, Gonfalon, PENNANT_TAGS, Pennant, Semaphore,
     dressing_dart, ensign_dart, flag_dart, gonfalon_dart, pennant_dart, read_of, semaphore_dart,
@@ -165,12 +166,14 @@ fn the_dart_read_of_a_struct_under_its_own_tag_checks_the_tag_ahead_of_its_membe
         ),
         (
             dressing_dart::dart_definition(),
-            "DressingDraft(ensign: _readFlattened(() => \
-             Ensign.fromJsonUnjudged(({...json}..remove('north')))),north: \
-             _readAt(json, 'north', () => (switch (json['north'] as \
-             int) { final number when number >= 0 && number <= 255 => number, final number => \
-             throw FormatException('expected an integer from 0 to 255, found $number') })),)"
-                .to_owned(),
+            format!(
+                "DressingDraft(ensign: _readFlattened(() => \
+                 Ensign.fromJsonUnjudged(({{...json}}..remove('north')))),north: \
+                 _readAt(json, 'north', () => (switch ({}) {{ final number when number >= 0 && \
+                 number <= 255 => number, final number => throw FormatException('expected an \
+                 integer from 0 to 255, found $number') }})),)",
+                integer_read("json['north']", "u8")
+            ),
         ),
         (
             ensign_dart::dart_definition(),

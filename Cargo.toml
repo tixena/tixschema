@@ -81,6 +81,13 @@ sealed_parcel_desk = { path = "tests/crates_apart/sealed_parcel_desk" }
 # A crate apart that declares the types a Kotlin holder names in a member, which the holder's
 # expansion has never seen.
 kotlin_members_apart = { path = "tests/crates_apart/kotlin_members_apart" }
+# A crate apart that declares the types a Dart and a Swift holder flattens.
+flattened_members_apart = { path = "tests/crates_apart/flattened_members_apart" }
+# A crate apart that declares the faults a service names, which the expansion of the service has
+# never seen.
+fault_variants_apart = { path = "tests/crates_apart/fault_variants_apart" }
+# A crate apart that lists no `serde_json`, whose model types read over any deserializer.
+no_serde_json_apart = { path = "tests/crates_apart/no_serde_json_apart" }
 # The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert
 # models through it.
 arky = "0.2"

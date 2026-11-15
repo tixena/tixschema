@@ -193,8 +193,8 @@ fn member_rendering(surface: &str, key: &str) -> String {
 
 #[test]
 fn test_serde_types_constructible() {
-    let color = ColorDraft::Red;
-    assert!(matches!(color, ColorDraft::Red));
+    let color = Color::Red;
+    assert!(matches!(color, Color::Red));
     let event = EventDraft::Deleted {
         user_id: String::new(),
     };
@@ -210,8 +210,8 @@ fn test_serde_types_constructible() {
         required_field: String::new(),
     };
     assert_eq!(optional.required_field, String::new());
-    let status = StatusDraft::Active;
-    assert!(matches!(status, StatusDraft::Active));
+    let status = Status::Active;
+    assert!(matches!(status, Status::Active));
     let user = UserWithSerdeDraft {
         created_at: String::new(),
         email: String::new(),
@@ -237,8 +237,7 @@ fn test_serde_types_constructible() {
         body: BodyDraft::Reply {
             reply_to: String::new(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         id: String::new(),
     };
     assert!(matches!(
@@ -494,8 +493,7 @@ fn test_each_option_flavor_writes_one_shape_and_reads_both() {
         generation_token: None,
         template_id: None,
     }
-    .validate()
-    .unwrap();
+    .into();
     assert_eq!(
         serde_json::to_string(&entry).unwrap(),
         r#"{"name":"invoice.pdf","templateId":null}"#

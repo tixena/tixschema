@@ -57,7 +57,7 @@ mod tests {
             }
             .validate()
             .unwrap(),
-            status: StatusDraft::Draft.validate().unwrap(),
+            status: Status::Draft,
             tags: vec!["parser".to_owned()],
             title: "Notes".to_owned(),
             views: 7,

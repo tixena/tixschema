@@ -28,7 +28,7 @@ pub struct Shelf {
 #[test]
 fn a_validate_written_by_hand_builds_beside_the_valid_type_and_is_the_authors_own() {
     let held = ShelfDraft {
-        loose: LooseDraft { open: true }.validate().unwrap(),
+        loose: LooseDraft { open: true }.into(),
     };
     assert_eq!(
         held.loose.validate(),

@@ -17,7 +17,7 @@ use super::aliases::PRIMITIVES;
 use super::enums::{TagArm, WrittenVariant, tag_arms, written_variants};
 use super::{
     Step, TypedPaths, bound_parameters, hooked_leaf, starts_at_a_parameter, type_arguments,
-    unclaimed, unclaimed_parameter, value_slot, written_names,
+    unclaimed, value_slot, written_names,
 };
 use crate::features::serde::read_bounds::serialize_bound;
 use crate::features::serde::{
@@ -30,6 +30,7 @@ use crate::field_type::{
 };
 use crate::model_schema::{helper_name_stem, written_spelling};
 use crate::rename_rule::resolve_rename_rule;
+use crate::utils::unclaimed_parameter;
 use crate::utils::{Declared, declared, ident_schema_module_name, written_type};
 
 /// How many modules below the type its members module is.
@@ -379,12 +380,7 @@ impl<'item> Emitter<'item> {
     /// `Option` of one, and for one serde writes as one value, which has no key to put there.
     fn flattened(&self, field: &Field, under: &str, read: bool) -> Option<Member> {
         let hooks = parse_serde_field_hooks(&field.attrs);
-        let hooked = hooked_leaf(
-            &field.ty,
-            &hooks,
-            &self.own.module_name,
-            &self.own.type_parameters,
-        );
+        let hooked = hooked_leaf(&field.ty, &hooks, &self.own.type_parameters);
         if !read || hooked.is_some() {
             return None;
         }
@@ -696,12 +692,7 @@ impl<'item> Emitter<'item> {
     /// one, and by its type where it has none. `read` says serde reads the value back.
     fn member(&mut self, field: &Field, place: &Place, stem: &str, read: bool) -> Option<Member> {
         let hooks = parse_serde_field_hooks(&field.attrs);
-        let hooked = hooked_leaf(
-            &field.ty,
-            &hooks,
-            &self.own.module_name,
-            &self.own.type_parameters,
-        );
+        let hooked = hooked_leaf(&field.ty, &hooks, &self.own.type_parameters);
         if let Some(Step::Leaf(whole)) = &hooked
             && let Some(write) = &whole.write
         {
@@ -733,7 +724,6 @@ impl<'item> Emitter<'item> {
             own: Own {
                 generics,
                 module: Ident::new(&module_name, Span::call_site()),
-                module_name,
                 name,
                 parameters: named(|parameter| match parameter {
                     GenericParam::Const(constant) => Some(&constant.ident),
@@ -887,7 +877,6 @@ impl OfVariant<'_> {
 struct Own<'item> {
     generics: &'item Generics,
     module: Ident,
-    module_name: String,
     name: &'item Ident,
     /// The type's own type and const parameters, by name.
     parameters: Vec<String>,
@@ -1766,7 +1755,7 @@ pub fn enum_paths(item: &ItemEnum, written: &[String]) -> TypedPaths {
 ///     let few_open = f.customer().nest(customer.open_invoices().lte(3)?);
 ///     let _ = f
 ///         .status()
-///         .eq(InvoiceStatusDraft::PastDue.validate().unwrap())?
+///         .eq(InvoiceStatus::PastDue)?
 ///         .or(TOTAL.gt(1000.0)?)
 ///         .and(f.tags().contains("export".to_owned())?.or(few_open))
 ///         .or(f.paid_at().exists(true).negated());

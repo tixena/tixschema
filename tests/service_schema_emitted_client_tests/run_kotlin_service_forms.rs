@@ -72,7 +72,8 @@ val Handlers = Writing("2024-01-05", "a")
 
 fun faulted(fault: DatingClientServiceFaultFields): String =
     "fault " + Json.encodeToJsonElement(serializer<DatingClientServiceFaultKind>(), fault.kind).jsonPrimitive.content +
-        (fault.field?.let { " at $it" } ?: "") + ": " + fault.detail
+        (fault.issues?.joinToString("") { issue -> (issue.field?.let { " at $it" } ?: "") + ": " + issue.detail }
+            ?: ((fault.field?.let { " at $it" } ?: "") + ": " + fault.detail))
 
 fun made(answered: DatingClientServiceStampResult): String = when (answered) {
     is DatingClientServiceStampResult.Ok -> "read " + answered.value
@@ -156,10 +157,7 @@ pub struct DatingBackEnd;
 impl DatingClientService<()> for DatingBackEnd {
     async fn initial(&self, _ctx: &(), label: String) -> Result<char, DatingError> {
         ready(()).await;
-        label
-            .chars()
-            .next()
-            .ok_or_else(|| DatingErrorDraft::Missing.validate().unwrap())
+        label.chars().next().ok_or(DatingError::Missing)
     }
 
     async fn letter(&self, _ctx: &(), label: String, initial: char) -> Result<String, DatingError> {
@@ -169,8 +167,7 @@ impl DatingClientService<()> for DatingBackEnd {
 
     async fn stamp(&self, _ctx: &(), _label: String) -> Result<NaiveDate, DatingError> {
         ready(()).await;
-        NaiveDate::from_ymd_opt(2024, 1, 5)
-            .ok_or_else(|| DatingErrorDraft::Missing.validate().unwrap())
+        NaiveDate::from_ymd_opt(2024, 1, 5).ok_or(DatingError::Missing)
     }
 }
 

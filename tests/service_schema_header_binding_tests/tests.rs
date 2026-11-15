@@ -77,14 +77,13 @@ impl DocumentService<()> for DocumentBackEnd {
             .unwrap()
             .push((document_id.clone(), byte_range));
         if document_id == "missing" {
-            return Err(DocumentErrorDraft::NotFound.validate().unwrap());
+            return Err(DocumentError::NotFound);
         }
         Ok((
             VersionResponseDraft {
                 content: "hello".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "abc123".to_owned(),
         ))
     }
@@ -344,7 +343,7 @@ fn a_header_in_value_that_will_not_decode_fails_before_the_implementation_is_cal
         document_service_schema::ServiceFaultKind::FailedValidation
     );
     assert_eq!(
-        fault.field(),
+        fault.issues()[0].field(),
         Some("range"),
         "the caller has to be told which header it got wrong"
     );
@@ -387,8 +386,7 @@ fn the_client_encodes_a_claimed_header_outbound_and_decodes_a_declared_one_from_
             VersionResponseDraft {
                 content: "hello".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             "abc123".to_owned(),
         ),
         "the response rides in the payload and the header_out value is rejoined from the reply's \

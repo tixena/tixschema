@@ -58,8 +58,7 @@ fn tally() -> WideTally {
         set: BTreeSet::from([2, 5]),
         signed: -(1_i64 << 60_i32),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A `u64` and an `i64` member is written as the JSON number serde writes, and read back from it.
@@ -151,7 +150,7 @@ fn a_brand_and_a_struct_of_slots_write_their_numbers() {
     );
     assert_eq!(
         read::<WidePair>(r#"[4,"y"]"#),
-        Ok(WidePairDraft(4, "y".to_owned()).validate().unwrap()),
+        Ok(WidePairDraft(4, "y".to_owned()).into()),
         "a struct of two slots read"
     );
 }
@@ -207,10 +206,10 @@ fn every_variant_writes_its_numbers_under_each_tagging() {
     }
 }
 
-/// The bound of an untagged member chooses the variant as it reads the number, and a string of
-/// digits is the text of the variant that holds a `String`.
+/// The bound of an untagged member judges the number the shape read, and a string of digits is
+/// the text of the variant that holds a `String`.
 #[test]
-fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
+fn an_untagged_member_is_read_from_its_number_and_held_to_its_bound() {
     assert_eq!(written(&WideUntaggedDraft::Small(4)), "4", "a slot");
     assert_eq!(
         read::<WideUntagged>("4"),
@@ -219,7 +218,7 @@ fn an_untagged_member_is_read_from_its_number_and_chosen_by_its_bound() {
     );
     assert_eq!(
         read::<WideUntagged>("40"),
-        Err("data did not match any variant of untagged enum WideUntagged".to_owned()),
+        Err("too large: maximum is 9, got 40".to_owned()),
         "beyond the bound"
     );
     assert_eq!(
@@ -268,7 +267,7 @@ fn a_bound_holds_the_integer_and_a_default_is_read_where_the_key_is_left_out() {
 #[test]
 fn an_i64_as_a_map_key_and_as_a_filling_is_written_as_serde_writes_it() {
     let kept = WideKeptDraft {
-        filled: WideHolderDraft { held: 3 }.validate().unwrap(),
+        filled: WideHolderDraft { held: 3 }.into(),
         keyed: BTreeMap::from([(-4, "k".to_owned())]),
     };
     let json = r#"{"filled":{"held":3},"keyed":{"-4":"k"}}"#;
@@ -344,8 +343,7 @@ fn an_i64_beside_the_types_own_parameter_travels_as_a_number() {
         keyed: BTreeMap::from([("a".to_owned(), -7_i64)]),
         paired: ("b".to_owned(), 1_i64 << 60_i32),
     }
-    .validate()
-    .unwrap();
+    .into();
     let json = r#"{"keyed":{"a":-7},"paired":["b",1152921504606846976]}"#;
     assert_eq!(written(&beside), json, "the numbers serde writes");
     assert_eq!(
@@ -361,8 +359,7 @@ fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_nu
     let chosen = WideChosenDraft::Listed {
         listed: vec![(i64::MAX, "a".to_owned())],
     }
-    .validate()
-    .unwrap();
+    .into();
     let json = r#"{"listed":[[9223372036854775807,"a"]]}"#;
     assert_eq!(written(&chosen), json, "the numbers serde writes");
     assert_eq!(
@@ -372,7 +369,7 @@ fn an_i64_beside_the_types_own_parameter_in_an_untagged_enum_is_read_from_its_nu
     );
     assert_eq!(
         read::<WideChosen<String>>(r#""7""#),
-        Ok(WideChosenDraft::Text("7".to_owned()).validate().unwrap()),
+        Ok(WideChosenDraft::Text("7".to_owned()).into()),
         "a string of digits is the text"
     );
 }

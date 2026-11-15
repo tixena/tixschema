@@ -183,6 +183,9 @@ const UNCHANGED: &str = "fun unchanged(payload: JsonElement): JsonElement = payl
 /// What prints a row: the value read, written back with every member, as serde writes it, or
 /// what the type's own serializer refused it with.
 const TOLD: &str = r#"
+fun issuesOf(refused: Throwable): List<String> =
+    if (refused.cause?.message == "validate()") (refused.javaClass.getMethod("getIssues").invoke(refused) as List<*>).map { it as String } else refused.message.orEmpty().split("; ")
+
 val everyMember = Json { encodeDefaults = true }
 
 fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
@@ -190,7 +193,7 @@ fun <T> row(name: String, serializer: KSerializer<T>, payload: String) {
         val read = Json.decodeFromString(serializer, payload)
         println("$name: ${everyMember.encodeToString(serializer, read)}")
     } catch (refused: SerializationException) {
-        println("$name: refused: ${refused.message}")
+        println("$name: refused: ${issuesOf(refused).joinToString("; ")}")
     }
 }
 "#;
@@ -669,8 +672,7 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             pair: broken()
         }
         .validation_issues(),
@@ -702,8 +704,7 @@ fn the_refusals_held_here_are_what_the_holders_validate_answers() {
             labelling: LabellingDraft {
                 label: "north".to_owned()
             }
-            .validate()
-            .unwrap(),
+            .into(),
             maybe: Some(broken()),
             pairs: vec![broken()]
         }

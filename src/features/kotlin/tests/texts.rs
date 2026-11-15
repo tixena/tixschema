@@ -40,9 +40,10 @@ fn a_brand_over_a_char_names_the_serializer_of_its_form_on_its_value() {
     let kotlin = plain(&item);
     assert!(
         kotlin.starts_with(&format!(
-            "{} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
+            "{} {} @OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
              InitialSerializer::class) @KeepGeneratedSerializer value class Initial private \
              constructor(val value: @Serializable(with = KotlinText1::class) String) {{",
+            refusal("Initial"),
             letter("KotlinText1")
         )),
         "got: {kotlin}"
@@ -57,7 +58,10 @@ fn where_the_emitter_writes_the_read_it_composes_the_serializer_of_the_form() {
         struct Marks(char, Vec<Option<char>>);
     };
     let marks = plain(&item);
-    assert!(marks.starts_with(&letter("KotlinText1")), "got: {marks}");
+    assert!(
+        marks.starts_with(&format!("{} {}", refusal("Marks"), letter("KotlinText1"))),
+        "got: {marks}"
+    );
     assert!(
         marks.contains(
             "data class MarksDraft(val slot0: String, val slot1: List<String?>) { fun \
@@ -131,7 +135,11 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
     };
     let initials_read = plain(&initials);
     assert!(
-        initials_read.starts_with(&letter("KotlinText2")),
+        initials_read.starts_with(&format!(
+            "{} {}",
+            refusal("Initials"),
+            letter("KotlinText2")
+        )),
         "got: {initials_read}"
     );
     assert!(
@@ -175,8 +183,9 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let pairing_read = plain(&pairing);
     assert!(
         pairing_read.contains(
-            "data class PairingDraft(@Serializable(with = HeldUnjudged::class) val held: \
-             Held<@Serializable(with = KotlinText1::class) String>, val later: \
+            "data class PairingDraft(@Serializable(with = KotlinHeld1::class) val held: \
+             Held<@Serializable(with = KotlinText1::class) String>, \
+             @Serializable(with = KotlinHeld2::class) val later: \
              Later<@Serializable(with = KotlinText1::class) String>, val pair: \
              PairType<@Serializable(with = KotlinText1::class) String>) {"
         ),
@@ -188,8 +197,8 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     let paired_read = plain(&paired);
     assert!(
         paired_read.contains(
-            "PairedDraft(kotlinSchemaDecoded(input.json, HeldUnjudged(KotlinText2), array[0], \
-             \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, serializer<Later<String>>(), \
+            "PairedDraft(kotlinSchemaDecoded(input.json, KotlinHeld3, array[0], \
+             \"0\", \"[0]\"), kotlinSchemaDecoded(input.json, KotlinHeld4, \
              array[1], \"1\", \"[1]\"), kotlinSchemaDecoded(input.json, \
              serializer<PairType<String>>(), array[2], \"2\", \"[2]\"))"
         ),

@@ -365,7 +365,7 @@ fn a_key_parsed_from_its_text_keeps_its_guard() {
     }
     assert_eq!(text_keys(&swift), 0, "{swift}");
     let keyring = KeyringDraft {
-        bells: HashMap::from([(BellDraft::First.validate().unwrap(), "b".to_owned())]),
+        bells: HashMap::from([(Bell::First, "b".to_owned())]),
         counts: HashMap::from([(1, "c".to_owned())]),
         flags: HashMap::from([(true, "f".to_owned())]),
         offsets: HashMap::from([(-1, "o".to_owned())]),

@@ -202,8 +202,7 @@ fn moca() -> Stop {
         city: "Moca".to_owned(),
         postal_code: "56000".to_owned(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -262,22 +261,15 @@ fn an_internally_tagged_enum_is_asked_by_its_tag_and_by_each_variants_fields() {
                     WireDetailsDraft {
                         iban: "DO28".to_owned(),
                     }
-                    .validate()
-                    .unwrap()
+                    .into()
                 )
-                .validate()
-                .unwrap())
+                .into())
                 .unwrap()
         ),
         r#"{ "payment": { "$eq": { "kind": "wire", "iban": "DO28" } } }"#
     );
     assert_eq!(
-        shown(
-            invoice
-                .payment()
-                .set(PaymentDraft::Cash.validate().unwrap())
-                .unwrap()
-        ),
+        shown(invoice.payment().set(Payment::Cash).unwrap()),
         r#"{ "$set": { "payment": { "kind": "cash" } } }"#
     );
 }
@@ -376,8 +368,7 @@ fn a_generic_models_member_typed_by_the_parameter_is_one_whole_value() {
             city: "Moca".to_owned(),
             postal_code: "56000".to_owned(),
         }
-        .validate()
-        .unwrap())
+        .into())
         .unwrap();
     assert_eq!(
         shown(invoice.shipping().nest(at_moca)),
@@ -574,23 +565,18 @@ fn a_flattened_enum_and_a_flattened_optional_model_are_at_the_rows_own_level() {
                 created_by: "eduardo".to_owned(),
                 revision: 2_u32,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
         code: "J-1".to_owned(),
-        drop: DropDraft::Door(moca()).validate().unwrap(),
-        leg: LegDraft::Flight("IB-1".to_owned(), 4_u32)
-            .validate()
-            .unwrap(),
+        drop: DropDraft::Door(moca()).into(),
+        leg: LegDraft::Flight("IB-1".to_owned(), 4_u32).into(),
         payment: PaymentDraft::Wire(
             WireDetailsDraft {
                 iban: "DO28".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
         )
-        .validate()
-        .unwrap(),
+        .into(),
     }
     .serialize(bson::Serializer::new())
     .unwrap();
@@ -618,12 +604,7 @@ fn a_variant_named_as_an_operator_is_asked_through_nest() {
         r#"{ "movement.dock": { "$eq": Int64(4) } }"#
     );
     assert_eq!(
-        shown(
-            transit
-                .movement()
-                .is_in([MovementDraft::Out.validate().unwrap()])
-                .unwrap()
-        ),
+        shown(transit.movement().is_in([Movement::Out]).unwrap()),
         r#"{ "movement": { "$in": [{ "kind": "out" }] } }"#
     );
 }

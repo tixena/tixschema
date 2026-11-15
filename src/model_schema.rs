@@ -14,12 +14,14 @@ pub mod literal_union;
 pub mod mcp_form;
 #[cfg(feature = "serde")]
 pub mod needs_wrapper;
+pub mod parameter_walk;
 pub mod preprocess;
 pub mod ranges;
 #[cfg(feature = "serde")]
 pub mod strict;
 pub mod valid_type;
 
+use crate::utils::{is_rule_less, note_rule_less};
 use alloc::borrow::ToOwned;
 use core::fmt::Write as _;
 #[cfg(feature = "serde")]
@@ -73,8 +75,6 @@ use crate::{
 };
 
 use crate::bound_message::Bound;
-#[cfg(feature = "serde")]
-use crate::bound_message::VIOLATION_STEMS;
 use crate::bound_message::rust_violation;
 #[cfg(feature = "zod")]
 use crate::bound_message::zod_error_arg;
@@ -155,13 +155,10 @@ use crate::features::serde::parse_serde_field_hooks;
     )
 ))]
 use crate::features::serde::rename_direction_rejection;
-// `has_serde_read_hook` asks whether a field already reads itself through a function of the
-// author's own, which only matters where a generated reader might displace one.
 #[cfg(feature = "serde")]
 use crate::features::serde::{
-    NAMED_READ_HOOK_PREFIX, SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize,
-    derives_serialize, has_serde_read_hook, parse_read_renames, parse_written_renames,
-    read_member_keys, struct_tag,
+    SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize, derives_serialize,
+    parse_read_renames, parse_written_renames, read_member_keys, struct_tag,
 };
 use crate::features::serde::{
     brand_field, carries_untagged, has_serde_default, member_steps, parse_serde_key_omission,
@@ -200,8 +197,7 @@ use crate::features::serde::defaults::unread_members_built;
 use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
 #[cfg(feature = "serde")]
 use crate::features::serde::read_bounds;
-#[cfg(feature = "serde")]
-use crate::utils::written_names;
+use crate::utils::{unclaimed_parameter, written_names};
 
 #[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
@@ -303,6 +299,7 @@ const KNOWN_ARGS: &[&str] = &[
     "maxLength",
     "no_display",
     "nonstrict",
+    "new",
     "default_types",
     "enable",
     "check",
@@ -630,6 +627,8 @@ struct BrandedNewtypeOutput<'parts> {
     delegate_impl_items: &'parts [proc_macro2::TokenStream],
     display_tokens: &'parts proc_macro2::TokenStream,
     example_test: Option<ExampleTest>,
+    /// `model_schema_issues_with{n}`, where the brand declares parameters.
+    issues_with: Option<&'parts proc_macro2::TokenStream>,
     item_struct: &'parts syn::ItemStruct,
     module_ident: &'parts Ident,
     name: &'parts Ident,
@@ -774,21 +773,6 @@ struct LiteralShape {
     wraps: Vec<ConstraintWrap>,
 }
 
-/// Where a field's constraints are enforced.
-///
-/// Both readings publish the same two helpers into the schema module. What differs is whether the
-/// field itself is hung with the `#[serde(deserialize_with = …)]` that runs the check as the
-/// payload is read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ConstraintGate {
-    /// The deserializer as well as the validator: on an untagged union's member, whether the member
-    /// is admissible is what chooses which variant the payload is.
-    Deserializer,
-    /// The validator alone: every position where a constraint decides only whether a value is
-    /// admissible, never what it is.
-    Validator,
-}
-
 /// What the end of a constraint walk does with a violation: `validate()` collects every one, a
 /// `Deserializer` fails at the first.
 #[derive(Clone, Copy)]
@@ -849,8 +833,13 @@ enum HeldEnd {
     /// A std `Result`: each arm that holds something the walk reaches, by the key serde writes it
     /// under, with the walk below it.
     Arms(Vec<(&'static str, HeldShape)>),
-    /// A value of a declared type, whose own `validate()` is run.
-    Declared,
+    /// A value of a declared type, whose own `validate()` is run, with the type arguments it is
+    /// written with: a generic model is handed the walk of each, as
+    /// `model_schema_issues_with{n}`.
+    Declared(Vec<syn::Type>),
+    /// A value behind one of the item's own type parameters, handed to the check the item's
+    /// `model_schema_issues_with{n}` takes for it.
+    Parameter(String),
     /// A tuple: each position that holds something the walk reaches, with the walk below it.
     Positions(Vec<(usize, HeldShape)>),
 }
@@ -886,6 +875,21 @@ impl BrandBound {
 }
 
 impl HeldShape {
+    /// The walk read so far, through no wrapper yet.
+    const fn begun() -> Self {
+        Self {
+            end: HeldEnd::Declared(Vec::new()),
+            #[cfg(feature = "serde")]
+            keys: Vec::new(),
+            wraps: Vec::new(),
+        }
+    }
+
+    /// The walk read so far, ending on `end`.
+    fn ended(self, end: HeldEnd) -> Self {
+        Self { end, ..self }
+    }
+
     /// Whether the walk reads a map, at any depth.
     fn walks_a_map(&self) -> bool {
         self.wraps
@@ -893,7 +897,7 @@ impl HeldShape {
             .any(|wrap| matches!(*wrap, ConstraintWrap::Map))
             || match &self.end {
                 HeldEnd::Arms(arms) => arms.iter().any(|(_, held)| held.walks_a_map()),
-                HeldEnd::Declared => false,
+                HeldEnd::Declared(_) | HeldEnd::Parameter(_) => false,
                 HeldEnd::Positions(positions) => {
                     positions.iter().any(|(_, held)| held.walks_a_map())
                 }
@@ -1168,6 +1172,8 @@ struct ModelSchemaArgs {
     max_length: Option<usize>,
     min_length: Option<usize>,
     name_override: Option<String>,
+    /// Who writes the valid type's `new`.
+    new_by: valid_type::NewBy,
     /// Opt-out of the branded newtype `Display` impl (and its inner-type assertion) for brands
     /// whose inner type is a container rather than a scalar.
     no_display: bool,
@@ -1872,6 +1878,8 @@ impl ExampleTest {
             return bridge;
         };
         let name_text = name.to_string();
+        let failure_type = example_failure_type();
+        let accepts = example_accepts(*drafted, value_ty);
         let broken = if *drafted {
             quote! {
                 let broken = value.validation_issues();
@@ -1882,11 +1890,10 @@ impl ExampleTest {
         };
         let checks = blocks.iter().enumerate().map(|(index, code_tokens)| {
             let number = index + 1;
+            let value = example_value(code_tokens, value_ty, &accepts, number, &name_text);
             quote! {
                 {
-                    let value: #value_ty = {
-                        #code_tokens
-                    };
+                    let value: #value_ty = #value;
                     #broken
                     if let ::core::result::Result::Err(broken) = broken {
                         ::core::panic!(
@@ -1908,6 +1915,7 @@ impl ExampleTest {
 
                 #[test]
                 fn every_example_meets_its_rules() {
+                    #failure_type
                     #(#checks)*
                 }
             }
@@ -2141,6 +2149,12 @@ fn apply_arg(result: &mut ModelSchemaArgs, meta: &Meta) -> syn::Result<()> {
         result.no_display = flag_arg(meta, "no_display")?;
     } else if path.is_ident("nonstrict") {
         result.nonstrict = flag_arg(meta, "nonstrict")?;
+    } else if path.is_ident("new") {
+        result.new_by = if new_arg(meta)? {
+            valid_type::NewBy::Written
+        } else {
+            valid_type::NewBy::Author
+        };
     } else if path.is_ident("__tixschema_undrafted") {
         result.undrafted = true;
     } else if path.is_ident("default_types") {
@@ -2364,6 +2378,22 @@ fn flag_arg(meta: &Meta, name: &str) -> syn::Result<bool> {
     }
 }
 
+/// Whether the macro writes `new`: `new = true` or `new = false`.
+fn new_arg(meta: &Meta) -> syn::Result<bool> {
+    let takes = "a boolean literal, written `new = false` where the type's own `impl` declares \
+                 `new` or where no `new` is wanted, or `new = true` to have one written however \
+                 many parameters it takes";
+    if matches!(*meta, Meta::Path(_)) {
+        return Err(arg_rejection(meta, "new", takes));
+    }
+    let lit = arg_literal(meta, "new", takes)?;
+    if let syn::Lit::Bool(lit_bool) = lit {
+        Ok(lit_bool.value())
+    } else {
+        Err(arg_rejection(lit, "new", takes))
+    }
+}
+
 /// Names what an argument takes, spanned on what was written instead.
 fn arg_rejection(tokens: impl quote::ToTokens, name: &str, takes: &str) -> syn::Error {
     syn::Error::new_spanned(
@@ -2404,6 +2434,25 @@ fn record_pattern(result: &mut ModelSchemaArgs, lit_str: &syn::LitStr) {
     }
 }
 
+/// Records what `item` declares, and whether it declares no rule of its own, ahead of the
+/// expansions that read them.
+fn note_what_it_declares(item: &Item, args: &ModelSchemaArgs) {
+    valid_type::record(item, args.undrafted, !args.check.is_empty(), args.new_by);
+    note_rule_less(valid_type::declares_no_rule(
+        item,
+        !args.check.is_empty(),
+        args.string_check.is_some(),
+    ));
+}
+
+/// Starts the expansion of `item`: its read holds the hooks of its own members alone, and its walks
+/// read its own type parameters.
+fn entered(item: &Item) {
+    #[cfg(feature = "serde")]
+    judged_read::forget_member_hooks();
+    parameter_walk::enter(item);
+}
+
 pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let parsed_args = parse_model_schema_args(args);
     // Written out rather than `parse_macro_input!`, which returns from the enclosing function and
@@ -2424,29 +2473,19 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         return output;
     }
     let refused = |errors: &[TokenStream]| refused_item_output(&item, errors, &parsed_args);
-    // An item's read holds the hooks of its own members alone.
-    #[cfg(feature = "serde")]
-    judged_read::forget_member_hooks();
+    entered(&item);
     // Read in every feature combination: a transport, and a type that lists `"mongodb"` for the
     // keys of its maps, read it whether or not a surface is on.
     record_wire_form(&item);
-    // A member that holds any JSON value is no shape a target can describe, in any build.
-    if let Some(output) = refused(&any_json_errors(&item, &parsed_args)) {
-        return output;
-    }
-    // Nor is one that holds a primitive no surface has a type for, which the field walk would
-    // otherwise take for a type declared elsewhere.
-    if let Some(output) = refused(&undescribable_primitive_errors(&item)) {
-        return output;
-    }
-    // A `default_types` declaration is read against the item's own parameters, which the parser
-    // never sees, so both directions are answered here, ahead of every shape.
-    if let Some(output) = refused(&default_types_guard_errors(&item, &parsed_args)) {
-        return output;
-    }
-    // A map `validate()` names by its key, keyed by a parameter the item declares no `Serialize`
-    // for, could not be written into a message.
-    if let Some(output) = refused(&unwritable_map_key_errors(&item)) {
+    // A member that holds any JSON value, or a primitive no surface has a type for, is no shape a
+    // target can describe; a `default_types` declaration is read against the item's own
+    // parameters, which the parser never sees; and a map `validate()` names by its key, keyed by a
+    // parameter the item declares no `Serialize` for, could not be written into a message.
+    if let Some(output) = refused(&any_json_errors(&item, &parsed_args))
+        .or_else(|| refused(&undescribable_primitive_errors(&item)))
+        .or_else(|| refused(&default_types_guard_errors(&item, &parsed_args)))
+        .or_else(|| refused(&unwritable_map_key_errors(&item)))
+    {
         return output;
     }
     // A list-form serde rename whose two directions name two keys is refused here, at the one seam
@@ -2521,6 +2560,10 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some(output) = refused(&enable_guard_errors(&item, &parsed_args)) {
         return output;
     }
+    // A tuple struct with a slot under `#[cfg]` has no `new` to write, which `new = true` asked for.
+    if let Some(output) = refused(&valid_type::new_refusals(&item, parsed_args.new_by)) {
+        return output;
+    }
     // A name another declaration already publishes is refused here, after every guard that refuses
     // the item outright: one that publishes nothing claims nothing.
     if let Some(output) = refused(&published_name_collision_errors(&item, &parsed_args)) {
@@ -2550,6 +2593,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let registering = item_schema_ident(&item).cloned();
     // Independent of the dispatch below: it reads its own borrow of `item` ahead of the move, and
     // needs none of the machinery the other surfaces share.
+    note_what_it_declares(&item, &parsed_args);
     let dart_tokens = dart_suffix_tokens(&item, &parsed_args);
     // Same independence as the Dart tokens above; the refusal walks the item's own fields ahead
     // of the move too, since it names each one by its declared type.
@@ -2558,8 +2602,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
     let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
-    valid_type::record(&item, parsed_args.undrafted);
-    let expanded = process_item(item, &parsed_args);
+    let expanded = valid_type::settle(process_item(item, &parsed_args));
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
@@ -2650,7 +2693,7 @@ fn dart_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
-            undrafted: args.undrafted,
+            undrafted: args.undrafted || valid_type::is_undrafted(),
         },
     )
 }
@@ -2679,7 +2722,7 @@ fn swift_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
-            undrafted: args.undrafted,
+            undrafted: args.undrafted || valid_type::is_undrafted(),
         },
     )
 }
@@ -2708,7 +2751,7 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
             pattern: args.pattern.as_deref(),
             preprocess: &args.preprocess,
             type_name: &item_rust_name(item),
-            undrafted: args.undrafted,
+            undrafted: args.undrafted || valid_type::is_undrafted(),
         },
     )
 }
@@ -2863,6 +2906,7 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     // Registered only once the target has been classified: the alias's own expansion is the only
     // place that still holds the aliased type's tokens.
     let alias_field_def = get_field_def(export_name.as_str(), &alias.ty, "");
+    parameter_walk::record_alias(&alias);
     let kind = alias_target_kind(&alias_field_def);
     register_alias_info(&rust_ident_str, &export_name, &module_name, kind);
     if names_a_list(&alias.ty) {
@@ -2979,6 +3023,7 @@ fn alias_schema_items(
         &extract_examples_tokens(&alias.attrs),
         &alias.ident,
         &alias.generics,
+        false,
         args,
     ));
     items
@@ -3045,18 +3090,26 @@ fn item_schema_example_method(
     example_tokens: &[proc_macro2::TokenStream],
     name: &syn::Ident,
     generics: &syn::Generics,
+    drafted: bool,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
     if !zod_or_json_schema(args.enable) {
         return None;
     }
+    let value_name = if drafted {
+        valid_type::draft_ident(name)
+    } else {
+        name.clone()
+    };
     schema_examples_methods(
         example_tokens,
         &schema_example_value_type(
-            name,
+            &value_name,
             &type_parameters_in_scope(generics),
             &args.default_types,
         ),
+        drafted,
+        name,
     )
 }
 
@@ -3067,12 +3120,55 @@ fn drafted_schema_example_method(
     generics: &syn::Generics,
     args: &ModelSchemaArgs,
 ) -> Option<proc_macro2::TokenStream> {
-    item_schema_example_method(
-        example_tokens,
-        &valid_type::draft_ident(name),
-        generics,
-        args,
-    )
+    item_schema_example_method(example_tokens, name, generics, true, args)
+}
+
+/// The failure a `?` in an example block answers, declared in each function that builds examples.
+/// It implements no `Debug`: with one, its blanket `From` would overlap `From<T> for T`.
+fn example_failure_type() -> TokenStream {
+    quote! {
+        struct __TixschemaExampleFailure(::std::string::String);
+
+        impl<E: ::core::fmt::Debug> ::core::convert::From<E> for __TixschemaExampleFailure {
+            fn from(error: E) -> Self {
+                Self(::std::format!("{error:?}"))
+            }
+        }
+    }
+}
+
+/// What converts a drafted type's block to the draft, so the block may build either; nothing for a
+/// type with no draft.
+fn example_accepts(drafted: bool, value_ty: &TokenStream) -> TokenStream {
+    if drafted {
+        quote! { ::core::convert::Into::<#value_ty>::into }
+    } else {
+        TokenStream::new()
+    }
+}
+
+/// The value one example block builds, with `?` allowed in the block. A failed `?` panics with the
+/// type's name and the example's number.
+fn example_value(
+    code_tokens: &TokenStream,
+    value_ty: &TokenStream,
+    accepts: &TokenStream,
+    number: usize,
+    name_text: &str,
+) -> TokenStream {
+    quote! {
+        match (|| -> ::core::result::Result<#value_ty, __TixschemaExampleFailure> {
+            ::core::result::Result::Ok(#accepts({ #code_tokens }))
+        })() {
+            ::core::result::Result::Ok(value) => value,
+            ::core::result::Result::Err(__TixschemaExampleFailure(error)) => ::core::panic!(
+                "example {} of `{}` failed: {}",
+                #number,
+                #name_text,
+                error
+            ),
+        }
+    }
 }
 
 /// `schema_examples()` and `schema_example()` over the blocks a type writes, each block's value
@@ -3100,15 +3196,15 @@ fn drafted_schema_example_method(
 /// fn main() {}
 /// ```
 ///
-/// A block is evaluated as the draft, so one that writes the valid name does not build:
+/// A block may build the valid type as well as the draft, and may use `?`:
 ///
-/// ```rust,compile_fail,E0308
+/// ```rust
 /// use serde::{Deserialize, Serialize};
 /// use tixschema::model_schema;
 ///
 /// /// A sample
 /// /// ```rust example
-/// /// Sample { value: 1 }
+/// /// SampleDraft { value: 1 }.validate()?
 /// /// ```
 /// #[model_schema(enable = ["jsonschema"])]
 /// #[derive(Deserialize, Serialize)]
@@ -3116,7 +3212,9 @@ fn drafted_schema_example_method(
 ///     pub value: u32,
 /// }
 ///
-/// fn main() {}
+/// fn main() {
+///     assert_eq!(Sample::schema_examples().len(), 1);
+/// }
 /// ```
 ///
 /// Compiled standalone as an ordinary test file, this is the only error it earned:
@@ -3134,41 +3232,52 @@ fn drafted_schema_example_method(
 fn schema_examples_methods(
     example_tokens: &[proc_macro2::TokenStream],
     value_ty: &proc_macro2::TokenStream,
+    drafted: bool,
+    name: &syn::Ident,
 ) -> Option<proc_macro2::TokenStream> {
     if example_tokens.is_empty() {
         return None;
     }
-    let blocks = example_tokens.iter().map(|code_tokens| {
-        quote! {
-            {
-                let value: #value_ty = {
-                    #code_tokens
-                };
-                serde_json::to_value(&value).unwrap()
+    let name_text = name.to_string();
+    let failure_type = example_failure_type();
+    let accepts = example_accepts(drafted, value_ty);
+    let blocks = example_tokens
+        .iter()
+        .enumerate()
+        .map(|(index, code_tokens)| {
+            let value = example_value(code_tokens, value_ty, &accepts, index + 1, &name_text);
+            quote! {
+                {
+                    let value: #value_ty = #value;
+                    serde_json::to_value(&value).unwrap()
+                }
             }
-        }
-    });
+        });
     let values = quote! {
         pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
+            #failure_type
             ::std::vec![#(#blocks),*]
         }
     };
     #[cfg(feature = "zod")]
     let zod_members = {
-        let texts = example_tokens.iter().map(|code_tokens| {
-            let text = js_literal::text(&quote! { &value });
-            quote! {
-                {
-                    let value: #value_ty = {
-                        #code_tokens
-                    };
-                    #text
+        let texts = example_tokens
+            .iter()
+            .enumerate()
+            .map(|(index, code_tokens)| {
+                let text = js_literal::text(&quote! { &value });
+                let value = example_value(code_tokens, value_ty, &accepts, index + 1, &name_text);
+                quote! {
+                    {
+                        let value: #value_ty = #value;
+                        #text
+                    }
                 }
-            }
-        });
+            });
         let writer = js_literal::writer();
         quote! {
             fn schema_examples_zod_text() -> ::std::string::String {
+                #failure_type
                 #writer
                 let texts: ::std::vec::Vec<::std::string::String> = ::std::vec![#(#texts),*];
                 ::std::format!("[{}]", texts.join(","))
@@ -3398,7 +3507,7 @@ fn assemble_schema_output<T>(
     drafted: &judged_read::Drafted,
 ) -> TokenStream
 where
-    T: quote::ToTokens,
+    T: quote::ToTokens + valid_type::UnitShaped,
 {
     let (impl_generics, type_generics, where_clause) = parts.generics.split_for_impl();
     let item = parts.item;
@@ -3425,6 +3534,7 @@ where
     let issues = issues_or_none(validate_method.as_ref());
     let declared = valid_type::declared();
     let valid = valid_type::ValidType {
+        constructor: declared.constructor,
         conditional: declared.conditional,
         debugs: declared.debugs,
         derives: declared.derives,
@@ -3435,7 +3545,10 @@ where
         module_ident,
         name,
         reads: &drafted.valid,
+        rule_less: is_rule_less(),
         serializes: declared.serializes,
+        units: unit_values_of(parts.item, is_rule_less(), declared.checked),
+        variants: declared.variants,
         vis: parts.vis,
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, validate_method.is_some());
@@ -3464,6 +3577,23 @@ where
     log::trace!("{output}");
 
     output
+}
+
+/// The values of `item` no rule can refuse: a unit struct's one value where it declares no rule,
+/// and an enum's unit variants where the enum names no check of its own.
+fn unit_values_of<T>(item: &T, rule_less: bool, checked: bool) -> valid_type::UnitValues
+where
+    T: valid_type::UnitShaped,
+{
+    match item.unit_values() {
+        valid_type::UnitValues::Struct if rule_less => valid_type::UnitValues::Struct,
+        valid_type::UnitValues::Variants(units) if !checked => {
+            valid_type::UnitValues::Variants(units)
+        }
+        valid_type::UnitValues::None
+        | valid_type::UnitValues::Struct
+        | valid_type::UnitValues::Variants(_) => valid_type::UnitValues::None,
+    }
 }
 
 /// `Schema` and its `impl` of `schema_impl_items`, or `None` where none of them writes a method.
@@ -3539,7 +3669,7 @@ const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream
 ///     pub label: String,
 /// }
 ///
-/// impl CrateDraft<u32> {
+/// impl Crate<u32> {
 ///     pub fn validation_issues(&self) -> Vec<String> {
 ///         if self.codes.contains(&0) {
 ///             return vec!["'codes': no code is zero".to_owned()];
@@ -3591,14 +3721,40 @@ fn validate_method(
     let imported = module_ident
         .filter(|_| !checks.named)
         .map(|module| quote! { use #module::*; });
+    let body = quote! {
+        #imported
+        let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+        #(#validate_bodies)*
+        #(#own)*
+        errors
+    };
+    let parameters = parameter_walk::scope().parameters;
+    if parameters.is_empty() {
+        return Some(quote! {
+            /// Lists every rule the value breaks: the constrained members, then the checks.
+            pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
+                #body
+            }
+        });
+    }
+    // A type that runs nothing but the checks of what fills its parameters publishes no
+    // `validate()` of its own: it is the type it was with no value behind a parameter walked.
+    if own.is_empty() && !parameter_walk::ruled() {
+        parameter_walk::keep_parameters_alone(body);
+        return None;
+    }
+    let nothing = parameter_walk::issues_with_nothing(&parameters);
+    let signature = parameter_walk::issues_with_signature(&parameters, &body);
     Some(quote! {
         /// Lists every rule the value breaks: the constrained members, then the checks.
         pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
-            #imported
-            let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-            #(#validate_bodies)*
-            #(#own)*
-            errors
+            #nothing
+        }
+
+        /// `validation_issues()`, with each check handed in run on every value behind its type
+        /// parameter, for a holder that knows what fills each.
+        #signature {
+            #body
         }
     })
 }
@@ -3618,7 +3774,12 @@ fn valid_items(
         return (
             proc_macro2::TokenStream::new(),
             proc_macro2::TokenStream::new(),
-            valid_type::undrafted_methods(issues, publishes_validate),
+            valid_type::undrafted_methods(
+                issues,
+                publishes_validate,
+                &valid.variants,
+                from_deserializer_of(valid, publishes_validate).as_ref(),
+            ),
         );
     }
     (
@@ -3628,14 +3789,40 @@ fn valid_items(
     )
 }
 
+/// `from_deserializer` of a type that is its own valid type, where this build reads serde's
+/// attributes.
+#[cfg(feature = "serde")]
+fn from_deserializer_of(
+    valid: &valid_type::ValidType<'_>,
+    publishes_validate: bool,
+) -> Option<proc_macro2::TokenStream> {
+    valid_type::own_from_deserializer(valid.generics, publishes_validate, &valid.deserializes)
+}
+
+/// Nothing, where no `serde` feature reads the attributes a read is written from.
+#[cfg(not(feature = "serde"))]
+const fn from_deserializer_of(
+    _valid: &valid_type::ValidType<'_>,
+    _publishes_validate: bool,
+) -> Option<proc_macro2::TokenStream> {
+    None
+}
+
 /// `method`, or the `validation_issues()` of a type with no rule to run.
 fn issues_or_none(method: Option<&proc_macro2::TokenStream>) -> proc_macro2::TokenStream {
     method.cloned().unwrap_or_else(|| {
+        let parameters = parameter_walk::scope().parameters;
+        let handed = (!parameters.is_empty()).then(|| {
+            let walk = parameter_walk::parameters_alone();
+            parameter_walk::issues_with_ignoring(&parameters, walk.as_ref())
+        });
         quote! {
             /// Lists every rule the value breaks, of which this type has none.
             pub fn validation_issues(&self) -> ::std::vec::Vec<::std::string::String> {
                 ::std::vec::Vec::new()
             }
+
+            #handed
         }
     })
 }
@@ -5890,7 +6077,7 @@ fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
     let mut keys: Vec<&syn::Type> = shape.keys.iter().collect();
     match &shape.end {
         HeldEnd::Arms(arms) => keys.extend(arms.iter().flat_map(|(_, held)| map_keys_of(held))),
-        HeldEnd::Declared => {}
+        HeldEnd::Declared(_) | HeldEnd::Parameter(_) => {}
         HeldEnd::Positions(positions) => {
             keys.extend(positions.iter().flat_map(|(_, held)| map_keys_of(held)));
         }
@@ -8738,6 +8925,27 @@ fn brand_member(position: usize, field: &Field) -> syn::Member {
     )
 }
 
+/// Whether serde writes `item_enum` as the bare name of a variant: no tag, no content, not
+/// untagged. Only such a declaration, with every variant a unit variant, is a string union.
+pub fn writes_a_string_union(item_enum: &syn::ItemEnum) -> bool {
+    is_plain_enum(item_enum) && writes_bare_variant_names(item_enum)
+}
+
+/// A tag names a key serde writes whether or not a variant carries a field, so only a declaration
+/// serde writes as the bare variant name is the string union the plain-enum path publishes.
+#[cfg(feature = "serde")]
+fn writes_bare_variant_names(item_enum: &syn::ItemEnum) -> bool {
+    let meta = parse_serde_type_attributes(&item_enum.attrs);
+    meta.tag.is_none() && meta.content.is_none() && !meta.untagged
+}
+
+/// No attribute is read without the `serde` feature, so no declaration can be told from the
+/// untagged default and the bare-name form stands.
+#[cfg(not(feature = "serde"))]
+const fn writes_bare_variant_names(_item_enum: &syn::ItemEnum) -> bool {
+    true
+}
+
 /// Whether a struct is a branded newtype: one serde writes as the value of a single field.
 fn is_branded_newtype(item_struct: &syn::ItemStruct) -> bool {
     brand_field(item_struct).is_some()
@@ -9314,7 +9522,7 @@ fn empty_struct_read(
     let written = written_names(quote::ToTokens::to_token_stream(&input));
     let built = unread_members_built(
         item_struct,
-        &judged_read::unclaimed_parameter("container_default", &written),
+        &unclaimed_parameter("container_default", &written),
     );
     let mut generics = item_struct.generics.clone();
     generics
@@ -9454,7 +9662,7 @@ fn unit_struct_read(
         publishes_validate,
         strict,
     } = how;
-    let reader = judged_read::unclaimed_parameter(
+    let reader = unclaimed_parameter(
         "D",
         &written_names(quote::ToTokens::to_token_stream(generics)),
     );
@@ -10046,8 +10254,8 @@ fn build_tuple_struct_ts_definition_method(
         item_name,
         rust_ident,
         ts_generics,
-        noted,
-        tuple_struct_admits_null(shape),
+        (noted, tuple_struct_admits_null(shape)),
+        &[],
     );
     let draft_name = ts_draft_name(item_name);
     let reexport =
@@ -11628,6 +11836,8 @@ fn build_branded_schema_example(
     schema_examples_methods(
         example_tokens,
         &schema_example_value_type(name, generic_params, &args.default_types),
+        false,
+        name,
     )
     .unwrap_or_default()
 }
@@ -11661,6 +11871,51 @@ fn with_branded_checks(
         return proc_macro2::TokenStream::new();
     }
     branded_validate_method(bound, &own)
+}
+
+/// `model_schema_issues_with{n}` of a brand that declares `parameters`: its `validation_issues()`,
+/// where it `validates`, then the check of the parameter its slot `held` holds, where `inner` is
+/// one of them, run on the value. A brand is the value, so no message here names a path.
+fn brand_issues_with(
+    parameters: &[String],
+    inner: &syn::Type,
+    held: &syn::Member,
+    validates: bool,
+) -> Option<proc_macro2::TokenStream> {
+    if parameters.is_empty() {
+        return None;
+    }
+    let own = if validates {
+        quote! { self.validation_issues() }
+    } else {
+        quote! { ::std::vec::Vec::new() }
+    };
+    let behind = bare_parameter(inner, parameters).map(|parameter| {
+        let check = parameter_walk::check_of(&parameter);
+        quote! { errors.extend(#check(&self.#held)); }
+    });
+    let body = quote! {
+        let mut errors: ::std::vec::Vec<::std::string::String> = #own;
+        #behind
+        errors
+    };
+    let signature = parameter_walk::issues_with_signature(parameters, &body);
+    Some(quote! {
+        /// `validation_issues()`, with each check handed in run on the value behind its type
+        /// parameter, for a holder that knows what fills each.
+        #signature {
+            #body
+        }
+    })
+}
+
+/// The type parameter among `parameters` that `ty` is, written alone.
+fn bare_parameter(ty: &syn::Type, parameters: &[String]) -> Option<String> {
+    let syn::Type::Path(path) = written_type(ty) else {
+        return None;
+    };
+    let named = path.path.get_ident()?.to_string();
+    (path.qself.is_none() && parameters.contains(&named)).then_some(named)
 }
 
 /// A brand's `validate()`: its own string checks, then the checks it names, each on the brand
@@ -11698,11 +11953,16 @@ fn sealed_access(
     let held = brand_member(position, inner_field);
     let inner_ty = &inner_field.ty;
     let generic = type_mentions_generic_param(inner_ty, &item_struct.generics);
-    let (accepts, given) = if generic {
-        (quote! { #inner_ty }, quote! { value })
+    let value_param = unclaimed_parameter(
+        "Value",
+        &written_names(quote::ToTokens::to_token_stream(inner_ty)),
+    );
+    let (parameters, accepts, given) = if generic {
+        (quote! {}, quote! { #inner_ty }, quote! { value })
     } else {
         (
-            quote! { impl ::core::convert::Into<#inner_ty> },
+            quote! { <#value_param: ::core::convert::Into<#inner_ty>> },
+            quote! { #value_param },
             quote! { value.into() },
         )
     };
@@ -11738,7 +11998,7 @@ fn sealed_access(
     let methods = quote! {
         /// Builds the brand from a value, refused with the messages `validate()` gives where the
         /// value breaks the brand's rules.
-        pub fn new(
+        pub fn new #parameters(
             value: #accepts,
         ) -> ::core::result::Result<Self, ::std::vec::Vec<::std::string::String>> {
             let built = #built;
@@ -11854,6 +12114,15 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     );
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
+    let issues_with = parts.issues_with;
+    #[cfg(feature = "serde")]
+    let from_deserializer = valid_type::own_from_deserializer(
+        &item_struct.generics,
+        !validate_method.is_empty(),
+        &valid_type::declared().deserializes,
+    );
+    #[cfg(not(feature = "serde"))]
+    let from_deserializer = proc_macro2::TokenStream::new();
 
     let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
@@ -11894,8 +12163,10 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
                     #(#delegate_impl_items)*
                     #schema_example_tokens
                     #validate_method
+                    #issues_with
                     #bound_alone
                     #bound_text_method
+                    #from_deserializer
                 }
 
                 #sealing_try_from
@@ -12064,6 +12335,12 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         build_branded_display_tokens(&item_struct.generics, &name, inner_field, &held, args);
 
     let validate_method = with_branded_checks(bound.held.as_ref(), &args.check);
+    let handed = brand_issues_with(
+        &generic_params,
+        inner_ty,
+        &held,
+        !validate_method.is_empty(),
+    );
 
     // The brand as it is emitted keeps no serde attribute where it derives `Deserialize` alone.
     let (bound_text_method, counted_as) = branded_bound_text_method(&item_struct);
@@ -12090,6 +12367,7 @@ fn process_branded_newtype(item_struct: syn::ItemStruct, args: &ModelSchemaArgs)
         delegate_impl_items: &delegate_impl_items,
         display_tokens: &display_tokens,
         example_test: ExampleTest::of_struct(&read_struct, args),
+        issues_with: handed.as_ref(),
         item_struct: &read_struct,
         module_ident: &module_ident,
         name: &name,
@@ -12349,19 +12627,7 @@ fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
     // the override reaches the shape's own surfaces and every reference to it alike.
     let item_name = compute_item_export_name(&name.to_string(), args.name_override.as_deref());
 
-    // A tag names a key serde writes whether or not a variant carries a field. Only a declaration
-    // serde writes as the bare variant name is the string union the plain-enum path publishes.
-    #[cfg(feature = "serde")]
-    let writes_bare_variant_names = serde_type_meta.tag.is_none()
-        && serde_type_meta.content.is_none()
-        && !serde_type_meta.untagged;
-
-    // No attribute is read without the `serde` feature, so no declaration can be told from the
-    // untagged default and the bare-name form stands.
-    #[cfg(not(feature = "serde"))]
-    let writes_bare_variant_names = true;
-
-    if is_plain_enum(&item_enum) && writes_bare_variant_names {
+    if writes_a_string_union(&item_enum) {
         #[cfg(feature = "serde")]
         let rename_all = serde_type_meta.rename_all.as_deref();
 
@@ -12785,8 +13051,16 @@ fn plain_enum_ts_definition_method(
 ) -> proc_macro2::TokenStream {
     let rust_ident = item_enum.ident.to_string();
     let ts_generics = ts_generic_params(&item_enum.generics);
-    let reader =
-        plain_enum_variant_reader(item_name, &plain_enum_reader_pairs(item_enum, rename_all));
+    let pairs = plain_enum_reader_pairs(item_enum, rename_all);
+    let reader = plain_enum_variant_reader(item_name, &pairs);
+    let constants: Vec<(String, String)> = if ts_generics.is_empty() {
+        pairs
+            .iter()
+            .map(|(wire, rust)| (rust.clone(), ts_quoted(wire)))
+            .collect()
+    } else {
+        Vec::new()
+    };
     generate_plain_enum_ts_definition_method(
         docs,
         item_name,
@@ -12794,7 +13068,31 @@ fn plain_enum_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
+        &constants,
     )
+}
+
+/// The constant of each unit variant of a tagged enum, as `(variant, value)`: the value its
+/// representation writes for the variant, from the variant's written name. None for a generic enum.
+#[cfg(feature = "typescript")]
+fn ts_unit_variant_constants(
+    item_enum: &syn::ItemEnum,
+    casing: EnumCasing<'_>,
+    ts_generics: &str,
+    written: impl Fn(&str) -> String,
+) -> Vec<(String, String)> {
+    if !ts_generics.is_empty() {
+        return Vec::new();
+    }
+    discriminated_variant_reader_pairs(item_enum, casing)
+        .into_iter()
+        .filter(|(_, rust)| {
+            item_enum.variants.iter().any(|variant| {
+                variant.ident == rust.as_str() && matches!(variant.fields, syn::Fields::Unit)
+            })
+        })
+        .map(|(wire, rust)| (rust, written(&wire)))
+        .collect()
 }
 
 /// The internally- or adjacently-tagged `ts_definition()` method, its reader computed and appended
@@ -12816,6 +13114,10 @@ fn tagged_ts_definition_method(
         tag_name,
         &discriminated_variant_reader_pairs(item_enum, casing),
     );
+    let key = ts_member_key(tag_name);
+    let constants = ts_unit_variant_constants(item_enum, casing, &ts_generics, |wire| {
+        format!("Object.freeze({{ {key}: {} }})", ts_quoted(wire))
+    });
     generate_discriminated_enum_ts_definition_method(
         docs,
         item_name,
@@ -12823,7 +13125,7 @@ fn tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
-        false,
+        (false, &constants),
     )
 }
 
@@ -12843,6 +13145,7 @@ fn externally_tagged_ts_definition_method(
         item_name,
         &discriminated_variant_reader_pairs(item_enum, casing),
     );
+    let constants = ts_unit_variant_constants(item_enum, casing, &ts_generics, ts_quoted);
     generate_discriminated_enum_ts_definition_method(
         docs,
         item_name,
@@ -12850,7 +13153,7 @@ fn externally_tagged_ts_definition_method(
         &ts_generics,
         type_code,
         &reader,
-        false,
+        (false, &constants),
     )
 }
 
@@ -12977,6 +13280,7 @@ fn plain_enum_output(
     let issues = issues_or_none(added.validate.as_ref());
     let declared = valid_type::declared();
     let valid = valid_type::ValidType {
+        constructor: valid_type::Constructor::None,
         conditional: declared.conditional,
         debugs: declared.debugs,
         derives: declared.derives,
@@ -12987,7 +13291,10 @@ fn plain_enum_output(
         module_ident,
         name,
         reads: &judged.valid,
+        rule_less: is_rule_less(),
         serializes: declared.serializes,
+        units: unit_values_of(item_enum, is_rule_less(), declared.checked),
+        variants: declared.variants,
         vis: &item_enum.vis,
     };
     let (wrapper, alias, plain) = valid_items(&valid, &issues, added.validate.is_some());
@@ -15284,8 +15591,8 @@ const fn untagged_variant_context<'ctx>(
 ) -> FieldContext<'ctx> {
     FieldContext {
         container_defaulted: variant_defaulted,
-        // An untagged member's own reader is hung by the walk that collects it, where a member's
-        // bound decides which variant the payload is; nothing this context reaches hangs one.
+        // An untagged member is read as serde's derive reads it: nothing this context reaches
+        // hangs a reader on it.
         container_read_back: false,
         container_wire: walk.wire,
         // That walk holds the member to its enum's check as well, ahead of this context.
@@ -15301,10 +15608,9 @@ const fn untagged_variant_context<'ctx>(
 }
 
 /// Gives a member of an untagged variant the hook that reads the models it holds unjudged. The
-/// variant is then chosen as it was before a model judged itself as it was read, and the enum's
-/// own read judges what the member holds. A brand the member holds is held to its own bound
-/// there, so that bound still chooses the variant. A member its own bound reads, the last one
-/// `walked` holds attributes for, is read by that hook alone.
+/// variant is then chosen by shape alone, as serde's derive chooses it, and the enum's own read
+/// judges what the member holds, a brand included. A member whose own reader the macro hangs, the
+/// last one `walked` holds attributes for, is read by that hook alone.
 #[cfg(feature = "serde")]
 fn read_untagged_member_unjudged(
     ctx: &FieldContext<'_>,
@@ -15323,10 +15629,8 @@ fn read_untagged_member_unjudged(
         field,
         &shape,
         &judged_read::HookPlace {
-            choosing: true,
             container_defaulted: ctx.container_defaulted,
             index,
-            renamed_under: None,
             variant: ctx.variant_ident,
             written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
         },
@@ -15381,18 +15685,6 @@ fn untagged_member_field_def(
     (field_def, member_guard_errors)
 }
 
-/// The gate a member of an untagged variant is checked through: its read as well, the one
-/// position where a bound picks the variant, and `validate()` alone in a variant serde never
-/// reads, where a hook would ask a read of a type serde asks none of.
-#[cfg(feature = "serde")]
-fn untagged_member_gate(variant: &syn::Variant) -> ConstraintGate {
-    if variant_members_read(variant) {
-        ConstraintGate::Deserializer
-    } else {
-        ConstraintGate::Validator
-    }
-}
-
 /// Collects each untagged variant's union-member parts: the TypeScript member type, the Zod
 /// member schema, the JSON-schema value token, and the `compile_error!` tokens for any
 /// field-level guard violations. The first three are always returned regardless of features.
@@ -15407,21 +15699,13 @@ fn collect_untagged_variant_members(
     // Read as the discriminated walk reads it: no guard of the wire reads a variant serde neither
     // writes nor reads.
     let on_the_wire = variant_on_the_wire(variant);
-    let gate = untagged_member_gate(variant);
+    let reads_members = variant_members_read(variant);
     let variant_defaulted = has_serde_default(&variant.attrs);
     let serde_default = walk.serde_default;
     // An untagged variant has no name on the wire, so the rename the seam also resolves is unused
     // here.
     let (_, variant_rename_all) = variant_serde_names(&variant.attrs, walk.rename_all_fields);
-    let mut walked = UntaggedVariantMembers {
-        bound: Vec::new(),
-        checks: Vec::new(),
-        deferred_attrs: Vec::new(),
-        field_defs: Vec::new(),
-        flattened_fields: Vec::new(),
-        guard_errors: Vec::new(),
-        validation_fns: Vec::new(),
-    };
+    let mut walked = UntaggedVariantMembers::default();
 
     for (index, field) in variant.fields.iter_mut().enumerate() {
         let omission = parse_serde_key_omission(&field.attrs);
@@ -15460,17 +15744,13 @@ fn collect_untagged_variant_members(
         let new_attrs = declaration_attrs(field);
         let mut injected_attrs: Vec<syn::Attribute> = Vec::new();
         let (validation_fn, validate_body, field_validation_guard_error) =
-            generate_field_validation(
-                &member_ctx,
-                field,
-                index,
-                &prop_meta,
-                gate,
-                &mut injected_attrs,
-            );
+            generate_field_validation(&member_ctx, field, index, &prop_meta);
         field.attrs = new_attrs;
         if !is_flatten {
             walked.validation_fns.extend(validation_fn);
+        }
+        if validate_body.is_some() {
+            parameter_walk::note_ruled();
         }
 
         let (mut member_def, member_guard_errors) = untagged_member_field_def(
@@ -15499,7 +15779,7 @@ fn collect_untagged_variant_members(
                 nested_validate_body(field, &member_def, &place),
             ),
         };
-        if gate == ConstraintGate::Deserializer {
+        if reads_members {
             read_untagged_member_unjudged(&member_ctx, field, &member_def, index, &walked);
         }
         let named = held_member_checks(field, &member_def, &place);
@@ -15887,7 +16167,7 @@ fn build_untagged_schema_impl_items(
         &ts_generic_params(&item_enum.generics),
         &type_code,
         &variant_reader,
-        admits_null,
+        (admits_null, &[]),
     );
 
     #[cfg(feature = "zod")]
@@ -18387,13 +18667,18 @@ fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro
         .iter()
         .map(|key| PlaceStep::Written(key.clone()))
         .collect();
-    let walk = held_walk(shape, &head, 1, &under);
+    let mut arities = Vec::new();
+    let walk = held_walk(shape, &head, 1, &under, &mut arities);
     let fallback = unpublished_validate_fallback();
+    arities.sort_unstable();
+    arities.dedup();
+    let handed = parameter_walk::issues_with_fallbacks(&arities);
     let keyed = shape.walks_a_map().then(written_key_items);
     let checked = &place.checked;
     quote! {
         {
             #fallback
+            #handed
             #keyed
             let #head = #checked;
             #walk
@@ -18401,12 +18686,14 @@ fn build_nested_validation(shape: &HeldShape, place: &MemberPlace) -> proc_macro
     }
 }
 
-/// The walk of `shape` from `value`, held at `place`, whose first wrapper binds at `depth`.
+/// The walk of `shape` from `value`, held at `place`, whose first wrapper binds at `depth`. The
+/// number of type arguments of each generic model it ends on is added to `arities`.
 fn held_walk(
     shape: &HeldShape,
     value: &proc_macro2::Ident,
     depth: usize,
     place: &[PlaceStep],
+    arities: &mut Vec<usize>,
 ) -> proc_macro2::TokenStream {
     let below = depth.saturating_add(shape.wraps.len());
     let held = held_at(place, &shape.wraps, depth);
@@ -18416,14 +18703,28 @@ fn held_walk(
         .filter(|_| !shape.wraps.is_empty())
         .map_or_else(|| value.clone(), wrap_binding);
     let end = match &shape.end {
-        HeldEnd::Declared => nested_leaf(&reached, &held),
+        HeldEnd::Declared(arguments) if arguments.is_empty() => nested_leaf(&reached, &held),
+        HeldEnd::Declared(arguments) => {
+            let reported = handed_walks(&reached, arguments, below, arities);
+            nested_report(&reported, &held)
+        }
+        HeldEnd::Parameter(parameter) => {
+            let check = parameter_walk::check_of(parameter);
+            nested_report(&quote! { #check(#reached) }, &held)
+        }
         HeldEnd::Positions(positions) => {
             let position = wrap_binding(below);
             let walks = positions.iter().map(|(at, of_position)| {
                 let slot = syn::Index::from(*at);
                 let mut held_under = held.clone();
                 held_under.push(PlaceStep::Written(at.to_string()));
-                let walk = held_walk(of_position, &position, below.saturating_add(1), &held_under);
+                let walk = held_walk(
+                    of_position,
+                    &position,
+                    below.saturating_add(1),
+                    &held_under,
+                    arities,
+                );
                 quote! {
                     {
                         let #position = &#reached.#slot;
@@ -18439,7 +18740,13 @@ fn held_walk(
                 let variant = proc_macro2::Ident::new(arm, proc_macro2::Span::call_site());
                 let mut held_under = held.clone();
                 held_under.push(PlaceStep::Written((*arm).to_owned()));
-                let walk = held_walk(of_arm, &held_by_arm, below.saturating_add(1), &held_under);
+                let walk = held_walk(
+                    of_arm,
+                    &held_by_arm,
+                    below.saturating_add(1),
+                    &held_under,
+                    arities,
+                );
                 quote! {
                     if let ::core::result::Result::#variant(#held_by_arm) = #reached {
                         #walk
@@ -18543,9 +18850,79 @@ fn unpublished_validate_fallback() -> proc_macro2::TokenStream {
 /// The nested check a walk ends on: whatever the type of `value` reported, attributed to `place`,
 /// which holds it.
 fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::TokenStream {
+    nested_report(&quote! { #value.validation_issues() }, place)
+}
+
+/// What a generic model at `value` reports of itself and of what fills its parameters: its
+/// `model_schema_issues_with{n}`, handed the walk of each of `arguments`, the type arguments it
+/// is written with. Each walk binds below `depth`, and the arity is added to `arities`.
+fn handed_walks(
+    value: &proc_macro2::Ident,
+    arguments: &[syn::Type],
+    depth: usize,
+    arities: &mut Vec<usize>,
+) -> proc_macro2::TokenStream {
+    arities.push(arguments.len());
+    let walk = parameter_walk::issues_with(arguments.len());
+    let held = wrap_binding(depth);
+    let handed = arguments.iter().map(|argument| {
+        let written = parameter_walk::argument_written(argument);
+        let reported = argument_walk(argument, &held, depth.saturating_add(1), arities);
+        // Placed at the argument, with the macro's hygiene: an alias that rearranges the model's
+        // parameters is refused at the argument it writes.
+        let at = argument.span().resolved_at(proc_macro2::Span::call_site());
+        let written_as = quote_spanned! {at=>
+            ModelSchemaWrittenAs::<#written>::model_schema_written(#held)
+        };
+        quote! {
+            &|#held| {
+                let #held: &#written = #written_as;
+                #reported
+            }
+        }
+    });
+    quote! { #value.#walk(#(#handed),*) }
+}
+
+/// What the walk of a value of `argument`, a type argument of a generic model, held at `value`,
+/// reports of it, each message at its place below the value: the check of the item's own type
+/// parameter where it is one, the walk of what it holds where it holds a model, and nothing
+/// otherwise.
+fn argument_walk(
+    argument: &syn::Type,
+    value: &proc_macro2::Ident,
+    depth: usize,
+    arities: &mut Vec<usize>,
+) -> proc_macro2::TokenStream {
+    let walked = parameter_walk::scope();
+    let mut def = get_field_def("_held", argument, "");
+    def.resolve_self_references(&walked.type_name, &walked.parameters);
+    def.erase_type_parameters(&walked.parameters);
+    let Some(shape) = held_shape_reaching(argument, &def, &walked.parameters) else {
+        let written = parameter_walk::argument_written(argument);
+        return quote! {
+            let _: &#written = #value;
+            ::std::vec::Vec::new()
+        };
+    };
+    let walk = held_walk(&shape, value, depth, &[], arities);
+    let keyed = shape.walks_a_map().then(written_key_items);
+    quote! {
+        #keyed
+        let mut errors: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+        #walk
+        errors
+    }
+}
+
+/// `reported`, the messages of a value a walk ends on, each attributed to `place`, which holds it.
+fn nested_report(
+    reported: &proc_macro2::TokenStream,
+    place: &[PlaceStep],
+) -> proc_macro2::TokenStream {
     let Some(named) = named_at(place) else {
         return quote! {
-            errors.extend(#value.validation_issues());
+            errors.extend(#reported);
         };
     };
     let naming = nested_under_fn();
@@ -18562,7 +18939,7 @@ fn nested_leaf(value: &proc_macro2::Ident, place: &[PlaceStep]) -> proc_macro2::
         .collect();
     let keyed = (!keys.is_empty()).then(keyed_under_fn);
     quote! {
-        let reported = #value.validation_issues();
+        let reported = #reported;
         if !reported.is_empty() {
             #naming
             #keyed
@@ -18655,25 +19032,6 @@ pub fn nested_under_fn() -> proc_macro2::TokenStream {
                 ::core::option::Option::Some((named, tail)) => format!("'{field}.{named}'{tail}"),
                 ::core::option::Option::None => format!("'{field}': {violation}"),
             }
-        }
-    }
-}
-
-/// Whether a refusal is one of this crate's own bound sentences, under whatever field name it
-/// already carries.
-#[cfg(feature = "serde")]
-fn reports_a_bound_fn() -> proc_macro2::TokenStream {
-    let stems: Vec<&str> = VIOLATION_STEMS.to_vec();
-    quote! {
-        fn reports_a_bound(reported: &str) -> bool {
-            let said = match reported
-                .strip_prefix('\'')
-                .and_then(|rest| rest.split_once('\''))
-            {
-                ::core::option::Option::Some((_, tail)) => tail.strip_prefix(": ").unwrap_or(tail),
-                ::core::option::Option::None => reported,
-            };
-            [#(#stems),*].iter().any(|stem| said.starts_with(stem))
         }
     }
 }
@@ -19534,10 +19892,11 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
         } else if let syn::Type::Path(path) = current {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                wraps.push(generic_wrap(&segment.ident.to_string())?);
+                let wrap = generic_wrap(&segment.ident.to_string())?;
                 #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
-                current = sole_type_argument(args)?;
+                current = wrapped_argument(wrap, args)?;
+                wraps.push(wrap);
             } else if matches!(segment.arguments, syn::PathArguments::None) {
                 let leaf = leaf_for_ident(&segment.ident.to_string())
                     .unwrap_or_else(|| ConstraintLeaf::Named(Box::new(current.clone())));
@@ -19556,74 +19915,39 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     }
 }
 
-/// Reads a field's type down to the value whose own type would publish the validator, collecting
-/// the wrappers it is reached through, each level of a list and each reference among them.
-#[cfg(feature = "serde")]
-fn nested_shape(ty: &syn::Type) -> Option<Vec<ConstraintWrap>> {
-    let mut wraps = Vec::new();
-    let mut current = ty;
-    loop {
-        current = written_type(current);
-        if let syn::Type::Reference(reference) = current {
-            wraps.push(ConstraintWrap::Borrowed);
-            current = &reference.elem;
-        } else if let syn::Type::Array(array) = current {
-            wraps.push(ConstraintWrap::Sequence);
-            current = &array.elem;
-        } else if let syn::Type::Slice(slice) = current {
-            wraps.push(ConstraintWrap::Sequence);
-            current = &slice.elem;
-        } else if let syn::Type::Path(path) = current {
-            let segment = path.path.segments.last()?;
-            let ident = segment.ident.to_string();
-            if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                let Some(wrap) = generic_wrap(&ident) else {
-                    return (!reads_through(&ident)).then_some(wraps);
-                };
-                wraps.push(wrap);
-                current = sole_type_argument(args)?;
-            } else if matches!(segment.arguments, syn::PathArguments::None) {
-                return Some(wraps);
-            } else {
-                return None;
-            }
-        } else {
-            return None;
-        }
-    }
-}
-
 /// Reads a member's type down to every value whose own type would publish the validator, against
 /// what `def` says the type holds: through every reference and each level of a list, to a map's
 /// values and to each position of a tuple. `None` where it holds no declared type.
+#[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
-    let mut wraps = Vec::new();
-    #[cfg(feature = "serde")]
-    let mut keys: Vec<syn::Type> = Vec::new();
+    held_shape_reaching(ty, def, &[])
+}
+
+/// [`held_shape`], ending as well on each value behind one of `parameters`, the item's own type
+/// parameters, which `model_schema_issues_with{n}` hands to a check. A value below a map keyed by
+/// one of them is not reached: its entry would be named by a key with no text in reach.
+fn held_shape_reaching(ty: &syn::Type, def: &FieldDef, parameters: &[String]) -> Option<HeldShape> {
+    let mut walked = HeldShape::begun();
     let mut current = ty;
     let mut held = def;
+    let mut reaching = parameters;
     loop {
         current = written_type(current);
         if let syn::Type::Reference(reference) = current {
-            wraps.push(ConstraintWrap::Borrowed);
+            walked.wraps.push(ConstraintWrap::Borrowed);
             current = &reference.elem;
         } else if let syn::Type::Array(array) = current {
-            wraps.push(ConstraintWrap::Sequence);
+            walked.wraps.push(ConstraintWrap::Sequence);
             current = &array.elem;
         } else if let syn::Type::Slice(slice) = current {
-            wraps.push(ConstraintWrap::Sequence);
+            walked.wraps.push(ConstraintWrap::Sequence);
             current = &slice.elem;
         } else if let syn::Type::Tuple(tuple) = current {
             let FieldDefType::Tuple(of_positions) = &held.field_type else {
                 return None;
             };
-            let positions = held_positions(tuple, of_positions);
-            return (!positions.is_empty()).then_some(HeldShape {
-                end: HeldEnd::Positions(positions),
-                #[cfg(feature = "serde")]
-                keys,
-                wraps,
-            });
+            let positions = held_positions(tuple, of_positions, reaching);
+            return (!positions.is_empty()).then(|| walked.ended(HeldEnd::Positions(positions)));
         } else if let syn::Type::Path(path) = current {
             let segment = path.path.segments.last()?;
             let ident = segment.ident.to_string();
@@ -19632,56 +19956,53 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
                 if let FieldDefType::Range(kind, bound) = &held.field_type
                     && RangeKind::named(&ident) == Some(*kind)
                 {
-                    wraps.push(ConstraintWrap::Range(*kind));
+                    walked.wraps.push(ConstraintWrap::Range(*kind));
                     current = sole_type_argument(args)?;
                     held = bound;
                     continue;
                 }
                 if let FieldDefType::Result(ok, err) = &held.field_type
-                    && let Some((ok_type, err_type)) = written_std_result(path)
+                    && let Some(written) = written_std_result(path)
                 {
-                    let arms: Vec<(&'static str, HeldShape)> = RESULT_ARMS
-                        .into_iter()
-                        .zip([(ok_type, &**ok), (err_type, &**err)])
-                        .filter_map(|(arm, (arm_type, arm_def))| {
-                            Some((arm, held_shape(arm_type, arm_def)?))
-                        })
-                        .collect();
-                    return (!arms.is_empty()).then_some(HeldShape {
-                        end: HeldEnd::Arms(arms),
-                        #[cfg(feature = "serde")]
-                        keys,
-                        wraps,
-                    });
+                    let arms = held_arms(written, [&**ok, &**err], reaching);
+                    return (!arms.is_empty()).then(|| walked.ended(HeldEnd::Arms(arms)));
                 }
                 if is_map_wrapper(&ident) {
                     let FieldDefType::Map(_, of_values) = &held.field_type else {
                         return None;
                     };
-                    wraps.push(ConstraintWrap::Map);
+                    let key = type_arguments(args).next()?;
+                    if tokens_name_any(&quote! { #key }, reaching) {
+                        reaching = &[];
+                    }
+                    walked.wraps.push(ConstraintWrap::Map);
                     #[cfg(feature = "serde")]
-                    keys.push(map_key_argument(args)?.clone());
+                    walked.keys.push(key.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
                     continue;
                 }
                 let Some(wrap) = generic_wrap(&ident) else {
-                    return (declared && !reads_through(&ident)).then_some(HeldShape {
-                        end: HeldEnd::Declared,
-                        #[cfg(feature = "serde")]
-                        keys,
-                        wraps,
+                    return (declared && !reads_through(&ident)).then(|| {
+                        let arguments = parameter_walk::leaf_arguments(segment);
+                        walked.ended(HeldEnd::Declared(arguments))
                     });
                 };
-                wraps.push(wrap);
-                current = sole_type_argument(args)?;
+                current = wrapped_argument(wrap, args)?;
+                walked.wraps.push(wrap);
                 held = list_item_def(held, &ident);
             } else if matches!(segment.arguments, syn::PathArguments::None) {
-                return declared.then_some(HeldShape {
-                    end: HeldEnd::Declared,
-                    #[cfg(feature = "serde")]
-                    keys,
-                    wraps,
+                if let FieldDefType::TypeParam(parameter) = &held.field_type
+                    && path.qself.is_none()
+                    && path.path.segments.len() == 1
+                    && reaching.contains(parameter)
+                {
+                    let end = HeldEnd::Parameter(parameter.clone());
+                    return Some(walked.ended(end));
+                }
+                return declared.then(|| {
+                    let arguments = parameter_walk::leaf_arguments(segment);
+                    walked.ended(HeldEnd::Declared(arguments))
                 });
             } else {
                 return None;
@@ -19692,15 +20013,37 @@ fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     }
 }
 
-/// [`held_shape`] of each position of `tuple` that holds a declared type, by its place, against
-/// what `of_positions` says each one holds.
-fn held_positions(tuple: &syn::TypeTuple, of_positions: &[FieldDef]) -> Vec<(usize, HeldShape)> {
+/// [`held_shape_reaching`] of each arm of a std `Result`, by the key serde writes it under: its
+/// `Ok` and its `Err` type as written, against what each def beside them says it holds.
+fn held_arms(
+    (ok_type, err_type): (&syn::Type, &syn::Type),
+    [ok, err]: [&FieldDef; 2],
+    parameters: &[String],
+) -> Vec<(&'static str, HeldShape)> {
+    RESULT_ARMS
+        .into_iter()
+        .zip([(ok_type, ok), (err_type, err)])
+        .filter_map(|(arm, (arm_type, arm_def))| {
+            Some((arm, held_shape_reaching(arm_type, arm_def, parameters)?))
+        })
+        .collect()
+}
+
+/// [`held_shape_reaching`] of each position of `tuple` that holds a declared type, or a value
+/// behind one of `reaching`, by its place, against what `of_positions` says each one holds.
+fn held_positions(
+    tuple: &syn::TypeTuple,
+    of_positions: &[FieldDef],
+    reaching: &[String],
+) -> Vec<(usize, HeldShape)> {
     tuple
         .elems
         .iter()
         .zip(of_positions)
         .enumerate()
-        .filter_map(|(at, (position, of_position))| Some((at, held_shape(position, of_position)?)))
+        .filter_map(|(at, (position, of_position))| {
+            Some((at, held_shape_reaching(position, of_position, reaching)?))
+        })
         .collect()
 }
 
@@ -19716,15 +20059,22 @@ fn list_item_def<'def>(def: &'def FieldDef, wrapper: &str) -> &'def FieldDef {
     }
 }
 
-/// The type of a map's keys, its first type argument.
-#[cfg(feature = "serde")]
-fn map_key_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
-    type_arguments(args).next()
-}
-
 /// The type of a map's values, its second type argument.
 fn map_value_argument(args: &syn::AngleBracketedGenericArguments) -> Option<&syn::Type> {
     type_arguments(args).nth(1)
+}
+
+/// The type a wrapper holds: a sequence's first type argument, which leaves a set's hasher aside,
+/// and the sole one of any other wrapper.
+fn wrapped_argument(
+    wrap: ConstraintWrap,
+    args: &syn::AngleBracketedGenericArguments,
+) -> Option<&syn::Type> {
+    if matches!(wrap, ConstraintWrap::Sequence) {
+        type_arguments(args).next()
+    } else {
+        sole_type_argument(args)
+    }
 }
 
 /// The type arguments of an angle-bracketed list, lifetimes and consts left out.
@@ -20346,6 +20696,7 @@ fn collect_field_guard_errors(
             prop_meta,
         ))
         .chain(serde_guard_errors)
+        .chain(parameter_walk::rearranged_alias_errors(&field.ty, &label))
         .collect()
 }
 
@@ -21294,16 +21645,8 @@ fn process_field(
     let place = member_place(field, index, ctx.variant_ident.is_some(), ctx.steps(index));
 
     // Generate validation code and hold back the serde attribute it hangs on the field
-    let (bound_fns, validate_body, field_validation_guard_error) = generate_field_validation(
-        ctx,
-        field,
-        index,
-        &model_schema_prop_meta,
-        // A struct's field, or a tagged variant's: the shape of the payload says which type it
-        // is, so a constraint here decides only whether the value is admissible.
-        ConstraintGate::Validator,
-        &mut injected_attrs,
-    );
+    let (bound_fns, validate_body, field_validation_guard_error) =
+        generate_field_validation(ctx, field, index, &model_schema_prop_meta);
 
     field.attrs = new_attrs;
 
@@ -21369,24 +21712,15 @@ fn process_field(
         &model_schema_prop_meta.check,
         VALIDATE_SINK,
     );
+    if validate_body.is_some() || own_checks.is_some() {
+        parameter_walk::note_ruled();
+    }
 
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
 
-    // The read-time half of the reach `validate()` has below: what the field's own type turns
-    // away before `validate()` is ever asked.
+    // What `validate()` walks is read unjudged, the whole value being judged once it is read.
     #[cfg(feature = "serde")]
-    let validation_fn =
-        match member_read_hook(ctx, field, &field_def, index, place.reported.as_deref()) {
-            Some((hook, attrs)) => {
-                injected_attrs.extend(attrs);
-                Some(match bound_fns {
-                    Some(already) => quote! { #already #hook },
-                    None => hook,
-                })
-            }
-            None => bound_fns,
-        };
-    #[cfg(not(feature = "serde"))]
+    read_unjudged_below(ctx, field, &field_def, index);
     let validation_fn = bound_fns;
 
     let declared = named_member_validate_body(validate_body, field, &field_def, &place);
@@ -21400,37 +21734,28 @@ fn process_field(
     (field_def, validation_fn, body, guard_errors)
 }
 
-/// The wrapper chain a field's own type is reached through, where the field is a reference to a
-/// declared type under an `Option`, a list, the transparent wrappers and every borrow, and `None`
-/// for any other. A list is read by what it holds, as [`held_shape`] reads it, so a set of strings
-/// is no reference to a declared type.
-#[cfg(feature = "serde")]
-fn reachable_nested_shape(field: &Field, field_def: &FieldDef) -> Option<Vec<ConstraintWrap>> {
-    let held = held_shape(&field.ty, field_def)?;
-    (matches!(held.end, HeldEnd::Declared)
-        && !held
-            .wraps
-            .iter()
-            .any(|wrap| matches!(*wrap, ConstraintWrap::Range(_))))
-    .then(|| nested_shape(&field.ty))
-    .flatten()
-}
-
 /// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot.
+#[cfg(feature = "serde")]
 fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def)
 }
 
 /// The `validate()` contribution of what a member's *own type* declares — a constrained brand, or
-/// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — or
-/// `None` where there is nothing below it to run. `place` is where the member is read and the name
-/// it is reported under, which is none for a member serde writes as the value of what holds it.
+/// a nested `#[model_schema()]` type, held itself, in a list, as a map's value or in a tuple — and
+/// of each value behind one of the item's own type parameters, or `None` where there is nothing
+/// below it to run. `place` is where the member is read and the name it is reported under, which
+/// is none for a member serde writes as the value of what holds it.
 fn nested_validate_body(
     field: &Field,
     field_def: &FieldDef,
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
-    member_held_shape(field, field_def).map(|shape| build_nested_validation(&shape, place))
+    if held_shape_reaching(&field.ty, field_def, &[]).is_some() {
+        parameter_walk::note_ruled();
+    }
+    let parameters = parameter_walk::scope().parameters;
+    held_shape_reaching(&field.ty, field_def, &parameters)
+        .map(|shape| build_nested_validation(&shape, place))
 }
 
 /// `checked`, a member's statements in `validate()`, under the member's `#[cfg(...)]` attributes:
@@ -21447,43 +21772,13 @@ fn under_member_cfgs(field: &Field, checked: proc_macro2::TokenStream) -> proc_m
     quote! { #(#cfgs)* { #checked } }
 }
 
-/// The wrappers a named field's own type is reached through, where a refusal it raises as it is
-/// read is answered under the field's key, and `None` for every field it is answered as it is. A
-/// field read through a reference has no hook: serde reads no reference to a model.
-#[cfg(feature = "serde")]
-fn named_below(
-    field: &Field,
-    field_def: &FieldDef,
-    ctx: &FieldContext<'_>,
-) -> Option<Vec<ConstraintWrap>> {
-    ctx.schema_module_name?;
-    field.ident.as_ref()?;
-    if !ctx.container_read_back
-        || is_flattened_field(field)
-        || names_what_the_module_cannot_repeat(&field.ty, ctx.type_parameters)
-    {
-        return None;
-    }
-    let serde_meta = parse_serde_field_attributes(&field.attrs);
-    if serde_meta.skip || has_serde_read_hook(&field.attrs) {
-        return None;
-    }
-    reachable_nested_shape(field, field_def).filter(|wraps| !ends_on_a_borrow(wraps))
-}
-
 /// Gives a member of a struct, or of a tagged variant, the hook that reads the models it holds
-/// unjudged, where the item is read back and `validate()` walks what the member holds. Answers
-/// whether it was given one. `reported` is the name `validate()` reports the member under.
+/// unjudged, where the item is read back and `validate()` walks what the member holds: the whole
+/// value is judged once it is read. A member no hook is hung on is read by its own `Deserialize`.
 #[cfg(feature = "serde")]
-fn read_unjudged_below(
-    ctx: &FieldContext<'_>,
-    field: &Field,
-    field_def: &FieldDef,
-    index: usize,
-    reported: Option<&str>,
-) -> bool {
+fn read_unjudged_below(ctx: &FieldContext<'_>, field: &Field, field_def: &FieldDef, index: usize) {
     if !ctx.container_read_back {
-        return false;
+        return;
     }
     let walked = if field.ident.is_some() {
         member_held_shape(field, field_def)
@@ -21491,138 +21786,18 @@ fn read_unjudged_below(
         held_shape(&field.ty, field_def)
     };
     let Some(shape) = walked else {
-        return false;
+        return;
     };
     judged_read::hook_member(
         field,
         &shape,
         &judged_read::HookPlace {
-            choosing: false,
             container_defaulted: ctx.container_defaulted,
             index,
-            renamed_under: named_below(field, field_def, ctx).and(reported),
             variant: ctx.variant_ident,
             written_under_a_key: field.ident.is_some() && !is_flattened_field(field),
         },
-    )
-}
-
-/// The hook a member's own type is read through as the item is read, with the attributes that
-/// hang it on the field. What `validate()` walks is read unjudged, through a hook of the item's
-/// own read, the whole value being judged once it is read: `None` then, and for every member no
-/// hook is hung on.
-#[cfg(feature = "serde")]
-fn member_read_hook(
-    ctx: &FieldContext<'_>,
-    field: &Field,
-    field_def: &FieldDef,
-    index: usize,
-    reported: Option<&str>,
-) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
-    if read_unjudged_below(ctx, field, field_def, index, reported) {
-        return None;
-    }
-    named_read_hook(field, field_def, ctx, &field_ident_string(field), reported?)
-}
-
-/// The read-time hook for a named field whose *own type* carries the bound — a constrained brand,
-/// or a nested `#[model_schema()]` type holding one — together with the serde attributes that hang
-/// it on the field. `None` for every field no hook may be hung on. `reported` is the name
-/// `validate()` reports the field under.
-#[cfg(feature = "serde")]
-fn named_read_hook(
-    field: &Field,
-    field_def: &FieldDef,
-    ctx: &FieldContext<'_>,
-    raw_field_ident: &str,
-    reported: &str,
-) -> Option<(proc_macro2::TokenStream, Vec<syn::Attribute>)> {
-    let module_name = ctx.schema_module_name?;
-    let wraps = named_below(field, field_def, ctx)?;
-
-    let stem = helper_name_stem(raw_field_ident, ctx.variant_ident);
-    let hook_ident = proc_macro2::Ident::new(
-        &format!("{NAMED_READ_HOOK_PREFIX}{stem}"),
-        proc_macro2::Span::call_site(),
     );
-    let path_lit = syn::LitStr::new(
-        &format!("{module_name}::{hook_ident}"),
-        proc_macro2::Span::call_site(),
-    );
-    let mut attrs: Vec<syn::Attribute> = vec![syn::parse_quote! {
-        #[serde(deserialize_with = #path_lit)]
-    }];
-    // A `deserialize_with` turns off serde's reading of a missing `Option` key as `None`, and the
-    // `default` puts it back. Only alongside the hook.
-    if needs_injected_default(&wraps, has_serde_default(&field.attrs)) {
-        attrs.push(syn::parse_quote! { #[serde(default)] });
-    }
-    Some((
-        build_named_read_hook(&hook_ident, &field.ty, reported),
-        attrs,
-    ))
-}
-
-/// The hook itself: read the field's declared type, and where the refusal is one of this crate's
-/// own bound sentences, answer it again with `reported`, the holding field's name, written into
-/// every violation it carries.
-#[cfg(feature = "serde")]
-fn build_named_read_hook(
-    hook_ident: &proc_macro2::Ident,
-    field_ty: &syn::Type,
-    reported: &str,
-) -> proc_macro2::TokenStream {
-    let renaming = judged_read::named_refusal(reported);
-    quote! {
-        pub fn #hook_ident<'de, D>(deserializer: D) -> ::core::result::Result<#field_ty, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            use serde::Deserialize;
-            <#field_ty>::deserialize(deserializer).map_err(#renaming)
-        }
-    }
-}
-
-/// Reads a joined report back into the violations it was built from.
-#[cfg(feature = "serde")]
-fn joined_violations_fn() -> proc_macro2::TokenStream {
-    quote! {
-        fn joined_violations(reported: &str) -> ::std::vec::Vec<&str> {
-            let mut found: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
-            let mut rest = reported;
-            loop {
-                let cut = rest.match_indices("; ").find_map(|(at, _)| {
-                    let (head, tail) = rest.split_at(at);
-                    let tail = tail.strip_prefix("; ")?;
-                    reports_a_bound(tail).then_some((head, tail))
-                });
-                match cut {
-                    ::core::option::Option::Some((head, tail)) => {
-                        found.push(head);
-                        rest = tail;
-                    }
-                    ::core::option::Option::None => {
-                        found.push(rest);
-                        return found;
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Whether a written type says anything a free function in the schema module cannot repeat: a
-/// lifetime it borrows for, `Self`, or one of the item's own type parameters.
-#[cfg(feature = "serde")]
-fn names_what_the_module_cannot_repeat(ty: &syn::Type, type_parameters: &[String]) -> bool {
-    let written = quote! { #ty }.to_string();
-    if written.contains('\'') {
-        return true;
-    }
-    written
-        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
-        .any(|word| word == "Self" || type_parameters.iter().any(|named| named == word))
 }
 
 /// What a member contributes to `validate()`: the check its type declares, then its own. A
@@ -21677,7 +21852,11 @@ fn held_member_checks(
     place: &MemberPlace,
 ) -> Option<proc_macro2::TokenStream> {
     let named = &field_def.model_schema_prop_meta.as_ref()?.check;
-    checks::member_calls(place, &field.ty, named, VALIDATE_SINK)
+    let called = checks::member_calls(place, &field.ty, named, VALIDATE_SINK);
+    if called.is_some() {
+        parameter_walk::note_ruled();
+    }
+    called
 }
 
 /// What a member's arm runs: the check its type declares, then its own, the order Zod reports.
@@ -21837,10 +22016,11 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
         } else if let syn::Type::Path(path) = current {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                wraps.push(generic_wrap(&segment.ident.to_string())?);
+                let wrap = generic_wrap(&segment.ident.to_string())?;
                 #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
-                current = sole_type_argument(args)?;
+                current = wrapped_argument(wrap, args)?;
+                wraps.push(wrap);
             } else if matches!(segment.arguments, syn::PathArguments::None) {
                 let ident = segment.ident.to_string();
                 let leaf = match leaf_for_ident(&ident) {
@@ -22023,11 +22203,9 @@ fn literal_validate_body(
 /// place among its container's.
 fn generate_literal_validation(
     ctx: &FieldContext<'_>,
-    (field, index): (&Field, usize),
+    field: &Field,
     member: &CheckedMember,
     literal: &LiteralValue,
-    gate: ConstraintGate,
-    injected_attrs: &mut Vec<syn::Attribute>,
 ) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
     let module_name = ctx.schema_module_name?;
     let shape = literal_shape(&field.ty)?;
@@ -22065,18 +22243,7 @@ fn generate_literal_validation(
     );
     let hook = literal_hook(&field.ty, &shape, &owned, &validator, &deserializer);
     let validate_body = literal_validate_body(member, &shape, &validator)?;
-    if gate == ConstraintGate::Validator {
-        record_field_validator(module_name, stem, named, items);
-    }
-    if gate == ConstraintGate::Deserializer {
-        hang_bound_hook(
-            ctx,
-            (field, index),
-            &format!("{module_name}::deserialize_{stem}"),
-            &shape.wraps,
-            injected_attrs,
-        );
-    }
+    record_field_validator(module_name, stem, named, items);
     let module_items = quote! {
         pub fn #validator(#param) -> ::core::result::Result<(), ::std::vec::Vec<::std::string::String>> {
             #rendering
@@ -22123,58 +22290,14 @@ fn interior_mutability_constraint_guard_error(
     .to_compile_error()
 }
 
-/// Hangs the hook `path` names on the member at `index`, whose bound chooses the variant of an
-/// untagged enum, with the `default` that keeps an optional key optional under it, and records
-/// both for the item's read. A borrow publishes no hook, and a member its author reads through a
-/// function of their own keeps that one: serde admits one reader per field. Its bound is then the
-/// validator's alone.
-#[cfg(feature = "serde")]
-fn hang_bound_hook(
-    ctx: &FieldContext<'_>,
-    (field, index): (&Field, usize),
-    path: &str,
-    wraps: &[ConstraintWrap],
-    injected_attrs: &mut Vec<syn::Attribute>,
-) {
-    if ends_on_a_borrow(wraps) || has_serde_read_hook(&field.attrs) {
-        return;
-    }
-    let path_lit = syn::LitStr::new(path, proc_macro2::Span::call_site());
-    let mut hung: Vec<syn::Attribute> = vec![syn::parse_quote! {
-        #[serde(deserialize_with = #path_lit)]
-    }];
-    if needs_injected_default(wraps, has_serde_default(&field.attrs)) {
-        hung.push(syn::parse_quote! {
-            #[serde(default)]
-        });
-    }
-    judged_read::record_bound_hook(ctx.variant_ident, index, &hung);
-    injected_attrs.extend(hung);
-}
-
-/// Nothing, where no `serde` reads a member.
-#[cfg(not(feature = "serde"))]
-const fn hang_bound_hook(
-    _ctx: &FieldContext<'_>,
-    _member: (&Field, usize),
-    _path: &str,
-    _wraps: &[ConstraintWrap],
-    _injected_attrs: &mut Vec<syn::Attribute>,
-) {
-}
-
 /// Generates per-field serde validation code — the static validator and the `deserialize_with`
-/// hook, both published into the schema module either way — and, where `gate` says the read is
-/// also a gate, collects the `#[serde(deserialize_with = ...)]` attribute into `injected_attrs`,
-/// plus the `#[serde(default)]` that keeps an optional key optional under one. Each violation is
-/// reported under the steps serde writes on the way to the field.
+/// hook, both published into the schema module. Each violation is reported under the steps serde
+/// writes on the way to the field.
 fn generate_field_validation(
     ctx: &FieldContext<'_>,
     field: &Field,
     index: usize,
     model_schema_prop_meta: &ModelSchemaPropMeta,
-    gate: ConstraintGate,
-    injected_attrs: &mut Vec<syn::Attribute>,
 ) -> (
     Option<proc_macro2::TokenStream>,
     Option<proc_macro2::TokenStream>,
@@ -22200,17 +22323,10 @@ fn generate_field_validation(
                 interior_mutability_constraint_guard_error(field, &member.label, &wrapper, true);
             return (None, None, Some(refused));
         }
-        return generate_literal_validation(
-            ctx,
-            (field, index),
-            &member,
-            literal,
-            gate,
-            injected_attrs,
-        )
-        .map_or((None, None, None), |(items, body)| {
-            (Some(items), Some(body), None)
-        });
+        return generate_literal_validation(ctx, field, &member, literal)
+            .map_or((None, None, None), |(items, body)| {
+                (Some(items), Some(body), None)
+            });
     }
 
     let (Some(module_name), Some(shape)) = (ctx.schema_module_name, constrained_shape(&field.ty))
@@ -22257,18 +22373,7 @@ fn generate_field_validation(
     };
 
     let helper_stem = &member.stem;
-    if gate == ConstraintGate::Validator {
-        record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
-    }
-    if gate == ConstraintGate::Deserializer {
-        hang_bound_hook(
-            ctx,
-            (field, index),
-            &format!("{module_name}::deserialize_{helper_stem}"),
-            &shape.wraps,
-            injected_attrs,
-        );
-    }
+    record_field_validator(module_name, helper_stem, member.reported.as_deref(), false);
 
     (
         Some(validation_code.module_items),
@@ -22775,8 +22880,8 @@ fn ts_valid_type(
     item_name: &str,
     rust_ident: &str,
     ts_generics: &str,
-    noted: bool,
-    nullable: bool,
+    (noted, nullable): (bool, bool),
+    constants: &[(String, String)],
 ) -> String {
     if !valid_type::has_draft() {
         return ts_assumed_draft(item_name, rust_ident, ts_generics);
@@ -22800,7 +22905,67 @@ fn ts_valid_type(
     } else {
         format!("Readonly<{item_name}Draft{ts_generics}> & {marker}")
     };
-    format!("{declared}\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}")
+    let converts = ts_valid_conversion(item_name, ts_generics, constants);
+    format!(
+        "{declared}\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}{converts}"
+    )
+}
+
+/// The constant of each variant of a plain enum with no draft, as the plain literal the union
+/// holds. Nothing where the enum has a draft, whose constants the valid type holds.
+#[cfg(feature = "typescript")]
+fn ts_plain_enum_members(item_name: &str, constants: &[(String, String)]) -> String {
+    if valid_type::has_draft() || constants.is_empty() {
+        return String::new();
+    }
+    let members = constants
+        .iter()
+        .map(|(key, value)| format!("  {}: {value},", key.trim_start_matches("r#")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "\n\nexport const {item_name} = {{\n{members}\n}} as const satisfies Record<string, {item_name}>;"
+    )
+}
+
+/// What only a type that declares no rule has beside its valid type: the constant of each unit
+/// variant of a plain enum, and `{Name}Draft$valid`, which makes the valid value of a draft no rule
+/// judges. The text is written between the marks `valid_type::settle` reads, which keeps it where
+/// the type declares no rule.
+#[cfg(feature = "typescript")]
+fn ts_valid_conversion(
+    item_name: &str,
+    ts_generics: &str,
+    constants: &[(String, String)],
+) -> String {
+    let declared = valid_type::declared();
+    let members = if constants.is_empty() || declared.checked {
+        String::new()
+    } else {
+        let members = constants
+            .iter()
+            .map(|(key, value)| {
+                format!(
+                    "  {}: {value} as {item_name},",
+                    key.trim_start_matches("r#"),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("\n\nexport const {item_name} = {{\n{members}\n}} as const;")
+    };
+    let unit = if declared.unit {
+        format!(
+            "{}\n\nexport const {item_name} = Object.freeze({{}}) as {item_name};",
+            valid_type::SETTLE_OPEN
+        )
+    } else {
+        valid_type::SETTLE_OPEN.to_string()
+    };
+    format!(
+        "{members}{unit}\n\nexport function {item_name}Draft$valid{ts_generics}(draft: {item_name}Draft{ts_generics}): {item_name}{ts_generics} {{\n  return draft as unknown as {item_name}{ts_generics};\n}}{}",
+        valid_type::SETTLE_CLOSE
+    )
 }
 
 #[cfg(feature = "typescript")]
@@ -22814,7 +22979,7 @@ fn generate_ts_definition_method(
     own_keys: &[String],
     flatten_types: &[MergedOperand],
 ) -> proc_macro2::TokenStream {
-    let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+    let valid = ts_valid_type(item_name, rust_ident, ts_generics, (false, false), &[]);
     let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
     let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
     let fields_empty = own_keys.is_empty();
@@ -23950,16 +24115,25 @@ fn generate_plain_enum_ts_definition_method(
     ts_generics: &str,
     type_code: &str,
     variant_reader: &str,
+    constants: &[(String, String)],
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, false);
+        let valid = ts_valid_type(
+            item_name,
+            rust_ident,
+            ts_generics,
+            (false, false),
+            constants,
+        );
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
         let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 
+        let members = ts_plain_enum_members(item_name, constants);
+
         let typescript_type_gen = quote::quote! {
-            format!("{}export type {}{} =\n{};{}{}\n\n{}", docs, #draft_name, #ts_generics, #type_code, #reexport, #valid, #variant_reader)
+            format!("{}export type {}{} =\n{};{}{}{}\n\n{}", docs, #draft_name, #ts_generics, #type_code, #reexport, #valid, #members, #variant_reader)
         };
 
         quote::quote! {
@@ -24086,12 +24260,18 @@ fn generate_discriminated_enum_ts_definition_method(
     ts_generics: &str,
     type_code: &str,
     variant_reader: &str,
-    admits_null: bool,
+    (admits_null, constants): (bool, &[(String, String)]),
 ) -> proc_macro2::TokenStream {
     #[cfg(feature = "typescript")]
     {
         let item_docs_gen = bind_item_jsdoc_local(docs);
-        let valid = ts_valid_type(item_name, rust_ident, ts_generics, false, admits_null);
+        let valid = ts_valid_type(
+            item_name,
+            rust_ident,
+            ts_generics,
+            (false, admits_null),
+            constants,
+        );
         let (draft_name, draft_ident) = (ts_draft_name(item_name), ts_draft_name(rust_ident));
         let reexport = ident_reexport_ts(&draft_ident, &draft_name, ts_generics);
 

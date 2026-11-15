@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 use super::super::live::{collection, say};
 use super::{
-    AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceStatusDraft,
+    AddressDraft, Customer, CustomerDraft, Invoice, InvoiceDraft, InvoiceStatus,
     assert_declared_and_documented, assert_documented, customer_schema, invoice, invoice_schema,
 };
 use crate::BSON_MAJOR;
@@ -86,7 +86,7 @@ async fn every_operation(
     let drafts = || {
         paths
             .status()
-            .eq(InvoiceStatusDraft::Draft.validate().unwrap())
+            .eq(InvoiceStatus::Draft)
             .map_err(OperationError::Unwritable)
     };
     let voided = || {
@@ -403,7 +403,7 @@ async fn every_operation(
     let drafts = || {
         paths
             .status()
-            .eq(InvoiceStatusDraft::Draft.validate().unwrap())
+            .eq(InvoiceStatus::Draft)
             .map_err(OperationError::Unwritable)
     };
     let voided = || {
@@ -698,7 +698,7 @@ fn the_readme_shows_the_keys_a_row_stores_as_their_text() {
     let roster = TextKeyedRosterDraft {
         initials: HashMap::from([('m', "Moca".to_owned())]),
         names: HashMap::from([("Acme".to_owned(), "Moca".to_owned())]),
-        shifts: HashMap::from([(ShiftDraft::Late.validate().unwrap(), "Moca".to_owned())]),
+        shifts: HashMap::from([(Shift::Late, "Moca".to_owned())]),
         stations: HashMap::from([(Station::new("north".to_owned()).unwrap(), "Moca".to_owned())]),
     }
     .validate()
@@ -763,11 +763,10 @@ async fn live_the_readme_examples_run_against_a_collection() {
         return;
     };
     let draft = InvoiceDraft {
-        status: InvoiceStatusDraft::Draft.validate().unwrap(),
+        status: InvoiceStatus::Draft,
         ..invoice("INV-0000", "Acme", 50.5).into()
     }
-    .validate()
-    .unwrap();
+    .into();
     every_operation(&invoices, &draft).await.unwrap();
     let left = Invoice::count(&invoices, Filter::raw(doc! {}))
         .await
@@ -783,7 +782,7 @@ async fn live_the_readme_examples_run_against_a_collection() {
         .insert("openInvoices", "1");
     let paid = InvoiceDraft {
         paid_at: Some("2026-10-07T17:40:00Z".to_owned()),
-        status: InvoiceStatusDraft::Paid.validate().unwrap(),
+        status: InvoiceStatus::Paid,
         ..invoice("INV-0003", "Acme", 500.5).into()
     };
     let rows = vec![

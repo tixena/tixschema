@@ -669,6 +669,17 @@ pub struct FieldDef {
     /// The array levels written as a set, numbered as `array_lengths` numbers them.
     pub set_levels: Vec<u8>,
     pub type_span: Span,
+    /// The zone of a `DateTime<Tz>`: `Utc`, for any other type as well.
+    pub zone: Zone,
+}
+
+/// The zone of a `DateTime<Tz>`, as far as what chrono writes of it depends on it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Zone {
+    /// Any other zone, written in the offset it holds.
+    Other,
+    /// Written in UTC, as `Z`.
+    Utc,
 }
 
 /// Two field defs are equal when they describe the same value on every surface: the same type, the
@@ -680,6 +691,7 @@ impl PartialEq for FieldDef {
             && self.nullable_levels == other.nullable_levels
             && self.set_levels == other.set_levels
             && self.bytes == other.bytes
+            && self.zone == other.zone
             && self.field_type == other.field_type
     }
 }
@@ -1816,6 +1828,7 @@ impl FieldDef {
                         set_levels: Vec::new(),
                         scope: Scope::default(),
                         type_span: Span::call_site(),
+                        zone: Zone::Utc,
                     }));
                 }
                 for generic in generics.iter_mut() {
@@ -2833,7 +2846,8 @@ impl FieldDef {
     }
 
     /// Builds the Zod schema string for a numeric field: the range of its integer type, then any
-    /// min/max constraints. A side of the range a declared bound narrows is left to the bound.
+    /// min/max constraints. The width check stays ahead of a declared bound that narrows it, with
+    /// no message of its own, so a flattened holder can tell a width refusal from the bound's.
     #[cfg(feature = "zod")]
     fn zod_number_type(&self, base: &str) -> String {
         let mut result = base.to_owned();
@@ -2841,14 +2855,10 @@ impl FieldDef {
         let minimum = declared.and_then(|meta| meta.minimum.as_ref());
         let maximum = declared.and_then(|meta| meta.maximum.as_ref());
         let (least, most) = self.field_type.integer_range();
-        if let Some(width) = least
-            && minimum.is_none_or(|bound| limit_number(bound) < width)
-        {
+        if let Some(width) = least {
             result = format!("{result}.min({width})");
         }
-        if let Some(width) = most
-            && maximum.is_none_or(|bound| limit_number(bound) > width)
-        {
+        if let Some(width) = most {
             result = format!("{result}.max({width})");
         }
         if let Some(min) = minimum {
@@ -3690,6 +3700,7 @@ fn unscoped_type_path_def(
             set_levels: Vec::new(),
             scope: Scope::default(),
             type_span: type_path.span(),
+            zone: Zone::Utc,
         };
     };
     let ident = segment.ident.to_string();
@@ -3713,6 +3724,7 @@ fn unscoped_type_path_def(
             // The name segment, not the whole path: it is what a generated module is named after,
             // so a reference the module cannot resolve is blamed on the name it was built from.
             type_span: segment.ident.span(),
+            zone: Zone::Utc,
         },
         PathArguments::AngleBracketed(args) => get_field_def_from_generic_type(
             &segment.ident,
@@ -3739,6 +3751,7 @@ fn unscoped_type_path_def(
             set_levels: Vec::new(),
             scope: Scope::default(),
             type_span: segment.ident.span(),
+            zone: Zone::Utc,
         },
     }
 }
@@ -3809,10 +3822,20 @@ fn get_field_def_from_generic_type(
             set_levels: Vec::new(),
             scope: Scope::default(),
             type_span: type_ident.span(),
+            zone: Zone::Utc,
         }
     } else if arg_types.len() == 1 && is_datetime_generic_type(ident) {
-        // The timezone type parameter says nothing about what is written.
-        written_def(datetime_field_type(), field_name, field_docs, type_ident)
+        let zone = if matches!(&arg_types[0].field_type,
+            FieldDefType::SiblingType(named, _) if named == "Utc")
+        {
+            Zone::Utc
+        } else {
+            Zone::Other
+        };
+        FieldDef {
+            zone,
+            ..written_def(datetime_field_type(), field_name, field_docs, type_ident)
+        }
     } else if let Some(StdType::Range(kind)) = std
         && let [bound] = arg_types.as_slice()
     {
@@ -3854,6 +3877,7 @@ fn written_def(
         set_levels: Vec::new(),
         scope: Scope::default(),
         type_span: type_ident.span(),
+        zone: Zone::Utc,
     }
 }
 
@@ -4019,6 +4043,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             set_levels: Vec::new(),
             scope: Scope::default(),
             type_span: written.span(),
+            zone: Zone::Utc,
         }
     } else {
         FieldDef {
@@ -4038,6 +4063,7 @@ pub fn get_field_def(name: &str, ty: &Type, field_docs: &str) -> FieldDef {
             set_levels: Vec::new(),
             scope: Scope::default(),
             type_span: written.span(),
+            zone: Zone::Utc,
         }
     }
 }

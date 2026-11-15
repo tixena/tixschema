@@ -189,8 +189,7 @@ mod a_message_names_the_path_in_the_payload {
             .validate()
             .unwrap(),
         }
-        .validate()
-        .unwrap()
+        .into()
     }
 
     fn broken_manifest() -> Manifest {

@@ -3,6 +3,8 @@
 //! runs of each client are in the emitted-client groups, and the run of the Zod schemas under node
 //! in `generic_types_tests`.
 
+#[cfg(all(feature = "dart", feature = "serde"))]
+use crate::dart_integer_read::integer_read;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 use crate::kotlin_numbers::without_number_readers;
 use serde::de::DeserializeOwned;
@@ -255,8 +257,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
             dock: None,
             pier: 3
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<SkippedBerth>(r#"{"kind":"Docked","line":"l","pier":3}"#).unwrap(),
@@ -265,8 +266,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
             line: String::new(),
             pier: 3
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<ReadThrough>(r#"{"kind":"Docked","pier":3}"#).unwrap(),
@@ -274,8 +274,7 @@ fn the_members_no_refusal_reaches_read_as_before() {
             dock: String::new(),
             pier: 3
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(
         serde_json::from_str::<TriedThrough>(r#"{"kind":"Adrift"}"#)
@@ -316,8 +315,7 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
             .unwrap(),
             label: "q".to_owned()
         }
-        .validate()
-        .unwrap()
+        .into()
     );
 }
 
@@ -329,11 +327,14 @@ fn a_struct_that_flattens_the_untagged_enum_reads_the_default_of_its_member() {
 fn dart_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
     let written = super::models::berthing_dart::dart_definition();
     for read in [
-        "BerthingDocked(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] \
-         as String) : (jsonDecode('\"\"') as String),pier: _readAt(json, 'pier', () => (switch \
-         (json['pier'] as int) { final number when number >= 0 && number <= 4294967295 => number, \
-         final number => throw FormatException('expected an integer from 0 to 4294967295, found \
-         $number') })),)",
+        &format!(
+            "BerthingDocked(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => \
+             json['dock'] as String) : (jsonDecode('\"\"') as String),pier: _readAt(json, 'pier', \
+             () => (switch ({}) {{ final number when number >= 0 && number <= 4294967295 => \
+             number, final number => throw FormatException('expected an integer from 0 to \
+             4294967295, found $number') }})),)",
+            integer_read("json['pier']", "u32")
+        ),
         "BerthingMoored(dock: json.containsKey('dock') ? _readAt(json, 'dock', () => json['dock'] \
          as String) : (jsonDecode('\"north\"') as String),line: json.containsKey('line') ? \
          _readAt(json, 'line', () => json['line'] as String) : (jsonDecode('\"\"') as String),)",
@@ -357,7 +358,7 @@ fn swift_reads_a_member_of_a_variant_left_out_from_the_json_of_its_default() {
              forKey: .dock) } else { let dockDefaultPayload = try \
              JSONSerialization.jsonObject(with: Data(\"\\\"north\\\"\".utf8), options: \
              [.fragmentsAllowed]); self.dock = try SwiftSchemaPayload.read(String.self, from: \
-             dockDefaultPayload, at: container.codingPath + [CodingKeys.dock]) }"
+             dockDefaultPayload, at: container.codingPath + [CodingKeys.dock], within: decoder) }"
         ),
         "{written}"
     );
@@ -529,6 +530,14 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
         "",
         "export type Tide = Readonly<TideDraft> & $brand<\"Tide\">;",
         "",
+        "export const Tide = {",
+        "  Slack: Object.freeze({ kind: \"Slack\" }) as Tide,",
+        "} as const;",
+        "",
+        "export function TideDraft$valid(draft: TideDraft): Tide {",
+        "  return draft as unknown as Tide;",
+        "}",
+        "",
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */",
         "export function Tide$Variant(value: unknown): string {",
         "  if (typeof value !== \"object\" || value === null) return \"\";",
@@ -580,55 +589,72 @@ fn an_enum_with_no_default_writes_the_json_schema_it_wrote() {
 fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
     assert_eq!(
         tide_dart::dart_definition(),
-        "sealed class TideDraft { const TideDraft(); factory TideDraft.fromJson(Map<String, \
-         dynamic> json) { final tag = _readAt(json, 'kind', () => json['kind'] as String); \
-         switch (tag) { case 'Ebbing': return _readFlattened(() => TideEbbing.fromJson(json)); \
-         case 'Slack': return (() { for (final key in json.keys) { if (!const \
-         <String>{'kind'}.contains(key)) throw FormatException('Unknown key of a Tide: $key', \
-         <Object>[key]); } return TideSlack(); })(); default: throw FormatException('Unknown \
-         Tide: ' + tag); } } static Read _readAt<Read>(Map<String, dynamic>? object, Object \
-         key, Read Function() read) { try { return read(); } catch (refused) { if (object != \
-         null && !object.containsKey(key)) throw FormatException('missing field `$key`', \
-         <Object>[key]); if (refused is TypeError) throw FormatException('$refused', \
-         <Object>[key]); if (refused is FormatException) { final at = refused.source; throw \
-         FormatException(refused.message, <Object>[key, if (at is List<Object>) ...at]); } \
-         rethrow; } } static Read _readBuffered<Read>(Read Function() read) { try { return \
-         read(); } on FormatException catch (refused) { if (refused.message != 'expected \
-         value') rethrow; throw const FormatException('invalid type: expected string or map'); \
-         } } static Read _readFlattened<Read>(Read Function() read) { try { return \
-         _readBuffered(read); } on FormatException catch (refused) { final at = refused.source; \
-         if (at is! List<Object> || at.isEmpty) rethrow; final message = refused.message; throw \
-         FormatException(message, <Object>[if (message.startsWith('missing field ') || \
-         message.startsWith('Unknown key of a ')) at.last]); } } dynamic toJson(); List<String> \
-         validationIssues(); Tide validate() { final found = validationIssues(); if \
-         (found.isNotEmpty) throw FormatException(found.join('; ')); return Tide._(this); } } \
-         class Tide { const Tide._(this._draft); final TideDraft _draft; TideDraft toDraft() => \
-         _draft; factory Tide.fromJson(Map<String, dynamic> json) { final read = \
-         TideDraft.fromJson(json); final violations = read.validationIssues(); if \
-         (violations.isNotEmpty) throw FormatException(violations.join('; ')); return \
-         Tide._(read); } factory Tide.fromJsonUnjudged(Map<String, dynamic> json) => \
-         Tide._(TideDraft.fromJson(json)); dynamic toJson() => _draft.toJson(); List<String> \
-         validationIssues() => _draft.validationIssues(); static Object $thrown(Object thrown) => \
-         thrown is TideDraft ? thrown.validate() : thrown; } class TideEbbing extends TideDraft \
-         { const TideEbbing({required this.height,}); final int height; factory \
-         TideEbbing.fromJson(Map<String, dynamic> json) { for (final key in json.keys) { if \
-         (!const <String>{'kind', 'height'}.contains(key)) throw FormatException('Unknown key \
-         of a TideEbbing: $key', <Object>[key]); } return TideEbbing(height: _readAt(json, \
-         'height', () => (switch (json['height'] as int) { final number when number >= 0 && \
-         number <= 4294967295 => number, final number => throw FormatException('expected an \
-         integer from 0 to 4294967295, found $number') })),); } static Read \
+        "class TideRefusal implements Exception { const TideRefusal(this.issues); final \
+         List<String> issues; @override String toString() => 'TideRefusal: $issues'; } sealed \
+         class TideDraft { const TideDraft(); factory TideDraft.fromJson(Map<String, dynamic> \
+         json) { final tag = _readAt(json, 'kind', () => json['kind'] as String); switch (tag) { \
+         case 'Ebbing': return _readFlattened(() => TideEbbing.fromJson(json)); case 'Slack': \
+         return (() { for (final key in json.keys) { if (!const <String>{'kind'}.contains(key)) \
+         throw FormatException('Unknown key of a Tide: $key', <Object>[key]); } return \
+         TideSlack(); })(); default: throw FormatException('Unknown Tide: ' + tag); } } static \
+         Read _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) { try \
+         { return read(); } catch (refused) { if (object != null && !object.containsKey(key)) \
+         throw FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) \
+         throw FormatException('$refused', <Object>[key]); if (refused is FormatException) { \
+         final at = refused.source; throw FormatException(refused.message, <Object>[key, if (at \
+         is List<Object>) ...at]); } if (refused is Exception) { Object? listed; try { listed = \
+         (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if (listed is \
+         List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
+         final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
+         } rethrow; } } static Read _readBuffered<Read>(Read Function() read) { try { return \
+         read(); } on FormatException catch (refused) { if (refused.message != 'expected value') \
+         rethrow; throw const FormatException('invalid type: expected string or map'); } } static \
+         Read _readFlattened<Read>(Read Function() read) { try { return _readBuffered(read); } on \
+         FormatException catch (refused) { final at = refused.source; if (at is! List<Object> || \
+         at.isEmpty) rethrow; final message = refused.message; throw FormatException(message, \
+         <Object>[if (message.startsWith('missing field ') || message.startsWith('Unknown key of \
+         a ')) at.last]); } } dynamic toJson(); List<String> validationIssues(); Tide validate() \
+         { final found = validationIssues(); if (found.isNotEmpty) throw TideRefusal(found); \
+         return Tide._(this); } Tide toValid() => Tide._(this); } class Tide { const \
+         Tide._(this._draft); final TideDraft _draft; TideDraft toDraft() => _draft; factory \
+         Tide.fromJson(Map<String, dynamic> json) { final read = TideDraft.fromJson(json); final \
+         violations = read.validationIssues(); if (violations.isNotEmpty) throw \
+         TideRefusal(violations); return Tide._(read); } factory \
+         Tide.fromJsonUnjudged(Map<String, dynamic> json) => Tide._(TideDraft.fromJson(json)); \
+         static const slack = Tide._(TideSlack()); dynamic toJson() => _draft.toJson(); \
+         List<String> validationIssues() => _draft.validationIssues(); static Object \
+         $thrown(Object thrown) => thrown is TideDraft ? thrown.validate() : thrown; } class \
+         TideEbbing extends TideDraft { const TideEbbing({required this.height,}); final int \
+         height; factory TideEbbing.fromJson(Map<String, dynamic> json) { for (final key in \
+         json.keys) { if (!const <String>{'kind', 'height'}.contains(key)) throw \
+         FormatException('Unknown key of a TideEbbing: $key', <Object>[key]); } return \
+         TideEbbing(height: _readAt(json, 'height', () => @HEIGHT@),); } static Read \
          _readAt<Read>(Map<String, dynamic>? object, Object key, Read Function() read) { try { \
-         return read(); } catch (refused) { if (object != null && !object.containsKey(key)) \
-         throw FormatException('missing field `$key`', <Object>[key]); if (refused is \
-         TypeError) throw FormatException('$refused', <Object>[key]); if (refused is \
-         FormatException) { final at = refused.source; throw FormatException(refused.message, \
-         <Object>[key, if (at is List<Object>) ...at]); } rethrow; } } Map<String, dynamic> \
-         toJson() => { 'kind': 'Ebbing','height': (switch (height) { final number when number \
-         >= 0 && number <= 4294967295 => number, final number => throw \
-         FormatException('expected an integer from 0 to 4294967295, found $number') }), }; \
-         @override List<String> validationIssues() => const []; } class TideSlack extends \
+         return read(); } catch (refused) { if (object != null && !object.containsKey(key)) throw \
+         FormatException('missing field `$key`', <Object>[key]); if (refused is TypeError) throw \
+         FormatException('$refused', <Object>[key]); if (refused is FormatException) { final at = \
+         refused.source; throw FormatException(refused.message, <Object>[key, if (at is \
+         List<Object>) ...at]); } if (refused is Exception) { Object? listed; try { listed = \
+         (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if (listed is \
+         List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
+         final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
+         } rethrow; } } Map<String, dynamic> toJson() => { 'kind': 'Ebbing','height': (switch \
+         (height) { final number when number >= 0 && number <= 4294967295 => number, final number \
+         => throw FormatException('expected an integer from 0 to 4294967295, found $number') }), \
+         }; @override List<String> validationIssues() => const []; } class TideSlack extends \
          TideDraft { const TideSlack(); @override dynamic toJson() => { 'kind': 'Slack' }; \
          @override List<String> validationIssues() => const []; }"
+            .replace(
+                "@HEIGHT@",
+                &format!(
+                    "(switch ({}) {{ final number when number >= 0 && number <= 4294967295 => \
+                     number, final number => throw FormatException('expected an integer from 0 \
+                     to 4294967295, found $number') }})",
+                    integer_read("json['height']", "u32")
+                )
+            )
     );
 }
 
@@ -636,7 +662,7 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
 #[test]
 fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
     use crate::swift_fitted::FITTED;
-    use crate::swift_valid;
+    use crate::{swift_valid, swift_valid_free};
 
     assert_eq!(
         swift_valid::draft_of(&tide_swift::swift_definition()),
@@ -647,10 +673,79 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
              self.height = height;  }; private struct SwiftSchemaAnyKey: CodingKey { var \
              stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { \
              self.stringValue = stringValue }; init?(intValue: Int) { nil } }; ",
-            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
-             throws { let container = try decoder.container(keyedBy: CodingKeys.self); self.height \
-             = try container.decode(SwiftSchemaFit<UInt32>.self, forKey: .height).value }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"height\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func validate() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] } };  public enum TideDraft: Codable, Sendable { case ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: String, CodingKey { case swiftSchemaTag = \"kind\" }; private struct SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) { nil } }; private static func swiftSchemaFlattened(_ refused: DecodingError, at path: [CodingKey]) -> DecodingError { func placed(_ context: DecodingError.Context, keeping kept: [CodingKey] = []) -> DecodingError.Context { DecodingError.Context(codingPath: path + kept, debugDescription: context.debugDescription == \"expected value\" ? \"invalid type: expected string or map\" : context.debugDescription, underlyingError: context.underlyingError) }; if case .keyNotFound(let key, let context) = refused { return .keyNotFound(key, placed(context)) }; if case .typeMismatch(let type, let context) = refused { return .typeMismatch(type, placed(context)) }; if case .valueNotFound(let type, let context) = refused { return .valueNotFound(type, placed(context)) }; if case .dataCorrupted(let context) = refused { return .dataCorrupted(placed(context, keeping: context.debugDescription.hasPrefix(\"unknown field `\") ? Array(context.codingPath.suffix(1)) : [])) }; return refused }; fileprivate init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) throws { let container = try decoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); let tag = try container.decode(String.self, forKey: .swiftSchemaTag); switch tag { case \"Ebbing\": do { self = .ebbing(try TideEbbingPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + [\"kind\"])) } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; case \"Slack\": if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != \"kind\" && !taken.contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; self = .slack;  default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: \"unknown tag \\(tag)\")) } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where ![\"kind\", \"height\"].contains(unknown.stringValue) { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); if !violations.isEmpty { throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: violations.joined(separator: \"; \"))) } }; public func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: encoder); case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } }; public func validationIssues() -> [String] { [] }; public func swiftSchemaValidateBound() -> [String] { [] }; ",
-            swift_valid::validating("Tide")
+            "public init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: \
+             [String]) throws { let container = try decoder.container(keyedBy: CodingKeys.self); \
+             self.height = try container.decode(SwiftSchemaFit<UInt32>.self, forKey: \
+             .height).value }; public init(swiftSchemaUnjudged decoder: Decoder) throws { if \
+             !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
+             \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: \
+             SwiftSchemaAnyKey.self).allKeys where ![\"height\"].contains(unknown.stringValue) { \
+             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
+             decoder.codingPath + [unknown], debugDescription: \"unknown field \
+             `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, \
+             swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try \
+             self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
+             !violations.isEmpty { throw TideRefusal(issues: { () -> [String] in let at = \
+             ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue \
+             }).joined(separator: \".\"); return at.isEmpty ? violations : violations.map { said \
+             in guard said.hasPrefix(\"'\"), let end = said.dropFirst().firstIndex(of: \"'\") \
+             else { return \"'\\(at)': \\(said)\" }; return \"'\\(at).\\(said[said.index(after: \
+             said.startIndex)..<end])'\\(said[said.index(after: end)...])\" } }()) } }; public \
+             func validate() -> [String] { [] } };  public enum TideDraft: Codable, Sendable { case \
+             ebbing(TideEbbingPayload); case slack;  private enum SwiftSchemaTagCodingKeys: \
+             String, CodingKey { case swiftSchemaTag = \"kind\" }; private struct \
+             SwiftSchemaAnyKey: CodingKey { var stringValue: String; var intValue: Int? { nil }; \
+             init?(stringValue: String) { self.stringValue = stringValue }; init?(intValue: Int) \
+             { nil } }; private static func swiftSchemaFlattened(_ refused: DecodingError, at \
+             path: [CodingKey]) -> DecodingError { func placed(_ context: DecodingError.Context, \
+             keeping kept: [CodingKey] = []) -> DecodingError.Context { \
+             DecodingError.Context(codingPath: path + kept, debugDescription: \
+             context.debugDescription == \"expected value\" ? \"invalid type: expected string or \
+             map\" : context.debugDescription, underlyingError: context.underlyingError) }; if \
+             case .keyNotFound(let key, let context) = refused { return .keyNotFound(key, \
+             placed(context)) }; if case .typeMismatch(let type, let context) = refused { return \
+             .typeMismatch(type, placed(context)) }; if case .valueNotFound(let type, let \
+             context) = refused { return .valueNotFound(type, placed(context)) }; if case \
+             .dataCorrupted(let context) = refused { return .dataCorrupted(placed(context, \
+             keeping: context.debugDescription.hasPrefix(\"unknown field `\") ? \
+             Array(context.codingPath.suffix(1)) : [])) }; return refused }; fileprivate \
+             init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+             throws { let container = try decoder.container(keyedBy: \
+             SwiftSchemaTagCodingKeys.self); let tag = try container.decode(String.self, forKey: \
+             .swiftSchemaTag); switch tag { case \"Ebbing\": do { self = .ebbing(try \
+             TideEbbingPayload(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken + \
+             [\"kind\"])) } catch let refused as DecodingError { throw \
+             Self.swiftSchemaFlattened(refused, at: decoder.codingPath) }; case \"Slack\": if \
+             !(decoder.codingPath.isEmpty && decoder.userInfo[CodingUserInfoKey(rawValue: \
+             \"swiftSchemaFlat\")!] != nil) { for unknown in try decoder.container(keyedBy: \
+             SwiftSchemaAnyKey.self).allKeys where unknown.stringValue != \"kind\" && \
+             !taken.contains(unknown.stringValue) { throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+             [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; self \
+             = .slack;  default: throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, \
+             debugDescription: \"unknown tag \\(tag)\")) } }; fileprivate \
+             init(swiftSchemaUnjudged decoder: Decoder) throws { if !(decoder.codingPath.isEmpty \
+             && decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaFlat\")!] != nil) { for \
+             unknown in try decoder.container(keyedBy: SwiftSchemaAnyKey.self).allKeys where \
+             ![\"kind\", \"height\"].contains(unknown.stringValue) { throw \
+             DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
+             [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
+             self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
+             decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let \
+             violations = validationIssues(); if !violations.isEmpty { throw TideRefusal(issues: \
+             { () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) \
+             ?? $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \
+             violations.map { said in guard said.hasPrefix(\"'\"), let end = \
+             said.dropFirst().firstIndex(of: \"'\") else { return \"'\\(at)': \\(said)\" }; \
+             return \"'\\(at).\\(said[said.index(after: \
+             said.startIndex)..<end])'\\(said[said.index(after: end)...])\" } }()) } }; public \
+             func encode(to encoder: Encoder) throws { var container = encoder.container(keyedBy: \
+             SwiftSchemaTagCodingKeys.self); switch self { case .ebbing(let payload): try \
+             container.encode(\"Ebbing\", forKey: .swiftSchemaTag); try payload.encode(to: \
+             encoder); case .slack: try container.encode(\"Slack\", forKey: .swiftSchemaTag);  } \
+             }; public func validationIssues() -> [String] { [] }; ",
+            swift_valid_free::validating_free("Tide")
         )
     );
 }
@@ -658,37 +753,30 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 #[test]
 fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
+    use crate::kotlin_pathed::PATHED;
+    use crate::kotlin_thrown::THROWN;
+
     assert_eq!(
         without_number_readers(&tide_kotlin::kotlin_definition()),
-        "@Serializable(with = TideDraftUnjudged::class) sealed interface TideDraft { fun \
-         validationIssues(): List<String>; fun validate(): Tide { val violations = \
-         validationIssues(); if (violations.isNotEmpty()) throw \
-         SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return Tide.checked(this) } } \
-         @SerialName(\"Ebbing\") @Serializable data class TideEbbing(val height: UInt) : TideDraft \
-         { override fun validationIssues(): List<String> = emptyList() } @SerialName(\"Slack\") \
-         @Serializable data object TideSlack : TideDraft { override fun validationIssues(): \
-         List<String> = emptyList() } object TideDraftUnjudged : KSerializer<TideDraft> { override \
-         val descriptor: SerialDescriptor = buildClassSerialDescriptor(\"Tide\"); override fun \
-         serialize(encoder: Encoder, value: TideDraft) { val output = encoder as JsonEncoder; \
-         output.encodeJsonElement(when (value) { is TideEbbing -> buildJsonObject { put(\"kind\", \
-         \"Ebbing\"); output.json.encodeToJsonElement(serializer<TideEbbing>(), \
-         value).jsonObject.forEach { (k, v) -> put(k, v) } }; is TideSlack -> buildJsonObject { \
-         put(\"kind\", \"Slack\") } }) }; private fun kotlinSchemaRebased(refused: \
-         SerializationException, at: String): SerializationException { if (refused.cause?.message \
-         == \"validate()\") return refused; val said = \
-         refused.message.orEmpty().replaceFirst(Regex(\"^Unexpected JSON token at offset \\\\d+: \
-         \"), \"\"); return SerializationException(if (\" at path: \\$\" in said) \
-         said.replaceFirst(\" at path: \\$\", \" at path: \" + at) else said + \" at path: \" + \
-         at, refused) }; @OptIn(ExperimentalSerializationApi::class) private inline fun \
-         <KotlinSchemaRead> kotlinSchemaAt(input: Decoder, read: () -> KotlinSchemaRead): \
-         KotlinSchemaRead = try { read() } catch (refused: SerializationException) { val at = try \
-         { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: \
-         JsonDecodingException) { probe.path } ?: throw refused; throw \
-         kotlinSchemaRebased(refused, at) }; private inline fun <KotlinSchemaRead> \
-         kotlinSchemaUnder(step: String, read: () -> KotlinSchemaRead): KotlinSchemaRead = try { \
-         read() } catch (refused: SerializationException) { throw kotlinSchemaRebased(refused, \
-         \"\\$\" + step) }; private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: \
+        [
+        "class TideRefusal(val issues: List<String>) : SerializationException(\"$issues\", \
+         IllegalArgumentException(\"validate()\")) @Serializable(with = \
+         TideDraftUnjudged::class) sealed interface TideDraft { fun validationIssues(): \
+         List<String>; fun validate(): Tide { val violations = validationIssues(); if \
+         (violations.isNotEmpty()) throw TideRefusal(violations); return Tide.checked(this) } fun \
+         toValid(): Tide = Tide.checked(this) } @SerialName(\"Ebbing\") @Serializable data class \
+         TideEbbing(val height: UInt) : TideDraft { override fun validationIssues(): List<String> \
+         = emptyList() } @SerialName(\"Slack\") @Serializable data object TideSlack : TideDraft { \
+         override fun validationIssues(): List<String> = emptyList() } object TideDraftUnjudged : \
+         KSerializer<TideDraft> { override val descriptor: SerialDescriptor = \
+         buildClassSerialDescriptor(\"Tide\"); override fun serialize(encoder: Encoder, value: \
+         TideDraft) { val output = encoder as JsonEncoder; output.encodeJsonElement(when (value) \
+         { is TideEbbing -> buildJsonObject { put(\"kind\", \"Ebbing\"); \
+         output.json.encodeToJsonElement(serializer<TideEbbing>(), value).jsonObject.forEach { \
+         (k, v) -> put(k, v) } }; is TideSlack -> buildJsonObject { put(\"kind\", \"Slack\") } }) \
+         }; ",
+        PATHED,
+        "private fun <KotlinSchemaRead> kotlinSchemaInner(json: Json, step: \
          String, serializer: DeserializationStrategy<KotlinSchemaRead>, element: JsonElement): \
          KotlinSchemaRead = kotlinSchemaUnder(step) { json.decodeFromString(serializer, \
          element.toString()) }; private inline fun <KotlinSchemaRead> kotlinSchemaFlattened(read: \
@@ -704,31 +792,36 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          JsonObject ?: throw SerializationException(\"expected an object, found \" + it) }; val \
          tag = ((obj[\"kind\"] ?: throw SerializationException(\"missing field `kind`\")) as? \
          JsonPrimitive)?.content; when (tag) { \"Ebbing\" -> kotlinSchemaFlattened { \
-         kotlinSchemaInner(input.json, \"\", serializer<TideEbbing>(), JsonObject(obj - \"kind\")) \
-         }; \"Slack\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
-         \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an unknown \
-         key '\" + it + \"'\") }; TideSlack } else -> throw SerializationException(\"unknown tag \
-         \" + tag) } } } } @ConsistentCopyVisibility @Serializable(with = TideSerializer::class) \
-         data class Tide private constructor(val draft: TideDraft) { fun validationIssues(): \
-         List<String> = draft.validationIssues(); fun kotlinSchemaChecked(): TideDraft = draft; \
-         companion object { internal fun checked(draft: TideDraft): Tide = Tide(draft) } } @OptIn(ExperimentalSerializationApi::class) private \
-         object TideUnjudged : KSerializer<Tide> { override val descriptor: SerialDescriptor = \
+         kotlinSchemaInner(input.json, \"\", serializer<TideEbbing>(), JsonObject(obj - \
+         \"kind\")) }; \"Slack\" -> { if (!input.json.configuration.ignoreUnknownKeys) (obj - \
+         \"kind\").keys.firstOrNull()?.let { throw SerializationException(\"Encountered an \
+         unknown key '\" + it + \"'\") }; TideSlack } else -> throw \
+         SerializationException(\"unknown tag \" + tag) } } } } @ConsistentCopyVisibility \
+         @Serializable(with = TideSerializer::class) data class Tide private constructor(val \
+         draft: TideDraft) { fun validationIssues(): List<String> = draft.validationIssues(); fun \
+         kotlinSchemaChecked(): TideDraft = draft; companion object { internal fun checked(draft: \
+         TideDraft): Tide = Tide(draft); internal fun kotlinSchemaUnjudged(own: \
+         KSerializer<Tide>): KSerializer<Tide> = TideUnjudged; val Slack = checked(TideSlack) } } \
+         @OptIn(ExperimentalSerializationApi::class) private object TideUnjudged : \
+         KSerializer<Tide> { override val descriptor: SerialDescriptor = \
          TideDraftUnjudged.descriptor; override fun serialize(encoder: Encoder, value: Tide) = \
          TideDraftUnjudged.serialize(encoder, value.draft); override fun deserialize(decoder: \
          Decoder): Tide = Tide.checked(try { TideDraftUnjudged.deserialize(decoder) } catch \
          (refused: SerializationException) { val named = TideDraftUnjudged.descriptor.serialName; \
          val said = refused.message.orEmpty(); if (\"'\" + named + \"'\" !in said) throw refused; \
-         val declared = named.removeSuffix(\"Draft\"); throw if (refused is MissingFieldException) \
-         MissingFieldException(refused.missingFields, declared) else \
+         val declared = named.removeSuffix(\"Draft\"); throw if (refused is \
+         MissingFieldException) MissingFieldException(refused.missingFields, declared) else \
          SerializationException(said.replace(\"'\" + named + \"'\", \"'\" + declared + \"'\"), \
          refused.cause) }) } object TideSerializer : KSerializer<Tide>, () -> KSerializer<Tide> { \
-         override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
+         ",
+        THROWN,
+        "override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
          SerialDescriptor = TideUnjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: Tide) = TideUnjudged.serialize(encoder, value); override fun deserialize(decoder: \
          Decoder): Tide { val read = TideUnjudged.deserialize(decoder); val violations = \
-         read.validationIssues(); if (violations.isNotEmpty()) throw \
-         SerializationException(violations.joinToString(\"; \"), \
-         IllegalArgumentException(\"validate()\")); return read } }"
+         read.validationIssues(); if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, TideRefusal(violations)); \
+         return read } }",
+    ].concat()
     );
 }
 
@@ -746,8 +839,7 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
         Ok(AnchorageDraft::Named {
             harbour: "h".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(
         read(r#"{"harbour":"h","line":""}"#),
@@ -763,7 +855,6 @@ fn a_bound_on_a_member_takes_its_variant_out_of_an_untagged_enum_held_in_another
             .validate()
             .unwrap()
         )
-        .validate()
-        .unwrap())
+        .into())
     );
 }

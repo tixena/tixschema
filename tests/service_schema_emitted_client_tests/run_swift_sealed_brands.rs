@@ -109,14 +109,14 @@ fn validating_throws_the_messages_validate_gives() {
 do {
   print(try LabelText(validating: "Shipping").value)
   _ = try LabelText(validating: "")
-} catch DecodingError.dataCorrupted(let context) {
-  print(context.debugDescription)
+} catch let refused as LabelTextRefusal {
+  for issue in refused.issues { print(issue) }
 }
 do {
   _ = try JSONDecoder().decode(Label.self, from: Data(#"{"text":""}"#.utf8))
-} catch DecodingError.dataCorrupted(let context) {
-  print(context.codingPath.map { $0.stringValue }.joined(separator: "."))
-  print(context.debugDescription)
+} catch let refused as LabelRefusal {
+  print(type(of: refused))
+  for issue in refused.issues { print(issue) }
 }
 "##
     );
@@ -143,14 +143,15 @@ do {
         serde_json::to_string(&TagDraft("x".to_owned())).unwrap(),
         r#""x""#
     );
-    let refused = LabelText::new("").unwrap_err().join("; ");
+    let refused = LabelText::new("").unwrap_err();
+    assert_eq!(refused.len(), 1, "{refused:?}");
     assert_eq!(
         run.stdout.lines().collect::<Vec<_>>(),
         [
             "Shipping",
-            refused.as_str(),
-            "",
-            &format!("'text': {refused}")
+            refused[0].as_str(),
+            "LabelRefusal",
+            &format!("'text': {}", refused[0])
         ]
     );
 }

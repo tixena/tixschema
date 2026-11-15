@@ -42,7 +42,7 @@ const told = (member, answered) =>
   answered.ok
     ? { read: Number(answered.value[member]) }
     : answered.error.isServiceFault
-      ? { kind: answered.error.fault.kind, field: answered.error.fault.field ?? null }
+      ? { kind: answered.error.fault.kind, field: answered.error.fault.issues?.[0]?.field ?? null }
       : "dropped";
 
 const whole = { depth: 7n, fathoms: 7, reading: 7, swell: 7 };
@@ -67,7 +67,7 @@ async function attached(member, payload) {
   listener({ data: `{"kind":"request","id":"ID","service":"SoundingService","operation":"take","payload":${payload}}` });
   const reply = JSON.parse(await replied);
   detach();
-  return reply.ok ? { read: Number(reply.value[member]) } : { kind: reply.error.fault.kind, field: reply.error.fault.field ?? null };
+  return reply.ok ? { read: Number(reply.value[member]) } : { kind: reply.error.fault.kind, field: reply.error.fault.issues?.[0]?.field ?? null };
 }
 
 async function read(member, payload) {
@@ -99,7 +99,7 @@ async function handled(member, payload) {
     query: "",
   });
   const body = JSON.parse(new TextDecoder().decode(response.body));
-  return response.status === 200 ? { read: Number(body[member]) } : { kind: body.kind, field: body.field ?? null };
+  return response.status === 200 ? { read: Number(body[member]) } : { kind: body.kind, field: body.issues?.[0]?.field ?? null };
 }
 
 async function fetched(member, payload) {
@@ -521,7 +521,7 @@ fn rust_answer(member: &str, payload: &str) -> Value {
     } else {
         json!({
             "kind": reply["error"]["fault"]["kind"],
-            "field": reply["error"]["fault"]["field"],
+            "field": reply["error"]["fault"]["issues"][0]["field"],
         })
     }
 }

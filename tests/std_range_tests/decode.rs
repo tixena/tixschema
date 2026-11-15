@@ -54,8 +54,7 @@ fn a_range_that_does_not_read_is_one_issue_at_its_key() {
             label: "a".to_owned(),
             span: 8..13,
         }
-        .validate()
-        .unwrap())
+        .into())
     );
 }
 

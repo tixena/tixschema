@@ -115,8 +115,7 @@ fn a_field_typed_as_the_walkers_own_parameter_is_called_reads_as_the_authors_typ
         Ok(HolderDraft {
             inner: IDraft { number: 1 }.validate().unwrap()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
     assert_eq!(
@@ -139,8 +138,7 @@ fn a_type_called_as_the_entry_points_own_parameter_is_called_reads_alone_and_in_
         Ok(FDraft {
             label: "a".to_owned()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     let stored = json!({ "frame": { "label": "a" } });
     assert_eq!(
@@ -152,8 +150,7 @@ fn a_type_called_as_the_entry_points_own_parameter_is_called_reads_alone_and_in_
             .validate()
             .unwrap()
         }
-        .validate()
-        .unwrap())
+        .into())
     );
     assert_eq!(calls, 0);
     assert_eq!(
@@ -177,10 +174,10 @@ fn a_type_called_as_the_entry_points_own_parameter_is_called_reads_alone_and_in_
 #[test]
 fn the_authors_type_is_walked_under_a_map_a_list_an_option_and_a_tuple() {
     let collected = CollectedDraft {
-        keyed: HashMap::from([("a".to_owned(), IDraft { number: 1 }.validate().unwrap())]),
-        listed: vec![IDraft { number: 2 }.validate().unwrap()],
-        maybe: Some(IDraft { number: 3 }.validate().unwrap()),
-        paired: (IDraft { number: 4 }.validate().unwrap(), 5_i32),
+        keyed: HashMap::from([("a".to_owned(), IDraft { number: 1 }.into())]),
+        listed: vec![IDraft { number: 2 }.into()],
+        maybe: Some(IDraft { number: 3 }.into()),
+        paired: (IDraft { number: 4 }.into(), 5_i32),
     };
     let mut calls = 0_u32;
     let written = serde_json::to_value(&collected).unwrap();
@@ -217,11 +214,7 @@ fn a_tagged_enums_variant_holding_the_authors_type_is_walked_in_each_form() {
             json!({ "Alone": { "number": 1_i32 } }),
             calls
         ),
-        Ok(
-            CarriedDraft::Alone(IDraft { number: 1 }.validate().unwrap())
-                .validate()
-                .unwrap()
-        )
+        Ok(CarriedDraft::Alone(IDraft { number: 1 }.into()).into())
     );
     assert_eq!(calls, 0);
     for (stored, listed) in [
@@ -253,15 +246,11 @@ fn an_untagged_enums_variant_holding_the_authors_type_is_walked() {
             json!({ "number": 1_i32 }),
             calls
         ),
-        Ok(
-            AlternateDraft::Model(IDraft { number: 1 }.validate().unwrap())
-                .validate()
-                .unwrap()
-        )
+        Ok(AlternateDraft::Model(IDraft { number: 1 }.into()).into())
     );
     assert_eq!(
         read_counting!(Alternate, alternate_schema, json!("one"), calls),
-        Ok(AlternateDraft::Text("one".to_owned()).validate().unwrap())
+        Ok(AlternateDraft::Text("one".to_owned()).into())
     );
     assert_eq!(calls, 0);
     assert_eq!(
@@ -279,7 +268,7 @@ fn a_hook_reached_through_the_authors_type_is_the_authors_function() {
     let mut calls = 0_u32;
     assert_eq!(
         read_counting!(Scored, scored_schema, json!({ "score": 7_i32 }), calls),
-        Ok(ScoredDraft { score: 7_i32 }.validate().unwrap())
+        Ok(ScoredDraft { score: 7_i32 }.into())
     );
     assert_eq!(calls, 0);
     assert_eq!(

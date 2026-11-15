@@ -16,13 +16,13 @@ const RUNTIME_VAR: &str = "TIXSCHEMA_SWIFT";
 /// written as its draft.
 const MAIN: &str = r##"
 let draft = ShipmentDraft(label: try LabelText(validating: "Shipping"), parcelCount: 200)
-do { _ = try draft.validate() } catch DecodingError.dataCorrupted(let context) {
-  print(context.debugDescription)
+do { _ = try draft.validate() } catch let refused as ShipmentRefusal {
+  for issue in refused.issues { print(issue) }
 }
 do {
   _ = try JSONDecoder().decode(Shipment.self, from: Data(#"{"label":"Shipping","parcelCount":200}"#.utf8))
-} catch DecodingError.dataCorrupted(let context) {
-  print(context.debugDescription)
+} catch let refused as ShipmentRefusal {
+  for issue in refused.issues { print(issue) }
 }
 let shipment = try ShipmentDraft(label: try LabelText(validating: "Shipping"), parcelCount: 3).validate()
 print(shipment.parcelCount)
@@ -35,12 +35,12 @@ let manifest = try JSONDecoder().decode(Manifest.self, from: Data(#"{"shipment":
 print(manifest.shipment.parcelCount)
 do {
   _ = try JSONDecoder().decode(Manifest.self, from: Data(#"{"shipment":{"label":"a","parcelCount":101},"extra":[]}"#.utf8))
-} catch DecodingError.dataCorrupted(let context) {
-  print(context.codingPath.map { $0.stringValue }.joined(separator: "."))
-  print(context.debugDescription)
+} catch let refused as ManifestRefusal {
+  print(type(of: refused))
+  for issue in refused.issues { print(issue) }
 }
 print(try JSONDecoder().decode(Leg.self, from: Data(#"{"kind":"Voyage"}"#.utf8)).draft)
-print(try JSONDecoder().decode(Lane.self, from: Data(#""Air""#.utf8)).draft)
+print(try JSONDecoder().decode(Lane.self, from: Data(#""Air""#.utf8)))
 print(try JSONDecoder().decode(Tag.self, from: Data(#""x""#.utf8)).value)
 print(try JSONDecoder().decode(Crate<String>.self, from: Data(#"{"content":"x"}"#.utf8)).content)
 let holder = try JSONDecoder().decode(Holder.self, from: Data(#"{"draft":7}"#.utf8))
@@ -159,7 +159,7 @@ func build() throws -> Shipment {
 }
 func read(_ shipment: Shipment) -> UInt32 { shipment.parcelCount }
 func back(_ shipment: Shipment) -> ShipmentDraft { shipment.draft }
-func lane() throws -> Lane { try LaneDraft.air.validate() }
+func lane() -> Lane { Lane.air }
 func leg() throws -> Leg { try LegDraft.voyage.validate() }
 func tag() throws -> Tag { try TagDraft(value: \"x\").validate() }
 func crate() throws -> Crate<String> { try CrateDraft(content: \"x\").validate() }
@@ -206,7 +206,7 @@ func change(_ shipment: inout Shipment) { shipment.parcelCount = 1 }
     );
 }
 
-/// A draft that breaks a rule throws the messages the read throws, joined by a semicolon, and a
+/// A draft that breaks a rule throws the refusal the read throws, holding the same messages, and a
 /// valid value reads and writes as its draft does.
 #[test]
 fn validate_throws_the_messages_the_read_throws() {
@@ -230,8 +230,8 @@ fn validate_throws_the_messages_the_read_throws() {
         parcel_count: 200,
         ..shipment.clone()
     }
-    .validation_issues()
-    .join("; ");
+    .validation_issues();
+    assert_eq!(refused.len(), 1, "{refused:?}");
     let written = serde_json::to_string(&shipment).unwrap();
     let manifest = ManifestDraft {
         shipment: shipment.validate().unwrap(),
@@ -249,19 +249,19 @@ fn validate_throws_the_messages_the_read_throws() {
     let crated = CrateDraft {
         content: "x".to_owned(),
     };
-    let lane = LaneDraft::Air;
+    let lane = Lane::Air;
     let leg = LegDraft::Voyage;
     assert_eq!(
         run.stdout.lines().collect::<Vec<_>>(),
         [
-            refused.as_str(),
-            refused.as_str(),
+            refused[0].as_str(),
+            refused[0].as_str(),
             "3",
             "3",
             written.as_str(),
             written.as_str(),
             "1",
-            "",
+            "ManifestRefusal",
             "'shipment.parcelCount': too large: maximum is 100, got 101",
             "voyage",
             "air",

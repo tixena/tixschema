@@ -58,9 +58,9 @@ impl Member<'_> {
     /// What the models the member holds answer, each message under the place it is held at.
     /// `None` for a member that holds none, and for one read through a hook of its author's: no
     /// walk says where such a member writes what it holds.
-    fn held(&self, module_name: &str, parameters: &[String]) -> Option<TokenStream> {
+    fn held(&self, parameters: &[String]) -> Option<TokenStream> {
         let hooks = parse_serde_field_hooks(&self.field.attrs);
-        if hooked_leaf(&self.field.ty, &hooks, module_name, parameters).is_some() {
+        if hooked_leaf(&self.field.ty, &hooks, parameters).is_some() {
             return None;
         }
         let head = binding("held", 0);
@@ -99,9 +99,7 @@ pub fn struct_check_messages(
 ) -> TokenStream {
     let members = struct_members(item_struct);
     let of_members = members.iter().filter_map(|member| member.own(module_name));
-    let of_held = members
-        .iter()
-        .filter_map(|member| member.held(module_name, parameters));
+    let of_held = members.iter().filter_map(|member| member.held(parameters));
     method(
         &quote! { #(#of_members)* },
         module_name,
@@ -121,9 +119,7 @@ pub fn enum_check_messages(
     for variant in &item_enum.variants {
         let members = variant_members(item_enum, variant);
         of_members.push(arm(variant, &members, |member| member.own(module_name)));
-        of_held.push(arm(variant, &members, |member| {
-            member.held(module_name, parameters)
-        }));
+        of_held.push(arm(variant, &members, |member| member.held(parameters)));
     }
     method(&matched(of_members), module_name, &matched(of_held))
 }

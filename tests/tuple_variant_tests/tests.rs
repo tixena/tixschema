@@ -1586,14 +1586,14 @@ fn test_attribute_less_enum_round_trips_against_its_schema() {
     let bare = serde_json::to_value(ExternalDraft::Bare).unwrap();
     assert_eq!(
         serde_json::from_value::<External>(bare).unwrap(),
-        ExternalDraft::Bare.validate().unwrap()
+        External::Bare
     );
 
     // A payload the schema admits deserializes: the key the member requires, holding the content
     // it declares.
     assert_eq!(
         serde_json::from_value::<External>(serde_json::json!({ "Pair": [7_u32, 8_u32] })).unwrap(),
-        ExternalDraft::Pair(7, 8).validate().unwrap()
+        ExternalDraft::Pair(7, 8).into()
     );
 
     // And the adjacent form the schema no longer describes is one the type cannot read either.
@@ -1790,8 +1790,7 @@ fn test_bare_tag_writes_the_variant_data_beside_the_tag() {
                 a: "a".to_owned(),
                 b: true
             }
-            .validate()
-            .unwrap()
+            .into()
         ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "a": "a", "b": true }),
@@ -1932,8 +1931,7 @@ fn test_bare_tag_round_trips_against_its_schema() {
                 a: "a".to_owned(),
                 b: true,
             }
-            .validate()
-            .unwrap(),
+            .into(),
         ),
     ] {
         let written = serde_json::to_value(&value).unwrap();
@@ -1993,11 +1991,9 @@ fn test_adjacent_twin_keeps_its_content_key() {
 fn test_bare_tag_over_an_external_enum_writes_each_variant_as_its_entry() {
     let written = [
         InternalOverExternalDraft::Held(
-            InternalTackDraft::Bay(InternalFirstDraft { a: "x".to_owned() }.validate().unwrap())
-                .validate()
-                .unwrap(),
+            InternalTackDraft::Bay(InternalFirstDraft { a: "x".to_owned() }.into()).into(),
         ),
-        InternalOverExternalDraft::Held(InternalTackDraft::Calm.validate().unwrap()),
+        InternalOverExternalDraft::Held(InternalTack::Calm),
     ];
     for (value, json) in written.into_iter().zip(EXTERNAL_BESIDE_THE_TAG) {
         assert_eq!(serde_json::to_string(&value).unwrap(), json);
@@ -2077,7 +2073,7 @@ fn test_bare_tag_over_an_external_enum_json_schema_admits_what_serde_reads() {
 #[test]
 fn test_bare_tag_over_an_enum_written_with_an_argument_writes_each_variant_as_its_entry() {
     let written = [
-        InternalOverCarriedDraft::Held(InternalCarriedDraft::Carried(7).validate().unwrap()),
+        InternalOverCarriedDraft::Held(InternalCarriedDraft::Carried(7).into()),
         InternalOverCarriedDraft::Held(InternalCarriedDraft::Bare.validate().unwrap()),
     ];
     for (value, json) in written.into_iter().zip(CARRIED_BESIDE_THE_TAG) {
@@ -2182,20 +2178,14 @@ fn test_bare_tag_over_a_struct_documents_byte_identically() {
 fn test_bare_tag_over_an_untagged_enum_writes_the_matched_members_keys() {
     assert_eq!(
         serde_json::to_value(InternalOverUntaggedDraft::Wrapped(
-            InternalEitherDraft::First(
-                InternalFirstDraft { a: "x".to_owned() }.validate().unwrap()
-            )
-            .validate()
-            .unwrap()
+            InternalEitherDraft::First(InternalFirstDraft { a: "x".to_owned() }.into()).into()
         ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "a": "x" })
     );
     assert_eq!(
         serde_json::to_value(InternalOverUntaggedDraft::Wrapped(
-            InternalEitherDraft::Second(InternalSecondDraft { b: true }.validate().unwrap())
-                .validate()
-                .unwrap()
+            InternalEitherDraft::Second(InternalSecondDraft { b: true }.into()).into()
         ))
         .unwrap(),
         serde_json::json!({ "type": "Wrapped", "b": true })
@@ -2232,9 +2222,7 @@ fn test_bare_tag_over_an_untagged_enum_requires_every_key_serde_writes() {
 #[test]
 fn test_bare_tag_over_a_later_optional_is_unserializable_for_some_and_none() {
     for held in [
-        InternalLaterMaybeDraft(Some(
-            InternalFirstDraft { a: "x".to_owned() }.validate().unwrap(),
-        )),
+        InternalLaterMaybeDraft(Some(InternalFirstDraft { a: "x".to_owned() }.into())),
         InternalLaterMaybeDraft(None),
     ] {
         let refusal = serde_json::to_value(
@@ -2265,7 +2253,7 @@ fn test_bare_tag_over_a_later_optional_is_refused_by_the_merge() {
 fn test_a_flattened_later_optional_merges_its_none_as_no_key() {
     let none = FlatOverLaterMaybeDraft {
         id: "i".to_owned(),
-        maybe: InternalLaterMaybeDraft(None).validate().unwrap(),
+        maybe: InternalLaterMaybeDraft(None).into(),
     };
     assert_eq!(
         serde_json::to_value(&none).unwrap(),
@@ -2305,9 +2293,7 @@ fn test_serde_writes_and_reads_a_dropped_variant_slot_in_neither_direction() {
 
     assert_eq!(
         serde_json::from_value::<ExternalDroppedSlots>(written).unwrap(),
-        ExternalDroppedSlotsDraft::Lead(String::new(), 7_u32)
-            .validate()
-            .unwrap()
+        ExternalDroppedSlotsDraft::Lead(String::new(), 7_u32).into()
     );
     assert!(
         serde_json::from_str::<ExternalDroppedSlots>(r#"{"Lead":["s",7]}"#).is_err(),
@@ -2344,9 +2330,7 @@ fn test_serde_writes_a_variant_whose_lone_slot_is_dropped_as_its_name_alone() {
     );
     assert_eq!(
         serde_json::from_str::<ExternalDroppedSlots>(r#""Lone""#).unwrap(),
-        ExternalDroppedSlotsDraft::Lone(String::new())
-            .validate()
-            .unwrap()
+        ExternalDroppedSlotsDraft::Lone(String::new()).into()
     );
     assert!(
         serde_json::from_str::<ExternalDroppedSlots>(r#"{"Lone":"s"}"#).is_err(),
@@ -2415,9 +2399,7 @@ fn test_serde_writes_a_dropped_lone_slot_as_the_tag_alone_under_a_bare_tag() {
     assert_eq!(written, serde_json::json!({ "type": "Lone" }));
     assert_eq!(
         serde_json::from_value::<InternalDroppedSlot>(written).unwrap(),
-        InternalDroppedSlotDraft::Lone(String::new())
-            .validate()
-            .unwrap()
+        InternalDroppedSlotDraft::Lone(String::new()).into()
     );
 }
 
@@ -2531,7 +2513,7 @@ fn test_the_declared_unit_remedy_writes_the_payload_the_refused_collapse_wrote()
     assert_eq!(written, serde_json::json!({ "type": "Lone" }));
     assert_eq!(
         serde_json::from_value::<AdjacentDroppedSlots>(written).unwrap(),
-        AdjacentDroppedSlotsDraft::Lone.validate().unwrap()
+        AdjacentDroppedSlots::Lone
     );
 }
 

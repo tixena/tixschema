@@ -225,12 +225,12 @@ void main() async {
       },
       stacks: (ctx, req) async => <Shelf>[ShelfDraft(title: req.prefix).validate()],
       tally: (ctx, req) async {
-        if (req.deep) throw ShelfErrorDraft.missing;
+        if (req.deep) throw ShelfError.missing;
         return 7;
       },
       titles: (ctx, req) async => <String>[req.prefix],
     ),
-    onFault: (fault) => faults.add(fault.detail),
+    onFault: (fault) => faults.add(fault.detail ?? fault.kind.name),
   );
   Map<String, dynamic> request(String id, String operation, Object payload) => <String, dynamic>{
         'kind': 'request',

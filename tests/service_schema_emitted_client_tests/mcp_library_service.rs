@@ -153,7 +153,7 @@ impl LibraryService<()> for Stand {
             "book-1" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
             "book-2" => Ok((vec![0, 255, 128, 1, 2, 3, 4], "image/png".to_owned())),
             "panic" => came_apart(),
-            _ => Err(BookErrorDraft::NotFound.validate().unwrap()),
+            _ => Err(BookError::NotFound),
         })
     }
 
@@ -196,7 +196,7 @@ impl LibraryService<()> for Stand {
                 next_cursor: None,
             }),
             Some("panic") => came_apart(),
-            Some(_) => Err(BookErrorDraft::NotFound.validate().unwrap()),
+            Some(_) => Err(BookError::NotFound),
         })
     }
 
@@ -209,7 +209,7 @@ impl LibraryService<()> for Stand {
         ready(match typed.as_str() {
             "many" => Ok((0..150).map(|at| format!("many-{at}")).collect()),
             "panic" => came_apart(),
-            "none" => Err(BookErrorDraft::NotFound.validate().unwrap()),
+            "none" => Err(BookError::NotFound),
             "kind" => Ok(vec![chosen.get("kind").cloned().unwrap_or_default()]),
             _ => Ok(["book-1", "book-2"]
                 .into_iter()
@@ -238,7 +238,7 @@ impl DepotService<()> for Stand {
         ready(if crate_id == "crate-1" {
             Ok("{\"total\":120}".to_owned())
         } else {
-            Err(BookErrorDraft::NotFound.validate().unwrap())
+            Err(BookError::NotFound)
         })
     }
 
@@ -259,7 +259,7 @@ impl DepotService<()> for Stand {
                 }],
                 next_cursor: None,
             }),
-            Some(_) => Err(BookErrorDraft::NotFound.validate().unwrap()),
+            Some(_) => Err(BookError::NotFound),
         })
     }
 }
@@ -294,9 +294,9 @@ fn came_apart() -> ! {
 }
 
 fn not_found() -> BookError {
-    BookErrorDraft::NotFound.validate().unwrap()
+    BookError::NotFound
 }
 
 fn seven_pages() -> BookInfo {
-    BookInfoDraft { pages: 7 }.validate().unwrap()
+    BookInfoDraft { pages: 7 }.into()
 }

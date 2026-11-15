@@ -118,8 +118,7 @@ fn plain_chart() -> PlainChart {
         .validate()
         .unwrap(),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -137,8 +136,7 @@ fn each_model_is_written_as_serde_writes_it() {
                 first: first(),
                 second: "c".to_owned(),
             }
-            .validate()
-            .unwrap(),
+            .into(),
             held: "h".to_owned(),
             pair: (first(), "p".to_owned()),
         }),
@@ -601,8 +599,7 @@ fn a_type_argument_holds_its_date_in_a_wrapper_that_reads_and_writes_its_text() 
             "public func encode(to encoder: Encoder) throws { \
              var container = encoder.singleValueContainer(); \
              try container.encode(Self.swiftSchemaFormatIso8601Date(value)) }; \
-             public func validate() -> [String] { [] }; \
-             public func swiftSchemaValidateBound() -> [String] { [] } };"
+             public func validate() -> [String] { [] } };"
                 .to_owned(),
             helpers("PlainChartDatedArgument0Date", STORED),
             "public struct PlainChartSwungArgument0Date: Codable, Sendable { public let value: [Date]; "

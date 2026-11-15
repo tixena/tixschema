@@ -109,7 +109,7 @@ impl ContentService<()> for DocumentStore {
     ) -> Result<content_service_schema::StreamedAnswer, ContentError> {
         ready(()).await;
         if document_id == "missing" {
-            return Err(ContentErrorDraft::NotFound.validate().unwrap());
+            return Err(ContentError::NotFound);
         }
         let content_type = if document_id == "bad-type" {
             "text/plain\r\nx-injected: yes".to_owned()
@@ -123,7 +123,7 @@ impl ContentService<()> for DocumentStore {
             });
         };
         let Some((start, end)) = parse_range(&range, CONTENT.len()) else {
-            return Err(ContentErrorDraft::RangeNotSatisfiable.validate().unwrap());
+            return Err(ContentError::RangeNotSatisfiable);
         };
         Ok(content_service_schema::StreamedAnswer::Partial {
             source: Box::new(ChunkedSlice::new(&CONTENT[start..=end])),
@@ -152,7 +152,13 @@ impl stream_http_rest_transport::FaultHandler for RecordingFaultHandler {
             499,
             vec![("x-fault-kind".to_owned(), format!("{}", fault.kind()))],
             stream_http_rest_transport::OutgoingBody::Bytes(
-                format!("handled: {}", fault.detail()).into_bytes(),
+                format!(
+                    "handled: {}",
+                    fault
+                        .detail()
+                        .map_or_else(|| fault.to_string(), str::to_owned)
+                )
+                .into_bytes(),
             ),
         )
     }

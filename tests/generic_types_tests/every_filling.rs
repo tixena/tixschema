@@ -17,7 +17,7 @@ Plain<&str> { held: "a" }:                    Ok(())
 Plain<String> { held: "a" }:                  Err(["too short: minimum length is 2, got 1"])"#;
 
     /// The `validate` of a consumer's own on one filling, as the README shows it refused.
-    const OWN_VALIDATE: &str = r#"impl CrateDraft<u32> {
+    const OWN_VALIDATE: &str = r#"impl Crate<u32> {
     pub fn validation_issues(&self) -> Vec<String> {
         if self.codes.contains(&0) {
             return vec!["'codes': no code is zero".to_owned()];

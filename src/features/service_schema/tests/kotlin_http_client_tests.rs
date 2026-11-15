@@ -214,7 +214,7 @@ fn a_one_way_method_throws_only_the_refusal() {
     let written = kotlin_http_client_of(KOTLIN_SINGLE_PLACEHOLDER_HTTP_SERVICE);
     assert!(
         written.contains(
-            "class ConversationClientServiceRefusal(val fault: ConversationClientServiceFaultFields) : Exception(fault.detail)"
+            "class ConversationClientServiceRefusal(val fault: ConversationClientServiceFaultFields) : Exception(fault.detail ?: fault.issues?.map { if (it.field == null) it.detail else \"'${it.field}': ${it.detail}\" }.toString())"
         ),
         "got: {written}"
     );

@@ -463,8 +463,8 @@ pub fn observed(matches: Match, answered: &str) -> String {
     }
 }
 
-/// An answer whose tool execution error carries a fault, with the fault's `detail` left out, and
-/// that of the first problem it lists, which is the same words.
+/// An answer whose tool execution error carries a fault, with the `detail` of the fault and of the
+/// first problem it lists left out.
 fn without_detail(answer: &Value) -> Value {
     let mut stripped = answer.clone();
     let Some(text) = stripped["result"]["content"][0]["text"].as_str() else {

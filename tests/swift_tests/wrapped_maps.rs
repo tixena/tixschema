@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::wrapped_maps_models::{
     AdjacentDrawerDraft, AdjacentStowedDrawerDraft, CabinetDraft, CubbyDraft, DrawerDraft, Latch,
-    LatchDraft, Satchel, SatchelDraft, StowedCabinetDraft, StowedCubbyDraft, StowedDrawerDraft,
+    Satchel, SatchelDraft, StowedCabinetDraft, StowedCubbyDraft, StowedDrawerDraft,
     TaggedDrawerDraft, TaggedStowedDrawerDraft, UntaggedDrawerDraft, UntaggedStowedDrawerDraft,
     adjacent_drawer_swift, adjacent_stowed_drawer_swift, cabinet_swift, cubby_swift, drawer_swift,
     stowed_cabinet_swift, stowed_cubby_swift, stowed_drawer_swift, tagged_drawer_swift,
@@ -52,7 +52,7 @@ fn at_true<Held>(held: Held) -> HashMap<bool, Held> {
 
 /// A map of `held` under [`Latch::Inner`].
 fn at_inner<Held>(held: Held) -> HashMap<Latch, Held> {
-    HashMap::from([(LatchDraft::Inner.validate().unwrap(), held)])
+    HashMap::from([(Latch::Inner, held)])
 }
 
 /// A satchel labelled `l`.

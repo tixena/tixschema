@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
+use crate::swift_plain_enum::refusal;
 use crate::swift_valid::draft_of;
 use crate::tests::{
     envelope_swift, external_tagged_swift, status_swift, tuple_point_swift, window_request_swift,
@@ -41,6 +42,9 @@ fn a_struct_has_a_valid_struct_that_reads_through_its_draft() {
             "@dynamicMemberLookup public struct WindowRequest: Codable, Sendable { ",
             "public let draft: WindowRequestDraft; ",
             "fileprivate init(draft: WindowRequestDraft) { self.draft = draft }; ",
+            "public static func of(conversationId: String, limit: UInt32?) throws -> ",
+            "WindowRequest { try WindowRequestDraft(conversationId: conversationId, limit: ",
+            "limit).validate() }; ",
             "public subscript<SwiftSchemaHeld>(dynamicMember path: KeyPath<WindowRequestDraft, ",
             "SwiftSchemaHeld>) -> SwiftSchemaHeld { draft[keyPath: path] }; ",
             "public init(from decoder: Decoder) throws { draft = try WindowRequestDraft(from: ",
@@ -51,9 +55,7 @@ fn a_struct_has_a_valid_struct_that_reads_through_its_draft() {
             "[String]) throws { draft = try WindowRequestDraft(swiftSchemaUnjudged: decoder, ",
             "swiftSchemaWithout: taken) }; ",
             "public func encode(to encoder: Encoder) throws { try draft.encode(to: encoder) }; ",
-            "fileprivate func validate() -> [String] { draft.validationIssues() }; ",
-            "fileprivate func swiftSchemaValidateBound() -> [String] { ",
-            "draft.swiftSchemaValidateBound() } };",
+            "fileprivate func validate() -> [String] { draft.validationIssues() }; };",
         )
     );
     assert!(
@@ -83,18 +85,20 @@ fn a_generic_type_and_an_enum_are_wrapped_at_their_parameters() {
     );
 }
 
-/// A plain enum is built from its raw value only where the generated file reads it, and is
-/// `Hashable`, which a map keyed by it asks.
+/// A plain enum that names no check is the `String`-backed enum alone, which Swift makes
+/// `Hashable` and builds from its raw value, with no draft and no valid struct.
 #[test]
 fn a_plain_enum_is_hashable_and_built_from_its_raw_value_in_the_generated_file_alone() {
     let swift = status_swift::swift_definition();
     assert!(
-        valid_of(&swift).starts_with(
-            "@dynamicMemberLookup public struct Status: Codable, Sendable, Hashable { \
-             public let draft: StatusDraft; fileprivate init(draft: StatusDraft) { \
-             self.draft = draft }; fileprivate init?(rawValue: String) { guard let draft = \
-             StatusDraft(rawValue: rawValue) else { return nil }; self.draft = draft }; "
-        ),
+        swift.starts_with(&format!(
+            "{} public enum Status: String, Codable, Sendable {{ ",
+            refusal("Status")
+        )),
+        "got: {swift}"
+    );
+    assert!(
+        !swift.contains("StatusDraft") && !swift.contains("struct Status:"),
         "got: {swift}"
     );
 }

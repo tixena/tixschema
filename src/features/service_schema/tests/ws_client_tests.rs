@@ -145,15 +145,14 @@ fn a_service_with_no_request_and_reply_operation_emits_empty_tables() {
 }
 
 #[test]
-fn the_general_fault_builder_takes_a_kind_an_operation_a_detail_and_an_optional_field() {
+fn the_general_fault_builder_takes_a_kind_an_operation_and_a_detail() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains(
             "function billingServiceFault(\n  \
              kind: BillingServiceFaultKind,\n  \
              operation: string,\n  \
-             detail: string,\n  \
-             field?: string,\n\
+             detail: string,\n\
              ): BillingServiceFault {"
         ),
         "got: {written}"
@@ -166,7 +165,7 @@ fn the_general_fault_builder_takes_a_kind_an_operation_a_detail_and_an_optional_
 }
 
 #[test]
-fn the_issues_fault_folds_a_failed_parse_into_a_failed_validation_fault_naming_the_first_key() {
+fn the_issues_fault_folds_a_failed_parse_into_a_failed_validation_fault_listing_each_key() {
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains("function billingServiceIssuesFault(")
@@ -174,7 +173,8 @@ fn the_issues_fault_folds_a_failed_parse_into_a_failed_validation_fault_naming_t
                 "kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\","
             )
             && written.contains(
-                "field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,"
+                "return { detail: issue.message, field: steps.length === 0 ? undefined : \
+                 steps.join(\".\") };"
             ),
         "got: {written}"
     );

@@ -4,8 +4,8 @@ use bson::doc;
 use bson::oid::ObjectId;
 
 use super::{
-    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatusDraft, LineItem,
-    LineItemDraft, Point, PointDraft, invoice_schema, shown,
+    Address, AddressDraft, Customer, Invoice, InvoiceId, InvoiceStatus, LineItem, LineItemDraft,
+    Point, PointDraft, invoice_schema, shown,
 };
 
 fn line_item() -> LineItem {
@@ -14,8 +14,7 @@ fn line_item() -> LineItem {
         price: 4.0_f64,
         quantity: 9_u32,
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 #[test]
@@ -27,12 +26,7 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         r#"{ "_id": { "$eq": ObjectId(507f1f77bcf86cd799439011) } }"#
     );
     assert_eq!(
-        shown(
-            invoice
-                .status()
-                .ne(InvoiceStatusDraft::Draft.validate().unwrap())
-                .unwrap()
-        ),
+        shown(invoice.status().ne(InvoiceStatus::Draft).unwrap()),
         r#"{ "status": { "$ne": "draft" } }"#
     );
     assert_eq!(
@@ -60,10 +54,7 @@ fn a_comparison_writes_its_operator_over_a_value_of_the_fields_own_type() {
         shown(
             invoice
                 .status()
-                .not_in([
-                    InvoiceStatusDraft::Draft.validate().unwrap(),
-                    InvoiceStatusDraft::Paid.validate().unwrap()
-                ])
+                .not_in([InvoiceStatus::Draft, InvoiceStatus::Paid])
                 .unwrap()
         ),
         r#"{ "status": { "$nin": ["draft", "paid"] } }"#
@@ -199,8 +190,7 @@ fn a_model_a_row_may_leave_out_is_tested_for_removed_and_set_whole() {
                         city: "Moca".to_owned(),
                         postal_code: "56000".to_owned(),
                     }
-                    .validate()
-                    .unwrap()
+                    .into()
                 )
                 .unwrap()
         ),
@@ -231,7 +221,7 @@ fn a_nested_model_is_compared_whole_and_by_each_path_below_it() {
         shown(
             invoice
                 .origin()
-                .eq(PointDraft(18.47_f64, -69.9_f64).validate().unwrap())
+                .eq(PointDraft(18.47_f64, -69.9_f64).into())
                 .unwrap()
         ),
         r#"{ "origin": { "$eq": [Double(18.47), Double(-69.9)] } }"#
@@ -262,7 +252,7 @@ fn an_update_writes_its_operator_and_several_merge_into_one() {
         shown(
             invoice
                 .status()
-                .set(InvoiceStatusDraft::Paid.validate().unwrap())
+                .set(InvoiceStatus::Paid)
                 .unwrap()
                 .and(invoice.total().set(0.0_f64).unwrap())
                 .and(
@@ -383,7 +373,7 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
         shown(
             invoice
                 .origin()
-                .ne(PointDraft(0.0_f64, 0.0_f64).validate().unwrap())
+                .ne(PointDraft(0.0_f64, 0.0_f64).into())
                 .unwrap()
         ),
         r#"{ "origin": { "$ne": [Double(0.0), Double(0.0)] } }"#
@@ -393,8 +383,8 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
             invoice
                 .origin()
                 .is_in([
-                    PointDraft(18.47_f64, -69.9_f64).validate().unwrap(),
-                    PointDraft(0.0_f64, 0.0_f64).validate().unwrap()
+                    PointDraft(18.47_f64, -69.9_f64).into(),
+                    PointDraft(0.0_f64, 0.0_f64).into()
                 ])
                 .unwrap()
         ),
@@ -404,7 +394,7 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
         shown(
             invoice
                 .origin()
-                .not_in([PointDraft(0.0_f64, 0.0_f64).validate().unwrap()])
+                .not_in([PointDraft(0.0_f64, 0.0_f64).into()])
                 .unwrap()
         ),
         r#"{ "origin": { "$nin": [[Double(0.0), Double(0.0)]] } }"#
@@ -413,7 +403,7 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
         shown(
             invoice
                 .origin()
-                .set(PointDraft(1.5_f64, 2.5_f64).validate().unwrap())
+                .set(PointDraft(1.5_f64, 2.5_f64).into())
                 .unwrap()
         ),
         r#"{ "$set": { "origin": [Double(1.5), Double(2.5)] } }"#
@@ -422,7 +412,7 @@ fn a_nested_model_is_tested_and_set_as_one_whole_value() {
         shown(
             invoice
                 .origin()
-                .set_on_insert(PointDraft(1.5_f64, 2.5_f64).validate().unwrap())
+                .set_on_insert(PointDraft(1.5_f64, 2.5_f64).into())
                 .unwrap()
         ),
         r#"{ "$setOnInsert": { "origin": [Double(1.5), Double(2.5)] } }"#

@@ -53,7 +53,7 @@ fn serde_writes_and_reads_each_usize_of_placed() {
     let placed = PlacedDraft {
         at: usize::MAX,
         defaulted: 0,
-        held: HoldingDraft { held: usize::MAX }.validate().unwrap(),
+        held: HoldingDraft { held: usize::MAX }.into(),
         indexed: BTreeMap::from([(usize::MAX, "x".to_owned())]),
         keyed: BTreeMap::from([("a".to_owned(), usize::MAX)]),
         listed: vec![usize::MAX],
@@ -86,5 +86,5 @@ fn slot_index(value: usize) -> SlotIndex {
 
 #[cfg(not(feature = "serde"))]
 fn slot_index(value: usize) -> SlotIndex {
-    SlotIndexDraft(value).validate().unwrap()
+    SlotIndexDraft(value).into()
 }

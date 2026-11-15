@@ -1,7 +1,9 @@
 //! The Kotlin `mcp` client: one `tools/call` per operation, sent through the caller's one-method
 //! transport and read back as the sealed result `kotlin_http_client()` declares.
 
-use super::kotlin_http_client::{carries_no_value, held_copies, kotlin_held, read_serializer};
+use super::kotlin_http_client::{
+    carries_no_value, fault_said, held_copies, kotlin_held, read_serializer,
+};
 use super::kotlin_mcp_service::{VERSION_MARKER, tool_entries, wrapped_replacements};
 use super::kotlin_ws_client::{
     body_type, header_elements, kotlin_type_of, message_kotlin_typename, message_serializer,
@@ -18,7 +20,7 @@ use crate::service_schema::parse::{
     HttpShape, OperationDef, OperationInputs, OperationOutcome, ServiceDef, option_inner, wire_key,
     written,
 };
-use crate::service_schema::support::fault_fields_typescript_name;
+use crate::service_schema::support::{fault_fields_typescript_name, fault_issue_name};
 use core::fmt::Write as _;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -30,7 +32,7 @@ interface @N@McpTransport {
   suspend fun send(message: @N@McpMessage): String
 }";
 
-const REFUSAL: &str = "class @N@McpRefusal(val fault: @F@) : Exception(fault.detail)";
+const REFUSAL: &str = "class @N@McpRefusal(val fault: @F@) : Exception(@SAID@)";
 
 const CALL_WRAPPED: &str =
     "private val @P@McpCallWrapped: Map<String, Boolean> = mapOf<String, Boolean>(
@@ -168,7 +170,8 @@ pub fn emit(declared: &ServiceDef) -> Vec<String> {
         .iter()
         .any(|operation| matches!(operation.outcome, OperationOutcome::OneWay))
     {
-        published.push(fill(REFUSAL, &prefix, &named, &fields));
+        published
+            .push(fill(REFUSAL, &prefix, &named, &fields).replace("@SAID@", &fault_said("fault")));
     }
     if service.operations.iter().any(OperationDef::is_mcp_tool) {
         published.push(
@@ -317,7 +320,10 @@ fn method(operation: &OperationDef, prefix: &str, named: &str) -> String {
         on_one_line(operation.mcp_tool_name())
     );
     let failure = format!(
-        "{prefix}McpCallFault({named}FaultKind.FailedValidation, {tool}, rejected.message ?: rejected.toString())"
+        "{}(issues = listOf({}(detail = rejected.message ?: rejected.toString())), kind = \
+         {named}FaultKind.FailedValidation, operation = {tool})",
+        fault_fields_typescript_name(named),
+        fault_issue_name(named),
     );
     let verb = if operation.is_mcp_prompt() {
         "prompts/get"

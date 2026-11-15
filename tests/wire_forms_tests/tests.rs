@@ -7,7 +7,8 @@ use super::models::{
     ConveyedDay, ConveyedF32, ConveyedF64, ConveyedFlag, ConveyedHour, ConveyedI8, ConveyedI16,
     ConveyedI32, ConveyedI64, ConveyedInstant, ConveyedIsize, ConveyedLetter, ConveyedLiteralCount,
     ConveyedLiteralFlag, ConveyedLiteralText, ConveyedMillis, ConveyedSlotted, ConveyedStamp,
-    ConveyedText, ConveyedU8, ConveyedU16, ConveyedU32, ConveyedU64, ConveyedUsize, WIRE_FORMS,
+    ConveyedText, ConveyedU8, ConveyedU16, ConveyedU32, ConveyedU64, ConveyedUsize, Sends,
+    WIRE_FORMS,
 };
 
 /// The JSON Schema of each model admits every payload a client sends.
@@ -61,6 +62,31 @@ fn the_json_schema_refuses_a_value_in_another_form_than_serde_writes() {
             "the JSON Schema of {held_by} admits {payload}, which serde refuses: {document}"
         );
     }
+}
+
+/// A date and time key the TypeScript client sends as it was handed is read by serde as the instant
+/// the payload serde writes holds, though the text of the key is another.
+#[test]
+fn a_date_and_time_key_sent_as_handed_is_read_as_the_instant_serde_writes() {
+    let mut held = 0_usize;
+    for row in WIRE_FORMS
+        .iter()
+        .filter(|row| row.held_by == "ConveyedInstant")
+    {
+        let Sends::Apart(_, key) = row.typescript else {
+            continue;
+        };
+        let sent = row.payload(row.typescript).unwrap();
+        assert!(sent.contains(key), "{sent} holds no key {key}");
+        let read: ConveyedInstant = serde_json::from_str(&sent).unwrap();
+        let written = serde_json::to_string(&read).unwrap();
+        assert!(!written.contains(key), "{written} writes the key as handed");
+        let again: ConveyedInstant = serde_json::from_str(&written).unwrap();
+        assert_eq!(read.keyed, again.keyed, "{sent}");
+        assert_eq!(read.keyed.keys().next(), Some(&read.value), "{sent}");
+        held += 1_usize;
+    }
+    assert_eq!(held, 2_usize);
 }
 
 /// The JSON Schema of the model `held_by` names, and `None` where none has that name.

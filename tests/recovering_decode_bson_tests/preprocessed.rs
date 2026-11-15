@@ -171,8 +171,7 @@ fn a_row_is_read_to_the_values_a_type_that_names_no_function_reads() {
             total: plain.total,
             weight: plain.weight,
         }
-        .validate()
-        .unwrap()
+        .into()
     );
     assert_eq!(plain.id, id());
     assert_eq!(plain.at.timestamp_millis(), 1_700_000_000_000);

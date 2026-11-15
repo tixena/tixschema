@@ -181,14 +181,13 @@ impl ApprovalService<()> for Approvals {
     ) -> impl Future<Output = Result<(), DeleteError>> {
         self.reach(format!("delete-document {document_id} {confirmation:?}"));
         ready(match (document_id.as_str(), confirmation) {
-            ("missing", _) => Err(DeleteErrorDraft::NotFound.validate().unwrap()),
+            ("missing", _) => Err(DeleteError::NotFound),
             (_, None) => Err(DeleteErrorDraft::NeedsConfirmation {
                 message: "Delete this document for good?".to_owned(),
             }
-            .validate()
-            .unwrap()),
+            .into()),
             (_, Some(given)) if given.confirm => Ok(()),
-            (_, Some(_)) => Err(DeleteErrorDraft::Refused.validate().unwrap()),
+            (_, Some(_)) => Err(DeleteError::Refused),
         })
     }
 
@@ -202,7 +201,7 @@ impl ApprovalService<()> for Approvals {
             "doc-1" => Ok((vec![0x89, b'P', b'N', b'G'], "image/png".to_owned())),
             "voice" => Ok((vec![1, 2, 3, 4, 5], "audio/mpeg".to_owned())),
             "plain" => Ok((b"%PDF-".to_vec(), "application/pdf".to_owned())),
-            _ => Err(PreviewErrorDraft::NotFound.validate().unwrap()),
+            _ => Err(PreviewError::NotFound),
         })
     }
 
@@ -216,15 +215,13 @@ impl ApprovalService<()> for Approvals {
             Ok(ImportedDocumentDraft {
                 document_id: format!("doc-{file_id}"),
             }
-            .validate()
-            .unwrap())
+            .into())
         } else {
             Err(ImportErrorDraft::NeedsDriveConnection {
                 url: "https://mcp.example.com/connect/drive?request=7f3a".to_owned(),
                 message: "Connect your Google Drive so this server can import the file.".to_owned(),
             }
-            .validate()
-            .unwrap())
+            .into())
         })
     }
 
@@ -240,8 +237,7 @@ impl ApprovalService<()> for Approvals {
                 Err(DeleteErrorDraft::NeedsConfirmation {
                     message: "How should it ship?".to_owned(),
                 }
-                .validate()
-                .unwrap())
+                .into())
             },
             |_form| Ok(()),
         ))

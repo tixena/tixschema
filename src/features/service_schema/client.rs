@@ -275,21 +275,22 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
              function {prefix}Refused(fault: {named}Fault): {named}Refusal {{\n  \
              return Object.assign(\n    \
              new Error(`${{fault.kind}} in operation \\`${{fault.operation}}\\`: \
-             ${{fault.detail}}`),\n    \
+             ${{{said}}}`),\n    \
              {{ fault }},\n  \
              );\n\
-             }}"
+             }}",
+            said = fault::said("fault")
         ));
     }
     helpers
 }
 
-/// A fault constructor folding a failed parse into one `failed-validation` fault naming the first
-/// failing key, and a key no member declares by the path of the object that holds it and the key,
-/// as the Rust dispatcher names it. A first refusal in serde's words for text that is not the
-/// document, which the schema marks `undeserializable`, is the `undeserializable-payload` the Rust
-/// dispatcher answers for it, naming no field. `doc` is the body of its `JSDoc`. Every TypeScript
-/// client and dispatcher folds a failed parse through it.
+/// A fault constructor folding a failed parse into one `failed-validation` fault listing each
+/// issue at the key it was at, and a key no member declares by the path of the object that holds
+/// it and the key, as the Rust dispatcher names it. A first refusal in serde's words for text that
+/// is not the document, which the schema marks `undeserializable`, is the
+/// `undeserializable-payload` the Rust dispatcher answers for it, naming no field. `doc` is the
+/// body of its `JSDoc`. Every TypeScript client and dispatcher folds a failed parse through it.
 pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String {
     format!(
         "/**\n\
@@ -307,26 +308,20 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          ): {named}Fault {{\n  \
          const [first] = issues;\n  \
          const unread = first?.params?.undeserializable === true ? first.message : undefined;\n  \
-         const steps =\n    \
-         first === undefined\n      \
-         ? []\n      \
-         : first.code === \"unrecognized_keys\" && first.keys !== undefined\n        \
-         ? [...first.path, ...first.keys.slice(0, 1)]\n        \
-         : first.path;\n  \
-         const failedAt = steps.join(\".\");\n\
+         const listed = issues.map((issue) => {{\n    \
+         const steps =\n      \
+         issue.code === \"unrecognized_keys\" && issue.keys !== undefined\n        \
+         ? [...issue.path, ...issue.keys.slice(0, 1)]\n        \
+         : issue.path;\n    \
+         return {{ detail: issue.message, field: steps.length === 0 ? undefined : steps.join(\".\") }};\n  \
+         }});\n\
          {minted}\n\
          }}",
         minted = fault::minted(
             named,
-            "    detail:\n      \
-             unread ??\n      \
-             issues\n        \
-             .map((issue) =>\n          \
-             issue.path.length === 0 ? issue.message : `'${issue.path.join(\".\")}': \
-             ${issue.message}`,\n        \
-             )\n        \
-             .join(\"; \"),\n    \
-             field: unread !== undefined || failedAt === \"\" ? undefined : failedAt,\n    \
+            "    detail: unread,\n    \
+             field: undefined,\n    \
+             ...(unread === undefined ? { issues: listed } : {}),\n    \
              kind: unread === undefined ? \"failed-validation\" : \"undeserializable-payload\",\n    \
              operation,"
         )
@@ -650,14 +645,15 @@ fn reply_header_helpers(named: &str, prefix: &str) -> Vec<String> {
              missing, or\n \
              * will not become the header's declared type.\n \
              */\n\
-             function {prefix}ReplyHeaderFault(operation: string, name: string, detail: string): \
-             {named}Fault {{\n\
+             function {prefix}ReplyHeaderFault(operation: string, name: string, details: \
+             ReadonlyArray<string>): {named}Fault {{\n\
              {minted}\n\
              }}",
             minted = fault::minted(
                 named,
-                "    detail,\n    \
-                 field: name,\n    \
+                "    detail: undefined,\n    \
+                 field: undefined,\n    \
+                 issues: details.map((detail) => ({ detail, field: name })),\n    \
                  kind: \"failed-validation\",\n    \
                  operation,"
             )
@@ -677,18 +673,18 @@ fn reply_header_helpers(named: &str, prefix: &str) -> Vec<String> {
              ): {{ ok: true; value: z.output<Schema> }} | {{ ok: false; fault: {named}Fault }} {{\n  \
              const carried = headers.find(([candidate]) => candidate.toLowerCase() === \
              name.toLowerCase())?.[1];\n  \
-             let detail: string;\n  \
+             let details: ReadonlyArray<string>;\n  \
              try {{\n    \
              const parsed = schema.safeParse(carried === undefined ? null : \
              {prefix}Read(carried));\n    \
              if (parsed.success) return {{ ok: true, value: parsed.data }};\n    \
-             detail = carried === undefined\n      \
-             ? \"a declared reply header was missing\"\n      \
-             : parsed.error.issues.map((issue) => issue.message).join(\"; \");\n  \
+             details = carried === undefined\n      \
+             ? [\"a declared reply header was missing\"]\n      \
+             : parsed.error.issues.map((issue) => issue.message);\n  \
              }} catch (rejected) {{\n    \
-             detail = String(rejected);\n  \
+             details = [String(rejected)];\n  \
              }}\n  \
-             return {{ ok: false, fault: {prefix}ReplyHeaderFault(operation, name, detail) }};\n\
+             return {{ ok: false, fault: {prefix}ReplyHeaderFault(operation, name, details) }};\n\
              }}"
         ),
     ]

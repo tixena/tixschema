@@ -269,9 +269,8 @@ what a change has to keep.
   `nested_under` writes the name.
 - **`validate()` in every build.** It holds every bound and every check, whatever the features,
   and a type that derives `Deserialize` reads through `judged_read` in every build, so its read
-  refuses what `validate()` refuses. `serde` is the one switch: it adds the member hook
-  (`deserialize_with`), through which a member's bound chooses the variant of an untagged enum,
-  and without `serde` a member is reported under its Rust name.
+  refuses what `validate()` refuses. `serde` is the one switch: without `serde` a member is
+  reported under its Rust name.
 - **Every shape.** `process_struct`, `process_tuple_struct`, a unit struct, the three tagged enum
   processors and the untagged one (a member's check in its variant's arm, through
   `build_member_check_arms`, and the enum's own after the `match`), a plain enum, and a brand
@@ -358,8 +357,7 @@ keep.
 - **The clients** hold the member in its own type and compare there: Dart's `literal_elements`
   from `own_bound_elements`, Swift's `literal_rule` from `bound_rules`, Kotlin's
   `literal_statements` from `bound_statements`, each through an optional and each level of a list,
-  an item under its index. Each is a member's bound, so it chooses a variant of an untagged enum
-  (`_bounds()`, `swiftSchemaBound{Variant}`, `kotlinSchemaBound()`).
+  an item under its index. Each is a member's bound, which chooses no variant of an untagged enum.
 - **The tests.** `tests/model_schema_prop_tests/literal_models.rs` holds `LITERAL_READS`, what each
   payload reads as. `literals.rs` holds serde's read to it, and
   `type_check_a_literal_refuses_under_zod_what_serde_refuses` in
@@ -491,9 +489,8 @@ reads the path off its Zod issue, the Dart and Kotlin servers walk the tool's JS
 - `CheckedMember::label` and `CheckedMember::stem` keep the Rust ident: a refusal at build time
   and a helper (`validate_{field}_value`, `validate_{variant}_{index}_value`) name the member as
   its author wrote it, a slot by its place among the ones declared.
-- A read hook that answers a brand's refusal under a name (`named_refusal`, from
-  `read_unjudged_below` and `named_read_hook`) is handed `MemberPlace::reported`, so a read and
-  `validate()` name one path. An `Option` adds no step.
+- `MemberPlace::reported` is the name `validate()` reports a member under. An `Option` adds no
+  step.
 - `tests/check_tests/places.rs`, a module of `models.rs`, holds one type per row of the table,
   with a bound on the member and a model held in it. `tests/check_tests/table.rs` holds
   `validate()` to `PLACES`, and `tests/generic_types_tests/declarations.rs` parses each payload
@@ -525,11 +522,7 @@ reads the path off its Zod issue, the Dart and Kotlin servers walk the tool's JS
   of the item's own parameters is walked to nothing. A type whose only such member is that set
   holds no rule and publishes no `validate()`, so a direct call of the method stops building with
   rustc's own E0599 and a `validate` of the consumer's own builds. A holder's `value.validate()`
-  builds as before, through the fallback. `named_read_hook` is hung by `reachable_nested_shape`
-  alone: on a declared type held under `Option`, a list and the transparent wrappers, on no set of
-  values no declared type describes, no map and no tuple, on no member read through a reference
-  (`named_below`, as `ends_on_a_borrow` says for a member's own bound), and on no member the
-  type's unjudged read reaches (`member_read_hook`).
+  builds as before, through the fallback.
 - A map's key is the text serde writes for it. `written_key_items` declares `MapKey` in the walk's
   block: its `Display` hands the key's own `Serialize` the `Formatter`, serde's serializer for
   which (in serde from 1.0.108) writes a string, a number, a `bool`, a `char`, a unit variant's
@@ -612,7 +605,9 @@ has to keep.
   `Validator` gate. serde's derive asks nothing of such a member's type, and neither does the read.
 - A member written with `Self` or with the item's own type parameters (`Vec<Entry<IdType>>`) is
   hooked as any other: a model filled with the holder's parameter is judged once, with its
-  holder, and what fills a parameter itself (`Vec<Held>`) is no model `validate()` walks.
+  holder. What fills a parameter itself (`Vec<Held>`) is walked by the check of that parameter
+  `model_schema_issues_with{n}` is handed (`src/model_schema/parameter_walk.rs`), and read by the
+  reader `model_schema_read_unjudged_by{n}` is handed (`src/model_schema/judged_read/readers.rs`).
   `HookScope::written` writes `Self` as the item (`naming_the_type`) and makes the hook generic
   over exactly the item's parameters the member's type names, in the order declared, each
   inferred at serde's call from the return type. Every bound sits in its `where` clause, one
@@ -631,8 +626,7 @@ has to keep.
   `model_schema_read_unjudged`, behind the local `ReadUnjudged` trait. An inherent function is
   found ahead of a trait's, so a type with no unjudged read of its own is read as serde reads
   it. A refusal raised below the member, by a type that judges itself as it is read, is answered
-  under the name `validate()` reports the field under (`named_refusal`) where `named_below` says
-  the named reader did so, and an outermost `Option` under a key is given `#[serde(default)]` by
+  as that type raised it, and an outermost `Option` under a key is given `#[serde(default)]` by
   the rule of `needs_injected_default`, the container writing none.
 - A brand takes the same read. `branded_read` hands `of_struct` every brand, and one that
   publishes `validate()` (a bound, a count of a list, a check) or names a `preprocess` gains
@@ -641,23 +635,35 @@ has to keep.
   reads a brand unjudged, and the holder's `validate()` names it: `'listed.1': too short: ...`.
 - `BrandBound` holds what a brand's own bound adds: the validator in the schema module, the call
   `validate()` makes, and `model_schema_validate_bound`, a method of the brand's own that
-  answers for the bound alone (`judged_read::BOUND_ALONE`). It has two readers. A member of an
-  untagged enum is held to it as the member is read (`HookPlace::choosing`,
-  `MemberHook::held_leaf`), behind the local `ChosenByShape` trait, which answers `Ok(())` for a
-  reference to any type with no such method: the bound of a brand chooses the variant, as it did
-  where the brand refused in a read of its own, and nothing of a model chooses one. And the read
-  a recovering decode lists a bounded brand from holds the value to it (`bounded_listed_read`,
-  through `brand_recovering_decode`), so the walker lists a broken bound as the refusal of the
-  value. A check a brand names chooses no variant: the enum's `validate()` refuses with it.
-- A rule of any other model a member of an untagged enum holds, its checks included, and the
-  bound on the slot of a struct of one slot, choose no variant, in serde's read and in the Dart,
-  Swift and Kotlin reads, by the owner's decision: the first variant whose shape reads is taken,
+  answers for the bound alone (`judged_read::BOUND_ALONE`). Its one reader is the read a recovering
+  decode lists a bounded brand from, which holds the value to it (`bounded_listed_read`, through
+  `brand_recovering_decode`), so the walker lists a broken bound as the refusal of the value. A
+  member of an untagged enum reads a brand unjudged (`MemberHook::held_leaf`), so no bound and no
+  check of a brand chooses a variant: the enum's `validate()` refuses with it.
+- No rule chooses a variant of an untagged enum, in serde's read and in the Dart, Swift and
+  Kotlin reads, by the owner's decision: a member's bound, its `literal`, a brand's bound, a rule
+  of a model it holds and its checks included. The first variant whose shape reads is taken,
   and the read then refuses the value. Zod's `z.union` and the JSON Schema's `anyOf` try the
   next variant there, and the guide states the limit with its `Picker`.
   `tests/untagged_tests/held_rules.rs` holds serde's answers, the JSON Schema's and the guide.
-- `named_read_hook` stays for a named field `reachable_nested_shape` walks and `walked_read` does
-  not. A model or a brand filling a type parameter judges itself as it is read, and ends the
-  read at the first one that breaks a rule.
+- A type that declares type parameters has `model_schema_issues_with{n}`, which takes one
+  `&dyn Fn(&Parameter) -> Vec<String>` per parameter and runs it on every value behind that
+  parameter (`HeldEnd::Parameter`), and `validation_issues()` is it with checks that report
+  nothing. A holder's walk of a member written with a generic model at a filling
+  (`HeldEnd::Declared` with arguments) calls it with the check of each argument
+  (`argument_walk`): the holder's own parameter's check where the argument is one, a closure that
+  walks the argument otherwise. A brand over one of its own parameters hands the value it wraps to
+  that check (`brand_issues_with`).
+- The type gains `model_schema_read_unjudged_by{n}` beside its unjudged read: a copy of the item,
+  generic over its parameters and one `DeserializeSeed` per parameter, derives serde's read with
+  each member that holds a value behind a parameter read through the reader handed in for it
+  (`read_with_readers`); the copy is named after the item, so serde's sentences name the type as
+  its own read names them. A holder reads a member written with the model at a filling through
+  it, handing the unjudged read of each argument; a reader is pinned to the type it reads by
+  `ModelSchemaReadFor`, whose `on_unimplemented` answers the refusal of an alias that rearranges
+  the model's parameters. A shape no copy can repeat (a const parameter, a container `bound`, a
+  conversion, a container `default`, a slot under a `cfg`) reads through its own read, which
+  judges what fills its parameters as it is read.
 - A unit struct's `Deserialize` is the macro's already (`unit_struct_serde_impls`), and
   `unit_struct_read` gives it `model_schema_read_unjudged` and the `validate()` call where the
   struct has a check.

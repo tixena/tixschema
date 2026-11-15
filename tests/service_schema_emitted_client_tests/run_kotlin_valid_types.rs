@@ -24,7 +24,7 @@ JSON input: {\"label\":\"Shipping\",\"parcelCount\":3,\"extra\":1}\n\
 wrong type: SerializationException: invalid type: string \"a\", expected u32 at path: $.parcelCount\n\
 wrong label type: JsonDecodingException: Unexpected JSON token at offset 9: Expected quotation mark '\"', but had '5' instead at path: $.label\n\
 JSON input: {\"label\":5,\"parcelCount\":3}\n\
-broken rule: SerializationException: 'parcelCount': too large: maximum is 100, got 300\n\
+broken rule: ShipmentRefusal: ['parcelCount': too large: maximum is 100, got 300]\n\
 nested missing: MissingFieldException: Fields [label, parcelCount] are required for type with serial name 'demo.Shipment', but they were missing at path: $.shipment\n\
 crate missing: MissingFieldException: Field 'content' is required for type with serial name 'demo.Crate', but it was missing at path: $\n\
 variant missing: SerializationException: Field 'parcelCount' is required for type with serial name 'demo.Shipment', but it was missing at path: $\n\
@@ -155,9 +155,9 @@ fun main() {
          ShipmentDraft(label=LabelText(value=Shipping), parcelCount=3)\n\
          {\"label\":\"Shipping\",\"parcelCount\":3}\n\
          true\n\
-         refused: 'parcelCount': too large: maximum is 100, got 200\n\
+         refused: ['parcelCount': too large: maximum is 100, got 200]\n\
          ['parcelCount': too large: maximum is 100, got 200]\n\
-         read refused: 'parcelCount': too large: maximum is 100, got 200\n\
+         read refused: ['parcelCount': too large: maximum is 100, got 200]\n\
          2\n\
          200\n"
     );

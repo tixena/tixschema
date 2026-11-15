@@ -507,8 +507,7 @@ fn a_flattened_member_is_reported_under_no_name() {
         carriage: CarriageDraft {
             carrier: String::new(),
         }
-        .validate()
-        .unwrap(),
+        .into(),
         number: 7,
     };
     #[cfg(feature = "serde")]

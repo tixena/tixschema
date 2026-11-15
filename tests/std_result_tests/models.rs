@@ -182,8 +182,7 @@ pub fn reply() -> Reply {
         outcome: Ok(7),
         stored: Ok(()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A missive whose frontmatter reads, and whose two bounds break where `broken` says so.
@@ -208,8 +207,7 @@ pub fn postbox(held: bool) -> Postbox {
         nested: Ok(Err("d".to_owned())),
         paired: (Ok(4), "e".to_owned()),
     }
-    .validate()
-    .unwrap()
+    .into()
 }
 
 /// A notebook whose every bound breaks where `broken` says so.
@@ -361,6 +359,11 @@ pub fn refused_payloads() -> Vec<Payload> {
             "an arm of another type",
             "Reply",
             r#"{"outcome":{"Ok":"seven"},"stored":{"Ok":null}}"#,
+        ),
+        payload(
+            "a number between quotes in an arm",
+            "Reply",
+            r#"{"outcome":{"Ok":"7"},"stored":{"Ok":null}}"#,
         ),
         payload(
             "no object",

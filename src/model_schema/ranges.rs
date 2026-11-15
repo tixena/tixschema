@@ -17,12 +17,12 @@ use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
 use syn::{Fields, GenericArgument, Item, PathArguments, Type, TypePath};
 
-use super::judged_read::unclaimed_parameter;
 use crate::features::serde::parse_serde_key_omission;
 use crate::field_type::{
     RangeKind, names_std_ops, names_std_result, undescribable_primitive, written_std_range,
     written_std_result,
 };
+use crate::utils::unclaimed_parameter;
 use crate::utils::{written_names, written_type};
 
 #[cfg(feature = "serde")]

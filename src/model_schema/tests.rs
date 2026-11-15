@@ -9,7 +9,7 @@ use super::{
 
 #[cfg(feature = "serde")]
 use super::{
-    CheckedMember, ConstraintGate, ConstraintLeaf, FieldContext, MemberAccess,
+    CheckedMember, ConstraintLeaf, FieldContext, MemberAccess,
     adjacent_collapsed_slot_guard_errors, branded_guard_errors, build_field_validation,
     cfg_attr_guard_error, check_nullable_field_serialization, check_omitted_key_is_readable,
     check_optional_field_serialization, checked_member, collect_untagged_members,
@@ -37,7 +37,7 @@ use super::{
 
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
-use crate::field_type::{MissingKey, Scope, is_set_wrapper};
+use crate::field_type::{MissingKey, Scope, Zone, is_set_wrapper};
 #[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 
@@ -1245,7 +1245,7 @@ fn untagged_member_carries_its_constraint_to_the_surfaces() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn untagged_member_constraint_generates_the_validator_and_hangs_it_on_the_member() {
+fn untagged_member_constraint_generates_the_validator_and_hangs_nothing_on_the_member() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum Choice {
             Named {
@@ -1274,7 +1274,7 @@ fn untagged_member_constraint_generates_the_validator_and_hangs_it_on_the_member
     let attrs = &item.variants[0].fields.iter().next().unwrap().attrs;
     let rendered_attrs = quote::quote!(#(#attrs)*).to_string();
     assert!(
-        rendered_attrs.contains(r#"deserialize_with = "choice_schema::deserialize_named_name""#),
+        !rendered_attrs.contains("deserialize_with"),
         "got: {rendered_attrs}"
     );
 }
@@ -1337,7 +1337,7 @@ fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_slot() {
+fn untagged_newtype_member_constraint_is_named_by_its_position_and_hangs_nothing_on_the_slot() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum MimeType {
             Known(KnownMimeType),
@@ -1370,7 +1370,7 @@ fn untagged_newtype_member_constraint_is_named_by_its_position_and_hung_on_the_s
 
     let rendered_attrs = walked_field_attrs(item.variants[1].fields.iter());
     assert!(
-        rendered_attrs.contains(r#"deserialize_with = "choice_schema::deserialize_other_0""#),
+        !rendered_attrs.contains("deserialize_with"),
         "got: {rendered_attrs}"
     );
 
@@ -7136,9 +7136,10 @@ fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
             .map(|key| super::PlaceStep::Written(key.to_owned()))
             .into_iter()
             .collect();
+        let def = get_field_def("", &ty, "");
         super::nested_place(&super::held_at(
             &held,
-            &super::nested_shape(&ty).unwrap(),
+            &super::held_shape(&ty, &def).unwrap().wraps,
             1,
         ))
         .map(|written| written.to_string())
@@ -7538,7 +7539,7 @@ fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
+fn a_field_holding_a_declared_type_is_read_through_a_hook_that_renames_no_refusal() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -7578,13 +7579,11 @@ fn a_field_holding_a_declared_type_is_read_through_one_that_names_the_field() {
         "fn read_unjudged_customer_id < 'de , D > (deserializer : D) -> :: core :: result :: \
          Result < Slug , D :: Error >",
         "< Slug > :: model_schema_read_unjudged (deserializer) . map (Unjudged)",
-        // The key as the wire spells it: the name serde was reading for, and the one the schema
-        // reports.
-        "nested_under (\"customerId\" , violation)",
     ] {
         assert!(read.contains(written), "missing `{written}`, got: {read}");
     }
-    assert!(!read.contains("\"customer_id\""), "got: {read}");
+    // The holder's `validate()` names the field: no refusal of the read is worded again.
+    assert!(!read.contains("nested_under"), "got: {read}");
 }
 
 #[cfg(feature = "serde")]
@@ -7628,7 +7627,7 @@ fn the_names_a_read_declares_are_never_names_the_item_writes() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module() {
+fn a_field_the_unjudged_read_does_not_reach_is_read_by_its_own_type() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -7650,28 +7649,17 @@ fn a_field_the_unjudged_read_does_not_reach_keeps_a_reader_in_the_schema_module(
         },
     );
     assert!(collected.4.is_empty(), "got: {:?}", collected.4);
-
     let rendered = walked_field_attrs(item.fields.iter());
-    assert_eq!(
-        rendered,
-        quote::quote! {
-            #[serde(deserialize_with = "enrolment_schema::deserialize_named_customer_id")]
-        }
-        .to_string(),
-        "got: {rendered}"
-    );
-
-    let published = collected
-        .2
-        .iter()
-        .map(ToString::to_string)
-        .collect::<String>();
+    assert_eq!(rendered, "", "got: {rendered}");
     assert!(
-        published.contains("\"customerId\""),
-        "the name written is the key as the wire spells it, that being the name serde was reading \
-         for and the one the schema reports. Got: {published}"
+        collected.2.is_empty(),
+        "got: {:?}",
+        collected
+            .2
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
     );
-    assert!(!published.contains("\"customer_id\""), "got: {published}");
     let read = super::judged_read::of_struct(&mut item, true).to_string();
     assert!(!read.contains("read_unjudged_"), "got: {read}");
 }
@@ -7705,7 +7693,7 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
     );
     let rendered = walked_field_attrs(item.fields.iter());
     assert!(
-        !rendered.contains("deserialize_named_"),
+        !rendered.contains("schema::"),
         "serde admits one reader per field, and each of these already has one or has no read at \
          all. Got: {rendered}"
     );
@@ -7715,7 +7703,7 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
         .map(ToString::to_string)
         .collect::<String>();
     assert!(
-        !published.contains("deserialize_named_"),
+        published.is_empty(),
         "a reader nothing is hung with is a function nothing calls. Got: {published}"
     );
 }
@@ -7824,10 +7812,10 @@ fn an_optional_struct_field_is_hung_with_neither_the_hook_nor_the_default_it_ans
     );
 }
 
-/// The untagged member is the other half: it earns the hook, and therefore earns the `default` too.
+/// The untagged member is read as serde's derive reads it: it earns no hook, and so no `default`.
 #[cfg(feature = "serde")]
 #[test]
-fn an_optional_untagged_member_is_hung_with_the_hook_and_the_default_it_answers_for() {
+fn an_optional_untagged_member_is_hung_with_no_hook_and_no_default() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
         enum Choice {
             Named {
@@ -7849,12 +7837,9 @@ fn an_optional_untagged_member_is_hung_with_the_hook_and_the_default_it_answers_
         rendered,
         quote::quote! {
             #[serde(skip_serializing_if = "Option::is_none")]
-            #[serde(deserialize_with = "choice_schema::deserialize_named_name")]
-            #[serde(default)]
         }
         .to_string(),
-        "the declaration's own attribute, then the hook, then the `default` the hook needs. Got: \
-         {rendered}"
+        "the declaration's own attribute and nothing beside it. Got: {rendered}"
     );
 }
 
@@ -9845,6 +9830,7 @@ fn struct_schema_example_carries_no_cfg_attribute() {
         from_ref(&example),
         &name,
         &generics,
+        false,
         &super::ModelSchemaArgs::default(),
     )
     .unwrap();
@@ -9872,6 +9858,7 @@ fn struct_schema_example_instantiates_every_type_parameter() {
             from_ref(&example),
             &name,
             &generics,
+            false,
             &super::ModelSchemaArgs::default(),
         )
         .unwrap()
@@ -9907,7 +9894,7 @@ fn struct_schema_example_instantiates_each_parameter_at_its_declared_filling() {
             ..Default::default()
         };
         let rendered =
-            super::item_schema_example_method(from_ref(&example), &name, &generics, &args)
+            super::item_schema_example_method(from_ref(&example), &name, &generics, false, &args)
                 .unwrap()
                 .to_string();
         assert!(rendered.contains(expected), "Got: {rendered}");
@@ -9926,7 +9913,7 @@ fn an_unfilled_parameter_falls_back_to_the_standard_string_by_its_full_path() {
         ..Default::default()
     };
     let render = |args: &super::ModelSchemaArgs| {
-        super::item_schema_example_method(from_ref(&example), &name, &generics, args)
+        super::item_schema_example_method(from_ref(&example), &name, &generics, false, args)
             .unwrap()
             .to_string()
     };
@@ -9956,34 +9943,54 @@ fn every_block_is_built_in_a_scope_of_its_own_and_the_first_is_the_example() {
         &blocks,
         &name,
         &syn::Generics::default(),
+        false,
         &super::ModelSchemaArgs::default(),
     )
     .unwrap()
     .to_string();
     let writer = js_literal::writer();
+    let failure_type = super::example_failure_type();
+    let value_ty: proc_macro2::TokenStream = "Report".parse().unwrap();
+    let nothing = proc_macro2::TokenStream::new();
+    let first = super::example_value(
+        &"Report { id: 1 }".parse().unwrap(),
+        &value_ty,
+        &nothing,
+        1,
+        "Report",
+    );
+    let second = super::example_value(
+        &"Report { id: 2 }".parse().unwrap(),
+        &value_ty,
+        &nothing,
+        2,
+        "Report",
+    );
     let written = quote::quote! {
         pub fn schema_examples() -> ::std::vec::Vec<serde_json::Value> {
+            #failure_type
             ::std::vec![
                 {
-                    let value: Report = { Report { id: 1 } };
+                    let value: Report = #first;
                     serde_json::to_value(&value).unwrap()
                 },
                 {
-                    let value: Report = { Report { id: 2 } };
+                    let value: Report = #second;
                     serde_json::to_value(&value).unwrap()
                 }
             ]
         }
 
         fn schema_examples_zod_text() -> ::std::string::String {
+            #failure_type
             #writer
             let texts: ::std::vec::Vec<::std::string::String> = ::std::vec![
                 {
-                    let value: Report = { Report { id: 1 } };
+                    let value: Report = #first;
                     tixschema_bigint_writer::text(&value)
                 },
                 {
-                    let value: Report = { Report { id: 2 } };
+                    let value: Report = #second;
                     tixschema_bigint_writer::text(&value)
                 }
             ];
@@ -10007,6 +10014,7 @@ fn a_type_that_writes_no_block_gets_no_example_method() {
             &[],
             &name,
             &syn::Generics::default(),
+            false,
             &super::ModelSchemaArgs::default(),
         )
         .is_none()
@@ -10361,6 +10369,7 @@ fn plain_enum_ts_definition_carries_no_cfg_attribute() {
         "",
         "  'a'",
         "export function Status$Variant(value: unknown): string { return \"\"; }",
+        &[],
     );
     assert_no_cfg_attribute(&tokens, "generate_plain_enum_ts_definition_method");
 }
@@ -10375,7 +10384,7 @@ fn discriminated_enum_ts_definition_carries_no_cfg_attribute() {
         "",
         "  'a'",
         "export function Shape$Variant(value: unknown): string { return \"\"; }",
-        false,
+        (false, &[]),
     );
     assert_no_cfg_attribute(&tokens, "generate_discriminated_enum_ts_definition_method");
 }
@@ -11800,13 +11809,14 @@ fn an_alias_claims_the_suffixed_name_it_publishes() {
 
 #[test]
 fn no_argument_the_parser_reads_is_rejected() {
-    let probes: [proc_macro2::TokenStream; 10] = [
+    let probes: [proc_macro2::TokenStream; 11] = [
         quote::quote! { name = "Renamed" },
         quote::quote! { pattern = "^[a-z]+$" },
         quote::quote! { minLength = 1 },
         quote::quote! { maxLength = 50 },
         quote::quote! { no_display },
         quote::quote! { nonstrict },
+        quote::quote! { new = false },
         quote::quote! { default_types(IdType = String) },
         quote::quote! { enable = ["decode_with"] },
         quote::quote! { check = ["withinParcel"] },
@@ -11821,6 +11831,18 @@ fn no_argument_the_parser_reads_is_rejected() {
     for probe in probes {
         let rendered = probe.to_string();
         assert_eq!(args_rejection(probe), None, "for {rendered}");
+    }
+}
+
+#[test]
+fn new_is_read_as_a_boolean_and_refused_otherwise() {
+    let read = |written: &str| super::parse_model_schema_args(syn::parse_str(written).unwrap());
+    assert!(read("").new_by == super::valid_type::NewBy::Default);
+    assert!(read("new = true").new_by == super::valid_type::NewBy::Written);
+    assert!(read("new = false").new_by == super::valid_type::NewBy::Author);
+    for written in ["new", "new = \"false\"", "new = 0"] {
+        let rejection = read(written).arg_rejection.unwrap().to_string();
+        assert!(rejection.contains("new = false"), "got: {rejection}");
     }
 }
 
@@ -12930,9 +12952,15 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
                 "for {source} and `{under_mongodb}`, got: {expanded}"
             );
         }
+        let declared = syn::parse_str::<syn::ItemEnum>(source).unwrap();
+        let modules = if super::writes_a_string_union(&declared) {
+            1
+        } else {
+            2
+        };
         assert_eq!(
             expanded.matches("_schema {").count(),
-            2,
+            modules,
             "for {source}, got: {expanded}"
         );
     }
@@ -12940,24 +12968,23 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn decode_with_reads_an_untagged_enums_constrained_member_through_its_hook() {
+fn decode_with_reads_an_untagged_member_as_serde_reads_it_and_lists_its_bound() {
     let expanded = expansion_under(
         "enable = [\"decode_with\", \"mongodb\"]",
         "#[derive(Deserialize)] #[serde(untagged)] pub enum DecodeReach { \
          Email { #[model_schema_prop(minLength = 3)] address: String }, Phone { digits: String } }",
     );
     for emitted in [
-        "# [serde (deserialize_with = \"decode_reach_schema::deserialize_email_address\")] address : String",
-        "pub fn deserialize_email_address < 'de , D > (deserializer : D)",
-        "decode_reach_schema :: value_leaf (held , decode_reach_schema :: deserialize_email_address , \
-         | read : & String | serde_json :: to_value (read) . ok () ,",
-        "decode_reach_schema :: value_leaf (held , < String as serde :: Deserialize > :: deserialize ,",
+        "decode_reach_schema :: value_leaf (held , < String as serde :: Deserialize > :: deserialize , \
+         | read | serde_json :: to_value (read) . ok () ,",
+        "decode_reach_schema :: value_bound (held , < String as serde :: Deserialize > :: deserialize ,",
     ] {
         assert!(
             expanded.contains(emitted),
             "missing `{emitted}`, got: {expanded}"
         );
     }
+    assert!(!expanded.contains("deserialize_with"), "got: {expanded}");
     assert_eq!(expanded.matches("pub mod decode_reach_schema {").count(), 1);
 }
 
@@ -14851,11 +14878,12 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     }
 }
 
-/// The two exceptions are the `clippy::pub_use` each re-export of a support library expects, and
-/// the `doc(hidden)` on each library's module.
+/// The exceptions are the `clippy::pub_use` each re-export of a support library expects, the
+/// `doc(hidden)` on each library's module, and the `non_upper_case_globals` a constant named like
+/// its variant or unit struct expects.
 #[cfg(feature = "serde")]
 #[test]
-fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
+fn nothing_decode_with_emits_suppresses_a_lint_but_the_three_exceptions() {
     let named_fields = (
         "enable = [\"decode_with\", \"mongodb\"]",
         "pub struct DecodeQuiet { pub name: String, pub spot: (String, u32), pub tags: Vec<String> }",
@@ -14888,13 +14916,21 @@ fn nothing_decode_with_emits_suppresses_a_lint_but_the_two_exceptions() {
         );
         let reexports = flagged.matches("pub use crate :: __tixschema_").count();
         assert!(reexports > 0, "for {source}, got: {flagged}");
-        for expectation in ["# [expect", "# [expect (clippy :: pub_use , reason = \""] {
-            assert_eq!(
-                flagged.matches(expectation).count(),
-                reexports,
-                "for {source}, got: {flagged}"
-            );
-        }
+        let constants = flagged
+            .matches("# [expect (non_upper_case_globals , reason = \"")
+            .count();
+        assert_eq!(
+            flagged.matches("# [expect").count(),
+            reexports.saturating_add(constants),
+            "for {source}, got: {flagged}"
+        );
+        assert_eq!(
+            flagged
+                .matches("# [expect (clippy :: pub_use , reason = \"")
+                .count(),
+            reexports,
+            "for {source}, got: {flagged}"
+        );
     }
     let library = both_libraries();
     let hidden_modules = library.matches("# [doc (hidden)] mod __tixschema_").count();
@@ -15014,14 +15050,14 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
 #[cfg(feature = "serde")]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
-    // A model in a shared slice and in a boxed one is one the type's unjudged read does not reach,
-    // so its reader stays in the schema module.
-    let source = "#[derive(Deserialize)] pub struct DecodeTicket { pub issue: Arc<[Issue]>, pub trail: Box<[Segment]> }";
+    // A member held to a bound is checked and read by functions of the schema module, which name
+    // the member's type.
+    let source = "#[derive(Deserialize)] pub struct DecodeTicket { #[model_schema_prop(minLength = 1)] pub issue: Issue, #[model_schema_prop(minLength = 1)] pub trail: Box<Segment> }";
     let flagged = expansion_under("enable = [\"decode_with\", \"mongodb\"]", source);
     for scoped in [
-        "Result < Arc < [super :: Issue] > , D :: Error >",
-        "< Arc < [super :: Issue] > > :: deserialize (deserializer)",
-        "Result < Box < [super :: Segment] > , D :: Error >",
+        "fn validate_issue_value (named : & super :: Issue)",
+        "Result < super :: Issue , D :: Error >",
+        "Result < Box < super :: Segment > , D :: Error >",
     ] {
         assert!(
             flagged.contains(scoped),
@@ -18001,6 +18037,7 @@ fn wrapped_u32_value(wrapper: &str) -> super::FieldDef {
         set_levels: Vec::new(),
         scope: Scope::default(),
         type_span: proc_macro2::Span::call_site(),
+        zone: Zone::Utc,
     }
 }
 
@@ -18890,15 +18927,13 @@ fn a_variant_field_names_its_helpers_for_its_variant() {
 }
 
 /// The sole field of `item`, run through the constraint generator under `constraint` as the field
-/// of variant `One`, gated as `gate` says, returning (`module_items`, `validate_body`,
-/// `guard_error`, injected attribute count).
+/// of variant `One`, returning (`module_items`, `validate_body`, `guard_error`).
 #[cfg(feature = "serde")]
 fn generated_field_validation(
     item: &syn::ItemStruct,
     constraint: &ModelSchemaPropMeta,
-    gate: ConstraintGate,
-) -> (bool, bool, Option<String>, usize) {
-    generated_validation_under(item, constraint, gate, Some("One"))
+) -> (bool, bool, Option<String>) {
+    generated_validation_under(item, constraint, Some("One"))
 }
 
 /// [`generated_field_validation`] for the field of `variant`, or of a struct where there is none.
@@ -18906,11 +18941,9 @@ fn generated_field_validation(
 fn generated_validation_under(
     item: &syn::ItemStruct,
     constraint: &ModelSchemaPropMeta,
-    gate: ConstraintGate,
     variant: Option<&str>,
-) -> (bool, bool, Option<String>, usize) {
+) -> (bool, bool, Option<String>) {
     let field = item.fields.iter().next().unwrap();
-    let mut new_attrs = Vec::new();
     let steps = [vec!["member".to_owned()]];
     let ctx = FieldContext {
         container_defaulted: false,
@@ -18926,12 +18959,11 @@ fn generated_validation_under(
         variant_ident: variant,
     };
     let (module_items, validate_body, guard_error) =
-        generate_field_validation(&ctx, field, 0, constraint, gate, &mut new_attrs);
+        generate_field_validation(&ctx, field, 0, constraint);
     (
         module_items.is_some(),
         validate_body.is_some(),
         guard_error.map(|tokens| tokens.to_string()),
-        new_attrs.len(),
     )
 }
 
@@ -18956,22 +18988,13 @@ fn a_tuple_structs_slot_is_checked_where_a_named_field_of_the_struct_is() {
     );
 
     for ((positional, named), constraint) in [(&text, &min_length), (&number, &maximum)] {
-        let slot =
-            generated_validation_under(positional, constraint, ConstraintGate::Validator, None);
-        assert_eq!(slot, (true, true, None, 0), "a validator and no serde hook");
-        assert_eq!(
-            slot,
-            generated_validation_under(named, constraint, ConstraintGate::Validator, None)
-        );
+        let slot = generated_validation_under(positional, constraint, None);
+        assert_eq!(slot, (true, true, None), "a validator");
+        assert_eq!(slot, generated_validation_under(named, constraint, None));
     }
 
-    let unconstrained = generated_validation_under(
-        &text.0,
-        &ModelSchemaPropMeta::default(),
-        ConstraintGate::Validator,
-        None,
-    );
-    assert_eq!(unconstrained, (false, false, None, 0));
+    let unconstrained = generated_validation_under(&text.0, &ModelSchemaPropMeta::default(), None);
+    assert_eq!(unconstrained, (false, false, None));
 }
 
 #[cfg(feature = "serde")]
@@ -18985,25 +19008,18 @@ fn a_variants_slot_is_checked_where_a_named_member_of_the_variant_is() {
         ..ModelSchemaPropMeta::default()
     };
 
-    for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
-        assert_eq!(
-            generated_field_validation(&positional, &min_length, gate),
-            generated_field_validation(&named, &min_length, gate),
-            "gate {gate:?}"
-        );
-    }
     assert_eq!(
-        generated_field_validation(&borrowed, &min_length, ConstraintGate::Deserializer),
-        (true, true, None, 0),
-        "a borrowed slot publishes its validator and no hook"
+        generated_field_validation(&positional, &min_length),
+        generated_field_validation(&named, &min_length)
     );
     assert_eq!(
-        generated_field_validation(
-            &positional,
-            &ModelSchemaPropMeta::default(),
-            ConstraintGate::Deserializer
-        ),
-        (false, false, None, 0)
+        generated_field_validation(&borrowed, &min_length),
+        (true, true, None),
+        "a borrowed slot publishes its validator"
+    );
+    assert_eq!(
+        generated_field_validation(&positional, &ModelSchemaPropMeta::default()),
+        (false, false, None)
     );
 }
 
@@ -19023,13 +19039,12 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
             struct Probe { guarded: #ty }
         };
 
-        let (module_items, validate_body, guard_error, injected_attrs) = generated_field_validation(
+        let (module_items, validate_body, guard_error) = generated_field_validation(
             &item,
             &ModelSchemaPropMeta {
                 min_length: Some(3),
                 ..ModelSchemaPropMeta::default()
             },
-            ConstraintGate::Deserializer,
         );
         let error = guard_error.unwrap();
         assert!(error.contains("compile_error"), "for {spelling}: {error}");
@@ -19040,14 +19055,9 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
             !validate_body,
             "a refused field reached validate(): {error}"
         );
-        assert_eq!(injected_attrs, 0, "a refused field was given a serde hook");
 
-        let unconstrained = generated_field_validation(
-            &item,
-            &ModelSchemaPropMeta::default(),
-            ConstraintGate::Deserializer,
-        );
-        assert_eq!(unconstrained, (false, false, None, 0), "for {spelling}");
+        let unconstrained = generated_field_validation(&item, &ModelSchemaPropMeta::default());
+        assert_eq!(unconstrained, (false, false, None), "for {spelling}");
     }
 }
 
@@ -19240,26 +19250,23 @@ fn a_borrowed_str_member_is_hung_with_no_hook() {
         quote::quote! { #[serde(with = "trimmed")] note: &'a str },
     ] {
         let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'a> { #field } };
-        for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
-            assert_eq!(
-                generated_field_validation(&borrowed, &min_length, gate),
-                (true, true, None, 0),
-                "for {field} under {gate:?}"
-            );
-        }
+        assert_eq!(
+            generated_field_validation(&borrowed, &min_length),
+            (true, true, None),
+            "for {field}"
+        );
     }
 
     let owned: syn::ItemStruct = syn::parse_quote! { struct Probe { note: String } };
     assert_eq!(
-        generated_field_validation(&owned, &min_length, ConstraintGate::Deserializer),
-        (true, true, None, 1)
+        generated_field_validation(&owned, &min_length),
+        (true, true, None)
     );
     let owned_optional: syn::ItemStruct =
         syn::parse_quote! { struct Probe { note: Option<String> } };
     assert_eq!(
-        generated_field_validation(&owned_optional, &min_length, ConstraintGate::Deserializer),
-        (true, true, None, 2),
-        "the hook, and the default that keeps a missing key a `None` under it"
+        generated_field_validation(&owned_optional, &min_length),
+        (true, true, None)
     );
 }
 
@@ -19288,13 +19295,11 @@ fn a_member_read_through_any_reference_is_hung_with_no_hook() {
         (quote::quote! { count: Option<&'a f64> }, &minimum),
     ] {
         let borrowed: syn::ItemStruct = syn::parse_quote! { struct Probe<'a> { #field } };
-        for gate in [ConstraintGate::Deserializer, ConstraintGate::Validator] {
-            assert_eq!(
-                generated_field_validation(&borrowed, constraint, gate),
-                (true, true, None, 0),
-                "for {field} under {gate:?}"
-            );
-        }
+        assert_eq!(
+            generated_field_validation(&borrowed, constraint),
+            (true, true, None),
+            "for {field}"
+        );
     }
 }
 
@@ -19431,8 +19436,7 @@ fn every_reference_is_read_through_to_what_it_borrows() {
     }
 }
 
-/// A held model is walked through every reference, by both walks, to what the owned spelling
-/// walks to.
+/// A held model is walked through every reference, to what the owned spelling walks to.
 #[cfg(feature = "serde")]
 #[test]
 fn a_held_model_is_walked_through_every_reference() {
@@ -19447,13 +19451,9 @@ fn a_held_model_is_walked_through_every_reference() {
     ] {
         let ty: syn::Type = syn::parse_str(spelling).unwrap();
         let def = get_field_def("", &ty, "");
-        assert!(
-            super::nested_shape(&ty).unwrap() == wraps,
-            "the nested walk, for {spelling}"
-        );
         let held = super::held_shape(&ty, &def).unwrap();
         assert!(
-            matches!(held.end, super::HeldEnd::Declared),
+            matches!(&held.end, super::HeldEnd::Declared(arguments) if arguments.is_empty()),
             "for {spelling}"
         );
         assert!(held.wraps == wraps, "the held walk, for {spelling}");
@@ -19464,39 +19464,6 @@ fn a_held_model_is_walked_through_every_reference() {
 #[cfg(feature = "serde")]
 #[test]
 fn a_field_read_through_a_reference_is_given_no_read_hook() {
-    let steps = [vec!["stamp".to_owned()]];
-    let ctx = FieldContext {
-        container_defaulted: false,
-        container_read_back: true,
-        container_wire: super::ContainerWire::OneWay,
-        enum_args: None,
-        member_steps: &steps,
-        on_the_wire: true,
-        rename_all: None,
-        schema_module_name: Some("probe_schema"),
-        type_name: "Probe",
-        type_parameters: &[],
-        variant_ident: None,
-    };
-    let named_below = |spelling: &str| {
-        let field: syn::Field =
-            syn::parse_str::<syn::FieldsNamed>(&format!("{{ stamp: {spelling} }}"))
-                .unwrap()
-                .named
-                .into_iter()
-                .next()
-                .unwrap();
-        let def = get_field_def("stamp", &field.ty, "");
-        super::named_below(&field, &def, &ctx)
-    };
-    assert!(named_below("Stamp").is_some());
-    assert!(named_below("Option<Stamp>").is_some());
-    // A type that names a lifetime is refused on that alone; the spellings with none are refused
-    // for the reference.
-    for spelling in ["&'a Stamp", "Option<&'a Stamp>", "&Stamp", "Option<&Stamp>"] {
-        assert!(named_below(spelling).is_none(), "for {spelling}");
-    }
-
     let mut item: syn::ItemStruct = syn::parse_quote! {
         #[derive(serde::Deserialize, serde::Serialize)]
         struct Probe<'a> {
@@ -23051,13 +23018,6 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
              { rows : Vec < String > }",
         ),
         (
-            "default_types(IdType = String)",
-            "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct \
-             UnruledGeneric<IdType>(IdType);",
-            "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct \
-             UnruledGeneric < IdType > (IdType) ;",
-        ),
-        (
             "enable = [\"decode_with\", \"mongodb\"]",
             "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct UnruledDecoded(\
              String);",
@@ -23079,6 +23039,41 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
                 "for {source}, found `{unwritten}` in: {expanded}"
             );
         }
+    }
+}
+
+/// A brand over one of its own parameters keeps the read serde's derive writes it, and gains the
+/// read a holder hands a reader of the parameter to, and the walk that hands the value to the
+/// holder's check of it.
+#[cfg(feature = "serde")]
+#[test]
+fn a_brand_over_its_own_parameter_hands_the_value_to_its_holder() {
+    let expanded = expansion_under(
+        "default_types(IdType = String)",
+        "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct \
+         UnruledGeneric<IdType>(IdType);",
+    );
+    for written in [
+        "# [derive (Serialize , Deserialize)] # [serde (transparent)] pub struct UnruledGeneric < \
+         IdType > (IdType) ;",
+        "pub fn model_schema_read_unjudged_by1 <",
+        "pub fn model_schema_issues_with1 (& self , model_schema_issues_of_id_type :",
+        "errors . extend (model_schema_issues_of_id_type (& self . 0)) ;",
+    ] {
+        assert!(
+            expanded.contains(written),
+            "missing `{written}` in: {expanded}"
+        );
+    }
+    for unwritten in [
+        "pub fn model_schema_read_unjudged <",
+        "model_schema_validate_bound",
+        "validate_value",
+    ] {
+        assert!(
+            !expanded.contains(unwritten),
+            "found `{unwritten}` in: {expanded}"
+        );
     }
 }
 
@@ -23733,4 +23728,52 @@ fn a_braced_variant_serde_never_reads_or_reads_through_its_authors_function_leav
     )
     .to_string();
     assert!(!lenient.contains("deny_unknown_fields"));
+}
+
+#[cfg(feature = "serde")]
+fn sealed_methods_of(declaration: &str) -> String {
+    let item: syn::ItemStruct = syn::parse_str(declaration).unwrap();
+    let field = item.fields.iter().next().unwrap();
+    super::sealed_access(&item, 0, field, true)
+        .methods
+        .to_string()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn a_brands_new_takes_a_named_type_parameter() {
+    let written = sealed_methods_of("pub struct Code(String);");
+    assert!(
+        written
+            .contains("pub fn new < Value : :: core :: convert :: Into < String >> (value : Value"),
+        "{written}"
+    );
+    assert!(!written.contains("impl"), "{written}");
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn a_brands_new_parameter_is_numbered_where_the_inner_writes_value() {
+    let written = sealed_methods_of("pub struct Payload(Value);");
+    assert!(
+        written.contains(
+            "pub fn new < Value2 : :: core :: convert :: Into < Value >> (value : Value2"
+        ),
+        "{written}"
+    );
+    let numbered = sealed_methods_of("pub struct Pair(Result<Value, Value2>);");
+    assert!(
+        numbered.contains("pub fn new < Value3 : :: core :: convert :: Into <"),
+        "{numbered}"
+    );
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn a_generic_brands_new_keeps_the_inner_as_its_parameter() {
+    let written = sealed_methods_of("pub struct Held<Item>(Item);");
+    assert!(written.contains("pub fn new (value : Item"), "{written}");
 }

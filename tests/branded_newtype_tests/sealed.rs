@@ -41,6 +41,14 @@ pub struct Named {
     text: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Value(String);
+
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Payload(Value);
+
 #[test]
 fn new_answers_the_messages_validate_gives() {
     assert_eq!(LabelText::new("").unwrap_err(), vec![TOO_SHORT.to_owned()]);
@@ -120,4 +128,12 @@ fn a_brand_with_a_named_field_is_sealed() {
 fn the_unjudged_reads_stay_callable_and_skip_the_rule() {
     let unjudged = LabelText::model_schema_read_unjudged(serde_json::json!("")).unwrap();
     assert_eq!(unjudged.validation_issues(), vec![TOO_SHORT.to_owned()]);
+}
+
+#[test]
+fn new_takes_a_string_a_str_and_a_type_that_is_named_value() {
+    let owned = LabelText::new("ok".to_owned()).unwrap();
+    assert_eq!(owned, LabelText::new("ok").unwrap());
+    let payload = Payload::new(Value("held".to_owned())).unwrap();
+    assert_eq!(payload.as_inner(), &Value("held".to_owned()));
 }

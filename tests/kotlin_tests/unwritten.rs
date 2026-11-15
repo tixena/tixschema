@@ -49,7 +49,7 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
     assert!(
         reefing.contains(
             "output.encodeJsonElement(buildJsonObject { \
-             output.json.encodeToJsonElement(BraidingUnjudged, value.braiding).jsonObject\
+             output.json.encodeToJsonElement(KotlinHeld1, value.braiding).jsonObject\
              .forEach { (k, v) -> put(k, v) } })"
         ),
         "got: {reefing}"
@@ -157,7 +157,7 @@ fn a_flattened_member_serde_never_writes_merges_nothing() {
     let splaying = super::tests::renumbered(&splaying_kotlin::kotlin_definition());
     for held in [
         "data class SplayingDraft(val braiding: Braiding, val note: String)",
-        "val braiding = kotlinSchemaFlattened { input.json.decodeFromString(BraidingUnjudged, \
+        "val braiding = kotlinSchemaFlattened { input.json.decodeFromString(KotlinHeld1, \
          JsonObject(obj.filterKeys { \
          it in setOf(\"label\") }).toString()) };",
         written,

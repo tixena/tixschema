@@ -385,8 +385,6 @@ const answerOf = (result) => JSON.stringify({ jsonrpc: "2.0", id: 1, result: { r
 const text = (value) => ({ type: "text", text: JSON.stringify(value) });
 const fault = { detail: "the handler came apart", kind: "handler-panic", operation: "get-version" };
 const listing = {
-  detail: "'document_id': too short; 'reader': unknown",
-  field: "document_id",
   issues: [{ detail: "too short", field: "document_id" }, { detail: "unknown", field: "reader" }],
   kind: "failed-validation",
   operation: "get-version",
@@ -797,8 +795,7 @@ impl DocumentService<()> for Stand {
         Ok(VersionResponseDraft {
             version: u32::try_from(req.drafts.len()).unwrap_or(u32::MAX),
         }
-        .validate()
-        .unwrap())
+        .into())
     }
 
     async fn check_many(
@@ -807,7 +804,7 @@ impl DocumentService<()> for Stand {
         _req: Vec<GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 
     async fn check_maybe(
@@ -816,7 +813,7 @@ impl DocumentService<()> for Stand {
         _req: Option<GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 
     async fn check_named(
@@ -825,7 +822,7 @@ impl DocumentService<()> for Stand {
         _req: BTreeMap<String, GetVersionRequest>,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 
     async fn check_pair(
@@ -835,7 +832,7 @@ impl DocumentService<()> for Stand {
         _second: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 
     async fn get_tagged(
@@ -846,7 +843,7 @@ impl DocumentService<()> for Stand {
     ) -> Result<(VersionResponse, String), VersionError> {
         ready(()).await;
         Ok((
-            VersionResponseDraft { version: 7 }.validate().unwrap(),
+            VersionResponseDraft { version: 7 }.into(),
             "\"v7\"".to_owned(),
         ))
     }
@@ -857,12 +854,12 @@ impl DocumentService<()> for Stand {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 
     async fn lookup(&self, _ctx: &(), _id: DocumentId) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 
     async fn rename_document(
@@ -872,7 +869,7 @@ impl DocumentService<()> for Stand {
         _title: String,
     ) -> Result<(), VersionError> {
         ready(()).await;
-        Err(VersionErrorDraft::NotFound.validate().unwrap())
+        Err(VersionError::NotFound)
     }
 
     async fn touch_document(&self, _ctx: &(), _document_id: String, _reader: String) {
@@ -887,7 +884,7 @@ impl BillingService<()> for Stand {
         _req: InvoiceRequest,
     ) -> Result<InvoiceList, BillingError> {
         ready(()).await;
-        Err(BillingErrorDraft::Closed.validate().unwrap())
+        Err(BillingError::Closed)
     }
 }
 
@@ -898,7 +895,7 @@ impl ArchiveService<()> for Stand {
         _req: GetVersionRequest,
     ) -> Result<VersionResponse, VersionError> {
         ready(()).await;
-        Ok(VersionResponseDraft { version: 7 }.validate().unwrap())
+        Ok(VersionResponseDraft { version: 7 }.into())
     }
 }
 
@@ -1517,8 +1514,6 @@ fn the_client_reads_each_outcome_and_sends_what_the_server_reads() {
     assert_eq!(
         outcomes["faultListing"],
         json!({ "ok": false, "error": { "isServiceFault": true, "fault": {
-            "detail": "'document_id': too short; 'reader': unknown",
-            "field": "document_id",
             "issues": [
                 { "detail": "too short", "field": "document_id" },
                 { "detail": "unknown", "field": "reader" },
