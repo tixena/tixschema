@@ -2496,6 +2496,12 @@ mod run_carillon;
 #[path = "service_schema_emitted_client_tests/run_node_integral_floats.rs"]
 mod run_node_integral_floats;
 
+/// The Zod schemas of a holder that names an untagged enum declared above it, below it and in
+/// another crate, each refusing a refrain no variant reads at the member that holds it.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_named_unions.rs"]
+mod run_named_unions;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/sounding_ws_rpc_transport.rs"]
 mod sounding_ws_rpc_transport;

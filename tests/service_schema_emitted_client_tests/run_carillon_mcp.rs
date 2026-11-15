@@ -334,8 +334,8 @@ print("{\"read\":[" + read.joined(separator: ",") + "],\"tolled\":[" + rung.join
 "#;
 
 /// Each request a server is handed.
-fn requests(typescript: bool) -> Vec<String> {
-    server_cases(typescript)
+fn requests() -> Vec<String> {
+    server_cases()
         .into_iter()
         .map(|(_, request)| request)
         .collect()
@@ -361,8 +361,8 @@ fn listed(items: &[String], literal: fn(&str) -> String) -> String {
 /// reached its handler, to what the Rust dispatcher answers, and the text of its answer to the
 /// message read whole, whose `i64` is beyond what a JavaScript `number` holds, to the text the
 /// Rust dispatcher writes.
-fn assert_served_as_rust(report: &Value, typescript: bool) {
-    let asked = requests(typescript);
+fn assert_served_as_rust(report: &Value) {
+    let asked = requests();
     let served = report["served"].as_array().unwrap();
     assert_eq!(served.len(), asked.len(), "{report}");
     assert_eq!(
@@ -374,7 +374,7 @@ fn assert_served_as_rust(report: &Value, typescript: bool) {
         let answer: Value = serde_json::from_str(text).unwrap();
         json!({ "answer": told(&answer), "id": written_id(text), "struck": struck })
     };
-    let differing: Vec<Value> = server_cases(typescript)
+    let differing: Vec<Value> = server_cases()
         .into_iter()
         .map(|(name, _)| name)
         .zip(&asked)
@@ -513,7 +513,7 @@ fn the_typescript_server_and_client_answer_what_the_rust_dispatcher_and_client_a
     let raw = |text: &str| format!("String.raw`{text}`");
     let source = [
         node_bundle(),
-        format!("const REQUESTS = [\n{}];", listed(&requests(true), raw)),
+        format!("const REQUESTS = [\n{}];", listed(&requests(), raw)),
         format!("const REPLIES = [\n{}];", listed(&replies(), raw)),
         format!("const TOLLS = [\n{}];", listed(&toll_replies(), raw)),
         format!("const WHOLE = {};", raw(STRUCK)),
@@ -531,7 +531,7 @@ fn the_typescript_server_and_client_answer_what_the_rust_dispatcher_and_client_a
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report, true);
+    assert_served_as_rust(&report);
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
@@ -639,12 +639,12 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
         "TIXSCHEMA_DART",
         "dart",
         "carillon_mcp.dart",
-        &dart_source(&requests(false), &replies()),
+        &dart_source(&requests(), &replies()),
     ) else {
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report, false);
+    assert_served_as_rust(&report);
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 
@@ -653,7 +653,7 @@ fn the_dart_server_and_client_answer_what_the_rust_dispatcher_and_client_answer(
 fn the_dart_text_of_the_carillon_mcp_service_passes_the_analyzer() {
     analyzed(
         "carillon-mcp-analyze",
-        &dart_source(&requests(false), &replies()),
+        &dart_source(&requests(), &replies()),
     );
 }
 
@@ -719,12 +719,11 @@ pub fn kotlin_source(requests: &[String], replies: &[String]) -> String {
 #[cfg(feature = "kotlin")]
 #[test]
 fn the_kotlin_server_and_client_answer_what_the_rust_dispatcher_and_client_answer() {
-    let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source(&requests(false), &replies()))
-    else {
+    let Some(wrote) = super::runtime::ran_kotlin(&kotlin_source(&requests(), &replies())) else {
         return;
     };
     let report: Value = serde_json::from_str(wrote.trim()).unwrap();
-    assert_served_as_rust(&report, false);
+    assert_served_as_rust(&report);
     assert_read_as_rust(&report["read"], &report["tolled"]);
 }
 

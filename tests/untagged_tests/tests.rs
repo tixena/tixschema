@@ -2660,3 +2660,13 @@ fn a_variant_that_requires_a_key_declared_ahead_of_one_that_reads_every_object_r
         );
     }
 }
+
+#[test]
+#[cfg(feature = "zod")]
+fn test_an_untagged_union_marks_an_unknown_key_alone_with_its_depth_inside_the_union() {
+    let union = DateValue::zod_schema();
+    assert!(
+        union.contains("params: { union: "),
+        "the union marks an unknown key alone.\nGot:\n{union}"
+    );
+}

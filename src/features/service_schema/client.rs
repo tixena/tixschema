@@ -301,7 +301,7 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          issues: ReadonlyArray<{{\n    \
          code?: string;\n    \
          keys?: ReadonlyArray<string>;\n    \
-         params?: {{ undeserializable?: unknown }};\n    \
+         params?: {{ undeserializable?: unknown; union?: unknown }};\n    \
          path: ReadonlyArray<PropertyKey>;\n    \
          message: string;\n  \
          }}>,\n\
@@ -311,7 +311,9 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          const listed = issues.map((issue) => {{\n    \
          const steps =\n      \
          issue.code === \"unrecognized_keys\" && issue.keys !== undefined\n        \
-         ? [...issue.path, ...issue.keys.slice(0, 1)]\n        \
+         ? typeof issue.params?.union === \"number\"\n          \
+         ? issue.path.slice(0, issue.path.length - issue.params.union)\n          \
+         : [...issue.path, ...issue.keys.slice(0, 1)]\n        \
          : issue.path;\n    \
          return {{ detail: issue.message, field: steps.length === 0 ? undefined : steps.join(\".\") }};\n  \
          }});\n\
