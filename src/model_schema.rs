@@ -5,6 +5,7 @@
 extern crate alloc;
 
 pub mod checks;
+pub mod doctest_examples;
 #[cfg(feature = "serde")]
 pub mod flatten_order;
 pub mod judged_read;
@@ -2602,7 +2603,8 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
     let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
-    let expanded = valid_type::settle(process_item(item, &parsed_args));
+    let expanded =
+        doctest_examples::ready_for_rustdoc(valid_type::settle(process_item(item, &parsed_args)));
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
