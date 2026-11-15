@@ -122,6 +122,13 @@ pub struct BinPair<First, Second> {
     pub second: Vec<Second>,
 }
 
+/// A generic struct whose member fills a generic type with a model beside its own parameter.
+#[model_schema(default_types(Held = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BinMixed<Held> {
+    pub pair: BinPair<BinParcel, Held>,
+}
+
 /// A brand over its own parameter.
 #[model_schema(default_types(Inner = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -157,6 +164,7 @@ pub struct BinShelf {
     pub first_page: BinPage<BinParcel>,
     pub labels: BinPage<BinLabel>,
     pub lists: BinPage<Vec<BinParcel>>,
+    pub mixed: BinMixed<BinLabel>,
     pub pair: BinPair<BinParcel, BinLabel>,
     pub slot: BinSlot<BinParcel>,
     pub stack: Vec<BinPage<BinParcel>>,
@@ -212,6 +220,10 @@ fn shelf(changed: Option<(&str, &str)>) -> String {
         ("firstPage", page(&[SOUND])),
         ("labels", page(&[])),
         ("lists", page(&[])),
+        (
+            "mixed",
+            format!(r#"{{"pair":{{"first":{SOUND},"second":[]}}}}"#),
+        ),
         ("pair", format!(r#"{{"first":{SOUND},"second":[]}}"#)),
         ("slot", r#""empty""#.to_owned()),
         ("stack", "[]".to_owned()),
@@ -242,6 +254,7 @@ fn cases() -> Vec<(&'static str, String)> {
         page(&[UNLABELLED])
     );
     let lists = page(&[&format!("[{SOUND},{UNLABELLED}]")]);
+    let mixed = format!(r#"{{"pair":{{"first":{UNLABELLED},"second":["OK","b"]}}}}"#);
     let pair = format!(r#"{{"first":{UNLABELLED},"second":["OK","b"]}}"#);
     let slot = format!(r#"{{"filled":{{"held":{UNLABELLED},"spares":[{SOUND},{UNLABELLED}]}}}}"#);
     let stack = format!("[{},{}]", page(&[SOUND]), page(&[UNLABELLED]));
@@ -262,6 +275,7 @@ fn cases() -> Vec<(&'static str, String)> {
             Some(("labels", page(&[r#""a""#, r#""OK""#, r#""b""#]))),
         ),
         ("lists", Some(("lists", lists))),
+        ("mixed", Some(("mixed", mixed))),
         ("pair", Some(("pair", pair))),
         ("slot", Some(("slot", slot))),
         ("stack", Some(("stack", stack))),
@@ -318,6 +332,7 @@ fn the_holder_answers_in_rust_every_broken_value_at_its_full_path() {
         "sound: read",
         "binder: refused: 'binder.items.0.items.1.itemLabel': too short: minimum length is 1, got 0",
         "either: refused: 'either': too short: minimum length is 2, got 1",
+        "mixed: refused: 'mixed.pair.first.itemLabel': too short: minimum length is 1, got 0",
         "slot: refused: 'slot.filled.spares.1.itemLabel': too short: minimum length is 1, got 0",
         "wrapped: refused: 'wrapped.fragileItemCodes.0': y is outside of itemCodeList",
     ] {
@@ -332,6 +347,7 @@ fn the_dart_read_of_a_holder_answers_what_the_rust_read_answers() {
         bin_label_dart::dart_definition(),
         bin_page_dart::dart_definition(),
         bin_slot_dart::dart_definition(),
+        bin_mixed_dart::dart_definition(),
         bin_cabinet_dart::dart_definition(),
         bin_pair_dart::dart_definition(),
         bin_wrapper_dart::dart_definition(),
@@ -360,6 +376,7 @@ fn the_kotlin_read_of_a_holder_answers_what_the_rust_read_answers() {
         bin_label_kotlin::kotlin_definition(),
         bin_page_kotlin::kotlin_definition(),
         bin_slot_kotlin::kotlin_definition(),
+        bin_mixed_kotlin::kotlin_definition(),
         bin_cabinet_kotlin::kotlin_definition(),
         bin_pair_kotlin::kotlin_definition(),
         bin_wrapper_kotlin::kotlin_definition(),
@@ -385,6 +402,7 @@ fn the_swift_read_of_a_holder_answers_what_the_rust_read_answers() {
         bin_label_swift::swift_definition(),
         bin_page_swift::swift_definition(),
         bin_slot_swift::swift_definition(),
+        bin_mixed_swift::swift_definition(),
         bin_cabinet_swift::swift_definition(),
         bin_pair_swift::swift_definition(),
         bin_wrapper_swift::swift_definition(),

@@ -3,12 +3,15 @@
 //! through the first and throws what `validate()` answers. A holder reads each model its
 //! `validate()` asks with the unjudged one, so the whole value is judged once.
 
+extern crate alloc;
+
+use alloc::collections::BTreeSet;
 use core::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
-use syn::{GenericArgument, PathArguments, Type};
+use syn::{Attribute, GenericArgument, Generics, PathArguments, Type};
 
 use super::texts;
 use super::{KOTLIN_TUPLE_AUX, arrays, validate};
@@ -36,8 +39,13 @@ thread_local! {
     static KOTLIN_HELD_ASKS: Cell<usize> = const { Cell::new(0) };
     /// The reads of the item being written that depend on whether a held type is a model.
     static KOTLIN_HELD_ASKED: RefCell<Vec<Asked>> = const { RefCell::new(Vec::new()) };
-    /// The types a member under a `cfg` names.
-    static KOTLIN_HELD_UNCERTAIN: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The type parameters of the item being written that carry a bound.
+    static KOTLIN_HELD_BOUNDED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// The `cfg` attributes of each member of the item being written that names a type, by the
+    /// type's name, written out: one entry for each distinct set, and an empty one for a member
+    /// under none.
+    static KOTLIN_HELD_CFGS: RefCell<HashMap<String, BTreeSet<String>>> =
+        RefCell::new(HashMap::new());
     /// What the item just written asked, until [`held_filled`] takes it.
     static KOTLIN_HELD_PENDING: RefCell<Vec<Asked>> = const { RefCell::new(Vec::new()) };
     /// Each type with type arguments a member wrote, as it wrote it, by name and number of
@@ -152,6 +160,13 @@ struct Asked {
     needle: String,
     ty: TokenStream,
     unmodelled: String,
+}
+
+/// What a class that reads a held type reads the argument at a position by, where the holder
+/// fixes it: the argument's Kotlin type and its unjudged serializer.
+struct Fixed {
+    ty: String,
+    unjudged: String,
 }
 
 /// The type parameters a map is keyed by, and the variants that take their serializers.
@@ -1127,17 +1142,67 @@ pub fn unjudged_member(
 /// The private serializer, declared once per item, that reads the type written `name` with
 /// `arguments` type arguments through its companion's [`unjudged_member`]: an `object`, or a class
 /// over the serializer of each argument. The plugin reads a member by it, which an annotation can
-/// only name by a class.
+/// only name by a class. Where an argument names no type parameter of the holder beside one that
+/// does, the class reads that argument by its unjudged serializer, which the plugin does not
+/// build.
 fn held_unjudged(field: &FieldDef, name: &str, arguments: usize) -> String {
     let class = lookup_kotlin_name(name).unwrap_or_else(|| name.to_owned());
+    let fixed_at = fixed_positions(field, arguments);
+    let key = if fixed_at.is_empty() {
+        (class.clone(), arguments)
+    } else {
+        (kotlin_typename(&innermost(field)), arguments)
+    };
+    if let Some(named) = KOTLIN_HELD.with(|held| {
+        held.borrow()
+            .iter()
+            .find(|(declared, _)| *declared == key)
+            .map(|(_, named)| named.clone())
+    }) {
+        return named;
+    }
+    let FieldDefType::SiblingType(_, written) = &field.field_type else {
+        return held_declared_once(field, (&class, name, arguments), key, &[]);
+    };
+    let fixed: Vec<Option<Fixed>> = written
+        .iter()
+        .enumerate()
+        .map(|(at, argument)| {
+            fixed_at.contains(&at).then(|| Fixed {
+                ty: kotlin_typename(&innermost(argument)),
+                unjudged: unjudged_serializer(argument, &[]),
+            })
+        })
+        .collect();
+    held_declared_once(field, (&class, name, arguments), key, &fixed)
+}
+
+/// The positions of the arguments of the held type written in `field` that name no type parameter
+/// of the holder, where another one does: the filling is mixed.
+fn fixed_positions(field: &FieldDef, arguments: usize) -> Vec<usize> {
+    let FieldDefType::SiblingType(_, written) = &field.field_type else {
+        return Vec::new();
+    };
+    if written.len() != arguments || !written.iter().any(reaches_a_parameter) {
+        return Vec::new();
+    }
+    written
+        .iter()
+        .enumerate()
+        .filter(|(_, argument)| !reaches_a_parameter(argument) && !argument.is_optional())
+        .map(|(at, _)| at)
+        .collect()
+}
+
+/// Declares the serializer of [`held_unjudged`] under `key`.
+fn held_declared_once(
+    field: &FieldDef,
+    (class, name, arguments): (&str, &str, usize),
+    held_key: (String, usize),
+    fixed: &[Option<Fixed>],
+) -> String {
     KOTLIN_HELD.with(|held| {
         let mut declared = held.borrow_mut();
-        if let Some((_, named)) = declared
-            .iter()
-            .find(|(key, _)| key.0 == class && key.1 == arguments)
-        {
-            return named.clone();
-        }
         let index = KOTLIN_HELD_COUNTER.with(|counter| {
             let next = counter.get() + 1;
             counter.set(next);
@@ -1153,13 +1218,13 @@ fn held_unjudged(field: &FieldDef, name: &str, arguments: usize) -> String {
                 format!("serializer<{class}>()"),
             )
         });
-        let declared_text = held_declared(&named, &class, arguments, expression.as_deref());
+        let declared_text = held_declared(&named, class, (arguments, fixed), expression.as_deref());
         let aux = match asked.filter(|_| arguments > 0) {
             Some((ty, key)) => ask(&ty, &key, declared_text, String::new()),
             None => declared_text,
         };
         KOTLIN_TUPLE_AUX.with(|list| list.borrow_mut().push(aux));
-        declared.push(((class, arguments), named.clone()));
+        declared.push((held_key, named.clone()));
         named
     })
 }
@@ -1202,7 +1267,7 @@ fn held_filled_unjudged(
     });
     let named = format!("KotlinHeld{index}{}", crate_tag());
     let read = format!("{class}.kotlinSchemaUnjudged({class}.serializer({judged}), {unjudged})");
-    let declared_text = held_declared(&named, &filled, 0, Some(&read));
+    let declared_text = held_declared(&named, &filled, (0, &[]), Some(&read));
     let aux = match asked_type(field, name, written.len()) {
         Some(ty) => ask(
             &ty,
@@ -1279,12 +1344,10 @@ fn held_site(
 }
 
 /// The type `name` is written as in the member `field`, where a `const` beside the holder can ask
-/// whether it is a model: not under a `cfg`, and with no argument that is a type parameter of the
-/// holder.
+/// whether it is a model: each type parameter of the holder is written as `u8`, which a type that
+/// is a model answers whatever fills its parameters. A parameter that carries a bound is not
+/// written so, as `u8` may not meet the bound the held type asks of it.
 fn asked_type(field: &FieldDef, name: &str, arguments: usize) -> Option<TokenStream> {
-    if KOTLIN_HELD_UNCERTAIN.with(|names| names.borrow().contains(name)) {
-        return None;
-    }
     if arguments == 0 {
         let span = field.type_span;
         return Some(field.scope.reaching(&Ident::new(name, span), span));
@@ -1292,15 +1355,90 @@ fn asked_type(field: &FieldDef, name: &str, arguments: usize) -> Option<TokenStr
     let FieldDefType::SiblingType(_, written) = &field.field_type else {
         return None;
     };
-    if written.iter().any(reaches_a_parameter) {
+    let mut parameters = Vec::new();
+    for argument in written {
+        parameters_reached(argument, &mut parameters);
+    }
+    if KOTLIN_HELD_BOUNDED.with(|held| {
+        let bounded = held.borrow();
+        parameters
+            .iter()
+            .any(|parameter| bounded.contains(parameter))
+    }) {
         return None;
     }
     KOTLIN_HELD_WRITTEN.with(|types| {
-        types
-            .borrow()
-            .get(&(name.to_owned(), arguments))
-            .map(|ty| quote! { #ty })
+        types.borrow().get(&(name.to_owned(), arguments)).map(|ty| {
+            let mut asked = ty.clone();
+            as_stand_in(&mut asked, &parameters);
+            quote! { #asked }
+        })
     })
+}
+
+/// Writes `u8` for each type parameter in `parameters` that `ty` names.
+fn as_stand_in(ty: &mut Type, parameters: &[String]) {
+    if let Type::Path(path) = ty {
+        if path.qself.is_none()
+            && path
+                .path
+                .get_ident()
+                .is_some_and(|ident| parameters.contains(&ident.to_string()))
+        {
+            *ty = syn::parse_quote!(u8);
+            return;
+        }
+        for segment in &mut path.path.segments {
+            if let PathArguments::AngleBracketed(arguments) = &mut segment.arguments {
+                for argument in &mut arguments.args {
+                    if let GenericArgument::Type(inner) = argument {
+                        as_stand_in(inner, parameters);
+                    }
+                }
+            }
+        }
+    } else if let Type::Paren(inner) = ty {
+        as_stand_in(&mut inner.elem, parameters);
+    } else if let Type::Group(inner) = ty {
+        as_stand_in(&mut inner.elem, parameters);
+    } else if let Type::Reference(inner) = ty {
+        as_stand_in(&mut inner.elem, parameters);
+    } else if let Type::Array(inner) = ty {
+        as_stand_in(&mut inner.elem, parameters);
+    } else if let Type::Slice(inner) = ty {
+        as_stand_in(&mut inner.elem, parameters);
+    } else if let Type::Tuple(inner) = ty {
+        for element in &mut inner.elems {
+            as_stand_in(element, parameters);
+        }
+    } else {
+        // Any other type writes no type parameter of the holder.
+    }
+}
+
+/// Collects into `found` each type parameter of the item that `def` names.
+fn parameters_reached(def: &FieldDef, found: &mut Vec<String>) {
+    if let FieldDefType::TypeParam(parameter) = &def.field_type {
+        found.push(parameter.clone());
+    } else if let FieldDefType::SiblingType(_, arguments) = &def.field_type {
+        for argument in arguments {
+            parameters_reached(argument, found);
+        }
+    } else if let FieldDefType::Map(key, value) = &def.field_type {
+        parameters_reached(key, found);
+        parameters_reached(value, found);
+    } else if let FieldDefType::Tuple(positions) = &def.field_type {
+        for position in positions {
+            parameters_reached(position, found);
+        }
+    } else if let FieldDefType::Range(_, bound) = &def.field_type {
+        parameters_reached(bound, found);
+    } else if let FieldDefType::Result(ok, err) = &def.field_type {
+        parameters_reached(ok, found);
+        parameters_reached(err, found);
+    } else {
+        // A scalar names no type parameter.
+    }
 }
 
 /// Whether `def` names a type parameter of the item it is written in.
@@ -1386,33 +1524,86 @@ pub fn note_written(ty: &Type) {
     }
 }
 
-/// Notes the types a member that a `cfg` may leave out names, which the holder cannot ask about:
-/// a `const` naming one would not compile where the `cfg` leaves the type out.
-pub fn note_uncertain(def: &FieldDef) {
+/// Notes which type parameters of `generics`, the item about to be written, carry a bound, in the
+/// parameter list or in a `where` clause.
+pub fn note_bounded(generics: &Generics) {
+    let clause = generics
+        .where_clause
+        .as_ref()
+        .map_or_else(TokenStream::new, |clause| quote! { #clause });
+    let bounded = generics
+        .type_params()
+        .filter(|parameter| {
+            !parameter.bounds.is_empty() || names_an_ident(clause.clone(), &parameter.ident)
+        })
+        .map(|parameter| parameter.ident.to_string())
+        .collect();
+    KOTLIN_HELD_BOUNDED.with(|held| *held.borrow_mut() = bounded);
+}
+
+/// Whether `tokens` write `name`, in a group too.
+fn names_an_ident(tokens: TokenStream, name: &Ident) -> bool {
+    tokens.into_iter().any(|token| match token {
+        proc_macro2::TokenTree::Ident(ident) => ident == *name,
+        proc_macro2::TokenTree::Group(group) => names_an_ident(group.stream(), name),
+        proc_macro2::TokenTree::Punct(_) | proc_macro2::TokenTree::Literal(_) => false,
+    })
+}
+
+/// Notes the types a member under `attrs` names, with the `cfg` attributes among them, so that
+/// the `const` beside the holder asks about each under the same `cfg`: a type the `cfg` leaves
+/// out is not named where it is off.
+pub fn note_cfgs(def: &FieldDef, attrs: &[Attribute]) {
+    let group = attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .map(|attr| quote! { #attr }.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    note_cfgs_of(def, &group);
+}
+
+fn note_cfgs_of(def: &FieldDef, group: &str) {
     if let FieldDefType::SiblingType(name, arguments) = &def.field_type {
-        KOTLIN_HELD_UNCERTAIN.with(|names| {
-            names.borrow_mut().insert(name.clone());
+        KOTLIN_HELD_CFGS.with(|noted| {
+            noted
+                .borrow_mut()
+                .entry(name.clone())
+                .or_default()
+                .insert(group.to_owned());
         });
-        arguments.iter().for_each(note_uncertain);
+        for argument in arguments {
+            note_cfgs_of(argument, group);
+        }
     } else if let FieldDefType::Map(key, value) = &def.field_type {
-        note_uncertain(key);
-        note_uncertain(value);
+        note_cfgs_of(key, group);
+        note_cfgs_of(value, group);
     } else if let FieldDefType::Tuple(positions) = &def.field_type {
-        positions.iter().for_each(note_uncertain);
+        for position in positions {
+            note_cfgs_of(position, group);
+        }
     } else if let FieldDefType::Range(_, bound) = &def.field_type {
-        note_uncertain(bound);
+        note_cfgs_of(bound, group);
     } else if let FieldDefType::Result(ok, err) = &def.field_type {
-        note_uncertain(ok);
-        note_uncertain(err);
+        note_cfgs_of(ok, group);
+        note_cfgs_of(err, group);
     } else {
         // A scalar names no type of the consumer's.
     }
 }
 
 /// The declaration of the serializer [`held_unjudged`] names `named`.
-fn held_declared(named: &str, class: &str, arguments: usize, asked: Option<&str>) -> String {
+fn held_declared(
+    named: &str,
+    class: &str,
+    (arguments, fixed): (usize, &[Option<Fixed>]),
+    asked: Option<&str>,
+) -> String {
+    let fixed_at = |at: usize| fixed.get(at).and_then(Option::as_ref);
     let types: Vec<String> = (0..arguments)
-        .map(|at| format!("KotlinSchemaArgument{at}"))
+        .map(|at| {
+            fixed_at(at).map_or_else(|| format!("KotlinSchemaArgument{at}"), |f| f.ty.clone())
+        })
         .collect();
     let serializers: Vec<String> = (0..arguments)
         .map(|at| format!("argument{at}Serializer"))
@@ -1429,9 +1620,9 @@ fn held_declared(named: &str, class: &str, arguments: usize, asked: Option<&str>
         )
     } else {
         let own = format!("{class}<{}>", types.join(", "));
-        let declared = types
-            .iter()
-            .map(|parameter| format!("{parameter}{COMPOSED}"))
+        let declared = (0..arguments)
+            .filter(|at| fixed_at(*at).is_none())
+            .map(|at| format!("{}{COMPOSED}", types[at]))
             .collect::<Vec<_>>()
             .join(", ");
         let handed = types
@@ -1441,10 +1632,14 @@ fn held_declared(named: &str, class: &str, arguments: usize, asked: Option<&str>
             .collect::<Vec<_>>()
             .join(", ");
         let passed = serializers.join(", ");
+        let unjudged = (0..arguments)
+            .map(|at| fixed_at(at).map_or_else(|| serializers[at].clone(), |f| f.unjudged.clone()))
+            .collect::<Vec<_>>()
+            .join(", ");
         (
             format!("private class {named}<{declared}>({handed})"),
             own,
-            format!("{class}.kotlinSchemaUnjudged({class}.serializer({passed}), {passed})"),
+            format!("{class}.kotlinSchemaUnjudged({class}.serializer({passed}), {unjudged})"),
         )
     };
     format!(
@@ -1483,10 +1678,11 @@ pub fn held_modelled(text: &str) -> String {
     })
 }
 
-/// Drops the serializers of the item just written, keeping the held types it asked the compiler
-/// about for [`held_filled`].
+/// Drops the serializers of the item just written and the types it wrote, keeping the held types
+/// it asked the compiler about for [`held_filled`].
 pub fn clear() {
     KOTLIN_HELD.with(|held| held.borrow_mut().clear());
+    KOTLIN_HELD_WRITTEN.with(|types| types.borrow_mut().clear());
     let asked = KOTLIN_HELD_ASKED.with(RefCell::take);
     KOTLIN_HELD_PENDING.with(|pending| *pending.borrow_mut() = asked);
 }
@@ -1497,11 +1693,12 @@ pub fn clear() {
 /// and the statements that write into `written` the read of a type that is not: its
 /// own serializer, which a `typealias` of a list or of a map, and a type of the consumer's, answer.
 pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream, TokenStream) {
+    let noted = KOTLIN_HELD_CFGS.with(RefCell::take);
     let pending = KOTLIN_HELD_PENDING.with(RefCell::take);
     if pending.is_empty() {
         return (TokenStream::new(), TokenStream::new(), TokenStream::new());
     }
-    let mut flags = Vec::new();
+    let mut flags: Vec<(&TokenStream, Vec<&String>)> = Vec::new();
     let mut keys: Vec<&(String, usize)> = Vec::new();
     let mut statements = TokenStream::new();
     // A read written inside another one's is asked first, so it is filled after the one around it.
@@ -1510,8 +1707,7 @@ pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream
             .iter()
             .position(|key| **key == asked.key)
             .unwrap_or_else(|| {
-                let ty = &asked.ty;
-                flags.push(quote! { <#ty>::__TIXSCHEMA_MODELLED });
+                flags.push((&asked.ty, cfgs_of(&noted, &asked.key.0)));
                 keys.push(&asked.key);
                 keys.len() - 1
             });
@@ -1530,6 +1726,32 @@ pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream
         });
     }
     let count = proc_macro2::Literal::usize_unsuffixed(flags.len());
+    let asked_flags = if flags.iter().all(|(_, groups)| groups.is_empty()) {
+        let asks = flags
+            .iter()
+            .map(|(ty, _)| quote! { <#ty>::__TIXSCHEMA_MODELLED });
+        quote! { [#(#asks),*] }
+    } else {
+        let asks = flags.iter().enumerate().flat_map(|(index, (ty, groups))| {
+            let ask = quote! { flags[#index] = <#ty>::__TIXSCHEMA_MODELLED; };
+            if groups.is_empty() {
+                vec![ask]
+            } else {
+                groups
+                    .iter()
+                    .map(|group| {
+                        let cfgs: TokenStream = group.parse().unwrap_or_default();
+                        quote! { #cfgs { #ask } }
+                    })
+                    .collect()
+            }
+        });
+        quote! {
+            let mut flags = [false; #count];
+            #(#asks)*
+            flags
+        }
+    };
     let inside = quote! {
         #[non_exhaustive]
         pub struct TixschemaHeld;
@@ -1541,7 +1763,7 @@ pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream
                     const __TIXSCHEMA_MODELLED: bool = false;
                 }
                 impl<T: ?::core::marker::Sized> Unmodelled for T {}
-                [#(#flags),*]
+                #asked_flags
             }
         }
     };
@@ -1550,6 +1772,21 @@ pub fn held_filled(written: &Ident, module: &Ident) -> (TokenStream, TokenStream
         #statements
     };
     (inside, beside, filled)
+}
+
+/// The `cfg` attributes each member naming the type `name` is under, one set each, or none where
+/// a member names it under no `cfg`: the type is named wherever the item is.
+fn cfgs_of<'noted>(
+    noted: &'noted HashMap<String, BTreeSet<String>>,
+    name: &str,
+) -> Vec<&'noted String> {
+    noted.get(name).map_or_else(Vec::new, |sets| {
+        if sets.contains("") {
+            Vec::new()
+        } else {
+            sets.iter().collect()
+        }
+    })
 }
 
 /// The `KSerializer` of a value typed `field`, each model it holds read by its unjudged one.

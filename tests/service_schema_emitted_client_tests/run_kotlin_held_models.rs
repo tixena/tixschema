@@ -95,13 +95,39 @@ mod aliased_apart {
 mod aliased_below {
     use std::collections::HashMap;
 
-    use super::{Debug, Deserialize, Serialize, model_schema};
+    use super::{Debug, Deserialize, Serialize, from_str, model_schema};
 
     #[model_schema()]
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct HolderAliasedBelow {
         pub listed: HeldListBelow,
         pub mapped: HeldMapBelow,
+        pub pairs: HeldPairsBelow<HeldNoteBelow>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ShelfCfgOff {
+        #[model_schema_prop(minLength = 1)]
+        pub label: String,
+        #[cfg(any())]
+        pub pairs: HeldPairsBelow<HeldNoteBelow>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ShelfOfHeld<Held> {
+        #[model_schema_prop(minLength = 1)]
+        pub label: String,
+        pub pairs: HeldPairsBelow<Held>,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ShelfUnderCfg {
+        #[model_schema_prop(minLength = 1)]
+        pub label: String,
+        #[cfg(feature = "kotlin")]
         pub pairs: HeldPairsBelow<HeldNoteBelow>,
     }
 
@@ -128,7 +154,22 @@ mod aliased_below {
             held_note_below_kotlin::kotlin_definition(),
             held_pairs_below_kotlin::kotlin_definition(),
             holder_aliased_below_kotlin::kotlin_definition(),
+            shelf_cfg_off_kotlin::kotlin_definition(),
+            shelf_of_held_kotlin::kotlin_definition(),
+            shelf_under_cfg_kotlin::kotlin_definition(),
         ]
+    }
+
+    pub fn of_held(payload: &str) -> Result<ShelfOfHeldDraft<HeldNoteBelow>, serde_json::Error> {
+        from_str::<ShelfOfHeldDraft<HeldNoteBelow>>(payload)
+    }
+
+    pub fn cfg_off(payload: &str) -> Result<ShelfCfgOffDraft, serde_json::Error> {
+        from_str::<ShelfCfgOffDraft>(payload)
+    }
+
+    pub fn under_cfg(payload: &str) -> Result<ShelfUnderCfgDraft, serde_json::Error> {
+        from_str::<ShelfUnderCfgDraft>(payload)
     }
 }
 
@@ -232,6 +273,77 @@ mod below {
     }
 }
 
+mod undrafted_checked {
+    use super::{Debug, Deserialize, Serialize, from_str, model_schema};
+
+    #[model_schema(__tixschema_undrafted)]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Bolt {
+        #[model_schema_prop(minLength = 1)]
+        pub name: String,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Lathe {
+        #[model_schema_prop(minLength = 1)]
+        pub label: String,
+        pub turn: Turn,
+    }
+
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct Mill {
+        pub bolt: Bolt,
+        #[model_schema_prop(minLength = 1)]
+        pub label: String,
+    }
+
+    #[model_schema(__tixschema_undrafted, check = ["evenTurns"])]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub enum Turn {
+        Even,
+        Odd,
+    }
+
+    pub fn answered(payload: &str) -> Vec<String> {
+        from_str::<LatheDraft>(payload)
+            .unwrap()
+            .validate()
+            .err()
+            .unwrap_or_default()
+    }
+
+    pub fn definitions() -> Vec<String> {
+        vec![
+            lathe_kotlin::kotlin_definition(),
+            turn_kotlin::kotlin_definition(),
+        ]
+    }
+
+    pub fn even_turns(value: &Turn) -> Result<(), Vec<String>> {
+        if matches!(value, Turn::Odd) {
+            return Err(vec!["a turn is not odd".to_owned()]);
+        }
+        Ok(())
+    }
+
+    pub fn mill_definitions() -> Vec<String> {
+        vec![
+            bolt_kotlin::kotlin_definition(),
+            mill_kotlin::kotlin_definition(),
+        ]
+    }
+
+    pub fn milled(payload: &str) -> Vec<String> {
+        from_str::<MillDraft>(payload)
+            .unwrap()
+            .validate()
+            .err()
+            .unwrap_or_default()
+    }
+}
+
 use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
@@ -325,6 +437,156 @@ fn a_holder_of_an_alias_of_a_list_and_of_a_map_compiles_below_and_apart() {
         ));
         if let Some(printed) = ran_kotlin(&parts.join("\n\n")) {
             assert_eq!(printed.trim(), "1");
+        }
+    }
+}
+
+/// The Kotlin that reads `payload` as `decoded`, the type of the holder `refusal` names the
+/// refusal of, and prints each message it throws, or `read`.
+fn reads(
+    definitions: &[String],
+    (decoded, refusal): (&str, &str),
+    payload: &str,
+    functions: &str,
+) -> Option<Vec<String>> {
+    let mut parts = vec![KOTLIN_IMPORTS.to_owned()];
+    parts.extend(definitions.iter().cloned());
+    parts.push(format!(
+        r#"
+{functions}
+
+fun main() {{
+    try {{
+        Json.decodeFromString<{decoded}>("""{payload}""")
+        println("read")
+    }} catch (refused: {refusal}Refusal) {{
+        refused.issues.forEach {{ println("refused: $it") }}
+    }} catch (refused: SerializationException) {{
+        println("unread: ${{refused.message}}")
+    }}
+}}
+"#
+    ));
+    ran_kotlin(&parts.join("\n\n")).map(|printed| printed.lines().map(str::to_owned).collect())
+}
+
+#[test]
+fn a_holder_of_an_undrafted_type_that_has_a_check_answers_the_holders_message() {
+    let payload = r#"{"label":"","turn":"Odd"}"#;
+    let rust = undrafted_checked::answered(payload);
+    assert_eq!(rust.len(), 2, "{rust:?}");
+    let functions = "fun evenTurns(value: Turn): List<String> = \
+         if (value == Turn.Odd) listOf(\"a turn is not odd\") else emptyList()";
+    let kotlin = reads(
+        &undrafted_checked::definitions(),
+        ("Lathe", "Lathe"),
+        payload,
+        functions,
+    );
+    if let Some(lines) = kotlin {
+        let wanted: Vec<String> = rust
+            .iter()
+            .map(|message| format!("refused: {message}"))
+            .collect();
+        assert_eq!(lines, wanted);
+    }
+    let even = r#"{"label":"a","turn":"Even"}"#;
+    if let Some(lines) = reads(
+        &undrafted_checked::definitions(),
+        ("Lathe", "Lathe"),
+        even,
+        functions,
+    ) {
+        assert_eq!(lines, ["read"]);
+    }
+}
+
+#[test]
+fn a_holder_of_an_undrafted_struct_that_has_a_rule_answers_the_holders_message() {
+    let payload = r#"{"bolt":{"name":""},"label":""}"#;
+    let rust = undrafted_checked::milled(payload);
+    assert_eq!(rust.len(), 2, "{rust:?}");
+    let kotlin = reads(
+        &undrafted_checked::mill_definitions(),
+        ("Mill", "Mill"),
+        payload,
+        "",
+    );
+    if let Some(lines) = kotlin {
+        let wanted: Vec<String> = rust
+            .iter()
+            .map(|message| format!("refused: {message}"))
+            .collect();
+        assert_eq!(lines, wanted);
+    }
+    let read = r#"{"bolt":{"name":"a"},"label":"b"}"#;
+    if let Some(lines) = reads(
+        &undrafted_checked::mill_definitions(),
+        ("Mill", "Mill"),
+        read,
+        "",
+    ) {
+        assert_eq!(lines, ["read"]);
+    }
+}
+
+#[test]
+fn a_holder_of_an_alias_under_a_cfg_or_filled_by_its_parameter_reads_the_alias_below() {
+    let broken = r#"{"label":"","pairs":[{"name":""}]}"#;
+    let label = r#"{"label":"","pairs":[{"name":"x"}]}"#;
+    let intact = r#"{"label":"a","pairs":[{"name":"b"}]}"#;
+    let definitions = aliased_below::definitions();
+    let holders = [
+        ("ShelfUnderCfg", "ShelfUnderCfg"),
+        ("ShelfOfHeld<HeldNoteBelow>", "ShelfOfHeld"),
+    ];
+
+    // Rust reads the model inside the alias judged, as it is read, so the holder's own `label` is
+    // never reached where the model breaks.
+    for payload in [broken, label] {
+        let rust = [
+            aliased_below::under_cfg(payload)
+                .err()
+                .map(|error| error.to_string()),
+            aliased_below::of_held(payload)
+                .err()
+                .map(|error| error.to_string()),
+        ];
+        assert!(
+            rust.iter().all(|refused| {
+                refused.as_deref().is_none_or(|text| {
+                    text.starts_with("'name': too short: minimum length is 1, got 0")
+                })
+            }),
+            "{rust:?}"
+        );
+    }
+    // A member under a `cfg` that is off is absent from the Rust type, and the Kotlin of the
+    // holder, which asks nothing of it, compiles with the held alias declared below.
+    aliased_below::cfg_off(r#"{"label":"a"}"#).unwrap();
+    let off = ("ShelfCfgOff", "ShelfCfgOff");
+    if let Some(lines) = reads(&definitions, off, intact, "") {
+        assert_eq!(lines.len(), 1, "{lines:?}");
+    }
+    for names in holders {
+        if let Some(lines) = reads(&definitions, names, broken, "") {
+            assert_eq!(
+                lines,
+                ["refused: 'pairs.0.name': too short: minimum length is 1, got 0"],
+                "{}",
+                names.0
+            );
+        }
+        if let Some(lines) = reads(&definitions, names, label, "") {
+            assert_eq!(
+                lines,
+                ["refused: 'label': too short: minimum length is 1, got 0"],
+                "{}",
+                names.0
+            );
+        }
+        if let Some(lines) = reads(&definitions, names, intact, "") {
+            assert_eq!(lines, ["read"], "{}", names.0);
         }
     }
 }
