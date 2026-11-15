@@ -130,7 +130,7 @@ Each issue is placed under the coding path the value was read at: as it is for t
 
 #### The refusal of a Swift type
 
-Every type whose text has `validate()`, `of(..)`, `init(validating:)` or a judged `init(from:)` declares its refusal in that text, `{Name}Refusal`, named after the valid type: `ManifestRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`. An alias is a `typealias` of what it names, and a read of it throws the refusal of that type. Nothing is shared between two types, so a file that holds many types declares each refusal once, and you add nothing to it:
+Every type declares its refusal in its text, one with no rule included, `{Name}Refusal`, named after the valid type: `ManifestRefusal`, `LabelTextRefusal` for a brand, `PageRefusal` for `Page<Item>`. An alias is a `typealias` of what it names, and a read of it throws the refusal of that type. Nothing is shared between two types, so a file that holds many types declares each refusal once, and you add nothing to it:
 
 ```swift
 public struct ManifestRefusal: Error, CustomStringConvertible { public let issues: [String]; public var description: String { "ManifestRefusal: [\(issues.joined(separator: ", "))]" } }
@@ -139,7 +139,7 @@ public struct ManifestRefusal: Error, CustomStringConvertible { public let issue
 - **`issues` is what `validationIssues()` answers of the value**, the list the Rust `validation_issues()` answers of the same value, entry by entry, for the value the read was asked for.
 - **`description` prints the name and the issues**, `ManifestRefusal: ['firstParcel.label': too short: minimum length is 1, got 0]`, as the Dart and Kotlin refusals print.
 - **A refusal of shape keeps its `DecodingError`**: a missing key, a value of the wrong type and a key no member reads are refused as before, and a `ManifestRefusal` says a value was read and broke a rule.
-- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second struct of the name, as one named `{Name}Draft` does: the Swift compiler refuses the file with ``error: invalid redeclaration of 'ManifestRefusal'``. Rename one of them.
+- **A type of your own named `{Name}Refusal` beside `{Name}`** declares a second struct of the name, as one named `{Name}Draft` does: the Swift compiler refuses the file with ``error: invalid redeclaration of 'ManifestRefusal'``. In one crate the second of the two to expand, whichever it is, stops the build at expansion, spanned on its name, with a message that names the class and both types; a renamed type counts under its Rust name too. Across crates the Swift compiler refuses the pair as above. Rename one of the two types.
 
 **What the emitter writes.** Every draft has two initializers that read it, and the valid type forwards them. The read alone is `fileprivate`, which the generated file alone reaches:
 
@@ -193,9 +193,8 @@ if container.contains(.spareParcel), try !container.decodeNil(forKey: .spareParc
 | Held | Judged |
 |---|---|
 | in a field, an optional, a list, a map's value, a tuple, a flattened member or the payload of a variant, in any nesting of those | once, with its holder, each message at its full path |
-| filling a type parameter of a generic type the holder holds, as `Parcel` in `firstPage: Page<Parcel>`, where the generic type is written above the holder | once, with its holder, each message at its full path |
-| under one of the holder's type parameters, the holder read by itself | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with a `ParcelRefusal` of `'codes.1.fragileItemCodes.1': y is outside of itemCodeList` |
-| filling a type parameter of a generic type declared below the holder or in another crate, of one that names a `preprocess` on itself, or of one a member of which reaches the parameter through a tuple, a range, a `Result`, a fixed-size array, a map under a key Swift wraps, a `#[serde(flatten)]`, a `#[serde(default)]` or a `preprocess` of its own | by itself, as it is read |
+| filling a type parameter of a generic type the holder holds, as `Parcel` in `firstPage: Page<Parcel>`, wherever the generic type is declared (above the holder, below it or in another crate) and whatever shape it has (a member that is a tuple, a range, a `Result`, a fixed-size array or a map under a key Swift wraps, a `#[serde(flatten)]`, a `#[serde(default)]`, a box or a `preprocess`, a variant of several slots or one under a tag alone) | once, with its holder, each message at its full path |
+| under one of the holder's type parameters, the holder read by itself | by itself, as it is read: a `Crate<Parcel>` whose second parcel is broken is refused with a `CrateRefusal` of `'codes.1.fragileItemCodes.1': y is outside of itemCodeList` |
 | as the value a brand wraps | by itself, as it is read |
 
 - **An absent key and a `null` are read as they were.** A key a struct requires is still `keyNotFound` where it is absent, which is what the first statement above is for: `superDecoder(forKey:)` answers a decoder over `null` for an absent key. An optional member is still `nil` for an absent key and for a `null`. A key under `#[serde(default)]` is read as its default where it is absent ([A Key Read as Its Default](models.md#a-key-read-as-its-default-serdedefault)).

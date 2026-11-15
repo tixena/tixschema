@@ -924,8 +924,8 @@ fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
          on NoSuchMethodError { listed = null; } if (listed is List<String>) { for (var at = 0; \
          at < listed.length; at += 1) { final said = listed[at]; final end = \
          said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
-         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
-         } rethrow; } } Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } throw \
+         ReservedMembersRefusal(listed); } } rethrow; } } Map<String, dynamic> toJson() => { 'class': class_,'in': in_,'type': \
          type, }; List<String> validationIssues() => const []; ReservedMembers validate() { final \
          found = validationIssues(); if (found.isNotEmpty) throw ReservedMembersRefusal(found); \
          return ReservedMembers._(this); } ReservedMembers toValid() => ReservedMembers._(this); \

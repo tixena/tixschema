@@ -104,10 +104,12 @@ The Swift read of a strict type refuses a key no member reads, as the Rust, Zod,
 named after the valid type the item is published as (`refusals::refusal_name`,
 `src/features/refusals.rs`). `swift_schema_dispatch` makes it the refusal of the item being
 emitted (`SWIFT_REFUSAL`), and `swift_module_tokens` declares the struct (`refusal_struct`) at the
-head of the type's text where the text throws it, recording it in `SWIFT_REFUSALS` under the Rust
-ident. An alias is a `typealias`, so `alias_swift_tokens` records the refusals of what it names, and
-`swift_refusals_of` answers what a read of a `FieldDef` throws, through a list, a set, a map, an
-option, a tuple and a `Result`, for `swift_ws_client()`. The value a wrapper reads beside the keys
+head of the type's text, a type with no rule included, so a service names the struct of any type it
+reads by the type's name, wherever the type is declared. An alias of one declared type declares a
+`typealias` of that type's refusal (`alias_refusal`), and `swift_refusals_of` answers the structs a
+read of a `FieldDef` names, through a list, a set, a map, an option, a tuple and a `Result`, for
+`swift_ws_client()`. A judged `init(from:)` rebuilds a refusal a value it holds throws as its own
+(`read::judged`), so the read of a message throws the message's refusal alone. The value a wrapper reads beside the keys
 its holder took is judged as its own read judges it, and refused with its type's refusal
 (`refusal_of`). `swift_ws_client()` lists the refusals its reads throw in `{prefix}WsRefusal`, reads
 `issues` off them through `{prefix}WsUnwrapped`, which drops the key of the reply's envelope, and
@@ -145,16 +147,22 @@ to keep.
   BTreeMap<Outer, u32>` over a brand of `Tone`, itself a brand of a `String` whose check refuses
   `mute`, `{"outer":{"mute":1}}` is refused with `ToneRefusal` and `'outer.mute': mute is silent`.
 - **A value behind a type parameter is handed to a check and read by a reader**, each handed in
-  by the holder that writes what fills the parameter. A generic type the emitter writes walks its
-  parameters (`validate::walking`, noted by `validate::note_with`): its draft has
+  by the holder that writes what fills the parameter. Every generic type the emitter writes
+  but an alias walks all of its parameters (`validate::walking`): its draft has
   `validationIssuesWith`, one check per parameter, and its valid type `validateWith`; its own read
   takes one `(Decoder) throws -> Parameter` per parameter beside the one that takes none, which
-  reads through `SwiftSchemaFit` (`read::both`). A holder of the type at a filling asks
-  `validateWith`, handed the check of each argument (`validate::argument_check`), and reads it
-  with the unjudged read of each argument (`read::argument_reader`). A type written for a tuple,
-  a range or a result walks no parameter of the type that holds it (`swift_field_shape`), and a
-  type that names a function of its own, or is declared below its holder or in another crate, is
-  read through `Decodable` at its filling.
+  reads through `SwiftSchemaFit` (`read::both`), so a holder asks it whether it is declared above
+  the holder, below it or in another crate (`validate::walked_with` is false for an alias alone). A
+  holder of the type at a filling asks `validateWith`, handed the check of each argument
+  (`validate::argument_check`), and reads it with the unjudged read of each argument
+  (`read::argument_reader`), an argument held in a wrapper (a fixed-size array, a date, a map under
+  a key Swift wraps) read and checked through `argument_form`. A type written for a tuple, a range,
+  a `Result`, the wrapper of a map under a key Swift wraps and the wrapper of an argument walks the
+  parameters of the type that holds it that they reach (`swift_field_shape`, `validate::walked_through`),
+  and the holder hands them the readers and the checks as it does a generic type. A read through
+  the payload of a `preprocess`, a member's or the type's own, reaches the readers through the
+  `userInfo` of the decoder that reads the payload (`read::handing`, `read::extracted`), which holds
+  no closure of the holder's. A key behind a type parameter is held as text and judged by no check.
 - **Any other value is read through `Decodable` and judges itself**: one in a field with a bound
   of its own, and the value a brand wraps, a brand's `validate()` running no `validate()` of what
   it holds but the check of the parameter it wraps bare.

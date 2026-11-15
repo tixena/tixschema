@@ -219,7 +219,8 @@ fn the_json_schema_requires_the_key_serde_always_writes_for_an_alias_of_an_optio
 fn kotlin_writes_one_nullable_mark_over_an_alias_of_an_option() {
     assert_eq!(
         haply_kotlin::kotlin_definition(),
-        "",
+        "class HaplyTypeRefusal(val issues: List<String>) : SerializationException(\"$issues\", \
+         IllegalArgumentException(\"validate()\")) typealias HaplyRefusal = HaplyTypeRefusal; ",
         "no typealias of a nullable parameter"
     );
     for (definition, written) in [

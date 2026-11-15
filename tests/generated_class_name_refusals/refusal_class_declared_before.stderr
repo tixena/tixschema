@@ -1,0 +1,5 @@
+error: model_schema: `ParcelRefusal` is the name of the refusal class `Parcel` writes in the Dart, Swift and Kotlin texts. Rename one of the two types
+  --> tests/generated_class_name_refusals/refusal_class_declared_before.rs:14:12
+   |
+14 | pub struct Parcel {
+   |            ^^^^^^

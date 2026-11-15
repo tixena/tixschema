@@ -1,0 +1,16 @@
+error[E0428]: the name `ParcelDraft` is defined multiple times
+  --> tests/generated_class_name_refusals/draft_class_declared_after.rs:14:1
+   |
+ 8 | pub struct Parcel {
+   | ----------------- previous definition of the type `ParcelDraft` here
+...
+14 | pub struct ParcelDraft {
+   | ^^^^^^^^^^^^^^^^^^^^^^ `ParcelDraft` redefined here
+   |
+   = note: `ParcelDraft` must be defined only once in the type namespace of this module
+
+error: model_schema: `ParcelDraft` is the name of the draft class `Parcel` writes in the Dart, Swift and Kotlin texts. Rename one of the two types
+  --> tests/generated_class_name_refusals/draft_class_declared_after.rs:14:12
+   |
+14 | pub struct ParcelDraft {
+   |            ^^^^^^^^^^^

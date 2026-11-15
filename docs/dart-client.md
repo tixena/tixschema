@@ -56,11 +56,12 @@ item is published as (`refusals::refusal_name`, `src/features/refusals.rs`), wit
 `validationIssues()` answered. `enter_refusal` makes it the refusal of the item being emitted
 (`DART_REFUSAL`), from `struct_dart_tokens`, `value_wrapper_tokens` and `enum_dart_tokens`, and
 `judged_body_returning` and `validate_method` throw it, a variant's class the enum's.
-`dart_module_tokens` declares the class (`refusal_class`) at the head of the type's text where the
-text throws it, so a type with no judged read, a plain enum with no check that a service writes,
-declares none, and records it in `DART_REFUSALS` under the Rust ident; `alias_dart_tokens` adds the
-refusals of what an alias reads judged. `dart_refusals_of` answers what a read of a `FieldDef`
-throws, through a list, a set, a map, an option, a tuple and a `Result`, for the service surfaces.
+`dart_module_tokens` declares the class (`refusal_class`) at the head of the text of every type, a
+type with no judged read and a plain enum with no check included, so a service names the class of
+any type it reads by the type's name, wherever the type is declared. `dart_refusals_of` answers
+the classes a read of a `FieldDef` names, through a list, a set, a map, an option, a tuple and a
+`Result`, for the service surfaces. Each class's `_readAt` rebuilds a refusal a value it holds
+throws as the holder's own, so the read of a message throws the message's refusal alone.
 A type of the consumer's published under the name collides as one published as `{Name}Draft` does,
 and the expansion refuses neither: `dart analyze` does. `tests/service_schema_emitted_client_tests/
 run_dart_refusal_classes.rs` holds a struct, an enum, a generic type, a brand and an alias in one
@@ -212,16 +213,15 @@ consumer's view; this is what a change has to keep.
   member is read through `_readFlattened` (`READ_FLATTENED`, which a class with one declares),
   which drops the path of its refusal but for the key a `missing field` or an unknown key names,
   so the holder's step is the place, as serde names the holder. A type's refusal a value read
-  judged below the top throws keeps its class, and the helper places each of its issues under its
-  step: no refusal class is shared to name, so the helper reads `issues` through `dynamic` and
-  rewrites the list in place. The `ws_rpc`
-  attachment and client list each issue of a refusal of a type the service reads, cut at the
-  place it opens with, or the one refusal at the joined path (`refused_at_fn` in
+  judged below the top throws is rebuilt as the holder's, and the helper places each of its issues
+  under its step: no refusal class is shared to name, so the helper reads `issues` through
+  `dynamic`. The `ws_rpc` attachment and client list each issue of a refusal of a type the service
+  reads, cut at the place it opens with, or the one refusal at the joined path (`refused_at_fn` in
   `dart_ws_client.rs`, which writes `_WsRefusedAt`, `_WsIssue`, `_WsRefusal` and
-  `_WsRefusedIssues`; `_WsRefusal` names each refusal class `dart_read_refusals` finds through
-  `dart_refusals_of`, the registry of what each type emitted before it throws, and a type the
-  expansion has not met is answered as any other refusal). The `mcp` server answers a refusal
-  `_WsRefusal` names as `failed-validation` through `_WsIssue` as well.
+  `_WsRefusedIssues`; `_WsRefusal` names the refusal class of each type an operation's signature
+  names, `dart_read_refusals` finding them through `dart_refusals_of`, wherever the type is
+  declared). The `mcp` server answers a refusal `_WsRefusal` names as `failed-validation` through
+  `_WsIssue` as well.
 - **A number, a `char` and a chrono date, time and date and time are read and written in their
   one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever

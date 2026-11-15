@@ -74,7 +74,7 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
          DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
          [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; \
          try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public \
-         init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder);",
+         init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw SplayingRefusal(issues: held) };",
         encoded_note,
     ] {
         assert!(splaying.contains(held), "no `{held}` in: {splaying}");

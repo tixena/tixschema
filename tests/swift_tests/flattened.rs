@@ -181,15 +181,23 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
         &toggling,
         &flat(
             "self.rest = try TogglingRestKeyedMap<Held>(swiftSchemaUnjudged: decoder, \
-             swiftSchemaWithout: taken).storage",
+             swiftSchemaWithout: taken, swiftSchemaReaderOfHeld).storage",
         ),
     );
     assert_written(
         &toggling,
         "extension TogglingRestKeyedMap { init(swiftSchemaUnjudged decoder: Decoder, \
-         swiftSchemaWithout taken: [String]) throws { \
-         let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
-         var result: [Quarter: Held] = [:];",
+         swiftSchemaWithout taken: [String], _ swiftSchemaReaderOfHeld: (Decoder) throws -> Held) \
+         throws { let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+         var result: [Quarter: Held] = [:]; for codingKey in container.allKeys where \
+         !taken.contains(codingKey.stringValue) { let wireKey = codingKey.stringValue; \
+         guard let key = Quarter(rawValue: wireKey) else { throw \
+         DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \
+         \"bad key \\(wireKey)\") }; result[key] = try \
+         swiftSchemaReaderOfHeld(container.superDecoder(forKey: codingKey)) }; storage = result \
+         }; init(swiftSchemaUnjudged decoder: Decoder, swiftSchemaWithout taken: [String]) \
+         throws { try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: taken, { try \
+         SwiftSchemaFit<Held>(from: $0).value }) } };",
     );
     assert_written(
         &faking_swift::swift_definition(),

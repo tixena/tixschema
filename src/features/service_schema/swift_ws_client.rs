@@ -349,7 +349,12 @@ fn swift_read_refusals(service: &ServiceDef) -> Vec<String> {
             let named: Type = syn::parse_quote! { #ident };
             refusals::refusal_name(&swift_typename_of(&named))
         },
-        &|ty| swift_refusals_of(&get_field_def("value", ty, "")),
+        &|ty| {
+            swift_refusals_of(
+                &get_field_def("value", ty, ""),
+                &refusals::service_types(&service.ident.to_string()),
+            )
+        },
     );
     let named = service.ident.to_string();
     for operation in &service.operations {

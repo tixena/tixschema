@@ -154,6 +154,36 @@ mod refusal_class_models;
 #[path = "service_schema_emitted_client_tests/run_dart_refusal_classes.rs"]
 mod run_dart_refusal_classes;
 
+/// `HoistService`, whose messages are declared above it, below it and in another crate.
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+#[path = "service_schema_emitted_client_tests/refusal_order_service.rs"]
+mod refusal_order_service;
+#[cfg(test)]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+use refusal_order_service::{HoistService, hoist_service_schema};
+
+/// The Dart surfaces of `HoistService` list one issue per broken rule, whichever place declares the
+/// message.
+#[cfg(test)]
+#[cfg(feature = "dart")]
+#[path = "service_schema_emitted_client_tests/run_dart_refusal_order.rs"]
+mod run_dart_refusal_order;
+
+/// The Kotlin surfaces of `HoistService` list one issue per broken rule, whichever place declares
+/// the message.
+#[cfg(test)]
+#[cfg(feature = "kotlin")]
+#[path = "service_schema_emitted_client_tests/run_kotlin_refusal_order.rs"]
+mod run_kotlin_refusal_order;
+
+/// The Swift client of `HoistService` lists one issue per broken rule, whichever place declares
+/// the value it reads.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "service_schema_emitted_client_tests/run_swift_refusal_order.rs"]
+mod run_swift_refusal_order;
+
 /// The constants of a valid Dart enum and the `toValid()` of a draft with no rule.
 #[cfg(test)]
 #[cfg(feature = "dart")]
@@ -1751,6 +1781,12 @@ mod run_kotlin_held_models;
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_parameter_holders.rs"]
 mod run_parameter_holders;
+
+/// A holder that judges what fills a type parameter of a generic model it holds, for every shape of
+/// the generic model and of what fills it, in Swift as in Rust.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_parameter_shapes.rs"]
+mod run_parameter_shapes;
 
 /// An enum published under another name, read and written by the emitted Kotlin types through each
 /// of its names.

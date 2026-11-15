@@ -12,6 +12,7 @@ use crate::features::kotlin::{
     TupleNaming, kotlin_bare, kotlin_declarations, kotlin_field_def, kotlin_name,
     kotlin_property_name, kotlin_quoted, kotlin_refusals_of, kotlin_tuple_naming, kotlin_typename,
 };
+use crate::features::refusals;
 use crate::features::refusals::refusal_name;
 use crate::field_type::{NOT_A_DOCUMENT, NUMBER_OUT_OF_RANGE};
 use crate::rename_rule::RenameRule;
@@ -1279,7 +1280,12 @@ pub(super) fn kotlin_read_refusals(service: &ServiceDef) -> Vec<String> {
             let named: Type = syn::parse_quote! { #ident };
             refusal_name(&kotlin_type_of(&named))
         },
-        &|ty| kotlin_refusals_of(&kotlin_field_def("value", ty)),
+        &|ty| {
+            kotlin_refusals_of(
+                &kotlin_field_def("value", ty),
+                &refusals::service_types(&service.ident.to_string()),
+            )
+        },
     )
 }
 

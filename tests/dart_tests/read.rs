@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::held_numbers::{u8_held, u32_held};
-use super::unknown_keys::{READ_AT, plain_enum_read, refusing};
+use super::unknown_keys::{plain_enum_read, read_at, refusing};
 use super::validate::{
     closed_dock_dart, code_dart, consignment_dart, crate_dart, depot_dart, freight_dart,
     gauge_dart, grade_dart, haul_dart, lift_dart, manifest_dart, pair_dart, parcel_dart,
@@ -192,9 +192,10 @@ fn a_class_reads_unjudged_then_refuses_what_validate_answers() {
              () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
              (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
-             String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
+             String),); }} {read_at} Map<String, dynamic> toJson() =>",
             draft("ParcelDraft", "Map<String, dynamic> json"),
-            refusing("Parcel", &["fragileItemCodes", "itemCodeList", "label"])
+            refusing("Parcel", &["fragileItemCodes", "itemCodeList", "label"]),
+            read_at = read_at("ParcelRefusal")
         ),
     );
     assert_written(
@@ -376,18 +377,20 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
              {{ final tuple when tuple.length == 2 => (_readAt(null, 0, () => tuple[0] as \
              String), {second}), final tuple => throw FormatException('invalid length \
              ${{tuple.length}}, expected 2') }})); default: throw FormatException('Unknown \
-             Freight: ' + tag); }} }} {READ_AT} dynamic toJson();",
+             Freight: ' + tag); }} }} {read_at} dynamic toJson();",
             draft("FreightDraft", "dynamic json"),
+            read_at = read_at("FreightRefusal")
         ),
     );
     assert_written(
         &freight,
         &format!(
             "{}{{ {}return FreightLoose(freight_label: _readAt(json, 'freightLabel', () => \
-             json['freightLabel'] as String),); }} {READ_AT} @override \
+             json['freightLabel'] as String),); }} {read_at} @override \
              dynamic toJson() =>",
             draft("FreightLoose", "Map<String, dynamic> json"),
-            refusing("FreightLoose", &["freightLabel"])
+            refusing("FreightLoose", &["freightLabel"]),
+            read_at = read_at("FreightRefusal")
         ),
     );
     let haul = haul_dart::dart_definition();
@@ -417,9 +420,10 @@ fn a_tagged_enum_dispatches_unjudged_and_judges_once() {
         &lift,
         &format!(
             "{}{{ {}return LiftLoose(lift_label: _readAt(json, 'liftLabel', () => \
-             json['liftLabel'] as String),); }} {READ_AT} Map<String, dynamic> toJson() =>",
+             json['liftLabel'] as String),); }} {read_at} Map<String, dynamic> toJson() =>",
             draft("LiftLoose", "Map<String, dynamic> json"),
-            refusing("LiftLoose", &["kind", "liftLabel"])
+            refusing("LiftLoose", &["kind", "liftLabel"]),
+            read_at = read_at("LiftRefusal")
         ),
     );
 }

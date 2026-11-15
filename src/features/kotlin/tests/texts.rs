@@ -111,8 +111,9 @@ fn an_alias_names_the_serializer_of_its_form_and_a_written_read_composes_it() {
     assert_eq!(
         aliased(&alias),
         format!(
-            "{} typealias InitialType = @Serializable(with = KotlinText1::class) String; \
+            "{} typealias InitialRefusal = InitialTypeRefusal; {} typealias InitialType = @Serializable(with = KotlinText1::class) String; \
              typealias Initial = InitialType;",
+            refusal("InitialType"),
             letter("KotlinText1")
         )
     );
@@ -162,7 +163,11 @@ fn a_type_argument_names_the_serializer_of_its_form_and_is_handed_to_a_model_wri
     };
     assert_eq!(
         aliased(&pair),
-        "typealias PairType<T> = List<T>; typealias Pair<T> = PairType<T>;"
+        format!(
+            "{} typealias PairRefusal = PairTypeRefusal; typealias PairType<T> = List<T>; \
+             typealias Pair<T> = PairType<T>;",
+            refusal("PairType")
+        )
     );
     let held: ItemStruct = syn::parse_quote! {
         struct Held<T> {

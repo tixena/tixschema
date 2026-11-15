@@ -1,0 +1,5 @@
+error: model_schema: `WrappedRefusal` is the name of the refusal class `Wrapped` writes in the Dart, Swift and Kotlin texts. Rename one of the two types
+  --> tests/generated_class_name_refusals/renamed_alias_rust_name_refusal_class_declared_before.rs:18:10
+   |
+18 | pub type Wrapped = Parcel;
+   |          ^^^^^^^

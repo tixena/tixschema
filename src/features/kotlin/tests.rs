@@ -10,7 +10,7 @@ use proc_macro2::{Span, TokenTree};
 
 #[cfg(feature = "serde")]
 use super::read::INNER;
-use super::read::{DECODED, HELD_FALLBACK, THROWN};
+use super::read::{DECODED, HELD_FALLBACK, THROWN, held_refusal};
 use super::validate::jvm_pattern;
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
@@ -120,12 +120,14 @@ fn kept_plain_draft(named: &str) -> String {
 fn judged(named: &str) -> String {
     format!(
         "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ \
-         {THROWN}override fun invoke(): KSerializer<{named}> = {named}Unjudged; override val \
+         {THROWN}{held}override fun invoke(): KSerializer<{named}> = {named}Unjudged; override val \
          descriptor: SerialDescriptor = {named}Unjudged.descriptor; override fun \
          serialize(encoder: Encoder, value: {named}) = {named}Unjudged.serialize(encoder, \
-         value); override fun deserialize(decoder: Decoder): {named} {{ val read = \
-         {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
+         value); override fun deserialize(decoder: Decoder): {named} {{ val read = try {{ \
+         {named}Unjudged.deserialize(decoder) }} catch (refused: SerializationException) {{ throw \
+         kotlinSchemaHeld(refused) }}; val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}",
+        held = held_refusal(&format!("{named}Refusal"))
     )
 }
 
@@ -135,13 +137,16 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
         "class {named}Serializer<{parameter}{bound}>({handed}: \
          KSerializer<{parameter}>) : KSerializer<{named}<{parameter}>>, () -> \
          KSerializer<{named}<{parameter}>> {{ private val kotlinSchemaUnjudged = \
-         {named}Unjudged({handed}); {THROWN}override fun invoke(): \
+         {named}Unjudged({handed}); {THROWN}{held}override fun invoke(): \
          KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
          SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
          Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, \
          value); override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read \
-         = kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
+         = try {{ kotlinSchemaUnjudged.deserialize(decoder) }} catch (refused: \
+         SerializationException) {{ throw kotlinSchemaHeld(refused) }}; val violations = \
+         read.validate(); if \
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}",
+        held = held_refusal(&format!("{named}Refusal"))
     )
 }
 

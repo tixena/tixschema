@@ -318,9 +318,8 @@ thread_local! {
     static KOTLIN_NAMES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
     /// The refusal class the reads and `validate()` of the item being emitted throw.
     static KOTLIN_REFUSAL: RefCell<String> = const { RefCell::new(String::new()) };
-    /// The refusal classes a judged read of each type emitted so far throws, by Rust ident: its
-    /// own, or for an alias those of the type it names.
-    static KOTLIN_REFUSALS: RefCell<HashMap<String, Vec<String>>> = RefCell::new(HashMap::new());
+    /// What the alias being emitted declares as its refusal, where it is that of the type it names.
+    static KOTLIN_REFUSAL_ALIASED: RefCell<Option<String>> = const { RefCell::new(None) };
     /// The auxiliary top-level declarations a Tuple-shaped field earns — a wrapper `data class` and
     /// its `KSerializer` (see [`tuple_wrapper_typename`]). Drained by [`kotlin_module_tokens`].
     static KOTLIN_TUPLE_AUX: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
@@ -374,10 +373,6 @@ thread_local! {
 /// The Kotlin tokens `item` earns, given what `#[model_schema(...)]` wrote on it. Dispatches on
 /// the item's own shape; an item this module has nothing to say about earns nothing.
 pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream {
-    let ident = refusals::item_ident(item);
-    if let Some(named) = &ident {
-        forget_refusals(named);
-    }
     let tokens = if let Item::Struct(item_struct) = item {
         struct_kotlin_tokens(item_struct, args)
     } else if let Item::Enum(item_enum) = item {
@@ -387,9 +382,6 @@ pub fn kotlin_schema_dispatch(item: &Item, args: &KotlinArgs<'_>) -> TokenStream
     } else {
         TokenStream::new()
     };
-    if let Some(named) = &ident {
-        record_refusals(named, refusals::held_by(item, &own_refusals));
-    }
     KOTLIN_REFUSAL.with(|held| held.borrow_mut().clear());
     tokens
 }
@@ -414,35 +406,52 @@ pub fn refusal() -> String {
 }
 
 /// The refusal classes a judged read of `def` throws where the value it reads, or one it holds,
-/// breaks a rule, as far as the types it names were emitted before.
-pub fn kotlin_refusals_of(def: &FieldDef) -> Vec<String> {
-    refusals::reached(def, &own_refusals)
+/// breaks a rule: the class of each type it names, declared wherever the type is.
+pub fn kotlin_refusals_of(def: &FieldDef, written: &[String]) -> Vec<String> {
+    refusals::reached(def, written, &refusal_of)
 }
 
-/// The refusal classes recorded for the type written `name`.
-fn own_refusals(name: &str) -> Vec<String> {
-    KOTLIN_REFUSALS.with(|recorded| recorded.borrow().get(name).cloned().unwrap_or_default())
+/// The refusal class a judged read of the declared type `rust_ident` throws: its own, under the
+/// name it publishes.
+fn refusal_of(rust_ident: &str) -> String {
+    refusals::refusal_name(&lookup_kotlin_name(rust_ident).unwrap_or_else(|| rust_ident.to_owned()))
 }
 
-/// Drops what was recorded for a type written `rust_ident`: of two types of one ident in a crate,
-/// a holder names the refusals of the one expanded last.
-fn forget_refusals(rust_ident: &str) {
-    KOTLIN_REFUSALS.with(|recorded| {
-        recorded.borrow_mut().remove(rust_ident);
-    });
+/// What the item being emitted declares as its refusal: its class, with a `typealias` under the
+/// Rust ident of an item published under another name, or for an alias of one declared type the
+/// `typealias` of that type's class.
+fn refusal_declaration(rust_ident: &str) -> String {
+    KOTLIN_REFUSAL_ALIASED
+        .with(RefCell::take)
+        .unwrap_or_else(|| {
+            let own = refusal();
+            let ident = refusals::refusal_name(rust_ident);
+            let alias = if ident == own {
+                String::new()
+            } else {
+                format!(" typealias {ident} = {own};")
+            };
+            format!("{}{alias}", refusal_class(&own))
+        })
 }
 
-/// Records that a judged read of `rust_ident` throws `refused` as well.
-fn record_refusals(rust_ident: &str, refused: Vec<String>) {
-    KOTLIN_REFUSALS.with(|recorded| {
-        let mut held = recorded.borrow_mut();
-        let listed = held.entry(rust_ident.to_owned()).or_default();
-        for refusal in refused {
-            if !listed.contains(&refusal) {
-                listed.push(refusal);
-            }
-        }
-    });
+/// Declares the refusal of the alias `rust_ident`, published as `export_name`: that of the type it
+/// names where `target` is one bare declared type, a class of its own for any other, and the name
+/// it is written under in a holder.
+fn alias_refusal(target: &FieldDef, rust_ident: &str, export_name: &str) {
+    let own = refusals::refusal_name(export_name);
+    let mut declared = refusals::aliased(target, &refusal_of).map_or_else(
+        || refusal_class(&own),
+        |named| format!("typealias {own} = {named};"),
+    );
+    if rust_ident != export_name {
+        let _ = write!(
+            declared,
+            " typealias {} = {own};",
+            refusals::refusal_name(rust_ident)
+        );
+    }
+    KOTLIN_REFUSAL_ALIASED.with(|held| *held.borrow_mut() = Some(declared));
 }
 
 /// The class the item being emitted throws as `refused`, holding the list of broken rules: a
@@ -1390,7 +1399,7 @@ fn key_object(export_name: &str, leaf: &texts::KeyLeaf) -> (String, String) {
 /// The class that reads a map keyed by the brand `export_name` over `value_field`, through its key
 /// serializer where it is `keyed`, and the refusals that read throws, each placed at the map.
 fn brand_map_object(export_name: &str, value_field: &FieldDef, keyed: bool) -> String {
-    let mut thrown = kotlin_refusals_of(value_field);
+    let mut thrown = kotlin_refusals_of(value_field, &[]);
     let key_read = if keyed {
         thrown.insert(0, refusals::refusal_name(export_name));
         KeyRead::Keyed
@@ -2090,15 +2099,7 @@ fn kotlin_module_tokens(
     kotlin_source: &str,
     defaults: &SerdeDefaults,
 ) -> TokenStream {
-    let refused = refusal();
-    let declared = (kotlin_source.contains(&format!("throw {refused}("))
-        || kotlin_source.contains(&format!("kotlinSchemaThrown(decoder, {refused}(")))
-    .then(|| {
-        record_refusals(rust_ident, vec![refused.clone()]);
-        refusal_class(&refused)
-    });
-    let full_source = declared
-        .into_iter()
+    let full_source = once(refusal_declaration(rust_ident))
         .chain(kotlin_declarations_asking())
         .chain(once(kotlin_source.to_owned()))
         .chain(preprocess::serializers())
@@ -3743,8 +3744,7 @@ fn alias_kotlin_tokens(item_type: &ItemType, name_override: Option<&str>) -> Tok
     }
     let mut target = kotlin_field_def(&export_name, &item_type.ty);
     target.erase_type_parameters(&type_parameters);
-    // An alias is its target in Kotlin, so a read of it throws what a read of the target throws.
-    record_refusals(&rust_ident, kotlin_refusals_of(&target));
+    alias_refusal(&target, &rust_ident, &export_name);
     validate::note_alias(&rust_ident, &target);
     if type_parameters.is_empty() {
         texts::note_alias(&rust_ident, &target);

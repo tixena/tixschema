@@ -71,7 +71,7 @@ List<Terminal>, the second broken: refused (TerminalRefusal)
     'parcelList.1.fragileItemCodes.1': y is outside of itemCodeList
     'parcelsByDock.north.label': too short: minimum length is 1, got 0
     'spareParcel.fragileItemCodes.1': y is outside of itemCodeList
-Crate<Parcel>, the second code broken: refused (ParcelRefusal)
+Crate<Parcel>, the second code broken: refused (CrateRefusal)
     'codes.1.fragileItemCodes.1': y is outside of itemCodeList
 Terminal with no spareParcel key, all good: read
 ";
@@ -252,10 +252,10 @@ fn judged_case(held: &Case) -> Option<Case> {
     })
 }
 
-/// The refusal of the type `built` reads last with `fromJson`, the one a broken case is refused
+/// The refusal of the type `built` reads first with `fromJson`, the one a broken case is refused
 /// with.
 fn refusal_of(built: &str) -> String {
-    let mut before = &built[..built.rfind(".fromJson(").unwrap()];
+    let mut before = &built[..built.find(".fromJson(").unwrap()];
     if before.ends_with('>') {
         before = &before[..before.find('<').unwrap()];
     }

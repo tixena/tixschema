@@ -100,8 +100,8 @@ fn a_brand_over_a_list_counts_its_items() {
          (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if (listed is \
          List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
          final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
-         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
-         } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); List<String> validationIssues() => [ if (value.length < 1) \"too \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } throw \
+         BatchRefusal(listed); } } rethrow; } } dynamic toJson() => value.map((e) => e).toList(); List<String> validationIssues() => [ if (value.length < 1) \"too \
          short: minimum length is 1, got ${value.length}\", if (value.length > 2) \"too long: \
          maximum length is 2, got ${value.length}\", ]; static Object $thrown(Object thrown) => \
          thrown; }"

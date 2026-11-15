@@ -15,7 +15,7 @@ use super::fixed_arrays_models::{
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 #[cfg(feature = "serde")]
-use super::kotlin_thrown::THROWN;
+use super::kotlin_thrown::{THROWN, held_refusal};
 
 /// The function that names the place of a map key a brand's check refused: the steps of the path
 /// kotlinx states, then the key.
@@ -126,13 +126,15 @@ fn generated(named: &str) -> String {
 /// The serializer of `named`, a type with no parameter: its unjudged read, then `validate()`.
 pub fn judged(named: &str) -> String {
     format!(
-        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ {THROWN}override \
+        "object {named}Serializer : KSerializer<{named}>, () -> KSerializer<{named}> {{ {THROWN}{held}override \
          fun invoke(): KSerializer<{named}> = {named}Unjudged; override val descriptor: \
          SerialDescriptor = {named}Unjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: {named}) = {named}Unjudged.serialize(encoder, value); override fun \
-         deserialize(decoder: Decoder): {named} {{ val read = \
-         {named}Unjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
+         deserialize(decoder: Decoder): {named} {{ val read = try {{ \
+         {named}Unjudged.deserialize(decoder) }} catch (refused: SerializationException) {{ throw \
+         kotlinSchemaHeld(refused) }}; val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}",
+        held = held_refusal(&format!("{named}Refusal"))
     )
 }
 
@@ -141,13 +143,15 @@ pub fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> S
     format!(
         "class {named}Serializer<{parameter}{bound}>({handed}: KSerializer<{parameter}>) : \
          KSerializer<{named}<{parameter}>>, () -> KSerializer<{named}<{parameter}>> {{ private \
-         val kotlinSchemaUnjudged = {named}Unjudged({handed}); {THROWN}override fun invoke(): \
+         val kotlinSchemaUnjudged = {named}Unjudged({handed}); {THROWN}{held}override fun invoke(): \
          KSerializer<{named}<{parameter}>> = kotlinSchemaUnjudged; override val descriptor: \
          SerialDescriptor = kotlinSchemaUnjudged.descriptor; override fun serialize(encoder: \
          Encoder, value: {named}<{parameter}>) = kotlinSchemaUnjudged.serialize(encoder, value); \
-         override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = \
-         kotlinSchemaUnjudged.deserialize(decoder); val violations = read.validate(); if \
-         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}"
+         override fun deserialize(decoder: Decoder): {named}<{parameter}> {{ val read = try {{ \
+         kotlinSchemaUnjudged.deserialize(decoder) }} catch (refused: SerializationException) {{ \
+         throw kotlinSchemaHeld(refused) }}; val violations = read.validate(); if \
+         (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, {named}Refusal(violations)); return read }} }}",
+        held = held_refusal(&format!("{named}Refusal"))
     )
 }
 
@@ -821,9 +825,10 @@ pub fn plain_enum(
     correction: &str,
 ) -> String {
     format!(
-        "@OptIn(ExperimentalSerializationApi::class) @Serializable(with = {named}Unjudged::class) \
+        "{} @OptIn(ExperimentalSerializationApi::class) @Serializable(with = {named}Unjudged::class) \
          @KeepGeneratedSerializer enum class {named} {{ {members}; fun validate(): List<String> = \
          emptyList(); fun validationIssues(): List<String> = validate() }} {}",
+        refusal(named),
         super::kotlin_plain_enum::plain_enum_unjudged(named, variants, correction),
     )
 }

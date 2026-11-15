@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
 use super::dart_integer_read::integer_read;
-use super::unknown_keys::READ_AT;
+use super::unknown_keys::read_at;
 
 /// The text of each type below but `Audit`, with each `validationIssues()` cut out where `; }`
 /// stands: the reads, `toJson` and the valid type.
@@ -461,7 +461,7 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
              () => e.$2 as String)).toList()),item_code_list: _readAt(json, 'itemCodeList', () => \
              (json['itemCodeList'] as List<dynamic>).indexed.map((e) => _readAt(null, e.$1, () => \
              e.$2 as String)).toList()),label: _readAt(json, 'label', () => json['label'] as \
-             String),); }} {READ_AT} Map<String, dynamic> toJson() => {{ 'fragileItemCodes': \
+             String),); }} {read_at} Map<String, dynamic> toJson() => {{ 'fragileItemCodes': \
              fragile_item_codes.map((e) => e).toList(),'itemCodeList': item_code_list.map((e) => \
              e).toList(),'label': label, }}; List<String> validationIssues() => [ for (final \
              violation in withoutDuplicates(item_code_list)) _under('itemCodeList', violation), \
@@ -482,7 +482,8 @@ fn the_parcel_of_the_shared_table_is_written_with_its_bound_and_its_checks() {
              item_code_list,label: label,).validate(); Map<String, dynamic> toJson() => \
              _draft.toJson(); List<String> validationIssues() => _draft.validationIssues(); \
              static Object $thrown(Object thrown) => thrown is ParcelDraft ? thrown.validate() : \
-             thrown; }}"
+             thrown; }}",
+            read_at = read_at("ParcelRefusal")
         )
     );
 }
@@ -723,7 +724,7 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
              in json.keys) {{ if (!const <String>{{'validate'}}.contains(key)) throw \
              FormatException('Unknown key of a Audit: $key', <Object>[key]); }} return \
              AuditDraft(validate_: _readAt(json, 'validate', () => json['validate'] as bool),); \
-             }} {READ_AT} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
+             }} {read_at} Map<String, dynamic> toJson() => {{ 'validate': validate_, }}; \
              List<String> validationIssues() => const []; Audit validate() {{ final found = \
              validationIssues(); if (found.isNotEmpty) throw AuditRefusal(found); return \
              Audit._(this); }} Audit toValid() => Audit._(this); }} class Audit {{ const \
@@ -736,7 +737,8 @@ fn a_field_named_validate_moves_and_keeps_its_key() {
              validate_,}}) => AuditDraft(validate_: validate_,).validate(); Map<String, dynamic> \
              toJson() => _draft.toJson(); List<String> validationIssues() => \
              _draft.validationIssues(); static Object $thrown(Object thrown) => thrown is \
-             AuditDraft ? thrown.validate() : thrown; }}"
+             AuditDraft ? thrown.validate() : thrown; }}",
+            read_at = read_at("AuditRefusal")
         )
     );
     assert_eq!(

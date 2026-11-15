@@ -200,7 +200,7 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
                 r#""unknown field `\(unknown.stringValue)`")) } }; try self.init("#,
                 "swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; ",
                 "public init(from decoder: Decoder) throws { ",
-                "try self.init(swiftSchemaUnjudged: decoder); let violations = validationIssues(); ",
+                "do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw ParcelRefusal(issues: held) }; let violations = validationIssues(); ",
                 "if !violations.isEmpty { throw ParcelRefusal(issues: @PLACED@) } }; ",
                 "public func validationIssues() -> [String] { var errors: [String] = []; ",
                 "errors += withoutDuplicates(itemCodeList).map ",

@@ -1,0 +1,5 @@
+error: model_schema: `BundleRefusal` is the name of the refusal class `Bundle` writes in the Dart, Swift and Kotlin texts. Rename one of the two types
+  --> tests/generated_class_name_refusals/renamed_alias_published_refusal_class_declared_after.rs:16:12
+   |
+16 | pub struct BundleRefusal {
+   |            ^^^^^^^^^^^^^

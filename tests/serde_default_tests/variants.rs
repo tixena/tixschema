@@ -606,8 +606,8 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if (listed is \
          List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
          final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
-         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
-         } rethrow; } } static Read _readBuffered<Read>(Read Function() read) { try { return \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } throw \
+         TideRefusal(listed); } } rethrow; } } static Read _readBuffered<Read>(Read Function() read) { try { return \
          read(); } on FormatException catch (refused) { if (refused.message != 'expected value') \
          rethrow; throw const FormatException('invalid type: expected string or map'); } } static \
          Read _readFlattened<Read>(Read Function() read) { try { return _readBuffered(read); } on \
@@ -639,8 +639,8 @@ fn an_enum_with_no_default_writes_the_dart_text_it_wrote() {
          (refused as dynamic).issues; } on NoSuchMethodError { listed = null; } if (listed is \
          List<String>) { for (var at = 0; at < listed.length; at += 1) { final said = listed[at]; \
          final end = said.startsWith(\"'\") ? said.indexOf(\"'\", 1) : -1; listed[at] = end > 0 ? \
-         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } } \
-         } rethrow; } } Map<String, dynamic> toJson() => { 'kind': 'Ebbing','height': (switch \
+         \"'$key.${said.substring(1, end)}'${said.substring(end + 1)}\" : \"'$key': $said\"; } throw \
+         TideRefusal(listed); } } rethrow; } } Map<String, dynamic> toJson() => { 'kind': 'Ebbing','height': (switch \
          (height) { final number when number >= 0 && number <= 4294967295 => number, final number \
          => throw FormatException('expected an integer from 0 to 4294967295, found $number') }), \
          }; @override List<String> validationIssues() => const []; } class TideSlack extends \
@@ -683,8 +683,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
              throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: \
              decoder.codingPath + [unknown], debugDescription: \"unknown field \
              `\\(unknown.stringValue)`\")) } }; try self.init(swiftSchemaUnjudged: decoder, \
-             swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { try \
-             self.init(swiftSchemaUnjudged: decoder); let violations = validate(); if \
+             swiftSchemaWithout: []) }; public init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw TideRefusal(issues: held) }; let violations = validate(); if \
              !violations.isEmpty { throw TideRefusal(issues: { () -> [String] in let at = \
              ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue \
              }).joined(separator: \".\"); return at.isEmpty ? violations : violations.map { said \
@@ -732,7 +731,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
              DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath + \
              [unknown], debugDescription: \"unknown field `\\(unknown.stringValue)`\")) } }; try \
              self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; public init(from \
-             decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: decoder); let \
+             decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw TideRefusal(issues: held) }; let \
              violations = validationIssues(); if !violations.isEmpty { throw TideRefusal(issues: \
              { () -> [String] in let at = ((decoder.userInfo[CodingUserInfoKey(rawValue: \"swiftSchemaOuter\")!] as? [String] ?? []) + decoder.codingPath.map { $0.intValue.map(String.init) \
              ?? $0.stringValue }).joined(separator: \".\"); return at.isEmpty ? violations : \
@@ -754,7 +753,7 @@ fn an_enum_with_no_default_writes_the_swift_text_it_wrote() {
 #[test]
 fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
     use crate::kotlin_pathed::PATHED;
-    use crate::kotlin_thrown::THROWN;
+    use crate::kotlin_thrown::{THROWN, held_refusal};
 
     assert_eq!(
         without_number_readers(&tide_kotlin::kotlin_definition()),
@@ -815,10 +814,12 @@ fn an_enum_with_no_default_writes_the_kotlin_text_it_wrote() {
          refused.cause) }) } object TideSerializer : KSerializer<Tide>, () -> KSerializer<Tide> { \
          ",
         THROWN,
+        &held_refusal("TideRefusal"),
         "override fun invoke(): KSerializer<Tide> = TideUnjudged; override val descriptor: \
          SerialDescriptor = TideUnjudged.descriptor; override fun serialize(encoder: Encoder, \
          value: Tide) = TideUnjudged.serialize(encoder, value); override fun deserialize(decoder: \
-         Decoder): Tide { val read = TideUnjudged.deserialize(decoder); val violations = \
+         Decoder): Tide { val read = try { TideUnjudged.deserialize(decoder) } catch (refused: \
+         SerializationException) { throw kotlinSchemaHeld(refused) }; val violations = \
          read.validationIssues(); if (violations.isNotEmpty()) throw kotlinSchemaThrown(decoder, TideRefusal(violations)); \
          return read } }",
     ].concat()

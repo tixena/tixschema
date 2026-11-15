@@ -54,9 +54,9 @@ fn a_type_parameter_in_a_variant_and_in_a_tuple_struct_is_read_through_it() {
         &cleat_swift::swift_definition(),
         &[
             FITTED,
-            "case \"Bare\": self = .bare(try container.decode(SwiftSchemaFit<Held>.self, forKey: \
-             key).value); ",
-            "slot0 = try container.decode(SwiftSchemaFit<Held>.self).value; slot1 = try \
+            "case \"Bare\": self = .bare(try \
+             swiftSchemaReaderOfHeld(container.superDecoder(forKey: key))); ",
+            "slot0 = try swiftSchemaReaderOfHeld(container.superDecoder()); slot1 = try \
              container.decode(String.self); ",
         ],
     );
@@ -90,7 +90,8 @@ fn a_type_that_declares_no_parameter_reads_what_fills_one_as_it_did() {
         ),
         (
             wharf_swift::swift_definition(),
-            "self.cleat = try container.decode(Cleat<UInt16>.self, forKey: .cleat) }; ",
+            "self.cleat = try Cleat<UInt16>(swiftSchemaUnjudged: \
+             container.superDecoder(forKey: .cleat)) }; ",
         ),
         (
             quay_swift::swift_definition(),

@@ -452,13 +452,20 @@ fn a_slot_validate_walks_is_read_unjudged_from_the_decoder_itself() {
             bale_pair_swift::swift_definition(),
             "self.value = try BalePairTuple(swiftSchemaUnjudged: decoder) }; ",
         ),
-        (
-            stowed_pair_swift::swift_definition(),
-            "self.value = try StowedPairTuple<Stowed>(swiftSchemaUnjudged: decoder) }; ",
-        ),
     ] {
         holds(&swift, &[&format!("{UNJUDGED}{read}")]);
     }
+    holds(
+        &stowed_pair_swift::swift_definition(),
+        &[
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOfStowed: \
+             (Decoder) throws -> Stowed) throws { self.value = try \
+             StowedPairTuple<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaReaderOfStowed) }; \
+             fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { try \
+             self.init(swiftSchemaUnjudged: decoder, { try SwiftSchemaFit<Stowed>(from: $0).value \
+             }) }; ",
+        ],
+    );
     holds(
         &sacked_swift::swift_definition(),
         &[
@@ -505,9 +512,12 @@ fn a_slot_swift_converts_is_read_and_written_as_the_type_serde_writes() {
     holds(
         &stowed_by_number_swift::swift_definition(),
         &[
-            "let container = try decoder.singleValueContainer(); self.value = try { \
-             let wireValue = try container.decode(StowedByNumberKeyedMap<Stowed>.self); \
-             return wireValue.storage }() }; ",
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOfStowed: \
+             (Decoder) throws -> Stowed) throws { self.value = try \
+             StowedByNumberKeyedMap<Stowed>(swiftSchemaUnjudged: decoder, \
+             swiftSchemaReaderOfStowed).storage }; fileprivate init(swiftSchemaUnjudged decoder: \
+             Decoder) throws { try self.init(swiftSchemaUnjudged: decoder, { try \
+             SwiftSchemaFit<Stowed>(from: $0).value }) }; ",
             "let written = StowedByNumberKeyedMap<Stowed>(storage: value); try \
              written.encode(to: encoder) }; ",
         ],
@@ -541,7 +551,14 @@ fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
     );
     holds(
         &stowed_stamp_swift::swift_definition(),
-        &["self.value = try container.decode(StowedStampTuple<Stowed>.self) }; "],
+        &[
+            "fileprivate init(swiftSchemaUnjudged decoder: Decoder, _ swiftSchemaReaderOfStowed: \
+             (Decoder) throws -> Stowed) throws { self.value = try \
+             StowedStampTuple<Stowed>(swiftSchemaUnjudged: decoder, swiftSchemaReaderOfStowed) }; \
+             fileprivate init(swiftSchemaUnjudged decoder: Decoder) throws { try \
+             self.init(swiftSchemaUnjudged: decoder, { try SwiftSchemaFit<Stowed>(from: $0).value \
+             }) }; ",
+        ],
     );
 }
 

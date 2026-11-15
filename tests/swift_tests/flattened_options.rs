@@ -260,8 +260,7 @@ fn a_struct_flattened_bare_reads_the_whole_object() {
          } catch let refused as DecodingError { throw Self.swiftSchemaFlattened(refused, \
          at: decoder.codingPath) } }; fileprivate init(swiftSchemaUnjudged decoder: Decoder) \
          throws { try self.init(swiftSchemaUnjudged: decoder, swiftSchemaWithout: []) }; \
-         public init(from decoder: Decoder) throws { try self.init(swiftSchemaUnjudged: \
-         decoder); let violations = validationIssues(); if !violations.isEmpty { throw \
+         public init(from decoder: Decoder) throws { do { try self.init(swiftSchemaUnjudged: decoder) } catch { guard let held = Mirror(reflecting: error).children.first(where: { $0.label == \"issues\" })?.value as? [String] else { throw error }; throw CrowningRefusal(issues: held) }; let violations = validationIssues(); if !violations.isEmpty { throw \
          CrowningRefusal(issues: @PLACED@) } }; public func encode(to encoder: Encoder) throws { \
          var container = encoder.container(keyedBy: CodingKeys.self); try \
          container.encode(self.note, forKey: .note); try self.tabling.encode(to: encoder) };"

@@ -246,6 +246,8 @@ use crate::utils::{
 
 #[cfg(feature = "typescript")]
 use crate::utils::get_item_docs;
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+use crate::utils::{generated_class_collision, record_published_alias};
 #[cfg(feature = "typescript")]
 use crate::utils::{ident_reexport_ts, noted_ident_reexport_ts};
 
@@ -4552,7 +4554,15 @@ fn published_name_collision_errors(
     ) else {
         return Vec::new();
     };
-    let Some(holder) = claim_published_name(&published, &ident.to_string()) else {
+    if let Some(collision) = generated_class_errors(item, ident, &published) {
+        return vec![collision];
+    }
+    let claimed = claim_published_name(&published, &ident.to_string());
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+    if claimed.is_none() && matches!(*item, Item::Type(_)) {
+        record_published_alias(&published);
+    }
+    let Some(holder) = claimed else {
         return Vec::new();
     };
     let message = prefixed_guard_message(&format!(
@@ -4562,6 +4572,37 @@ fn published_name_collision_errors(
         item_label(item)
     ));
     vec![syn::Error::new_spanned(ident, message).to_compile_error()]
+}
+
+/// The `compile_error!` tokens for a name that is, in the Dart, Swift and Kotlin texts, the class
+/// another type writes, read before the name is claimed.
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
+fn generated_class_errors(
+    item: &Item,
+    ident: &Ident,
+    published: &str,
+) -> Option<proc_macro2::TokenStream> {
+    let collision = generated_class_collision(
+        published,
+        &ident.to_string(),
+        matches!(*item, Item::Type(_)),
+    )?;
+    let message = prefixed_guard_message(&format!(
+        "`{}` is the name of the {} class `{}` writes in the Dart, Swift and Kotlin texts. Rename \
+         one of the two types",
+        collision.taken, collision.kind, collision.owner
+    ));
+    Some(syn::Error::new_spanned(ident, message).to_compile_error())
+}
+
+/// Without a Dart, Swift or Kotlin text no class is written.
+#[cfg(not(any(feature = "dart", feature = "swift", feature = "kotlin")))]
+const fn generated_class_errors(
+    _item: &Item,
+    _ident: &Ident,
+    _published: &str,
+) -> Option<proc_macro2::TokenStream> {
+    None
 }
 
 /// What keeps two functions of the typed paths of an enum under a tag from taking one name.
