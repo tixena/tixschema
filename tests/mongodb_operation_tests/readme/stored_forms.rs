@@ -36,7 +36,7 @@ pub struct Host {
 #[test]
 fn the_readme_shows_the_two_stored_forms_of_an_address() {
     assert_declared_and_documented(include_str!("stored_forms.rs"), DECLARED_HOST);
-    let host = HostDraft {
+    let host: Host = HostDraft {
         address: IpAddr::V4(Ipv4Addr::LOCALHOST),
     }
     .into();
