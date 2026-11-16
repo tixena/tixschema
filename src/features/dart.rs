@@ -704,6 +704,7 @@ fn refusal() -> String {
 
 /// The refusal classes a judged read of `def` throws where the value it reads, or one it holds,
 /// breaks a rule: the class of each type it names, declared wherever the type is.
+#[cfg(feature = "serde")]
 pub fn dart_refusals_of(def: &FieldDef, written: &[String]) -> Vec<String> {
     refusals::reached(def, written, &|name| {
         refusals::refusal_name(&lookup_dart_name(name).unwrap_or_else(|| name.to_owned()))

@@ -28,7 +28,7 @@ regex = "1.10"
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
 regex-syntax = "0.8"
 # Hashes the files of a skills folder at expansion; nothing of it reaches a consumer at run time.
-sha2 = "0.10.1"
+sha2 = { version = "0.10.1", optional = true }
 
 [dev-dependencies]
 mongodb = ">=3.7"
@@ -135,6 +135,7 @@ mongo = ["mongodb", "chrono", "indexmap", "arky"]
 # Serde integration for attribute parsing and field renaming. The dev-dependency's feature it turns
 # on is stripped from the published manifest.
 serde = [
+    "dep:sha2",
     "sealed_parcel_desk/service",
     "kotlin_members_apart/bounded_brand",
     "no_serde_json_apart/reads",

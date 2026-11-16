@@ -27,13 +27,13 @@ use syn::{Attribute, DeriveInput, Field, Fields, ItemEnum, ItemStruct, LitStr, T
 
 use super::preprocess::{self, Named};
 #[cfg(feature = "serde")]
+use super::wrapped_argument;
+#[cfg(feature = "serde")]
 use super::{
     ConstraintLeaf, ConstraintWrap, HeldEnd, constrained_shape, helper_name_stem, list_hook_header,
     map_value_argument, needs_injected_default, reads_through,
 };
-use super::{
-    prefixed_guard_message, refusal_from_violations, sole_type_argument, wrapped_argument,
-};
+use super::{prefixed_guard_message, refusal_from_violations, sole_type_argument};
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "serde")]
 use crate::features::serde::has_serde_read_hook;

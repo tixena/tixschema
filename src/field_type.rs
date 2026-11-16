@@ -2790,7 +2790,7 @@ impl FieldDef {
 
     /// [`Self::zod_type`] of a message, whose optional type is refused by the issues of the
     /// type it holds, as serde names a value inside an `Option` by the path of the value.
-    #[cfg(feature = "zod")]
+    #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
     pub fn zod_message_type(&self) -> String {
         self.zod_type_with(true)
     }

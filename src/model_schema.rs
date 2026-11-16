@@ -21675,8 +21675,6 @@ fn process_field(
     Option<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
 ) {
-    let mut injected_attrs: Vec<syn::Attribute> = Vec::new();
-
     #[cfg(feature = "serde")]
     let serde_field_meta = parse_serde_field_attributes(&field.attrs);
     #[cfg(feature = "serde")]
@@ -21777,7 +21775,9 @@ fn process_field(
     let body = then_checks(declared, own_checks).map(|checked| under_member_cfgs(field, checked));
 
     #[cfg(feature = "serde")]
-    injected_attrs.extend(as_number_serde_hooks(field, &field_def));
+    let injected_attrs = as_number_serde_hooks(field, &field_def);
+    #[cfg(not(feature = "serde"))]
+    let injected_attrs: Vec<syn::Attribute> = Vec::new();
 
     deferred_attrs.push(injected_attrs);
 
