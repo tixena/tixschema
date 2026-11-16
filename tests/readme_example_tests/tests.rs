@@ -257,7 +257,7 @@ fn test_the_optional_fields_section_shows_the_slot_tuple_it_claims() {
     #[cfg(feature = "zod")]
     {
         let zod = Pair::zod_schema();
-        assert!(zod.contains("= z.tuple([z.string()]);"), "Got: {zod}");
+        assert!(zod.contains("= z.tuple([z.string()]).meta("), "Got: {zod}");
         assert!(readme().contains("`z.tuple([z.string()])` in Zod"));
     }
 }
@@ -528,6 +528,11 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
             "  name: z.string(),",
             "  email: z.string(),",
             "  age: z.number().int().min(0).max(4294967295),",
+            "}).meta({ id: \"UserDraft\" });",
+            "export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;",
+            "export const User$Schema = UserDraft$Schema.readonly().brand<\"User\">().meta({",
+            "  ...(UserDraft$Schema.meta() ?? {}),",
+            "  id: \"User\",",
             "  examples: [{\"age\":25,\"email\":\"john@example.com\",\"name\":\"John Doe\"}]",
         ],
     );

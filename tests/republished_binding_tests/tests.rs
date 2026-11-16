@@ -330,7 +330,7 @@ fn an_alias_of_an_alias_of_a_brand_forwards_the_annotation() {
 fn a_one_slot_tuple_struct_reads_its_annotation_off_the_binding_it_republishes() {
     let zod = SlotWrapper::zod_schema();
     assert!(
-        zod.contains("const SlotWrapperDraft$RawSchema = CorrelationId$Schema;"),
+        zod.contains("const SlotWrapperDraft$RawSchema = CorrelationId$Schema.meta({ id: \"SlotWrapperDraft\" });"),
         "got: {zod}"
     );
     assert!(
@@ -349,7 +349,7 @@ fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     let zod = BoundBrandSlot::zod_schema();
     assert!(
         zod.contains(
-            "const BoundBrandSlotDraft$RawSchema = GenericBrand$SchemaFactory(z.string());"
+            "const BoundBrandSlotDraft$RawSchema = GenericBrand$SchemaFactory(z.string()).meta({ id: \"BoundBrandSlotDraft\" });"
         ),
         "got: {zod}"
     );
@@ -369,7 +369,11 @@ fn an_example_on_a_republished_binding_lands_on_the_value_the_annotation_reads()
     let zod = ExampledSlot::zod_schema();
     assert!(
         zod.contains(
-            "export const ExampledSlot$Schema = ExampledSlotDraft$Schema.readonly().brand<\"ExampledSlot\">().meta(ExampledSlotDraft$Schema.meta() ?? {}).meta({\n  examples: [\"corr-1\"]\n});"
+            "export const ExampledSlot$Schema = ExampledSlotDraft$Schema.readonly().brand<\"ExampledSlot\">().meta({
+  ...(ExampledSlotDraft$Schema.meta() ?? {}),
+  id: \"ExampledSlot\",
+  examples: [\"corr-1\"]
+});"
         ),
         "got: {zod}"
     );
@@ -426,19 +430,35 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     for (zod, line) in [
         (
             HoldsBrands::zod_schema(),
-            "export const HoldsBrands$Schema = HoldsBrandsDraft$Schema.readonly().brand<\"HoldsBrands\">().meta(HoldsBrandsDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+            "export const HoldsBrands$Schema = HoldsBrandsDraft$Schema.readonly().brand<\"HoldsBrands\">().meta({
+  ...(HoldsBrandsDraft$Schema.meta() ?? {}),
+  id: \"HoldsBrands\",
+  examples: []
+});",
         ),
         (
             BrandOrNumber::zod_schema(),
-            "export const BrandOrNumber$Schema = BrandOrNumberDraft$Schema.brand<\"BrandOrNumber\">().meta(BrandOrNumberDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+            "export const BrandOrNumber$Schema = BrandOrNumberDraft$Schema.brand<\"BrandOrNumber\">().meta({
+  ...(BrandOrNumberDraft$Schema.meta() ?? {}),
+  id: \"BrandOrNumber\",
+  examples: []
+});",
         ),
         (
             SoleBrand::zod_schema(),
-            "export const SoleBrand$Schema = SoleBrandDraft$Schema.brand<\"SoleBrand\">().meta(SoleBrandDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+            "export const SoleBrand$Schema = SoleBrandDraft$Schema.brand<\"SoleBrand\">().meta({
+  ...(SoleBrandDraft$Schema.meta() ?? {}),
+  id: \"SoleBrand\",
+  examples: []
+});",
         ),
         (
             FlattenOnly::zod_schema(),
-            "export const FlattenOnly$Schema = FlattenOnlyDraft$Schema.readonly().brand<\"FlattenOnly\">().meta(FlattenOnlyDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+            "export const FlattenOnly$Schema = FlattenOnlyDraft$Schema.readonly().brand<\"FlattenOnly\">().meta({
+  ...(FlattenOnlyDraft$Schema.meta() ?? {}),
+  id: \"FlattenOnly\",
+  examples: []
+});",
         ),
     ] {
         assert!(zod.contains(line), "want: {line}\ngot: {zod}");

@@ -184,11 +184,12 @@ export type VoidInvoiceRequest = {
 const VoidInvoiceRequest$RawSchema = z.strictObject({
   customerId: z.string(),
   invoiceId: z.string(),
-});
-
-export const VoidInvoiceRequest$Schema: ZodType<VoidInvoiceRequest> = VoidInvoiceRequest$RawSchema.meta({
+}).meta({
+  id: "VoidInvoiceRequest",
   examples: []
 });
+
+export const VoidInvoiceRequest$Schema: ZodType<VoidInvoiceRequest> = VoidInvoiceRequest$RawSchema;
 ```
 
 `sweep` takes none, so its message is empty rather than absent. An operation that later needs a field gains one here, instead of changing from carrying no payload to carrying one and breaking every caller:
@@ -197,11 +198,12 @@ export const VoidInvoiceRequest$Schema: ZodType<VoidInvoiceRequest> = VoidInvoic
 export type SweepRequest = Record<string, never>;
 
 const SweepRequest$RawSchema = z.strictObject({
-});
-
-export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema.meta({
+}).meta({
+  id: "SweepRequest",
   examples: []
 });
+
+export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema;
 ```
 
 `get_open_balance` takes one argument, so nothing is declared for it at all -- `OpenBalanceRequest` is the message, exactly as you wrote it.

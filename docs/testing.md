@@ -39,12 +39,16 @@ pub struct User {
 
 ```typescript
 // no block
-export const Plain$Schema = PlainDraft$Schema.readonly().brand<"Plain">().meta(PlainDraft$Schema.meta() ?? {}).meta({
+export const Plain$Schema = PlainDraft$Schema.readonly().brand<"Plain">().meta({
+  ...(PlainDraft$Schema.meta() ?? {}),
+  id: "Plain",
   examples: []
 });
 
 // two blocks
-export const SeveralExamples$Schema = SeveralExamplesDraft$Schema.readonly().brand<"SeveralExamples">().meta(SeveralExamplesDraft$Schema.meta() ?? {}).meta({
+export const SeveralExamples$Schema = SeveralExamplesDraft$Schema.readonly().brand<"SeveralExamples">().meta({
+  ...(SeveralExamplesDraft$Schema.meta() ?? {}),
+  id: "SeveralExamples",
   examples: [{"value":1},{"value":2}]
 });
 ```

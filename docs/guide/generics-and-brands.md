@@ -396,6 +396,7 @@ export function safeDecodeUserId<IdType>(
 
 export type CorrelationId = string & $brand<"CorrelationId">;
 const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
+  id: "CorrelationId",
   description: "CorrelationId",
   examples: [],
 });
@@ -633,6 +634,7 @@ Generated Zod:
 
 ```typescript
 const SlugId$RawSchema = z.string().min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).max(50, { error: (issue) => `too long: maximum length is 50, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-z0-9_]+$/, { error: "does not match pattern '^[a-z0-9_]+$'" })).brand<"SlugId">().meta({
+  id: "SlugId",
   description: "SlugId",
   examples: [],
 });

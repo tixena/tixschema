@@ -81,6 +81,11 @@ mod unwrapped;
 #[path = "decoded_models.rs"]
 mod decoded;
 
+/// The models whose Zod schemas carry their names as the `id` of their meta, and those that carry
+/// none of their own.
+#[path = "identified_models.rs"]
+mod identified;
+
 /// Aliases of a map whose values are a model, one of them declared above the enum that holds it.
 #[path = "map_alias_models.rs"]
 mod map_aliases;
@@ -1406,7 +1411,7 @@ const EXAMPLES: &str = "{\"plain\":[],\"exampled\":[{\"value\":1},{\"value\":2}]
                         \"x\"},{\"id\":\"y\"}],\"exampledDefault\":[{\"id\":\"x\"},{\"id\":\"y\"}],\
                         \"slot\":[],\"alias\":[],\"exampledSlot\":[\"a\",\"b\"],\"exampledAlias\":[\"a\",\"b\"],\
                         \"writtenAlias\":[7],\"unwrittenAlias\":[],\"genericAlias\":[{\"id\":\"x\"},{\"id\":\"y\"}],\
-                        \"genericAliasDefault\":[{\"id\":\"x\"},{\"id\":\"y\"}],\"keys\":[\"examples\"]}";
+                        \"genericAliasDefault\":[{\"id\":\"x\"},{\"id\":\"y\"}],\"keys\":[\"id\",\"examples\"]}";
 
 /// Loads the compiled bundle and reads the examples each schema's `.meta` holds.
 const EXAMPLES_DRIVER: &str = r#"import { z } from "zod";
@@ -1754,6 +1759,34 @@ console.log(JSON.stringify([
   made.DecodedPayment.Pending === made.DecodedPayment.Pending,
 ]));
 "#;
+
+/// Reads the `id` of each schema of [`identified`], and converts every schema the bundle exports,
+/// and a valid type beside its draft, with `z.toJSONSchema`.
+const IDENTIFIED_DRIVER: &str = r#"import * as zod from "zod";
+import * as made from "./lib/index.js";
+const id = (schema) => schema.meta()?.id ?? null;
+const converted = (schema) => { try { zod.toJSONSchema(schema, { unrepresentable: "any" }); return null; } catch (error) { return error.message; } };
+const refused = Object.entries(made)
+  .filter(([name, value]) => name.endsWith("$Schema") && typeof value?.safeParse === "function")
+  .map(([name, schema]) => [name, converted(schema)])
+  .filter(([, message]) => message !== null);
+console.log(JSON.stringify([
+  [id(made.IdentifiedDepthDraft$Schema), id(made.IdentifiedDepth$Schema)],
+  made.IdentifiedDepth$Schema.meta()?.examples,
+  [id(made.IdentifiedFathomDraft$Schema), id(made.IdentifiedFathom$Schema), id(made.IdentifiedSounding$Schema)],
+  [id(made.IdentifiedSignalDraft$Schema), id(made.IdentifiedSignal$Schema)],
+  id(made.IdentifiedMark$Schema),
+  [id(made.IdentifiedCode$Schema), made.IdentifiedCode$Schema.meta()?.description, made.IdentifiedCode$Schema.meta()?.examples],
+  id(made.IdentifiedTone$Schema),
+  [id(made.IdentifiedPage$SchemaFactory(zod.string())), id(made.IdentifiedPageDraft$SchemaFactory(zod.string())), id(made.IdentifiedPage$SchemaDefault)],
+  [made.IdentifiedFloor$Schema === made.IdentifiedDepth$Schema, id(made.IdentifiedSoundings$Schema)],
+  refused,
+  converted(zod.object({ sent: made.IdentifiedDepth$Schema, held: made.IdentifiedDepthDraft$Schema })),
+]));
+"#;
+
+/// What [`IDENTIFIED_DRIVER`] prints.
+const IDENTIFIED_READ: &str = r#"[["IdentifiedDepthDraft","IdentifiedDepth"],[{"fathoms":3}],["IdentifiedFathomDraft","IdentifiedFathom","IdentifiedFathom"],["IdentifiedSignalDraft","IdentifiedSignal"],"IdentifiedMark",["IdentifiedCode","A harbour code.",["NYC"]],"IdentifiedTone",[null,null,null],[true,null],[],null]"#;
 
 /// What [`DECODED_DRIVER`] prints.
 const DECODED_READ: &str = r#"[["parcel","label"],"bigint",true,true,false,"too short: minimum length is 1, got 0",false,true]"#;
@@ -4097,6 +4130,22 @@ fn type_check_an_unwrapped_valid_type_and_a_flattened_alias_compile_and_parse() 
 /// The bundle of `decoded`.
 fn decoded_bundle() -> String {
     [PREAMBLE.to_owned(), decoded::decoded_texts().join("\n\n")].join("\n\n")
+}
+
+#[test]
+fn type_check_a_schema_carries_its_name_as_its_id_and_a_generic_one_carries_none() {
+    let source = [
+        PREAMBLE.to_owned(),
+        identified::identified_texts().join("\n\n"),
+    ]
+    .join("\n\n");
+    let Some((printed, failed)) = loaded_from("identified", &source, IDENTIFIED_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, IDENTIFIED_READ,
+        "the bundle does not load and read under node:\n{failed}"
+    );
 }
 
 #[test]

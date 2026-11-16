@@ -57,11 +57,13 @@ Generated Zod:
 const TreeNodeDraft$RawSchema = z.strictObject({
   val: z.string(),
   get children() { return z.array(TreeNode$Schema); },
-});
+}).meta({ id: "TreeNodeDraft" });
 
 export const TreeNodeDraft$Schema: ZodType<TreeNodeDraft> = TreeNodeDraft$RawSchema;
 
-export const TreeNode$Schema = TreeNodeDraft$Schema.readonly().brand<"TreeNode">().meta(TreeNodeDraft$Schema.meta() ?? {}).meta({
+export const TreeNode$Schema = TreeNodeDraft$Schema.readonly().brand<"TreeNode">().meta({
+  ...(TreeNodeDraft$Schema.meta() ?? {}),
+  id: "TreeNode",
   examples: []
 });
 ```
@@ -118,7 +120,7 @@ pub struct NestsInASlot(pub String, pub Vec<Self>);
 ```
 
 ```typescript
-const NestsInASlotDraft$RawSchema = z.tuple([z.string(), z.lazy(() => z.array(NestsInASlot$Schema))]);
+const NestsInASlotDraft$RawSchema = z.tuple([z.string(), z.lazy(() => z.array(NestsInASlot$Schema))]).meta({ id: "NestsInASlotDraft" });
 ```
 
 ### Type Aliases

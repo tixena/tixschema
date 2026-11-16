@@ -40,6 +40,7 @@ How the macros turn a declaration into each surface, the data structures they sh
    - Combines FieldDef trees into complete type/schema strings
    - Handles discriminated unions, generics, nested types
    - Every `zod_schema()` writes `examples` into the schema's `.meta()`: `[]` as text where the type writes no block, `schema_examples()` serialized where it writes one or more
+   - A type that declares no parameter writes its name as the `id` of each schema's `.meta()` (`zod_meta_id`), and its examples join that `.meta()` rather than a second one: `z.toJSONSchema` reads every link of a `.meta()` chain, and Zod carries no `id` from a link into the clone the next `.meta()` makes. `PublishedBinding::identified` is false for an alias, which writes no `id`
 
 6. **Example Extraction** ([utils.rs](../src/utils.rs))
    - `extract_examples_tokens()`: Parses every ` ```rust example` code fence from doc comments

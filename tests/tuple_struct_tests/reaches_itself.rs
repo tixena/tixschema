@@ -36,7 +36,7 @@ pub struct NestsUnderAParameter<IdType>(pub IdType, pub Vec<Self>);
 #[test]
 fn a_slot_reaching_the_struct_is_read_behind_a_lazy() {
     let written = "const NestsInASlotDraft$RawSchema = z.tuple([z.string(), z.lazy(() => \
-                   z.array(NestsInASlot$Schema))]);";
+                   z.array(NestsInASlot$Schema))]).meta({ id: \"NestsInASlotDraft\" });";
     let zod = NestsInASlot::zod_schema();
     assert!(zod.contains(written), "got: {zod}");
     let readme = include_str!("../../docs/guide/nested-recursive-and-aliased-types.md");
@@ -54,7 +54,7 @@ fn a_slot_reaching_the_struct_is_read_behind_a_lazy() {
 fn a_lone_slot_reaching_the_struct_is_read_behind_a_lazy() {
     let zod = NestsAlone::zod_schema();
     assert!(
-        zod.contains("const NestsAloneDraft$RawSchema = z.lazy(() => z.array(NestsAlone$Schema));"),
+        zod.contains("const NestsAloneDraft$RawSchema = z.lazy(() => z.array(NestsAlone$Schema)).meta({ id: \"NestsAloneDraft\" });"),
         "got: {zod}"
     );
 }
@@ -65,7 +65,7 @@ fn a_slot_reaching_a_type_declared_below_is_read_behind_a_lazy() {
     assert!(
         zod.contains(
             "const AheadOfItsSlotDraft$RawSchema = z.tuple([z.lazy(() => DeclaredBelow$Schema), \
-             z.number().int().min(0).max(4294967295)]);"
+             z.number().int().min(0).max(4294967295)]).meta({ id: \"AheadOfItsSlotDraft\" });"
         ),
         "got: {zod}"
     );

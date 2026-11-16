@@ -1624,6 +1624,15 @@ enum DraftAdmits {
     Null,
 }
 
+/// Whether a type's schemas carry its name as the `id` of their `.meta()`: an alias names another
+/// type's, and carries none of its own.
+#[cfg(feature = "zod")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SchemaId {
+    Named,
+    Unnamed,
+}
+
 /// What [`zod_published_binding`] needs beside the item's own name, parameters and expression.
 #[cfg(feature = "zod")]
 struct PublishedBinding<'binding> {
@@ -1636,6 +1645,7 @@ struct PublishedBinding<'binding> {
     drafted: bool,
     /// Whether the valid type's schema freezes what it parses.
     frozen: bool,
+    identified: SchemaId,
     /// The functions `preprocess` names on the type, each written around its own expression.
     preprocess: &'binding [FunctionName],
     /// Whether the published expression *is* a sibling's own binding — see
@@ -3516,6 +3526,7 @@ fn build_struct_delegate_items(
             item_name,
             parameters,
             &examples_json,
+            SchemaId::Named,
         )
     });
 
@@ -10429,6 +10440,7 @@ fn tuple_struct_schema_impl_items(
             republished: tuple_struct_republishes_slot(&slots.shape),
             drafted: valid_type::has_draft(),
             frozen: valid_type::freezes(),
+            identified: SchemaId::Named,
             admits: if tuple_struct_null(&slots.shape) == NullAdmitted::Always {
                 DraftAdmits::Null
             } else {
@@ -11659,11 +11671,12 @@ fn branded_zod_expression(
         &args.preprocess,
     );
     let brand = zod_brand_call(item_name);
-    let described = format!(".meta({{\n  description: \"{plain_description}\",\n}})");
     if parameters.is_empty() {
-        format!("{value}{brand}{described}")
+        format!(
+            "{value}{brand}.meta({{\n  id: \"{item_name}\",\n  description: \"{plain_description}\",\n}})"
+        )
     } else {
-        format!("{value}{described}{brand}")
+        format!("{value}.meta({{\n  description: \"{plain_description}\",\n}}){brand}")
     }
 }
 
@@ -11769,8 +11782,8 @@ fn build_branded_delegate_items(
                 let examples_json = #examples_json;
                 // The one `.meta({` a brand writes closes on its own line, and so does each check
                 // written ahead of it, so the anchor is the first such close after the
-                // description.
-                let described = base_schema.find(".meta({\n  description: ").unwrap_or_default();
+                // description, which follows the `id` where the brand declares no parameter.
+                let described = base_schema.find("\n  description: ").unwrap_or_default();
                 let closed = base_schema[described..].find("\n})").map(|close| described + close);
                 if let ::core::option::Option::Some(pos) = closed {
                     let mut result = base_schema[..pos].to_string();
@@ -23750,6 +23763,14 @@ fn tuple_struct_shows_sibling_examples(shape: &TupleStructShape) -> bool {
     }
 }
 
+/// The `.meta()` that names a schema of a type that declares no parameter. The examples join it
+/// rather than follow it: Zod carries a parent's meta into the clone a `.meta()` makes, all but its
+/// `id`.
+#[cfg(feature = "zod")]
+fn zod_meta_id(name: &str) -> String {
+    format!(".meta({{ id: \"{name}\" }})")
+}
+
 /// The binding a type that declares no parameter publishes: the raw schema, then the exported
 /// `const` annotated with the type it validates. The annotation is the only place a TypeScript
 /// type is named, so a build without `typescript` writes the same value under a bare `const`.
@@ -23860,7 +23881,7 @@ fn zod_valid_binding(
         #[cfg(not(feature = "typescript"))]
         let decoders = String::new();
         return format!(
-            "export const {item_name}$Schema = {sealed}.meta({draft_name}$Schema.meta() ?? {{}});\
+            "export const {item_name}$Schema = {sealed}.meta({{\n  ...({draft_name}$Schema.meta() ?? {{}}),\n  id: \"{item_name}\",\n}});\
              {reexport}{constants}{decoders}"
         );
     }
@@ -24030,10 +24051,13 @@ fn zod_published_unit(
     // type with no parameter, and each schema its builder builds for a type with one. A
     // `preprocess` is written around the checked expression: it corrects what the checks judge.
     if parameters.is_empty() {
-        let checked = zod_preprocess_wrap(
+        let mut checked = zod_preprocess_wrap(
             zod_check_wrap(expression.to_owned(), published.checks),
             published.preprocess,
         );
+        if published.identified == SchemaId::Named {
+            checked.push_str(&zod_meta_id(item_name));
+        }
         zod_const_block(
             item_name,
             preamble,
@@ -24125,8 +24149,9 @@ fn zod_schema_with_examples(
     item_name: &str,
     parameters: &[String],
     examples_json: &proc_macro2::TokenStream,
+    identified: SchemaId,
 ) -> proc_macro2::TokenStream {
-    let injected = zod_examples_injection(item_name, parameters);
+    let injected = zod_examples_injection(item_name, parameters, identified);
     quote! {
         pub fn zod_schema() -> ::std::string::String {
             let base_schema = #base;
@@ -24140,13 +24165,17 @@ fn zod_schema_with_examples(
 /// The expression a `zod_schema()` builds its schema-with-examples from, read off the same decision
 /// [`zod_published_binding`] takes: where the examples go depends on what the item published.
 #[cfg(feature = "zod")]
-fn zod_examples_injection(item_name: &str, parameters: &[String]) -> proc_macro2::TokenStream {
+fn zod_examples_injection(
+    item_name: &str,
+    parameters: &[String],
+    identified: SchemaId,
+) -> proc_macro2::TokenStream {
     if parameters.is_empty() {
         // The schema's own statement ends at its first `;`, annotated or not: the constants and
         // the decode functions follow it.
         let plain = format!("export const {item_name}$Schema = ");
         let annotated = format!("export const {item_name}$Schema: ");
-        return quote! {{
+        let appended = quote! {{
             let examples_part = format!(".meta({{\n  examples: {}\n}})", examples_json);
             let ends = [#plain, #annotated]
                 .into_iter()
@@ -24163,6 +24192,23 @@ fn zod_examples_injection(item_name: &str, parameters: &[String]) -> proc_macro2
                 format!("{}{}", defined, examples_part)
             }
         }};
+        if identified == SchemaId::Unnamed {
+            return appended;
+        }
+        // The examples join the `.meta()` that holds the `id`: Zod's JSON Schema reads each link of
+        // a statement's `.meta()` chain, and two links that carry one `id` are two schemas to it.
+        // A valid type's `id` closes its copy of the draft's meta, and any other type's stands alone.
+        let closing = format!("\n  id: \"{item_name}\",\n}})");
+        let closing_merged = format!("\n  id: \"{item_name}\",\n  examples: {{}}\n}}}})");
+        let alone = zod_meta_id(item_name);
+        let alone_merged = format!(".meta({{{{\n  id: \"{item_name}\",\n  examples: {{}}\n}}}})");
+        return quote! {
+            if defined.contains(#closing) {
+                defined.replacen(#closing, &format!(#closing_merged, examples_json), 1)
+            } else if defined.contains(#alone) {
+                defined.replacen(#alone, &format!(#alone_merged, examples_json), 1)
+            } else #appended
+        };
     }
     let binding = zod_factory_memoized_binding(item_name, parameters);
     quote! {
@@ -24320,6 +24366,7 @@ fn generate_zod_schema_method(
                 republished: false,
                 drafted: valid_type::has_draft(),
                 frozen: valid_type::freezes(),
+                identified: SchemaId::Named,
                 admits: DraftAdmits::Nothing,
             },
             &preamble,
@@ -24477,6 +24524,7 @@ fn generate_plain_enum_zod_schema_method(
                     preprocess: &[],
                     drafted,
                     frozen: true,
+                    identified: SchemaId::Named,
                     admits: DraftAdmits::Nothing,
                     republished: false,
                 },
@@ -24507,7 +24555,7 @@ fn generate_plain_enum_zod_schema_method(
             };
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}{}{}", #declared, #opened, #read, #checked, #closed, #description, #declared, #declared, #declared, #reexport, #valid, #decoders)
+                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  id: \"{}\",\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}{}{}", #declared, #opened, #read, #checked, #closed, #declared, #description, #declared, #declared, #declared, #reexport, #valid, #decoders)
                 }
             }
         }
@@ -24517,7 +24565,7 @@ fn generate_plain_enum_zod_schema_method(
         {
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("export const {}$Schema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});{}{}", #declared, #opened, #read, #checked, #closed, #description, #reexport, #valid)
+                    format!("export const {}$Schema = {}{}{}{}.meta({{\n  id: \"{}\",\n  description: \"{}\",\n}});{}{}", #declared, #opened, #read, #checked, #closed, #declared, #description, #reexport, #valid)
                 }
             }
         }
@@ -24651,6 +24699,7 @@ fn generate_enum_zod_schema_method_after(
                 republished: false,
                 drafted: valid_type::has_draft(),
                 frozen: valid_type::freezes(),
+                identified: SchemaId::Named,
                 admits: if admits_null {
                     DraftAdmits::Null
                 } else {
@@ -24853,6 +24902,7 @@ fn generate_alias_zod_method(
             republished,
             drafted: false,
             frozen: false,
+            identified: SchemaId::Unnamed,
             admits: DraftAdmits::Nothing,
         },
         "",
@@ -24872,6 +24922,7 @@ fn generate_alias_zod_method(
             export_name,
             &parameters,
             &zod_examples_json(has_example),
+            SchemaId::Unnamed,
         )
     }
 }
