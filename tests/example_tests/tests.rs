@@ -210,8 +210,7 @@ fn every_example_block_reaches_the_schema() {
         serde_json::json!({ "value": 1_u32 })
     );
     assert!(
-        SeveralExamples::zod_schema()
-            .contains(".meta({\n  examples: [{\"value\":1},{\"value\":2}]\n})"),
+        SeveralExamples::zod_schema().contains("\n  examples: [{\"value\":1},{\"value\":2}]\n})"),
         "{}",
         SeveralExamples::zod_schema()
     );
@@ -663,14 +662,15 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     #[cfg(feature = "typescript")]
     assert!(
         zod.contains(
-            "export const Kept$Schema = KeptDraft$Schema.readonly().brand<\"Kept\">().meta(KeptDraft$Schema.meta() ?? {}).meta({\n  examples: \
+            "export const Kept$Schema = KeptDraft$Schema.readonly().brand<\"Kept\">().meta({\n  \
+             ...(KeptDraft$Schema.meta() ?? {}),\n  id: \"Kept\",\n  examples: \
              [{\"value\":\"x\"}]\n});"
         ),
         "Got: {zod}"
     );
     #[cfg(not(feature = "typescript"))]
     assert!(
-        zod.contains(".meta({\n  examples: [{\"value\":\"x\"}]\n});"),
+        zod.contains("\n  id: \"Kept\",\n  examples: [{\"value\":\"x\"}]\n});"),
         "Got: {zod}"
     );
 }
@@ -719,7 +719,7 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
 /// constants it makes and its decode functions may follow it.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn ends_in_examples(zod: &str, examples: &str) -> bool {
-    let closing = format!(".meta({{\n  examples: {examples}\n}});");
+    let closing = format!("\n  examples: {examples}\n}});");
     zod.rfind(&closing)
         .is_some_and(|at| !zod[at + closing.len()..].contains("$Schema = "))
 }
@@ -1051,14 +1051,14 @@ fn a_plain_enum_holds_its_examples_inside_its_own_meta() {
     assert_eq!(Level::schema_example(), serde_json::json!("Low"));
     let level = Level::zod_schema();
     assert!(
-        level.contains(".meta({\n  description: \"A level\",\n  examples: [\"Low\",\"High\"],\n})"),
+        level.contains(".meta({\n  id: \"Level\",\n  description: \"A level\",\n  examples: [\"Low\",\"High\"],\n})"),
         "Got: {level}"
     );
     assert_eq!(level.matches(".meta({").count(), 1, "Got: {level}");
 
     let grade = Grade::zod_schema();
     assert!(
-        grade.contains(".meta({\n  description: \"A level with no example\",\n  examples: [],\n})"),
+        grade.contains(".meta({\n  id: \"Grade\",\n  description: \"A level with no example\",\n  examples: [],\n})"),
         "Got: {grade}"
     );
     assert_eq!(grade.matches(".meta({").count(), 1, "Got: {grade}");
@@ -1151,7 +1151,7 @@ fn a_brand_holds_its_examples_inside_its_own_meta() {
     assert_eq!(Token::schema_example(), serde_json::json!("a"));
     let token = Token::zod_schema();
     assert!(
-        token.contains(".meta({\n  description: \"A token\",\n  examples: [\"a\",\"b\"],\n});"),
+        token.contains(".meta({\n  id: \"Token\",\n  description: \"A token\",\n  examples: [\"a\",\"b\"],\n});"),
         "Got: {token}"
     );
     assert_eq!(token.matches(".meta(").count(), 1, "Got: {token}");
@@ -1159,7 +1159,7 @@ fn a_brand_holds_its_examples_inside_its_own_meta() {
     let ticket = Ticket::zod_schema();
     assert!(
         ticket
-            .contains(".meta({\n  description: \"A token with no example\",\n  examples: [],\n});"),
+            .contains(".meta({\n  id: \"Ticket\",\n  description: \"A token with no example\",\n  examples: [],\n});"),
         "Got: {ticket}"
     );
     assert_eq!(ticket.matches(".meta(").count(), 1, "Got: {ticket}");

@@ -160,7 +160,11 @@ fn test_zod_with_typescript_feature_includes_type_annotations() {
     );
     assert!(
         zod.contains(
-            "export const BasicStruct$Schema = BasicStructDraft$Schema.readonly().brand<\"BasicStruct\">().meta(BasicStructDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"
+            "export const BasicStruct$Schema = BasicStructDraft$Schema.readonly().brand<\"BasicStruct\">().meta({
+  ...(BasicStructDraft$Schema.meta() ?? {}),
+  id: \"BasicStruct\",
+  examples: []
+});"
         ),
         "Should export typed schema when typescript feature enabled. Got: {zod}"
     );

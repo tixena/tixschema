@@ -84,11 +84,13 @@ const UserDraft$RawSchema = z.strictObject({
   email: z.string(),
   age: z.number().int().min(0).max(4294967295),
   is_active: z.boolean(),
-});
+}).meta({ id: "UserDraft" });
 
 export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
 
-export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta(UserDraft$Schema.meta() ?? {}).meta({
+export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta({
+  ...(UserDraft$Schema.meta() ?? {}),
+  id: "User",
   examples: []
 });
 ```

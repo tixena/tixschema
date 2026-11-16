@@ -83,15 +83,17 @@ const fn trim(payload: serde_json::Value) -> serde_json::Value {
 }
 
 /// The wire criterion the newtype surfaces are read against.
-/// Whether `zod` binds `expression` whole: to the raw `const` beside TypeScript, and to the
-/// exported one, which holds the examples, without it.
+/// Whether `zod` binds `expression` whole, followed by the `.meta()` that names the draft: to the
+/// raw `const` beside TypeScript, and to the exported one without it.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn binds(zod: &str, expression: &str) -> bool {
-    #[cfg(feature = "typescript")]
-    let statement = format!("= {expression};");
-    #[cfg(not(feature = "typescript"))]
-    let statement = format!("= {expression}.meta({{\n  examples: []\n}});");
-    zod.contains(&statement)
+    let bound = format!("= {expression}");
+    zod.match_indices(&bound).any(|(at, _)| {
+        zod[at + bound.len()..]
+            .strip_prefix(".meta({ id: \"")
+            .and_then(|named| named.split_once("\" });"))
+            .is_some_and(|(name, _)| name.chars().all(char::is_alphanumeric))
+    })
 }
 
 #[test]
@@ -199,7 +201,11 @@ fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     let zod = Pair::zod_schema();
     assert!(
         zod.contains(
-            "export const Pair$Schema = PairDraft$Schema.readonly().brand<\"Pair\">().meta(PairDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});"
+            "export const Pair$Schema = PairDraft$Schema.readonly().brand<\"Pair\">().meta({
+  ...(PairDraft$Schema.meta() ?? {}),
+  id: \"Pair\",
+  examples: []
+});"
         ),
         "Got: {zod}"
     );
@@ -490,7 +496,7 @@ fn test_every_key_written_on_a_plain_slot_reaches_zod() {
     for (zod, binding) in [
         (
             PreprocessedSlot::zod_schema(),
-            "const PreprocessedSlotDraft$RawSchema = z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(trim, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.string())));",
+            "const PreprocessedSlotDraft$RawSchema = z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(trim, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.string()))).meta({ id: \"PreprocessedSlotDraft\" });",
         ),
         (
             LiteralSlot::zod_schema(),
@@ -499,11 +505,11 @@ fn test_every_key_written_on_a_plain_slot_reaches_zod() {
         ),
         (
             NullableSlot::zod_schema(),
-            "const NullableSlotDraft$RawSchema = z.nullable(z.string());",
+            "const NullableSlotDraft$RawSchema = z.nullable(z.string()).meta({ id: \"NullableSlotDraft\" });",
         ),
         (
             SubstitutedSlot::zod_schema(),
-            "const SubstitutedSlotDraft$RawSchema = z.string();",
+            "const SubstitutedSlotDraft$RawSchema = z.string().meta({ id: \"SubstitutedSlotDraft\" });",
         ),
     ] {
         assert_eq!(zod.lines().next(), Some(binding), "Got:\n{zod}");

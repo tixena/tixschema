@@ -39,6 +39,7 @@ With `zod` + `typescript` features:
 ```typescript
 export type CorrelationId = string & $brand<"CorrelationId">;
 const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
+  id: "CorrelationId",
   description: "CorrelationId",
   examples: [],
 });

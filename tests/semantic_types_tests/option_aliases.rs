@@ -147,11 +147,13 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
         (Handlead::zod_schema(), format!("listed: z.array({held}),")),
         (
             Reckoned::zod_schema(),
-            format!("const ReckonedDraft$RawSchema = z.tuple([{held}, {COUNT}]);"),
+            format!(
+                "const ReckonedDraft$RawSchema = z.tuple([{held}, {COUNT}]).meta({{ id: \"ReckonedDraft\" }});"
+            ),
         ),
         (
             Deepsea::zod_schema(),
-            format!("const DeepseaDraft$RawSchema = {held};"),
+            format!("const DeepseaDraft$RawSchema = {held}.meta({{ id: \"DeepseaDraft\" }});"),
         ),
         (Sinker::zod_schema(), format!("\"Depth\": {held},")),
         (

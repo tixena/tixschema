@@ -131,7 +131,7 @@ fn no_surface_leaves_a_blank_line_before_the_brace_that_closes_an_object() {
 #[cfg(feature = "zod")]
 fn the_zod_object_closes_straight_after_its_last_member() {
     let zod = Member::zod_schema();
-    assert!(zod.contains("  plain: z.string(),\n});"), "Got: {zod}");
+    assert!(zod.contains("  plain: z.string(),\n}).meta("), "Got: {zod}");
     assert!(!zod.contains(",\n\n})"), "Got: {zod}");
 }
 

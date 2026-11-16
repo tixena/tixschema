@@ -156,11 +156,13 @@ fn the_zod_schema_parses_the_default_of_each_member() {
   gangway: Gangway$Schema.prefault({\"label\":\"main\",\"width\":2}),
   gate: z.string().prefault(\"north\"),
   label: z.string(),
-});
+}).meta({ id: \"WharfDraft\" });
 
 export const WharfDraft$Schema: ZodType<WharfDraft> = WharfDraft$RawSchema;
 
-export const Wharf$Schema = WharfDraft$Schema.readonly().brand<\"Wharf\">().meta(WharfDraft$Schema.meta() ?? {}).meta({
+export const Wharf$Schema = WharfDraft$Schema.readonly().brand<\"Wharf\">().meta({
+  ...(WharfDraft$Schema.meta() ?? {}),
+  id: \"Wharf\",
   examples: []
 });
 
@@ -184,11 +186,13 @@ export function safeDecodeWharf(
   berths: z.number().int().min(0).max(4294967295).prefault(4),
   dock: z.string().prefault(\"east\"),
   moorings: z.array(z.string()).prefault([\"a\",\"b\"]),
-});
+}).meta({ id: \"JettyDraft\" });
 
 export const JettyDraft$Schema: ZodType<JettyDraft> = JettyDraft$RawSchema;
 
-export const Jetty$Schema = JettyDraft$Schema.readonly().brand<\"Jetty\">().meta(JettyDraft$Schema.meta() ?? {}).meta({
+export const Jetty$Schema = JettyDraft$Schema.readonly().brand<\"Jetty\">().meta({
+  ...(JettyDraft$Schema.meta() ?? {}),
+  id: \"Jetty\",
   examples: []
 });
 
@@ -490,11 +494,13 @@ fn a_type_with_no_default_writes_the_zod_text_it_wrote() {
         "const GangwayDraft$RawSchema = z.strictObject({
   label: z.string(),
   width: z.number().int().min(0).max(4294967295),
-});
+}).meta({ id: \"GangwayDraft\" });
 
 export const GangwayDraft$Schema: ZodType<GangwayDraft> = GangwayDraft$RawSchema;
 
-export const Gangway$Schema = GangwayDraft$Schema.readonly().brand<\"Gangway\">().meta(GangwayDraft$Schema.meta() ?? {}).meta({
+export const Gangway$Schema = GangwayDraft$Schema.readonly().brand<\"Gangway\">().meta({
+  ...(GangwayDraft$Schema.meta() ?? {}),
+  id: \"Gangway\",
   examples: []
 });
 

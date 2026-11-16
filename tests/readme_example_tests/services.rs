@@ -367,12 +367,12 @@ fn the_schema_a_declared_message_publishes_is_shown_as_the_generator_writes_it()
         &published,
         "const VoidInvoiceRequest$RawSchema = z.strictObject({\n  \
          customerId: z.string(),\n  \
-         invoiceId: z.string(),\n});",
+         invoiceId: z.string(),\n}).meta({\n  id: \"VoidInvoiceRequest\",\n  examples: []\n});",
     );
     assert_shown(
         &published,
         "export const VoidInvoiceRequest$Schema: ZodType<VoidInvoiceRequest> = \
-         VoidInvoiceRequest$RawSchema.meta({\n  examples: []\n});",
+         VoidInvoiceRequest$RawSchema;",
     );
 }
 
@@ -382,11 +382,11 @@ fn the_schema_an_empty_message_publishes_is_shown_too() {
     let published = BillingServiceSchema::ts_definition();
     assert_shown(
         &published,
-        "const SweepRequest$RawSchema = z.strictObject({\n});",
+        "const SweepRequest$RawSchema = z.strictObject({\n}).meta({\n  id: \"SweepRequest\",\n  examples: []\n});",
     );
     assert_shown(
         &published,
-        "export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema.meta({\n  examples: []\n});",
+        "export const SweepRequest$Schema: ZodType<SweepRequest> = SweepRequest$RawSchema;",
     );
 }
 
