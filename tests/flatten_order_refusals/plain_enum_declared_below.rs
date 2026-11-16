@@ -5,17 +5,17 @@ use tixschema::model_schema;
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Parcel {
-    pub label: String,
+pub struct Casement {
+    pub width: u32,
     #[serde(flatten)]
-    pub colour: Colour,
+    pub weathering: Weathering,
 }
 
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
-pub enum Colour {
-    Red,
-    Blue,
+pub enum Weathering {
+    Sound,
+    Worn,
 }
 
 fn main() {}

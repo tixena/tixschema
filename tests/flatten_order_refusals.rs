@@ -29,4 +29,24 @@ mod tests {
     fn each_case_fails_with_the_errors_written_beside_it() {
         TestCases::new().compile_fail("tests/flatten_order_refusals/*.rs");
     }
+
+    /// The Dart, Swift and Kotlin guides state the refusal of a flattened plain enum declared
+    /// below its holder as the compiler prints it.
+    #[test]
+    fn the_client_guides_show_the_refusal_of_a_flattened_plain_enum_the_case_measures() {
+        let refused = include_str!("flatten_order_refusals/plain_enum_declared_below.stderr")
+            .lines()
+            .next()
+            .unwrap();
+        for (page, written) in [
+            ("dart.md", include_str!("../docs/guide/dart.md")),
+            ("swift.md", include_str!("../docs/guide/swift.md")),
+            ("kotlin.md", include_str!("../docs/guide/kotlin.md")),
+        ] {
+            assert!(
+                written.contains(&format!("the build answers ``{refused}``")),
+                "docs/guide/{page} no longer shows:\n{refused}"
+            );
+        }
+    }
 }
