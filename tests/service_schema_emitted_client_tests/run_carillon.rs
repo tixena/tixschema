@@ -506,6 +506,7 @@ const NUMBER_WRITTEN_KEYS: [(&str, Option<&str>); 9] = [
 
 /// The cases whose refusal an attachment words as the Rust dispatcher does: an integer beyond an
 /// `i64` that a `u64` holds, and a number below an `i64`.
+#[cfg(feature = "dart")]
 const WIDE_INTEGERS: [&str; 2] = ["a number beyond an i64", "a number below an i64"];
 
 /// Each payload of [`CASES`].
@@ -586,6 +587,7 @@ fn assert_attached_as_rust(attached: &Value, apart: &[(&str, Option<&str>)]) {
 
 /// Holds the detail an attachment gave each of [`WIDE_INTEGERS`], less the `prefix` its language
 /// puts before it, to the detail the Rust dispatcher gave.
+#[cfg(feature = "dart")]
 fn assert_wide_integers_worded_as_rust(attached: &Value, prefix: &str) {
     let detail = |reply: &Value| {
         reply["error"]["fault"]["issues"][0]["detail"]
