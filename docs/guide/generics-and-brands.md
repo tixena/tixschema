@@ -378,6 +378,22 @@ const UserId$RawSchemaDefault = UserId$SchemaFactory(z.string());
 
 export const UserId$SchemaDefault: typeof UserId$RawSchemaDefault = UserId$RawSchemaDefault;
 
+/** A valid `UserId` made from `IdType`, which `tsc` checks; throws what the schema refuses. */
+export function decodeUserId<IdType>(
+  idType: ZodType<IdType>,
+  value: IdType,
+): UserId<IdType> {
+  return UserId$SchemaFactory(idType).parse(value);
+}
+
+/** What `decodeUserId` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeUserId<IdType>(
+  idType: ZodType<IdType>,
+  value: IdType,
+) {
+  return UserId$SchemaFactory(idType).safeParse(value);
+}
+
 export type CorrelationId = string & $brand<"CorrelationId">;
 const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
   description: "CorrelationId",
@@ -385,6 +401,20 @@ const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
 });
 
 export const CorrelationId$Schema: typeof CorrelationId$RawSchema = CorrelationId$RawSchema;
+
+/** A valid `CorrelationId` made from `string`, which `tsc` checks; throws what the schema refuses. */
+export function decodeCorrelationId(
+  value: string,
+): CorrelationId {
+  return CorrelationId$Schema.parse(value);
+}
+
+/** What `decodeCorrelationId` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeCorrelationId(
+  value: string,
+) {
+  return CorrelationId$Schema.safeParse(value);
+}
 ```
 
 Generated TypeScript (without `zod` feature):
@@ -752,4 +782,20 @@ export function DocumentId$SchemaFactory(
 const DocumentId$RawSchemaDefault = DocumentId$SchemaFactory(z.string());
 
 export const DocumentId$SchemaDefault: typeof DocumentId$RawSchemaDefault = DocumentId$RawSchemaDefault;
+
+/** A valid `DocumentId` made from `IdType`, which `tsc` checks; throws what the schema refuses. */
+export function decodeDocumentId<IdType>(
+  idType: ZodType<IdType>,
+  value: IdType,
+): DocumentId<IdType> {
+  return DocumentId$SchemaFactory(idType).parse(value);
+}
+
+/** What `decodeDocumentId` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeDocumentId<IdType>(
+  idType: ZodType<IdType>,
+  value: IdType,
+) {
+  return DocumentId$SchemaFactory(idType).safeParse(value);
+}
 ```

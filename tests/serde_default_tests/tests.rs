@@ -162,7 +162,21 @@ export const WharfDraft$Schema: ZodType<WharfDraft> = WharfDraft$RawSchema;
 
 export const Wharf$Schema = WharfDraft$Schema.readonly().brand<\"Wharf\">().meta(WharfDraft$Schema.meta() ?? {}).meta({
   examples: []
-});"
+});
+
+/** A valid `Wharf` made from `WharfDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeWharf(
+  draft: WharfDraft,
+): Wharf {
+  return Wharf$Schema.parse(draft);
+}
+
+/** What `decodeWharf` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeWharf(
+  draft: WharfDraft,
+) {
+  return Wharf$Schema.safeParse(draft);
+}"
     );
     assert_eq!(
         Jetty::zod_schema(),
@@ -176,7 +190,21 @@ export const JettyDraft$Schema: ZodType<JettyDraft> = JettyDraft$RawSchema;
 
 export const Jetty$Schema = JettyDraft$Schema.readonly().brand<\"Jetty\">().meta(JettyDraft$Schema.meta() ?? {}).meta({
   examples: []
-});"
+});
+
+/** A valid `Jetty` made from `JettyDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeJetty(
+  draft: JettyDraft,
+): Jetty {
+  return Jetty$Schema.parse(draft);
+}
+
+/** What `decodeJetty` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeJetty(
+  draft: JettyDraft,
+) {
+  return Jetty$Schema.safeParse(draft);
+}"
     );
     assert!(
         Pontoon::zod_schema().contains(
@@ -468,7 +496,21 @@ export const GangwayDraft$Schema: ZodType<GangwayDraft> = GangwayDraft$RawSchema
 
 export const Gangway$Schema = GangwayDraft$Schema.readonly().brand<\"Gangway\">().meta(GangwayDraft$Schema.meta() ?? {}).meta({
   examples: []
-});"
+});
+
+/** A valid `Gangway` made from `GangwayDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeGangway(
+  draft: GangwayDraft,
+): Gangway {
+  return Gangway$Schema.parse(draft);
+}
+
+/** What `decodeGangway` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeGangway(
+  draft: GangwayDraft,
+) {
+  return Gangway$Schema.safeParse(draft);
+}"
     );
 }
 

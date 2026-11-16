@@ -1097,6 +1097,20 @@ export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
 export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta(UserDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
+
+/** A valid `User` made from `UserDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeUser(
+  draft: UserDraft,
+): User {
+  return User$Schema.parse(draft);
+}
+
+/** What `decodeUser` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeUser(
+  draft: UserDraft,
+) {
+  return User$Schema.safeParse(draft);
+}
 ```"#]
 ///
 /// ## A plain enum
@@ -1157,6 +1171,20 @@ const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((
 });
 
 export const Status$Schema: ZodType<Status> = Status$RawSchema;
+
+/** A valid `Status` made from `Status`, which `tsc` checks; throws what the schema refuses. */
+export function decodeStatus(
+  value: Status,
+): Status {
+  return Status$Schema.parse(value);
+}
+
+/** What `decodeStatus` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeStatus(
+  value: Status,
+) {
+  return Status$Schema.safeParse(value);
+}
 ```"#]
 ///
 /// ## A tagged enum
@@ -1259,6 +1287,21 @@ export const EventDraft$Schema: ZodType<EventDraft> = EventDraft$RawSchema;
 export const Event$Schema = EventDraft$Schema.readonly().brand<"Event">().meta(EventDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
+
+/** A valid `Event` made from `EventDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeEvent(
+  draft: EventDraft,
+): Event {
+  return Event$Schema.parse(draft);
+}
+
+/** What `decodeEvent` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeEvent(
+  draft: EventDraft,
+) {
+  return Event$Schema.safeParse(draft);
+}
+
 ```"#]
 ///
 /// ## Other shapes
@@ -1467,6 +1510,20 @@ export const DocumentDraft$Schema: ZodType<DocumentDraft> = DocumentDraft$RawSch
 export const Document$Schema = DocumentDraft$Schema.readonly().brand<"Document">().meta(DocumentDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
+
+/** A valid `Document` made from `DocumentDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeDocument(
+  draft: DocumentDraft,
+): Document {
+  return Document$Schema.parse(draft);
+}
+
+/** What `decodeDocument` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeDocument(
+  draft: DocumentDraft,
+) {
+  return Document$Schema.safeParse(draft);
+}
 ```
 "#
 )]

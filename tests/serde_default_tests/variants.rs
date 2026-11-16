@@ -569,7 +569,21 @@ export const Tide = Object.freeze({
     Tide$Made.Slack = made;
     return made;
   },
-});"
+});
+
+/** A valid `Tide` made from `TideDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeTide(
+  draft: TideDraft,
+): Tide {
+  return Tide$Schema.parse(draft);
+}
+
+/** What `decodeTide` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeTide(
+  draft: TideDraft,
+) {
+  return Tide$Schema.safeParse(draft);
+}"
     );
 }
 
