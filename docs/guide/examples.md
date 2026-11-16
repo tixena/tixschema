@@ -120,6 +120,21 @@ export const ShapeDraft$Schema: ZodType<ShapeDraft> = ShapeDraft$RawSchema;
 export const Shape$Schema = ShapeDraft$Schema.readonly().brand<"Shape">().meta(ShapeDraft$Schema.meta() ?? {}).meta({
   examples: [{"kind":"Circle","radius":2},{"kind":"Square","side":3}]
 });
+
+/** A valid `Shape` made from `ShapeDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeShape(
+  draft: ShapeDraft,
+): Shape {
+  return Shape$Schema.parse(draft);
+}
+
+/** What `decodeShape` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeShape(
+  draft: ShapeDraft,
+) {
+  return Shape$Schema.safeParse(draft);
+}
+
 ```
 
 A type that writes no block publishes the empty list:
@@ -142,6 +157,21 @@ export const PlainDraft$Schema: ZodType<PlainDraft> = PlainDraft$RawSchema;
 export const Plain$Schema = PlainDraft$Schema.readonly().brand<"Plain">().meta(PlainDraft$Schema.meta() ?? {}).meta({
   examples: []
 });
+
+/** A valid `Plain` made from `PlainDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodePlain(
+  draft: PlainDraft,
+): Plain {
+  return Plain$Schema.parse(draft);
+}
+
+/** What `decodePlain` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodePlain(
+  draft: PlainDraft,
+) {
+  return Plain$Schema.safeParse(draft);
+}
+
 ```
 
 The same values are read in Rust. `Shape::schema_examples()` answers every block's value, a `Vec<serde_json::Value>` in the order written, and `Shape::schema_example()` answers the first. A type that writes no block has neither function.

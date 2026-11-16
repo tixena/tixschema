@@ -228,7 +228,7 @@ fn a_type_with_no_block_publishes_an_empty_list() {
     }
 
     let zod = Plain::zod_schema();
-    assert!(zod.ends_with(".meta({\n  examples: []\n});"), "Got: {zod}");
+    assert!(ends_in_examples(&zod, "[]"), "Got: {zod}");
     assert!(!zod.contains("example:"), "Got: {zod}");
 }
 
@@ -716,7 +716,7 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
 }
 
 /// Whether the last binding a schema that declares no parameter exports holds `examples`: only the
-/// constants it makes may follow it.
+/// constants it makes and its decode functions may follow it.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn ends_in_examples(zod: &str, examples: &str) -> bool {
     let closing = format!(".meta({{\n  examples: {examples}\n}});");

@@ -52,7 +52,21 @@ export const BerthageDraft$Schema: ZodType<BerthageDraft> = BerthageDraft$RawSch
 
 export const Berthage$Schema = BerthageDraft$Schema.readonly().brand<"Berthage">().meta(BerthageDraft$Schema.meta() ?? {}).meta({
   examples: []
-});"#;
+});
+
+/** A valid `Berthage` made from `BerthageDraft`, which `tsc` checks; throws what the schema refuses. */
+export function decodeBerthage(
+  draft: BerthageDraft,
+): Berthage {
+  return Berthage$Schema.parse(draft);
+}
+
+/** What `decodeBerthage` makes, or what the schema refuses, in place of throwing it. */
+export function safeDecodeBerthage(
+  draft: BerthageDraft,
+) {
+  return Berthage$Schema.safeParse(draft);
+}"#;
 
 /// Each enum by its name, with the three texts its surfaces publish and its JSON Schema.
 fn published() -> [(&'static str, String, String, Value); 8] {

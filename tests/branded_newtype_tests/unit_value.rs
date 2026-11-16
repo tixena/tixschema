@@ -68,7 +68,7 @@ fn zod_describes_a_unit_as_null() {
         UnitBrand::zod_schema(),
         "const UnitBrand$RawSchema = z.null().brand<\"UnitBrand\">().meta({\n  description: \
          \"A brand over `()`.\",\n  examples: [],\n});\n\nexport const UnitBrand$Schema: \
-         typeof UnitBrand$RawSchema = UnitBrand$RawSchema;"
+         typeof UnitBrand$RawSchema = UnitBrand$RawSchema;\n\n/** A valid `UnitBrand` made from `null`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeUnitBrand(\n  value: null,\n): UnitBrand {\n  return UnitBrand$Schema.parse(value);\n}\n\n/** What `decodeUnitBrand` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeUnitBrand(\n  value: null,\n) {\n  return UnitBrand$Schema.safeParse(value);\n}"
     );
     let holder = UnitHolder::zod_schema();
     assert!(

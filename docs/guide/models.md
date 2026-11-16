@@ -215,13 +215,14 @@ A newtype, or an untagged enum with a variant, over a type parameter or over a m
 
 Zod publishes a schema for each. `ShipmentDraft$Schema` parses to a `ShipmentDraft`, and `Shipment$Schema` is the draft's schema frozen and branded, so `Shipment$Schema.parse(json)` has the type `Shipment`. The refusals of the two are the same ones, word for word, and so is the JSON Schema, which is not split: the wire is the same for both types.
 
-TypeScript writes no constructor beside the type: `Shipment$Schema.parse({ label: "Shipping", parcelCount: 3 })` is the one call that builds a `Shipment` from its fields, or throws what `validate()` refuses, the counterpart of Rust's `Shipment::new(..)` and of `of` in Dart, Swift and Kotlin.
+TypeScript writes two functions beside the schema: `decodeShipment({ label: "Shipping", parcelCount: 3 })` builds a `Shipment` from its fields, or throws what `validate()` refuses, the counterpart of Rust's `Shipment::new(..)` and of `of` in Dart, Swift and Kotlin, and `safeDecodeShipment(draft)` answers `{ success, data }` or `{ success, error }` in place of throwing. Each takes a `ShipmentDraft`, which `tsc` checks: a misspelled key is ``error TS2561``, a missing key ``error TS2345`` and a wrong value ``error TS2322``, and a member that is a model takes its valid type, so a nested literal is refused until it is decoded itself. Each reads through `Shipment$Schema.parse`, so it refuses what the schema refuses. `Shipment$Schema.parse` and `safeParse` take `unknown`, for data that arrives from outside. A generic type's functions take the schema of each type parameter first, `decodeWrap(z.string(), draft)`, and a plain enum's take the enum, `decodeStatus("active")`.
 
 ```typescript
-import { Shipment$Schema, ShipmentDraft$Schema, type Shipment, type ShipmentDraft } from "./models";
+import { decodeShipment, Shipment$Schema, ShipmentDraft$Schema, type Shipment, type ShipmentDraft } from "./models";
 
 const draft: ShipmentDraft = ShipmentDraft$Schema.parse(json);
 const shipment: Shipment = Shipment$Schema.parse(json);
+const made: Shipment = decodeShipment({ label: "Shipping", parcelCount: 3 });
 
 function weigh(value: ShipmentDraft): number {
   return value.parcelCount;
@@ -236,16 +237,16 @@ TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out 
 A plain enum that names no `check` is the bare string union with a frozen `const` object of its literals (`Status.Active` is `"active"`), and has no draft and no brand. An enum that has a draft and names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Payment.Pending`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), and a unit struct that declares no rule has a `const` of its own name. Each constant is the value its schema parses, written after the schema in the Zod text: `Payment.Pending` is a getter that answers `Payment$Schema.parse("Pending")` on its first read and the same value after it, since a parse while the module loads would reach a schema declared below before it exists. A draft of any type becomes its valid type through its schema:
 
 ```typescript
-import { Payment, Payment$Schema, type PaymentDraft } from "./models";
+import { decodePayment, Payment, type PaymentDraft } from "./models";
 
 const open: Payment = Payment.Pending;
 const draft: PaymentDraft = { Card: "visa" };
-const closed: Payment = Payment$Schema.parse(draft);
+const closed: Payment = decodePayment(draft);
 ```
 
 A type that declares a rule has no constant, since a rule could refuse it.
 
-Every client and dispatcher types each message and result as the valid type, so `client.ship(...)` takes a `Shipment` and a handler is handed one. Make the argument with `Shipment$Schema.parse(draft)`. A function a `check` names takes the draft, the type the rules run on: `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>)`, where a `Crate<CodeType>` stops the build of the consumer with ``error TS2345: Argument of type 'CrateDraft<unknown>' is not assignable to parameter of type 'Crate<unknown>'.`` A struct that flattens a model holds its keys among its own, so it holds the model's draft: `{ label: string } & MoorageDraft`.
+Every client and dispatcher types each message and result as the valid type, so `client.ship(...)` takes a `Shipment` and a handler is handed one. Make the argument with `decodeShipment(draft)`. A function a `check` names takes the draft, the type the rules run on: `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>)`, where a `Crate<CodeType>` stops the build of the consumer with ``error TS2345: Argument of type 'CrateDraft<unknown>' is not assignable to parameter of type 'Crate<unknown>'.`` A struct that flattens a model holds its keys among its own, so it holds the model's draft: `{ label: string } & MoorageDraft`.
 
 A type that declares a parameter publishes `WrapDraft<T>` and `Wrap<T>` of the same form, and two factories: `WrapDraft$SchemaFactory` answers the draft's schema as it always answered the type's, and `Wrap$SchemaFactory` answers a `ZodType<Wrap<...>>`, which names what the schema parses to, so `.shape` is not on it. `Wrap$SchemaDefault` and `WrapDraft$SchemaDefault` are each the factory at the declared defaults. A build with `typescript` and no `zod` writes no brand on a model type, since no schema is there to make a branded value: `Shipment` is `Readonly<ShipmentDraft>`, and each constant is the literal itself, typed with the valid type.
 
