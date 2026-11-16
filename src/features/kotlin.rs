@@ -2051,6 +2051,7 @@ fn result_serializer(
 /// The declarations the types named since the last item was written need, a tuple's wrapper, a
 /// range's class, a `Result`'s interface and the serializer of a text of one form and of an array
 /// of one length among them, each once: the next item numbers its own.
+#[cfg(feature = "serde")]
 pub fn kotlin_declarations() -> Vec<String> {
     let asked = kotlin_declarations_asking();
     read::held_resolved(asked)

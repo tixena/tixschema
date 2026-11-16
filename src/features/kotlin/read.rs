@@ -1652,6 +1652,7 @@ fn held_declared(
 
 /// `declarations` with the read of each held type that may have no companion written as the
 /// companion's, for a client or a server that has no module to ask the compiler in.
+#[cfg(feature = "serde")]
 pub fn held_resolved(declarations: Vec<String>) -> Vec<String> {
     let pending = KOTLIN_HELD_PENDING.with(RefCell::take);
     declarations

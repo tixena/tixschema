@@ -2,11 +2,17 @@
 //! `{Name}Refusal`, which `validate()`, `of(..)` and the type's judged read throw with the list of
 //! broken rules, and the classes a service surface reads that list off.
 
+#[cfg(any(
+    feature = "kotlin",
+    feature = "swift",
+    all(feature = "serde", feature = "dart")
+))]
 use crate::field_type::{FieldDef, FieldDefType, is_sequence_wrapper};
 
 /// The types the service macro itself writes into the module of the service `service`, for an
 /// `mcp` operation to name: none is a model, and none judges a value, so none declares a refusal.
 /// A type of a consumer's, whatever it is called, is none of them.
+#[cfg(feature = "serde")]
 pub fn service_types(service: &str) -> Vec<String> {
     [
         "McpContent",
@@ -22,6 +28,10 @@ pub fn service_types(service: &str) -> Vec<String> {
 }
 
 /// Whether `name`, written as a path or not, is one of `written`.
+#[cfg(any(
+    feature = "kotlin",
+    all(feature = "serde", any(feature = "dart", feature = "swift"))
+))]
 fn is_written(name: &str, written: &[String]) -> bool {
     name.rsplit("::")
         .next()
@@ -38,6 +48,10 @@ pub fn refusal_name(export_name: &str) -> String {
 /// declared type by its Rust ident, which every declared type declares whatever its place. A
 /// generic type judges what fills its parameters itself, so its arguments add none. A type in
 /// `written`, which the service macro wrote, names none.
+#[cfg(any(
+    feature = "kotlin",
+    all(feature = "serde", any(feature = "dart", feature = "swift"))
+))]
 pub fn reached(
     def: &FieldDef,
     written: &[String],
@@ -50,6 +64,7 @@ pub fn reached(
 
 /// The refusal class of the declared type an alias of `target` is, where `target` is one bare named
 /// type: a read of the alias throws what a read of that type throws.
+#[cfg(any(feature = "swift", feature = "kotlin"))]
 pub fn aliased(target: &FieldDef, refusal_of: &dyn Fn(&str) -> String) -> Option<String> {
     if let FieldDefType::SiblingType(name, _) = &target.field_type
         && !target.is_list()
@@ -62,6 +77,10 @@ pub fn aliased(target: &FieldDef, refusal_of: &dyn Fn(&str) -> String) -> Option
     }
 }
 
+#[cfg(any(
+    feature = "kotlin",
+    all(feature = "serde", any(feature = "dart", feature = "swift"))
+))]
 fn collect(
     def: &FieldDef,
     written: &[String],

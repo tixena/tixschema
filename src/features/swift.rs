@@ -876,6 +876,7 @@ fn refusal() -> String {
 
 /// The refusal structs a judged read of `def` throws where the value it reads, or one it holds,
 /// breaks a rule: the struct of each type it names, declared wherever the type is.
+#[cfg(feature = "serde")]
 pub fn swift_refusals_of(def: &FieldDef, written: &[String]) -> Vec<String> {
     refusals::reached(def, written, &refusal_of)
 }
