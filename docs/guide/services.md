@@ -313,9 +313,10 @@ Outbound, the generated client validates the message it is about to send, so a m
           },
         };
       }
-      const { answered } = await transport.request<BillingServiceVoidInvoiceResult>("void-invoice", validated.sent, []);
-      if (answered.ok) {
-        const parsed = OpenBalanceResponse$Schema.safeParse(answered.value);
+      const { answered } = await transport.request("void-invoice", validated.sent, []);
+      const reply = billingServiceReply(answered);
+      if (reply.ok) {
+        const parsed = OpenBalanceResponse$Schema.safeParse(reply.value);
         if (!parsed.success) {
           return {
             ok: false,
@@ -327,10 +328,9 @@ Outbound, the generated client validates the message it is about to send, so a m
         }
         return { ok: true, value: parsed.data };
       }
-      const error = answered.error;
-      if (typeof error === "object" && error !== null && "isServiceFault" in error) {
-        return { ok: false, error };
-      }
+      const error = reply.error;
+      const wireFault = billingServiceWireFault("void-invoice", error);
+      if (wireFault !== undefined) return { ok: false, error: { isServiceFault: true, fault: wireFault } };
       const declared = BalanceError$Schema.safeParse(error);
       if (!declared.success) {
         return {
@@ -357,7 +357,7 @@ A one-way method runs the same check and has nowhere to put the result of it, so
     },
 ```
 
-A replying method checks what comes back as well, in the tail of `voidInvoice` above. A success is parsed against the operation's declared success and a failed reply against its declared error before the caller reads either: a fault the far side already sealed passes through, a reply that parses is returned as parsed, and one that does not -- a declared field missing, an undeclared key, another shape altogether -- answers a `failed-validation` fault naming the first offending key rather than a value typed as that error. A bundle therefore publishes the Zod schema of every declared error type beside its type.
+A replying method checks what comes back as well, in the tail of `voidInvoice` above. A success is parsed against the operation's declared success and a failed reply against its declared error before the caller reads either: a fault the far side answered is read with `BillingServiceFaultFields$Schema` and sealed again on this side, a fault that does not read is a `failed-validation` fault, a reply that parses is returned as parsed, and one that does not -- a declared field missing, an undeclared key, another shape altogether -- answers a `failed-validation` fault naming the first offending key rather than a value typed as that error. A bundle therefore publishes the Zod schema of every declared error type beside its type.
 
 #### Service Faults
 
@@ -407,7 +407,7 @@ export type BillingServiceFaultFields = {
   operation: string;
 };
 
-declare const billingServiceFaultSeal: unique symbol;
+const billingServiceFaultSeal: unique symbol = Symbol("billingServiceFaultSeal");
 
 export type BillingServiceFault = BillingServiceFaultFields & {
   readonly [billingServiceFaultSeal]: true;
@@ -421,11 +421,11 @@ The fields still come from the Rust declaration, so nothing about the wire moved
 {"detail":"the service answers to no operation by that name","kind":"unknown-operation","operation":"rebook"}
 ```
 
-The brand is a type and never a value: `declare const` emits nothing, and a fault carries no extra key.
+The seal is a symbol the bundle declares and exports nowhere. `JSON.stringify` writes no symbol key, so a fault carries no extra key on the wire; a deep comparison that reads symbol keys, `assert.deepStrictEqual`, tells a fault from its fields.
 
-What stops compiling is writing one. An object literal under a `BillingServiceFault` annotation cannot carry the branded property, and neither can a structurally-equal value assigned into a `BillingServiceFault` position -- a module outside the bundle cannot name the symbol, and a module inside has no value to write. What it does **not** stop is a deliberate type assertion: `built as BillingServiceFault` compiles, as does anything laundered through `any` or `unknown`, and TypeScript has no construct that refuses those. The generated constructors mint through exactly that assertion, from the fields type, which is the one direction an assertion is unambiguously sound in. So the seal makes fabricating a fault a deliberate, greppable act rather than something an annotated literal does silently -- it is not the `E0451` Rust gives, because TypeScript has none to give.
+What stops compiling is writing one. An object literal under a `BillingServiceFault` annotation cannot carry the branded property, and neither can a structurally-equal value assigned into a `BillingServiceFault` position -- a module outside the bundle cannot name the symbol, and inside the bundle only the generated constructors write it. What it does **not** stop is a deliberate type assertion: `built as BillingServiceFault` compiles, as does anything laundered through `any` or `unknown`, and TypeScript has no construct that refuses those. The generated constructors write no assertion: each builds the fields, then `{ ...built, [billingServiceFaultSeal]: true }`, which only the bundle can spell. So the seal makes fabricating a fault a deliberate, greppable act rather than something an annotated literal does silently -- it is not the `E0451` Rust gives, because TypeScript has none to give.
 
-Exactly two generated places build one: the dispatcher, when an incoming message cannot be turned into a valid request or names an operation nothing recognises, and the client, when the message *it* is about to send fails its own validation or the transport reports that the call never landed. In Rust a client call answers `Result<Success, CallError<Error>>`, `CallError` being `Operation(E)` for the error the operation declared and `Fault(ServiceFault)` for a defect that reached the caller.
+Exactly two generated places build one: the dispatcher, when an incoming message cannot be turned into a valid request or names an operation nothing recognises, and the client, when the message *it* is about to send fails its own validation, the transport reports that the call never landed, or the reply holds a fault the far side wrote, which the client reads with the fields' schema and seals on its own side. In Rust a client call answers `Result<Success, CallError<Error>>`, `CallError` being `Operation(E)` for the error the operation declared and `Fault(ServiceFault)` for a defect that reached the caller.
 
 Which kind a refused payload is reported under is `serde_json`'s own classification of the refusal, not the shape of the sentence it wrote. `undeserializable-payload` means the bytes are not a document at all -- not JSON, or a document that ends early -- which is a sender whose serialization is broken, and such a refusal names no field because nothing was read far enough for a key to be what went wrong. `failed-validation` means the bytes read as a document and did not match the message: a field carrying the wrong type of value, a key that is missing, a value a bound refuses. That is a value someone supplied. A refusal of serde's own is listed at the full dotted path of the value it refused, as a broken bound is: ``missing field `name` `` at the field `entities.1.name`. Where serde reads a value from a buffer (`tag` alone, `untagged` and `#[serde(flatten)]`), the path reaches no deeper than the buffered value. The byte offset serde appends is dropped, it being a position inside an encoding the caller never saw.
 
@@ -616,15 +616,15 @@ export type BillingServiceTransport = {
     payload: unknown,
     headers: ReadonlyArray<readonly [string, string]>,
   ): Promise<void>;
-  request<Answered>(
+  request(
     operation: string,
     payload: unknown,
     headers: ReadonlyArray<readonly [string, string]>,
-  ): Promise<{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }>;
+  ): Promise<{ answered: unknown; headers: ReadonlyArray<readonly [string, string]> }>;
 };
 ```
 
-The header text is the JSON encoding the Rust `amqp_rpc` transport writes into the AMQP headers table, so an AMQP transport hands the pairs over as they are. A transport written against the earlier seam -- `request` answering the reply alone -- answers `{ answered, headers }` now, with an empty list where the reply carried none. A client method takes one argument per `header_in` binding after the message and sends each JSON-encoded, an optional one holding `undefined` as `null`, which is what the Rust client writes for a `None`. A `header_out` or `error_header_out` reply is rejoined into the tuple the operation declared: the body off the envelope, each header off the reply's headers, checked against the element's own schema. An absent optional header reads as `null`, the value its tuple slot holds; a required one that is absent, is not JSON, or does not match its schema answers a `failed-validation` fault naming the header.
+The header text is the JSON encoding the Rust `amqp_rpc` transport writes into the AMQP headers table, so an AMQP transport hands the pairs over as they are. A transport written against the earlier seam -- `request` answering the reply alone -- answers `{ answered, headers }` now, with an empty list where the reply carried none. `answered` is `unknown`: the client reads it off the object and parses each part with its schema, so a transport hands over the reply as it read it. A client method takes one argument per `header_in` binding after the message and sends each JSON-encoded, an optional one holding `undefined` as `null`, which is what the Rust client writes for a `None`. A `header_out` or `error_header_out` reply is rejoined into the tuple the operation declared: the body off the envelope, each header off the reply's headers, checked against the element's own schema. An absent optional header reads as `null`, the value its tuple slot holds; a required one that is absent, is not JSON, or does not match its schema answers a `failed-validation` fault naming the header.
 
 The dispatcher reads each `header_in` value off the same JSON text, checked against the argument's own schema, and refuses a missing required one or a malformed one through the same framed fault a bad payload gets. It answers `BillingServiceDispatched` -- `{ answered, headers }`, the envelope that goes on the wire and the headers written beside it -- or `undefined` for a one-way operation that ran. A header tuple is split there: the body answers as the envelope's `value` or `error`, and each header element is written under its name, one holding `null` written nowhere. A transport that drove the dispatcher before writes `dispatched.answered` where it wrote the whole answer, and `dispatched.headers` into its own headers channel.
 

@@ -715,10 +715,13 @@ fn a_const_declaring_item_keeps_its_example_where_no_example_is_read() {
     assert_eq!(slotted.label, "x");
 }
 
-/// What a schema that declares no parameter ends in, holding `examples` on the binding it exports.
+/// Whether the last binding a schema that declares no parameter exports holds `examples`: only the
+/// constants it makes may follow it.
 #[cfg(all(feature = "serde", feature = "zod"))]
 fn ends_in_examples(zod: &str, examples: &str) -> bool {
-    zod.ends_with(&format!(".meta({{\n  examples: {examples}\n}});"))
+    let closing = format!(".meta({{\n  examples: {examples}\n}});");
+    zod.rfind(&closing)
+        .is_some_and(|at| !zod[at + closing.len()..].contains("$Schema = "))
 }
 
 #[cfg(all(feature = "serde", feature = "zod"))]

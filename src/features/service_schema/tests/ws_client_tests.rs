@@ -159,7 +159,9 @@ fn the_general_fault_builder_takes_a_kind_an_operation_and_a_detail() {
     );
     assert!(
         written.find("const built: BillingServiceFaultFields = {")
-            < written.find("return built as BillingServiceFault;"),
+            < written.find(
+                "const fault: BillingServiceFault = { ...built, [billingServiceFaultSeal]: true };"
+            ),
         "it mints through the same seal every other generated constructor does. Got: {written}"
     );
 }
@@ -330,8 +332,8 @@ fn headers_ride_the_frame_s_own_headers_object_both_ways() {
     );
     assert!(
         written.contains(
-            "const { kind, id, service: named, headers, ...envelope } = frame as Record<string, \
-             unknown>;"
+            "const fields: Record<string, unknown> = Object.fromEntries(Object.entries(frame));\n    \
+             const { kind, id, service: named, headers, ...envelope } = fields;"
         ) && written.contains(
             "waiting.settle(checked(waiting.operation, envelope), \
              billingServiceWsHeaderPairs(headers));"
@@ -340,7 +342,10 @@ fn headers_ride_the_frame_s_own_headers_object_both_ways() {
          Got: {written}"
     );
     assert!(
-        written.contains("[name, JSON.stringify(billingServiceWsSent(value))] as const"),
+        written.contains(
+            "return Object.entries(table).map(([name, value]): readonly [string, string] => [name, \
+             JSON.stringify(billingServiceWsSent(value))]);"
+        ),
         "got: {written}"
     );
 }

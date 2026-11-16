@@ -443,11 +443,10 @@ fn the_outbound_check_the_client_runs_before_the_transport_is_shown_as_emitted()
          },\n        \
          };\n      \
          }\n      \
-         const { answered } = await \
-         transport.request<BillingServiceVoidInvoiceResult>(\"void-invoice\", validated.sent, \
-         []);\n      \
-         if (answered.ok) {\n        \
-         const parsed = OpenBalanceResponse$Schema.safeParse(answered.value);\n        \
+         const { answered } = await transport.request(\"void-invoice\", validated.sent, []);\n      \
+         const reply = billingServiceReply(answered);\n      \
+         if (reply.ok) {\n        \
+         const parsed = OpenBalanceResponse$Schema.safeParse(reply.value);\n        \
          if (!parsed.success) {\n          \
          return {\n            \
          ok: false,\n            \
@@ -459,10 +458,10 @@ fn the_outbound_check_the_client_runs_before_the_transport_is_shown_as_emitted()
          }\n        \
          return { ok: true, value: parsed.data };\n      \
          }\n      \
-         const error = answered.error;\n      \
-         if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {\n        \
-         return { ok: false, error };\n      \
-         }\n      \
+         const error = reply.error;\n      \
+         const wireFault = billingServiceWireFault(\"void-invoice\", error);\n      \
+         if (wireFault !== undefined) return { ok: false, error: { isServiceFault: true, fault: \
+         wireFault } };\n      \
          const declared = BalanceError$Schema.safeParse(error);\n      \
          if (!declared.success) {\n        \
          return {\n          \

@@ -430,11 +430,11 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
         ),
         (
             BrandOrNumber::zod_schema(),
-            "export const BrandOrNumber$Schema = BrandOrNumberDraft$Schema.readonly().brand<\"BrandOrNumber\">().meta(BrandOrNumberDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+            "export const BrandOrNumber$Schema = BrandOrNumberDraft$Schema.brand<\"BrandOrNumber\">().meta(BrandOrNumberDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
         ),
         (
             SoleBrand::zod_schema(),
-            "export const SoleBrand$Schema = SoleBrandDraft$Schema.readonly().brand<\"SoleBrand\">().meta(SoleBrandDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
+            "export const SoleBrand$Schema = SoleBrandDraft$Schema.brand<\"SoleBrand\">().meta(SoleBrandDraft$Schema.meta() ?? {}).meta({\n  examples: []\n});",
         ),
         (
             FlattenOnly::zod_schema(),

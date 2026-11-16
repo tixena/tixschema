@@ -7,6 +7,10 @@
 #[path = "../check_tests/models.rs"]
 mod checked;
 
+/// What finds every cast in generated TypeScript.
+#[path = "../support/typescript_casts.rs"]
+mod typescript_casts;
+
 /// The models a `preprocess` is written on, which the `preprocess` tests read through serde.
 #[path = "../pattern_preprocess_tests/models.rs"]
 mod corrected;
@@ -66,6 +70,11 @@ mod commented;
 /// Names of lists that take a length: a brand, an alias, a brand over a brand and a generic brand.
 #[path = "named_count_models.rs"]
 mod named_counts;
+
+/// The models whose valid type is the draft branded with no `Readonly<>`, and the holders of an
+/// alias of a filled generic struct.
+#[path = "unwrapped_models.rs"]
+mod unwrapped;
 
 /// Aliases of a map whose values are a model, one of them declared above the enum that holds it.
 #[path = "map_alias_models.rs"]
@@ -1636,6 +1645,32 @@ const CONSUMER_PROJECT: &str = r#"{
 
 const PACKAGE: &str = r#"{ "type": "module", "private": true }
 "#;
+
+/// What a consumer writes with the models of `unwrapped`: each valid value read as the type its
+/// draft is, and as a key.
+const UNWRAPPED_USES: &str = r#"
+export const sounding: Sounding = Sounding$Schema.parse([1, "a", { deep: [true] }]);
+export const kind: HullKind = HullKind$Schema.parse("form/round");
+export const kindText: string = kind;
+export const byKind = { [kind]: 1 };
+export const label: string = HullKind$Schema.parse("bow");
+export const rigging: Rigging = Rigging$Schema.parse({ mast: "main", spareLines: [] });
+export const spare: Unrigged = rigging.spareLines;
+export const above: StowedAbove = StowedAbove$Schema.parse({ items: [{ weight: 1 }], note: "a" });
+export const below: StowedBelow = StowedBelow$Schema.parse({ items: [{ weight: 2 }], note: "b" });
+export const apart: StowedApart = StowedApart$Schema.parse({ items: [{ label: "c" }], note: "c" });
+export const heldAbove: HoldsDraft = { items: [Bale$Schema.parse({ weight: 3 })] };
+export const heldBelow: HoldBelowDraft = { items: [] };
+export const heldApart: ManifestListApartDraft = { items: [ParcelApart$Schema.parse({ label: "d" })] };
+"#;
+
+/// Reads back each value [`UNWRAPPED_USES`] made, once the bundle is loaded.
+const UNWRAPPED_DRIVER: &str = r#"import * as made from "./lib/index.js";
+console.log(JSON.stringify([made.sounding, made.kindText, made.byKind, made.label, made.spare, made.above, made.below, made.apart]));
+"#;
+
+/// What [`UNWRAPPED_DRIVER`] prints.
+const UNWRAPPED_READ: &str = r#"[[1,"a",{"deep":[true]}],"form/round",{"form/round":1},"bow",[],{"note":"a","items":[{"weight":1}]},{"note":"b","items":[{"weight":2}]},{"note":"c","items":[{"label":"c"}]}]"#;
 
 /// What a consumer's module writes ahead of the generated text. `z` is bound as a constant, which
 /// names no type: the weakest binding a consumer's own module may hand the bundle.
@@ -3934,6 +3969,43 @@ fn loaded_from(named: &str, source: &str, driver: &str) -> Option<(String, Strin
         String::from_utf8_lossy(&ran.stdout).trim().to_owned(),
         String::from_utf8_lossy(&ran.stderr).into_owned(),
     ))
+}
+
+#[test]
+fn the_typescript_of_every_model_writes_no_cast() {
+    let source = bundle();
+    let Some((printed, failed)) = loaded_from(
+        "casts",
+        &source,
+        &typescript_casts::driver(&[("bundle", source.clone())]),
+    ) else {
+        return;
+    };
+    assert_eq!(failed, "", "the cast search did not run");
+    let casts = typescript_casts::found(&printed);
+    assert!(
+        casts.is_empty(),
+        "{} casts:\n{}",
+        casts.len(),
+        casts.join("\n")
+    );
+}
+
+#[test]
+fn type_check_an_unwrapped_valid_type_and_a_flattened_alias_compile_and_parse() {
+    let source = [
+        PREAMBLE.to_owned(),
+        unwrapped::unwrapped_texts().join("\n\n"),
+        UNWRAPPED_USES.to_owned(),
+    ]
+    .join("\n\n");
+    let Some((printed, failed)) = loaded_from("unwrapped", &source, UNWRAPPED_DRIVER) else {
+        return;
+    };
+    assert_eq!(
+        printed, UNWRAPPED_READ,
+        "the bundle does not load and parse under node:\n{failed}"
+    );
 }
 
 #[test]
@@ -6534,17 +6606,26 @@ fn type_check_the_valid_type_of_an_untagged_enum_with_a_null_variant_admits_null
         null_models::Plainer::zod_schema(),
     ]
     .join("\n\n");
-    for (name, plain) in [
-        ("Reading", false),
-        ("Nested", false),
-        ("Wrapped", false),
-        ("Plainer", true),
+    // An untagged enum is its draft under the brand alone; a newtype over one is read-only.
+    for (name, plain, held, whole) in [
+        (
+            "Reading",
+            false,
+            "NonNullable<ReadingDraft>",
+            "ReadingDraft",
+        ),
+        ("Nested", false, "NonNullable<NestedDraft>", "NestedDraft"),
+        (
+            "Wrapped",
+            false,
+            "Readonly<NonNullable<WrappedDraft>>",
+            "Readonly<WrappedDraft>",
+        ),
+        ("Plainer", true, "NonNullable<PlainerDraft>", "PlainerDraft"),
     ] {
         let text = source.as_str();
-        let nullable = format!(
-            "export type {name} = (Readonly<NonNullable<{name}Draft>> & $brand<\"{name}\">) | null;"
-        );
-        let unbranded = format!("export type {name} = Readonly<{name}Draft> & $brand<\"{name}\">;");
+        let nullable = format!("export type {name} = ({held} & $brand<\"{name}\">) | null;");
+        let unbranded = format!("export type {name} = {whole} & $brand<\"{name}\">;");
         assert_eq!(
             text.contains(&nullable),
             !plain,

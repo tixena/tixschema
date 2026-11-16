@@ -271,6 +271,8 @@ fn dispatched_type(named: &str) -> String {
          */\n\
          export type {named}Dispatched = {{\n  \
          answered: unknown;\n  \
+         /** The fault `answered` frames, where it frames one. */\n  \
+         fault?: {named}Fault;\n  \
          headers: ReadonlyArray<readonly [string, string]>;\n\
          }};"
     )
@@ -339,7 +341,7 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
              */\n\
              function {prefix}Framed(fault: {named}Fault): {named}Dispatched {{\n  \
              return {{ answered: {{ ok: false, error: {{ isServiceFault: true, fault }} }}, \
-             headers: [] }};\n\
+             fault, headers: [] }};\n\
              }}"
         ),
         format!(

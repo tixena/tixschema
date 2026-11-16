@@ -6,7 +6,6 @@ use super::client::issues_fault_fn;
 use super::fault;
 use super::message;
 use super::result::result_name;
-#[cfg(feature = "chrono")]
 use crate::field_type::FieldDefType;
 use crate::field_type::get_field_def;
 use crate::rename_rule::RenameRule;
@@ -936,7 +935,12 @@ fn header_value_read_stmts(
                     "          ",
                 ));
             }
-            let _ = writeln!(stmt, "          {ident} = {value_expr} as {slot_typename};");
+            stmt.push_str(&slot_assignment(
+                (prefix, wire, mismatch),
+                element_ty,
+                (&ident, &raw_ident, &value_expr),
+                ("          ", false),
+            ));
             let _ = writeln!(stmt, "        }}");
         } else {
             stmt.push_str(&header_fault_return_stmt(
@@ -951,14 +955,44 @@ fn header_value_read_stmts(
                     prefix, wire, invalid, mismatch, "        ",
                 ));
             }
-            let _ = writeln!(
-                stmt,
-                "        const {ident} = {value_expr} as {slot_typename};"
-            );
+            stmt.push_str(&slot_assignment(
+                (prefix, wire, mismatch),
+                element_ty,
+                (&ident, &raw_ident, &value_expr),
+                ("        ", true),
+            ));
         }
         idents.push(ident);
     }
     (stmt, idents)
+}
+
+/// The statement that puts a read header element into its slot: the decoded value itself where the
+/// element is a plain scalar, a date or a list of them, and the value read through the element's
+/// own schema where it names a model type, a fault where that read refuses it. `declares` writes a
+/// `const`; otherwise the slot was declared above.
+fn slot_assignment(
+    (prefix, wire, mismatch): (&str, &str, &str),
+    element_ty: &Type,
+    (slot, raw_ident, value_expr): (&str, &str, &str),
+    (indent, declares): (&str, bool),
+) -> String {
+    let base = option_inner(element_ty).unwrap_or(element_ty);
+    let held = get_field_def("value", base, "");
+    let bound = if declares {
+        format!("const {slot}")
+    } else {
+        slot.to_owned()
+    };
+    if !matches!(held.field_type, FieldDefType::SiblingType(..)) {
+        return format!("{indent}{bound} = {value_expr};\n");
+    }
+    let read = format!("read{}", RenameRule::PascalCase.apply_to_field(raw_ident));
+    format!(
+        "{indent}const {read} = {}.safeParse({value_expr});\n{}{indent}{bound} = {read}.data;\n",
+        held.zod_type(),
+        header_fault_return_stmt(prefix, wire, &format!("!{read}.success"), mismatch, indent)
+    )
 }
 
 /// The expression that reads a `header_out` element's declared type back off `raw` — a `string`
@@ -1236,13 +1270,11 @@ fn parsed_fn(named: &str, prefix: &str) -> String {
 }
 
 fn fault_from_body_fn(named: &str, prefix: &str) -> String {
-    let members = format!(
-        "      detail: failed ? undefined : detail,\n      \
-         field: undefined,\n      \
-         ...(failed ? {{ issues: listed ?? [] }} : {{}}),\n      \
-         kind: parsed.kind as {named}FaultKind,\n      \
-         operation: parsed.operation,"
-    );
+    let members = "      detail: failed ? undefined : detail,\n      \
+                   field: undefined,\n      \
+                   ...(failed ? { issues: listed ?? [] } : {}),\n      \
+                   kind,\n      \
+                   operation: parsed.operation,";
     format!(
         "/** The problems a fault body lists, `undefined` where one of them is no problem. */\n\
          function {prefix}HttpIssuesOf(value: unknown): Array<{named}FaultIssue> | undefined {{\n  \
@@ -1250,7 +1282,8 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          const listed: Array<{named}FaultIssue> = [];\n  \
          for (const entry of value) {{\n    \
          if (typeof entry !== \"object\" || entry === null) return undefined;\n    \
-         const {{ detail, field }} = entry as {{ detail?: unknown; field?: unknown }};\n    \
+         const detail: unknown = Reflect.get(entry, \"detail\");\n    \
+         const field: unknown = Reflect.get(entry, \"field\");\n    \
          if (typeof detail !== \"string\" || (field !== undefined && typeof field !== \"string\")) return undefined;\n    \
          listed.push({{ detail, field }});\n  \
          }}\n  \
@@ -1265,27 +1298,28 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          function {prefix}HttpFaultFromBody(operation: string, body: Uint8Array): {named}Fault {{\n  \
          try {{\n    \
          const text = new TextDecoder(\"utf-8\", {{ fatal: true }}).decode(body);\n    \
-         const parsed = {prefix}HttpRead(text) as {{\n      \
-         detail?: unknown;\n      \
-         field?: unknown;\n      \
-         issues?: unknown;\n      \
-         kind?: unknown;\n      \
-         operation?: unknown;\n    \
+         const read: unknown = {prefix}HttpRead(text);\n    \
+         const held: object = typeof read === \"object\" && read !== null ? read : {{}};\n    \
+         const parsed = {{\n      \
+         detail: Reflect.get(held, \"detail\"),\n      \
+         issues: Reflect.get(held, \"issues\"),\n      \
+         kind: Reflect.get(held, \"kind\"),\n      \
+         operation: Reflect.get(held, \"operation\"),\n    \
          }};\n    \
          const failed = parsed.kind === \"failed-validation\";\n    \
          const detail = typeof parsed.detail === \"string\" ? parsed.detail : undefined;\n    \
          const listed = failed ? {prefix}HttpIssuesOf(parsed.issues) : undefined;\n    \
-         const knownKinds: ReadonlyArray<unknown> = [\n      \
+         const knownKinds: ReadonlyArray<{named}FaultKind> = [\n      \
          \"failed-validation\",\n      \
          \"handler-panic\",\n      \
          \"transport-failure\",\n      \
          \"undeserializable-payload\",\n      \
          \"unknown-operation\",\n    \
          ];\n    \
+         const kind = knownKinds.find((known) => known === parsed.kind);\n    \
          if (\n      \
          (failed ? listed !== undefined : detail !== undefined) &&\n      \
-         typeof parsed.kind === \"string\" &&\n      \
-         knownKinds.includes(parsed.kind) &&\n      \
+         kind !== undefined &&\n      \
          typeof parsed.operation === \"string\"\n    \
          ) {{\n\
          {minted}\n    \
@@ -1298,7 +1332,7 @@ fn fault_from_body_fn(named: &str, prefix: &str) -> String {
          \"a fault body did not match the expected shape\",\n  \
          );\n\
          }}",
-        minted = fault::minted(named, &members)
+        minted = fault::minted(named, members)
     )
 }
 

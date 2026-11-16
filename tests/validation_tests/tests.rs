@@ -1318,11 +1318,6 @@ mod a_check_the_enum_declares {
                 .filter(|line| !line.starts_with('*') && !line.starts_with("/*"))
                 .collect::<Vec<&str>>()
                 .join("\n")
-                .replace(
-                    "export function OpenDraft$valid(draft: OpenDraft): Open {\n\
-                     return draft as unknown as Open;\n}\n",
-                    "",
-                )
                 .replace("\n\n\n", "\n\n")
                 .replace("Shut", "Open")
         };

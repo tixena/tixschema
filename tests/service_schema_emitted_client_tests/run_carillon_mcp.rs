@@ -414,7 +414,7 @@ fn assert_read_as_rust(read: &Value, tolled: &Value) {
 }
 
 /// The TypeScript module the server and the client run in.
-fn node_bundle() -> String {
+pub fn node_bundle() -> String {
     use super::CarillonMcpServiceSchema;
     use super::carillon_mcp_service::{CarillonRefrain, CarillonVerse};
     use super::carillon_service::{

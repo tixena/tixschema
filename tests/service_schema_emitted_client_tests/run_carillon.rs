@@ -884,7 +884,7 @@ fn the_swift_client_names_the_field_the_rust_dispatcher_names() {
 }
 
 /// The TypeScript module the attachment and the client run in.
-fn node_bundle() -> String {
+pub fn node_bundle() -> String {
     use super::carillon_service::{
         CarillonBeam, CarillonBell, CarillonChime, CarillonChord, CarillonDeep, CarillonError,
         CarillonFrame, CarillonGauge, CarillonOuterTone, CarillonPeal, CarillonPitch,

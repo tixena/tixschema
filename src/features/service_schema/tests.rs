@@ -1525,11 +1525,14 @@ fn the_fault_s_fields_are_asked_for_rather_than_written_here() {
 fn the_published_fault_is_the_asked_for_fields_under_a_brand_the_bundle_exports_nowhere() {
     let rendered = registration(MIXED_SERVICE);
     assert!(
-        rendered.contains("declare const billingServiceFaultSeal: unique symbol;"),
+        rendered.contains(
+            "const billingServiceFaultSeal: unique symbol = \
+             Symbol(\\\"billingServiceFaultSeal\\\");"
+        ),
         "a brand keyed on an exported name is a brand anyone can write. Got: {rendered}"
     );
     assert!(
-        !rendered.contains("export declare const billingServiceFaultSeal"),
+        !rendered.contains("export const billingServiceFaultSeal"),
         "an exported symbol is one an implementation can name, and a property it can write. \
          Got: {rendered}"
     );
@@ -1546,7 +1549,9 @@ fn the_published_fault_is_the_asked_for_fields_under_a_brand_the_bundle_exports_
     let readme = include_str!("../../../docs/guide/services.md");
     assert!(
         readme.contains("**And the fault type itself refuses to be written.**")
-            && readme.contains("declare const billingServiceFaultSeal: unique symbol;")
+            && readme.contains(
+                "const billingServiceFaultSeal: unique symbol = Symbol(\"billingServiceFaultSeal\");"
+            )
             && readme.contains("`built as BillingServiceFault` compiles"),
         "the README no longer says what the seal is, or that a type assertion still gets past it"
     );

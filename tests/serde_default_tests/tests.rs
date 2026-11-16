@@ -494,10 +494,6 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
         "};",
         "",
         "export type Gangway = Readonly<GangwayDraft> & $brand<\"Gangway\">;",
-        "",
-        "export function GangwayDraft$valid(draft: GangwayDraft): Gangway {",
-        "  return draft as unknown as Gangway;",
-        "}",
     ];
     assert_eq!(Gangway::ts_definition(), lines.join("\n"));
 }

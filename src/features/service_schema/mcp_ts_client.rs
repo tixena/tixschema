@@ -32,10 +32,14 @@ export type __N__McpTransport = {
   }): Promise<string>;
 };";
 
-const FAULTS: &str = r#"function __p__Object(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+const FAULTS: &str = r#"/** Whether `value` is an object that is no list, whose members are read as they are. */
+function __p__ObjectIs(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `value` itself where it is an object that is no list, so a write through it reaches it. */
+function __p__Object(value: unknown): Record<string, unknown> | undefined {
+  return __p__ObjectIs(value) ? value : undefined;
 }
 
 /** `value` as the members of an object, none where it is no object. */
@@ -205,7 +209,9 @@ function __p__Blocks(content: unknown): { ok: true; value: Array<McpContent> } |
   };
   const read: Array<McpContent> = [];
   try {
-    for (const entry of content as ReadonlyArray<unknown>) {
+    if (!Array.isArray(content)) throw new TypeError("the answer holds no content");
+    const entries: ReadonlyArray<unknown> = content;
+    for (const entry of entries) {
       const block = __p__Held(entry);
       switch (block.type) {
         case "text":
@@ -334,7 +340,8 @@ function __p__Messages(
 ): { ok: true; value: Array<McpPromptMessage> } | { ok: false; detail: string } {
   if (!Array.isArray(messages)) return { ok: false, detail: "the answer holds no messages" };
   const read: Array<McpPromptMessage> = [];
-  for (const entry of messages as ReadonlyArray<unknown>) {
+  const listed: ReadonlyArray<unknown> = messages;
+  for (const entry of listed) {
     const held = __p__Held(entry);
     const role = held.role;
     if (role !== "user" && role !== "assistant") {
@@ -528,7 +535,7 @@ fn minted_fn(named: &str, prefix: &str, suffix: &str, kind: &str) -> String {
 fn fault_of_fn(named: &str, prefix: &str) -> String {
     let members = "      detail: failed ? undefined : said,\n      field: undefined,\n      \
                    ...(failed ? { issues: listed ?? [] } : {}),\n      \
-                   kind: kind as __N__FaultKind,\n      operation,"
+                   kind: known,\n      operation,"
         .replace("__N__", named);
     format!(
         "/** The problems a fault lists, `undefined` where one of them is no problem. */\n\
@@ -552,17 +559,17 @@ fn fault_of_fn(named: &str, prefix: &str) -> String {
          const failed = kind === \"failed-validation\";\n  \
          const said = typeof detail === \"string\" ? detail : undefined;\n  \
          const listed = failed ? {prefix}IssuesOf(issues) : undefined;\n  \
-         const kinds: ReadonlyArray<unknown> = [\n    \
+         const kinds: ReadonlyArray<{named}FaultKind> = [\n    \
          \"failed-validation\",\n    \
          \"handler-panic\",\n    \
          \"transport-failure\",\n    \
          \"undeserializable-payload\",\n    \
          \"unknown-operation\",\n  \
          ];\n  \
+         const known = kinds.find((candidate) => candidate === kind);\n  \
          if (\n    \
          (failed ? listed !== undefined : said !== undefined) &&\n    \
-         typeof kind === \"string\" &&\n    \
-         kinds.includes(kind) &&\n    \
+         known !== undefined &&\n    \
          typeof operation === \"string\"\n  \
          ) {{\n\
          {minted}\n  \

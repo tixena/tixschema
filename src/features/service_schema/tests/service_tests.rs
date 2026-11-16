@@ -171,8 +171,8 @@ fn an_operation_nothing_answers_to_produces_a_framed_fault() {
     );
     assert!(
         written.contains(
-            "return { answered: { ok: false, error: { isServiceFault: true, fault } }, headers: \
-             [] };"
+            "return { answered: { ok: false, error: { isServiceFault: true, fault } }, fault, \
+             headers: [] };"
         ),
         "a fault crosses inside the failure arm, behind the literal a caller narrows on, with no \
          header beside it. Got: {written}"
@@ -238,16 +238,25 @@ fn every_fault_the_dispatcher_builds_is_minted_from_the_fields_and_sealed() {
         );
         assert!(
             body.find("const built: BillingServiceFaultFields = {")
-                < body.find("return built as BillingServiceFault;"),
+                < body.find(
+                    "const fault: BillingServiceFault = { ...built, [billingServiceFaultSeal]: \
+                     true };"
+                ),
             "the fields are built, then sealed. Got: {body}"
         );
     }
     assert_eq!(
         written
-            .matches("return built as BillingServiceFault;")
+            .matches(
+                "const fault: BillingServiceFault = { ...built, [billingServiceFaultSeal]: true };"
+            )
             .count(),
         2,
-        "one assertion per constructor and nowhere else. Got: {written}"
+        "one seal per constructor and nowhere else. Got: {written}"
+    );
+    assert!(
+        !written.contains(" as BillingServiceFault"),
+        "got: {written}"
     );
 }
 
@@ -256,8 +265,8 @@ fn the_seal_leaves_the_framing_a_caller_narrows_on_untouched() {
     let written = service_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "return { answered: { ok: false, error: { isServiceFault: true, fault } }, headers: \
-             [] };"
+            "return { answered: { ok: false, error: { isServiceFault: true, fault } }, fault, \
+             headers: [] };"
         ),
         "a fault still crosses behind the literal a caller narrows on. Got: {written}"
     );
@@ -268,9 +277,9 @@ fn the_seal_leaves_the_framing_a_caller_narrows_on_untouched() {
         );
     }
     assert!(
-        !written.contains("billingServiceFaultSeal"),
-        "the seal is declared beside the fault, not written into the dispatcher: a bundle \
-         declaring it twice does not compile. Got: {written}"
+        !written.contains("const billingServiceFaultSeal"),
+        "the seal is declared beside the fault, not in the dispatcher: a bundle declaring it \
+         twice does not compile. Got: {written}"
     );
 }
 

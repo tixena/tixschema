@@ -58,9 +58,9 @@ export function createConversationClientServiceWsServer<Ctx>(
       const guarded: ConversationClientServiceWsSocket = {
         send: (text) => { if (!controller.signal.aborted) socket.send(text); },
         close: () => socket.close(),
-        addEventListener: (type: "message" | "close", listener: never) => socket.addEventListener(type as "message", listener),
-        removeEventListener: (type: "message" | "close", listener: never) => socket.removeEventListener(type as "message", listener),
-      } as ConversationClientServiceWsSocket;
+        addEventListener: socket.addEventListener.bind(socket),
+        removeEventListener: socket.removeEventListener.bind(socket),
+      };
       const shared: Array<() => void> = [];
       const connection: ConversationClientServiceWsConnection = {
         socket,
@@ -78,7 +78,7 @@ export function createConversationClientServiceWsServer<Ctx>(
         armIdle();
         let frame: unknown;
         try { frame = conversationClientServiceWsRead(String(event.data)); } catch { return; }
-        if (typeof frame === "object" && frame !== null && (frame as { kind?: unknown }).kind === "ping") {
+        if (typeof frame === "object" && frame !== null && Reflect.get(frame, "kind") === "ping") {
           socket.send(JSON.stringify({ kind: "pong" }));
         }
       };
@@ -171,8 +171,8 @@ fn every_inbound_ping_is_answered_with_a_pong() {
     let written = ws_server_of(SINGLE_PLACEHOLDER_HTTP_SERVICE);
     assert!(
         written.contains(
-            "if (typeof frame === \"object\" && frame !== null && (frame as { kind?: unknown \
-             }).kind === \"ping\") {\n          socket.send(JSON.stringify({ kind: \"pong\" }));"
+            "if (typeof frame === \"object\" && frame !== null && Reflect.get(frame, \"kind\") === \
+             \"ping\") {\n          socket.send(JSON.stringify({ kind: \"pong\" }));"
         ),
         "got: {written}"
     );

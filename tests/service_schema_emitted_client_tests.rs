@@ -2536,6 +2536,16 @@ use carillon_mcp_service::{
 #[path = "service_schema_emitted_client_tests/run_carillon_mcp.rs"]
 mod run_carillon_mcp;
 
+/// The TypeScript of the belfry and carillon bundles, searched for casts.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_typescript_casts.rs"]
+mod run_typescript_casts;
+
+/// What finds every cast in generated TypeScript.
+#[cfg(test)]
+#[path = "support/typescript_casts.rs"]
+mod typescript_casts;
+
 /// `CarillonHttpService`, whose one operation takes the message of `CarillonService`, and what the
 /// Rust `http_rest` client and the Rust `mcp` dispatcher and client answer to `-0` and the numbers
 /// beside it.

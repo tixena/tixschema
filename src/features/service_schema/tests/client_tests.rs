@@ -58,8 +58,8 @@ fn the_operation_name_travels_beside_the_payload() {
     let written = client_of(MIXED_SERVICE);
     assert!(
         written.contains(
-            "const { answered } = await transport.request<BillingServiceGetOpenBalanceResult>\
-             (\"get-open-balance\", validated.sent, []);"
+            "const { answered } = await transport.request(\"get-open-balance\", validated.sent, \
+             []);"
         ),
         "the name is an argument of its own, never a key inside the message. Got: {written}"
     );
@@ -82,15 +82,13 @@ fn a_unit_success_normalizes_value_to_undefined_whatever_the_transport_answered(
     let body = method.unwrap();
     assert!(
         body.contains(
-            "const { answered } = await transport.request<PingClientServicePingResult>(\"ping\", \
-             validated.sent, []);"
+            "const { answered } = await transport.request(\"ping\", validated.sent, []);\n      \
+             const reply = pingClientServiceReply(answered);"
         ),
         "got: {body}"
     );
     assert!(
-        body.contains(
-            "if (answered.ok) {\n        return { ok: true, value: undefined };\n      }"
-        ),
+        body.contains("if (reply.ok) {\n        return { ok: true, value: undefined };\n      }"),
         "got: {body}"
     );
     assert!(
@@ -196,7 +194,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     assert!(method.is_some(), "got: {written}");
     let body = method.unwrap();
     assert!(
-        body.contains("const parsed = OpenBalanceResponse$Schema.safeParse(answered.value);")
+        body.contains("const parsed = OpenBalanceResponse$Schema.safeParse(reply.value);")
             && body.contains("return { ok: true, value: parsed.data };"),
         "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          parsed as one first. Got: {body}"
@@ -218,11 +216,15 @@ fn a_failed_reply_is_checked_against_the_declared_error() {
         "a failure the transport handed back is returned typed as `BalanceError`, so it is \
          parsed against that error's own schema first. Got: {body}"
     );
-    let sealed = body.find("\"isServiceFault\" in error");
+    let sealed = body.find(
+        "const wireFault = billingServiceWireFault(\"get-open-balance\", error);\n      \
+         if (wireFault !== undefined) return { ok: false, error: { isServiceFault: true, fault: \
+         wireFault } };",
+    );
     assert!(
         sealed.is_some() && sealed < body.find("BalanceError$Schema.safeParse(error)"),
-        "a fault the far side sealed is not a declared error, so it passes through before the \
-         parse. Got: {body}"
+        "a fault the far side answered is not a declared error, so it is read as a fault before \
+         the parse. Got: {body}"
     );
     assert!(
         body.contains(
@@ -387,15 +389,21 @@ fn the_fault_the_client_builds_is_minted_from_the_fields_and_sealed() {
         written.contains("function billingServiceReplyFault("),
         "got: {written}"
     );
-    assert!(
-        written.find("const built: BillingServiceFaultFields = {")
-            < written.find("return built as BillingServiceFault;"),
-        "the fields are built, then sealed. Got: {written}"
+    assert_eq!(
+        written
+            .matches(
+                "  };\n  const fault: BillingServiceFault = { ...built, [billingServiceFaultSeal]: \
+                 true };\n  return fault;"
+            )
+            .count(),
+        3,
+        "the fields are built, then sealed, in the two builders and in the reader of a fault the \
+         far side answered. Got: {written}"
     );
     assert!(
-        !written.contains("billingServiceFaultSeal"),
-        "the seal is declared beside the fault, not written into the client: a bundle declaring \
-         it twice does not compile. Got: {written}"
+        !written.contains("const billingServiceFaultSeal"),
+        "the seal is declared beside the fault, not in the client: a bundle declaring it twice \
+         does not compile. Got: {written}"
     );
 }
 
@@ -465,13 +473,11 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
     let written = client_of(TS_HEADER_TUPLE_SERVICE);
     assert!(
         written.contains(
-            "      const { answered, headers: replied } = await transport.request<\n        \
-             | { ok: true; value: Document }\n        \
-             | { ok: false; error: DocError | { isServiceFault: true; fault: VersionServiceFault } \
-             }\n      \
-             >(\"get\", validated.sent, headers);"
+            "      const { answered, headers: replied } = await transport.request(\"get\", \
+             validated.sent, headers);\n      \
+             const reply = versionServiceReply(answered);"
         ),
-        "the transport answers the body alone, typed as the envelope carries it. Got: {written}"
+        "the transport answers the body alone, read off the envelope as it is. Got: {written}"
     );
     assert!(
         written.contains(
@@ -484,22 +490,22 @@ fn a_header_tuple_reply_is_rejoined_from_the_envelope_and_the_reply_headers() {
         ),
         "the headers are rejoined onto the parsed body. Got: {written}"
     );
-    let success_parsed = written.find("const parsed = Document$Schema.safeParse(answered.value);");
+    let success_parsed = written.find("const parsed = Document$Schema.safeParse(reply.value);");
     assert!(
         success_parsed.is_some() && success_parsed < written.find("const headerOut0 ="),
         "the success body is parsed before its headers are read. Got: {written}"
     );
     assert!(
         written.contains(
-            "      if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) \
-             {\n        \
-             return { ok: false, error };\n      \
-             }\n      \
+            "      const error = reply.error;\n      \
+             const wireFault = versionServiceWireFault(\"get\", error);\n      \
+             if (wireFault !== undefined) return { ok: false, error: { isServiceFault: true, \
+             fault: wireFault } };\n      \
              const declared = DocError$Schema.safeParse(error);"
         ) && written
             .contains("return { ok: false, error: [declared.data, errorHeaderOut0.value] };"),
-        "a fault passes through, then the body is parsed as the declared error and its headers \
-         are rejoined onto what parsed. Got: {written}"
+        "a fault is read as a fault, then the body is parsed as the declared error and its \
+         headers are rejoined onto what parsed. Got: {written}"
     );
     let parsed = written.find("DocError$Schema.safeParse(error)");
     assert!(

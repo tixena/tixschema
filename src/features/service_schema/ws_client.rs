@@ -217,9 +217,8 @@ fn header_pairs_fn(named: &str) -> String {
          {{\n  \
          if (typeof table !== \"object\" || table === null || Array.isArray(table)) return \
          [];\n  \
-         return Object.entries(table).map(([name, value]) => [name, \
-         JSON.stringify({prefix}WsSent(value))] as \
-         const);\n\
+         return Object.entries(table).map(([name, value]): readonly [string, string] => [name, \
+         JSON.stringify({prefix}WsSent(value))]);\n\
          }}"
     )
 }
@@ -358,8 +357,8 @@ fn on_message_stmt(prefix: &str) -> String {
          let frame: unknown;\n    \
          try {{ frame = {prefix}WsRead(String(event.data)); }} catch {{ return; }}\n    \
          if (typeof frame !== \"object\" || frame === null) return;\n    \
-         const {{ kind, id, service: named, headers, ...envelope }} = frame as Record<string, \
-         unknown>;\n    \
+         const fields: Record<string, unknown> = Object.fromEntries(Object.entries(frame));\n    \
+         const {{ kind, id, service: named, headers, ...envelope }} = fields;\n    \
          if (kind === \"ping\") {{ socket.send(JSON.stringify({{ kind: \"pong\" }})); return; \
          }}\n    \
          if (kind === \"pong\") {{\n      \
@@ -403,18 +402,17 @@ fn returned_transport_stmt(prefix: &str) -> String {
          ...{prefix}WsHeaderTable(headers) }})),\n      \
          );\n    \
          }},\n    \
-         request<Answered>(\n      \
+         request(\n      \
          operation: string,\n      \
          payload: unknown,\n      \
          headers: ReadonlyArray<readonly [string, string]>,\n    \
-         ): Promise<{{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> \
+         ): Promise<{{ answered: unknown; headers: ReadonlyArray<readonly [string, string]> \
          }}> {{\n      \
          const id = String(++next);\n      \
          return new Promise((resolve) => {{\n        \
          pending.set(id, {{\n          \
          operation,\n          \
-         settle: (answered, replied) => resolve({{ answered: answered as Answered, headers: \
-         replied }}),\n        \
+         settle: (answered, replied) => resolve({{ answered, headers: replied }}),\n        \
          }});\n        \
          try {{\n          \
          socket.send(\n            \

@@ -392,6 +392,13 @@ fn published(service: &ServiceDef) -> Vec<TokenStream> {
     collected.push(quote! { #module::#kind::ts_definition() });
     collected.push(quote! { #module::#issue::ts_definition() });
     collected.push(quote! { #module::#fields::ts_definition() });
+    // A client reads a fault the far side answered with the fault's own schema.
+    #[cfg(feature = "zod")]
+    collected.extend([
+        quote! { #module::#kind::zod_schema() },
+        quote! { #module::#issue::zod_schema() },
+        quote! { #module::#fields::zod_schema() },
+    ]);
     collected.extend(
         fault::emit(service)
             .iter()

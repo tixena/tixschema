@@ -46,23 +46,22 @@ fn attach_dispatcher_fn(service: &ServiceDef) -> String {
          let frame: unknown;\n    \
          try {{ frame = {prefix}WsRead(String(event.data)); }} catch {{ return; }}\n    \
          if (typeof frame !== \"object\" || frame === null) return;\n    \
-         const {{ kind, id, service: named, operation, payload, headers }} = frame as \
-         Record<string, unknown>;\n    \
+         const fields: Record<string, unknown> = Object.fromEntries(Object.entries(frame));\n    \
+         const {{ kind, id, service: named, operation, payload, headers }} = fields;\n    \
          if (named !== service || typeof operation !== \"string\") return;\n    \
          const carried = {prefix}WsHeaderPairs(headers);\n    \
          if (kind === \"notify\") {{\n      \
          void dispatch(ctx, operation, payload, carried).then((dispatched) => {{\n        \
          if (dispatched === undefined) return;\n        \
-         const {{ error }} = dispatched.answered as {{ error: {{ isServiceFault: true; fault: \
-         {named}Fault }} }};\n        \
-         onFault(error.fault);\n      \
+         if (dispatched.fault !== undefined) onFault(dispatched.fault);\n      \
          }});\n      \
          return;\n    \
          }}\n    \
          if (kind !== \"request\" || typeof id !== \"string\") return;\n    \
          void dispatch(ctx, operation, payload, carried).then((dispatched) => {{\n      \
-         const envelope = dispatched === undefined ? {{ ok: true, value: null }} : \
-         (dispatched.answered as object);\n      \
+         const envelope: Record<string, unknown> = dispatched === undefined ? {{ ok: true, value: \
+         null }} : typeof dispatched.answered === \"object\" && dispatched.answered !== null ? \
+         Object.fromEntries(Object.entries(dispatched.answered)) : {{}};\n      \
          const replied = {prefix}WsHeaderTable(dispatched === undefined ? [] : \
          dispatched.headers);\n      \
          socket.send(JSON.stringify({prefix}WsSent({{ kind: \"reply\", id, service, ...envelope, \

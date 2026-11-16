@@ -134,8 +134,14 @@ export function conversationClientServiceHttpDefaultFaultHandler(fault: Conversa
 }
 
 function conversationClientServiceHttpFault(kind: ConversationClientServiceFaultFields[\"kind\"], operation: string, detail: string): ConversationClientServiceFault {
-  const built: ConversationClientServiceFaultFields = { detail, field: undefined, kind, operation };
-  return built as ConversationClientServiceFault;
+  const built: ConversationClientServiceFaultFields = {
+    detail,
+    field: undefined,
+    kind,
+    operation,
+  };
+  const fault: ConversationClientServiceFault = { ...built, [conversationClientServiceFaultSeal]: true };
+  return fault;
 }
 
 /** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a placeholder takes one non-empty segment, percent-decoded, and nothing may remain. */
@@ -186,6 +192,16 @@ function conversationClientServiceHttpCoerceNumber(raw: string): unknown {
   return raw.trim() !== \"\" && Number.isFinite(asFloat) ? asFloat : raw;
 }
 
+/** The envelope a dispatcher answered: `ok`, and the value or the error beside it. */
+function conversationClientServiceHttpEnvelope(answered: unknown): { ok: boolean; value: unknown; error: unknown } {
+  if (typeof answered !== \"object\" || answered === null) return { ok: false, value: undefined, error: answered };
+  return {
+    ok: Reflect.get(answered, \"ok\") === true,
+    value: Reflect.get(answered, \"value\"),
+    error: Reflect.get(answered, \"error\"),
+  };
+}
+
 /**
  * Turns an implementation into the function an adapter drives it with: one request in, one
  * response out. Matches the route table in declaration order, assembles the operation's message
@@ -205,10 +221,9 @@ export function createConversationClientServiceHttpDispatcher<Ctx>(
       return onFault(conversationClientServiceHttpFault(\"handler-panic\", operation, thrown instanceof Error ? thrown.message : String(thrown)));
     }
     if (dispatched === undefined) return { status: okStatus, headers: [], body: new Uint8Array() };
-    const envelope = dispatched.answered as { ok: true; value: unknown } | { ok: false; error: unknown };
+    const envelope = conversationClientServiceHttpEnvelope(dispatched.answered);
     if (envelope.ok) return conversationClientServiceHttpJson(okStatus, [], envelope.value);
-    const error = envelope.error as { isServiceFault?: true; fault?: ConversationClientServiceFault };
-    if (typeof error === \"object\" && error !== null && error.isServiceFault === true && error.fault !== undefined) return onFault(error.fault);
+    if (dispatched.fault !== undefined) return onFault(dispatched.fault);
     return conversationClientServiceHttpJson(errorStatus(envelope.error), [], envelope.error);
   };
   return async (ctx, request) => {
@@ -488,10 +503,17 @@ fn a_header_in_binding_is_coerced_here_and_refused_by_the_dispatcher() {
 fn a_bytes_reply_answers_the_raw_bytes_with_their_content_type_and_declared_headers() {
     let written = http_service_of(BYTES_HTTP_SERVICE);
     assert!(
-        written.contains("const [bytes, contentType] = envelope.value;")
-            && written.contains(
-                "const headerOut0 = thumbnailClientServiceHttpRepliedHeader(replied, \
-                 \"x-document-id\") as string;\n        \
+        written.contains(
+            "const pair: ReadonlyArray<unknown> = Array.isArray(envelope.value) ? envelope.value : \
+             [];\n        \
+             const bytes = pair[0];\n        \
+             const contentType = String(pair[1]);\n        \
+             if (!(bytes instanceof Uint8Array) && !Array.isArray(bytes)) return \
+             onFault(thumbnailClientServiceHttpFault(\"handler-panic\", \"get-thumbnail\", \"the \
+             handler answered no bytes\"));"
+        ) && written.contains(
+            "const headerOut0: unknown = thumbnailClientServiceHttpRepliedHeader(replied, \
+                 \"x-document-id\");\n        \
                  const headers: Array<[string, string]> = [];\n        \
              {\n            \
              const rendered = contentType;\n            \
@@ -511,8 +533,7 @@ fn a_bytes_reply_answers_the_raw_bytes_with_their_content_type_and_declared_head
              }\n            \
              headers.push([\"x-document-id\", rendered]);\n          \
              }"
-            )
-            && written.contains("return { status: 200, headers, body: new Uint8Array(bytes) };"),
+        ) && written.contains("return { status: 200, headers, body: new Uint8Array(bytes) };"),
         "got: {written}"
     );
 }
@@ -522,19 +543,30 @@ fn a_bytes_reply_answers_the_raw_bytes_with_their_content_type_and_declared_head
 fn a_stream_reply_answers_206_or_the_declared_status_off_the_streamed_records_own_range() {
     let written = http_service_of(STREAM_HTTP_SERVICE);
     assert!(
-        written.contains("const status = answer.contentRange === undefined ? 200 : 206;")
-            && written.contains("return { status, headers, body: answer.body };"),
+        written.contains(
+            "const answer = envelope.value;\n        \
+             const streamed: object = typeof answer === \"object\" && answer !== null ? answer : \
+             {};\n        \
+             const body: unknown = Reflect.get(streamed, \"body\");\n        \
+             if (!(body instanceof ReadableStream)) return \
+             onFault(contentClientServiceHttpFault(\"handler-panic\", \"get-file\", \"the handler \
+             answered no stream\"));\n        \
+             const contentType = String(Reflect.get(streamed, \"contentType\"));\n        \
+             const range: unknown = Reflect.get(streamed, \"contentRange\");\n        \
+             const contentRange = range === undefined ? undefined : String(range);"
+        ) && written.contains("const status = contentRange === undefined ? 200 : 206;")
+            && written.contains("return { status, headers, body };"),
         "got: {written}"
     );
     let typed = written.find(
-        "const rendered = answer.contentType;\n            \
+        "const rendered = contentType;\n            \
          if (!contentClientServiceHttpLegalResponseHeaderValue(rendered)) {\n              \
          return onFault(contentClientServiceHttpFault(\"handler-panic\", \"get-file\", \"a \
          response header value contained a character illegal in an HTTP header\"));\n            \
          }\n            \
          headers.push([\"content-type\", rendered]);",
     );
-    let ranged = written.find("const rendered = answer.contentRange;");
+    let ranged = written.find("const rendered = contentRange;");
     assert!(
         typed.is_some() && typed < ranged,
         "the content type is checked and written on every streamed answer, ahead of the range. \

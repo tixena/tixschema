@@ -72,7 +72,9 @@ type ZodParsed<Parsed> =
 
 declare interface ZodType<Parsed = unknown> {
   readonly _out: Parsed;
+  brand<Name extends string>(): ZodBuilder;
   meta(data?: object): ZodBuilder;
+  parse(value: unknown): this[\"_out\"];
   readonly(): ZodBuilder;
   safeParse(value: unknown): ZodParsed<this[\"_out\"]>;
 }
@@ -94,21 +96,23 @@ declare type ZodBuilder = ZodType<never> & {
   prefault(value: unknown): ZodBuilder;
   readonly(): ZodBuilder;
   superRefine(
-    check: (read: never, ctx: { issues: Array<{ code: string; params?: unknown; path?: ReadonlyArray<PropertyKey> }> }) => void,
+    check: (read: never, ctx: { issues: Array<{ code: string; input?: unknown; message?: string; params?: unknown; path?: ReadonlyArray<PropertyKey> }> }) => void,
     params?: object,
   ): ZodBuilder;
   transform(map: (value: never) => unknown): ZodBuilder;
 };
 
 declare const z: {
+  array(item: ZodType): ZodBuilder;
   boolean(): ZodBuilder;
   discriminatedUnion(key: string, arms: ReadonlyArray<ZodBuilder>): ZodBuilder;
+  enum(values: ReadonlyArray<string>): ZodBuilder;
   literal(value: string): ZodBuilder;
   null(): ZodBuilder;
   nullable(inner: ZodBuilder): ZodBuilder;
   number(): ZodBuilder;
   string(): ZodBuilder;
-  strictObject(shape: Record<string, ZodBuilder>): ZodBuilder;
+  strictObject(shape: Record<string, ZodType>): ZodBuilder;
   undefined(): ZodBuilder;
   union(arms: ReadonlyArray<ZodBuilder>): ZodBuilder;
 };
@@ -1921,9 +1925,9 @@ fn valid_constants_bundle() -> String {
 #[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
 fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
     let head = "import { Parcel$Schema, ParcelDraft$Schema, ParcelLane, \
-                ParcelLane$Schema, ParcelNoteDraft$valid, type Parcel, \
+                ParcelLane$Schema, ParcelNote$Schema, type Parcel, \
                 type ParcelDraft, type ParcelLane as Lane, type ParcelNote, \
-                type ParcelNoteDraft, ParcelMove, ParcelAdjacent, ParcelExternal, ParcelStamp, ParcelRecordDraft$valid, type ParcelRecord } from \"./bundle.js\";\n";
+                type ParcelNoteDraft, ParcelMove, ParcelAdjacent, ParcelExternal, ParcelStamp, ParcelRecord$Schema, type ParcelRecord } from \"./bundle.js\";\n";
     let files = [
         ("bundle.ts", valid_constants_bundle()),
         ("caller.ts", format!("{head}{caller}")),
@@ -1931,8 +1935,7 @@ fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
     compiled_beside_zod(named, &files)
 }
 
-/// A unit variant is a constant of the valid type, and a draft with no rule is made valid with no
-/// parse.
+/// A unit variant is a constant of the valid type, and a draft is made valid by its schema.
 #[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
 #[test]
 fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
@@ -1940,12 +1943,12 @@ fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
                   export const other: Lane = ParcelLane.Bulk;\n\
                   export const parsed: Lane = ParcelLane$Schema.parse(\"Express\");\n\
                   export const valid: Lane = ParcelLane.Bulk;\n\
-                  export const note: ParcelNote = ParcelNoteDraft$valid({ text: \"a\" });\n\
+                  export const note: ParcelNote = ParcelNote$Schema.parse({ text: \"a\" });\n\
                   export const moved: ParcelMove = ParcelMove.Idle;\n\
                   export const adjacent: ParcelAdjacent = ParcelAdjacent.Idle;\n\
                   export const external: ParcelExternal = ParcelExternal.Idle;\n\
                   export const stamp: ParcelStamp = ParcelStamp;\n\
-                  export const record: ParcelRecord = ParcelRecordDraft$valid({ lane: ParcelLane.Express, note });\n";
+                  export const record: ParcelRecord = ParcelRecord$Schema.parse({ lane: ParcelLane.Express, note });\n";
     let Some((accepted, said)) = valid_constants_caller("valid-constants-ok", caller) else {
         return;
     };
@@ -1972,19 +1975,25 @@ fn a_plain_enum_with_no_check_keys_a_record_and_narrows_a_switch() {
     assert!(accepted, "the union does not index and narrow:\n{said}");
 }
 
-/// A draft under a rule has no conversion that skips `validate()`.
+/// No draft, under a rule or not, has a conversion that skips its schema.
 #[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
 #[test]
-fn a_draft_that_declares_a_rule_has_no_conversion() {
-    let caller = "import { ParcelDraft$valid } from \"./bundle.js\";\n\
+fn no_draft_has_a_conversion_that_skips_its_schema() {
+    let caller = "import { ParcelDraft$valid, ParcelNoteDraft$valid } from \"./bundle.js\";\n\
                   declare const draft: ParcelDraft;\n\
-                  export const parcel: Parcel = ParcelDraft$valid(draft);\n";
+                  declare const noted: ParcelNoteDraft;\n\
+                  export const parcel: Parcel = ParcelDraft$valid(draft);\n\
+                  export const note: ParcelNote = ParcelNoteDraft$valid(noted);\n";
     let Some((accepted, said)) = valid_constants_caller("valid-constants-ruled", caller) else {
         return;
     };
-    assert!(!accepted, "a draft under a rule was converted");
+    assert!(!accepted, "a draft was converted with no parse");
     assert!(
-        said.contains("has no exported member named 'ParcelDraft$valid'"),
+        ["'ParcelDraft$valid'", "'ParcelNoteDraft$valid'"]
+            .iter()
+            .all(|named| said
+                .lines()
+                .any(|line| line.contains("has no exported member") && line.contains(named))),
         "got:\n{said}"
     );
 }

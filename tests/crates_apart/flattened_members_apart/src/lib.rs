@@ -48,3 +48,21 @@ pub enum LateHitchApart {
     #[serde(alias = "hitch")]
     Hitch { turns: u32 },
 }
+
+/// The item of the [`CargoApart`] an alias fills.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ParcelApart {
+    pub label: String,
+}
+
+/// A struct with a list of items, which the alias below fills.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CargoApart<Item> {
+    pub items: Vec<Item>,
+}
+
+/// An alias of a filled [`CargoApart`], flattened by a struct of another crate.
+#[model_schema(name = "ManifestApart")]
+pub type ManifestListApart = CargoApart<ParcelApart>;

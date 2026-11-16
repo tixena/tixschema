@@ -147,11 +147,9 @@ fn guarded_socket_stmt(named: &str) -> String {
          const guarded: {named}WsSocket = {{\n        \
          send: (text) => {{ if (!controller.signal.aborted) socket.send(text); }},\n        \
          close: () => socket.close(),\n        \
-         addEventListener: (type: \"message\" | \"close\", listener: never) => \
-         socket.addEventListener(type as \"message\", listener),\n        \
-         removeEventListener: (type: \"message\" | \"close\", listener: never) => \
-         socket.removeEventListener(type as \"message\", listener),\n      \
-         }} as {named}WsSocket;\n"
+         addEventListener: socket.addEventListener.bind(socket),\n        \
+         removeEventListener: socket.removeEventListener.bind(socket),\n      \
+         }};\n"
     )
 }
 
@@ -186,8 +184,8 @@ fn on_frame_stmt(prefix: &str) -> String {
          armIdle();\n        \
          let frame: unknown;\n        \
          try {{ frame = {prefix}WsRead(String(event.data)); }} catch {{ return; }}\n        \
-         if (typeof frame === \"object\" && frame !== null && (frame as {{ kind?: unknown }}).kind \
-         === \"ping\") {{\n          \
+         if (typeof frame === \"object\" && frame !== null && Reflect.get(frame, \"kind\") === \
+         \"ping\") {{\n          \
          socket.send(JSON.stringify({{ kind: \"pong\" }}));\n        \
          }}\n      \
          }};\n"
