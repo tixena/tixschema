@@ -76,6 +76,11 @@ mod named_counts;
 #[path = "unwrapped_models.rs"]
 mod unwrapped;
 
+/// The models the decode functions are checked against, each a shape whose schema reads more
+/// than its draft.
+#[path = "decoded_models.rs"]
+mod decoded;
+
 /// Aliases of a map whose values are a model, one of them declared above the enum that holds it.
 #[path = "map_alias_models.rs"]
 mod map_aliases;
@@ -1671,6 +1676,87 @@ console.log(JSON.stringify([made.sounding, made.kindText, made.byKind, made.labe
 
 /// What [`UNWRAPPED_DRIVER`] prints.
 const UNWRAPPED_READ: &str = r#"[[1,"a",{"deep":[true]}],"form/round",{"form/round":1},"bow",[],{"note":"a","items":[{"weight":1}]},{"note":"b","items":[{"weight":2}]},{"note":"c","items":[{"label":"c"}]}]"#;
+
+/// What a consumer writes to make each valid value of `decoded` from its draft, which tsc
+/// checks against the draft.
+const DECODED_ACCEPTED: &str = r#"import * as zod from "zod";
+import {
+  decodeDecodedBill, decodeDecodedGauge, decodeDecodedLabel, decodeDecodedManifest, decodeDecodedNode,
+  decodeDecodedNoted, decodeDecodedParcel, decodeDecodedPayment, decodeDecodedStatus, decodeDecodedWide,
+  decodeDecodedWrap, DecodedParcel$Schema, safeDecodeDecodedParcel, safeDecodeDecodedWrap,
+  type DecodedBill, type DecodedGauge, type DecodedLabel, type DecodedManifest, type DecodedNode, type DecodedNoted,
+  type DecodedParcel, type DecodedParcelDraft, type DecodedStatus, type DecodedWide, type DecodedWrap,
+} from "./index.js";
+const z = zod;
+
+export const parcel: DecodedParcel = decodeDecodedParcel({ label: "Shipping", parcelCount: 3 });
+export const manifest: DecodedManifest = decodeDecodedManifest({ note: "n", parcel });
+const leaf: DecodedNode = decodeDecodedNode({ children: [], name: "leaf" });
+export const tree: DecodedNode = decodeDecodedNode({ children: [leaf], name: "root" });
+export const bill: DecodedBill = decodeDecodedBill({ payment: decodeDecodedPayment("Pending") });
+export const gauge: DecodedGauge = decodeDecodedGauge({ depth: 2.5 });
+export const wide: DecodedWide = decodeDecodedWide({ count: 9007199254740993n });
+export const noted: DecodedNoted = decodeDecodedNoted({ note: undefined });
+export const status: DecodedStatus = decodeDecodedStatus("active");
+export const wrapped: DecodedWrap<string> = decodeDecodedWrap(z.string(), { inner: "x" });
+const safeWrapped = safeDecodeDecodedWrap(z.number(), { inner: 1 });
+export const heldWrap: DecodedWrap<number> | undefined = safeWrapped.success ? safeWrapped.data : undefined;
+export const label: DecodedLabel = decodeDecodedLabel("Shipping");
+const draft: DecodedParcelDraft = { label: "Shipping", parcelCount: 3 };
+const checked = safeDecodeDecodedParcel(draft);
+export const held: DecodedParcel | undefined = checked.success ? checked.data : undefined;
+export const read: DecodedParcel = DecodedParcel$Schema.parse(JSON.parse('{"label":"Wire","parcelCount":1}'));
+"#;
+
+/// Each literal a decode function of `decoded` refuses, with the code tsc 5.9 prints for it.
+const DECODED_REFUSED: [(&str, &str); 11] = [
+    (
+        "decodeDecodedParcel({ label: \"Shipping\", parcelCont: 3 })",
+        "TS2561",
+    ),
+    ("decodeDecodedParcel({ label: \"Shipping\" })", "TS2345"),
+    (
+        "decodeDecodedParcel({ label: \"Shipping\", parcelCount: \"3\" })",
+        "TS2322",
+    ),
+    ("decodeDecodedGauge({ depth: \"deep\" })", "TS2322"),
+    ("decodeDecodedPayment({ Crad: \"visa\" })", "TS2353"),
+    ("decodeDecodedBill({ payment: 42 })", "TS2322"),
+    (
+        "decodeDecodedManifest({ note: \"n\", parcel: { label: \"Shipping\", parcelCount: 3 } })",
+        "TS2322",
+    ),
+    ("decodeDecodedWide({ count: 7 })", "TS2322"),
+    ("decodeDecodedStatus(\"open\")", "TS2345"),
+    ("decodeDecodedWrap(z.string(), { inner: 1 })", "TS2322"),
+    ("decodeDecodedLabel(3)", "TS2345"),
+];
+
+/// Reads what `parse` and the decode functions answer through the schemas of `decoded`, once
+/// loaded.
+const DECODED_DRIVER: &str = r#"import * as made from "./lib/index.js";
+const nested = made.DecodedManifest$Schema.safeParse({ note: "n", parcel: { label: "", parcelCount: 3 } });
+const wide = made.DecodedWide$Schema.parse({ count: 7 });
+const noted = made.DecodedNoted$Schema.parse({ note: null });
+const parcel = made.decodeDecodedParcel({ label: "a", parcelCount: 1 });
+const broken = made.safeDecodeDecodedParcel({ label: "", parcelCount: 3 });
+const label = made.safeDecodeDecodedLabel("");
+let thrown = "";
+try { made.decodeDecodedParcel({ label: "", parcelCount: 3 }); } catch (error) { thrown = error.issues[0].message; }
+console.log(JSON.stringify([
+  nested.error?.issues[0]?.path,
+  typeof wide.count,
+  noted.note === undefined,
+  Object.isFrozen(parcel),
+  broken.success,
+  thrown,
+  label.success,
+  made.DecodedPayment.Pending === made.DecodedPayment.Pending,
+]));
+"#;
+
+/// What [`DECODED_DRIVER`] prints.
+const DECODED_READ: &str = r#"[["parcel","label"],"bigint",true,true,false,"too short: minimum length is 1, got 0",false,true]"#;
 
 /// What a consumer's module writes ahead of the generated text. `z` is bound as a constant, which
 /// names no type: the weakest binding a consumer's own module may hand the bundle.
@@ -4005,6 +4091,62 @@ fn type_check_an_unwrapped_valid_type_and_a_flattened_alias_compile_and_parse() 
     assert_eq!(
         printed, UNWRAPPED_READ,
         "the bundle does not load and parse under node:\n{failed}"
+    );
+}
+
+/// The bundle of `decoded`.
+fn decoded_bundle() -> String {
+    [PREAMBLE.to_owned(), decoded::decoded_texts().join("\n\n")].join("\n\n")
+}
+
+#[test]
+fn type_check_a_decode_function_takes_a_draft_and_refuses_a_broken_literal() {
+    let Some(at) = built_from("decoded", &decoded_bundle()) else {
+        return;
+    };
+    fs::write(at.join("tsconfig.consumer.json"), BYTES_CONSUMER_PROJECT).unwrap();
+    fs::write(at.join("src/consumer.ts"), DECODED_ACCEPTED).unwrap();
+    let accepted = compiled(&at, "tsconfig.consumer.json").unwrap();
+    let refused: Vec<(&str, &str, (bool, String))> = DECODED_REFUSED
+        .iter()
+        .map(|&(call, code)| {
+            fs::write(
+                at.join("src/consumer.ts"),
+                format!(
+                    "import * as zod from \"zod\";\nimport {{ decodeDecodedBill, decodeDecodedGauge, \
+                     decodeDecodedLabel, decodeDecodedManifest, decodeDecodedParcel, decodeDecodedPayment, \
+                     decodeDecodedStatus, decodeDecodedWide, decodeDecodedWrap }} from \
+                     \"./index.js\";\nconst z = zod;\nexport const refused = {call};\n"
+                ),
+            )
+            .unwrap();
+            (call, code, compiled(&at, "tsconfig.consumer.json").unwrap())
+        })
+        .collect();
+    fs::remove_dir_all(&at).unwrap();
+    assert!(
+        accepted.0,
+        "a draft is refused by its decode function:\n{}",
+        accepted.1
+    );
+    for (call, code, (passed, said)) in refused {
+        assert!(!passed, "the decode function accepts `{call}`");
+        assert!(
+            said.contains(code),
+            "`{call}` is refused with another code than {code}:\n{said}"
+        );
+    }
+}
+
+#[test]
+fn type_check_a_decode_function_reads_and_refuses_what_parse_does() {
+    let Some((printed, failed)) = loaded_from("decoded-read", &decoded_bundle(), DECODED_DRIVER)
+    else {
+        return;
+    };
+    assert_eq!(
+        printed, DECODED_READ,
+        "the bundle does not load and read under node:\n{failed}"
     );
 }
 

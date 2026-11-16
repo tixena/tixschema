@@ -10036,7 +10036,6 @@ fn a_type_that_writes_no_block_names_no_serde_json_for_its_empty_list() {
         super::build_struct_delegate_items(
             &module,
             "Report",
-            "Report",
             &[],
             None,
             false,
@@ -10044,7 +10043,6 @@ fn a_type_that_writes_no_block_names_no_serde_json_for_its_empty_list() {
         ),
         super::build_struct_delegate_items(
             &module,
-            "Report",
             "Report",
             &["IdType".to_owned()],
             None,
@@ -10078,7 +10076,6 @@ fn a_type_that_writes_a_block_reads_its_list_off_schema_examples() {
     let zod_delegates: Vec<String> = [
         super::build_struct_delegate_items(
             &module,
-            "Report",
             "Report",
             &[],
             Some(&methods),
@@ -23553,7 +23550,6 @@ fn a_type_that_republishes_a_binding_and_writes_no_block_states_no_examples_of_i
     let module: syn::Ident = syn::parse_quote!(report_schema);
     let delegates: Vec<String> = super::build_struct_delegate_items(
         &module,
-        "Report",
         "Report",
         &[],
         None,

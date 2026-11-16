@@ -1643,6 +1643,19 @@ struct PublishedBinding<'binding> {
     republished: bool,
 }
 
+/// What [`ts_decode_functions`] writes the two functions over: the schema arguments of a generic
+/// item with their types and bounds, the type `tsc` checks the value against, the valid type
+/// answered, and the schema expression that reads it.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+struct TsDecoded {
+    arguments: Vec<(String, String)>,
+    bounds: String,
+    drafted: bool,
+    input: String,
+    output: String,
+    schema: String,
+}
+
 /// The constants the item being written publishes beside its valid type, which its schema makes:
 /// the value of each unit variant, by the name of its constant, and whether the item is a unit
 /// struct, whose one value is its constant.
@@ -3388,7 +3401,6 @@ fn struct_delegate_items(
     build_struct_delegate_items(
         module_ident,
         item_name,
-        &item_struct.ident.to_string(),
         &type_parameters_in_scope(&item_struct.generics),
         drafted_schema_example_method(
             &extract_examples_tokens(&item_struct.attrs),
@@ -3414,7 +3426,6 @@ fn enum_delegate_items(
     let mut items = build_struct_delegate_items(
         module_ident,
         item_name,
-        &item_enum.ident.to_string(),
         &type_parameters_in_scope(&item_enum.generics),
         enum_schema_example_method(
             &item_enum.attrs,
@@ -3466,7 +3477,6 @@ fn plain_enum_delegate_items(
 fn build_struct_delegate_items(
     module_ident: &Ident,
     item_name: &str,
-    rust_ident: &str,
     parameters: &[String],
     schema_example_method: Option<&proc_macro2::TokenStream>,
     republishes: bool,
@@ -3475,10 +3485,8 @@ fn build_struct_delegate_items(
     // The example methods are emitted iff a block was extracted.
     #[cfg(feature = "zod")]
     let examples_json = zod_examples_json(schema_example_method.is_some());
-    #[cfg(feature = "zod")]
-    let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
     #[cfg(not(feature = "zod"))]
-    let _: &_ = &(item_name, rust_ident, parameters, republishes);
+    let _: &_ = &(item_name, parameters, republishes);
     #[cfg(not(feature = "zod"))]
     let _: Option<&proc_macro2::TokenStream> = schema_example_method;
 
@@ -3507,7 +3515,6 @@ fn build_struct_delegate_items(
             &quote! { #module_ident::Schema::zod_schema() },
             item_name,
             parameters,
-            &reexport,
             &examples_json,
         )
     });
@@ -11672,8 +11679,26 @@ fn build_branded_zod_schema_method(
 ) -> proc_macro2::TokenStream {
     let expression = branded_zod_expression(args, item_name, parameters, inner, plain_description);
     let reexport = zod_binding_reexport(rust_ident, item_name, parameters);
+    #[cfg(feature = "typescript")]
+    let decoders = ts_decode_functions(
+        item_name,
+        &if parameters.is_empty() {
+            TsDecoded {
+                arguments: Vec::new(),
+                bounds: String::new(),
+                drafted: false,
+                input: inner.typescript_typename(),
+                output: item_name.to_owned(),
+                schema: format!("{item_name}$Schema"),
+            }
+        } else {
+            ts_generic_decoded(item_name, parameters, (&inner.typescript_typename(), false))
+        },
+    );
+    #[cfg(not(feature = "typescript"))]
+    let decoders = String::new();
     let body = if parameters.is_empty() {
-        branded_zod_const_block(item_name, &expression, &reexport)
+        branded_zod_const_block(item_name, &expression, &format!("{reexport}{decoders}"))
     } else {
         let items = parameter_default_is_a_list(args, inner);
         let checks = branded_zod_string_checks(args, items);
@@ -11701,7 +11726,7 @@ fn build_branded_zod_schema_method(
             &defaults,
             "",
             &expression,
-            &reexport,
+            &format!("{reexport}{decoders}"),
         )
     };
     quote! {
@@ -23810,8 +23835,8 @@ fn zod_valid_binding(
         let constants = zod_schema_constants(item_name);
         #[cfg(not(feature = "typescript"))]
         let constants = String::new();
-        return format!(
-            "export const {item_name}$Schema = {draft_name}$Schema{}{}{}.meta({draft_name}$Schema.meta() ?? {{}});{reexport}{constants}",
+        let sealed = format!(
+            "{draft_name}$Schema{}{}{}",
             if published.frozen { ".readonly()" } else { "" },
             zod_brand_call(item_name),
             if published.admits == DraftAdmits::Null {
@@ -23820,8 +23845,93 @@ fn zod_valid_binding(
                 ""
             }
         );
+        #[cfg(feature = "typescript")]
+        let decoders = ts_decode_functions(
+            item_name,
+            &TsDecoded {
+                arguments: Vec::new(),
+                bounds: String::new(),
+                drafted: true,
+                input: draft_name.clone(),
+                output: item_name.to_owned(),
+                schema: format!("{item_name}$Schema"),
+            },
+        );
+        #[cfg(not(feature = "typescript"))]
+        let decoders = String::new();
+        return format!(
+            "export const {item_name}$Schema = {sealed}.meta({draft_name}$Schema.meta() ?? {{}});\
+             {reexport}{constants}{decoders}"
+        );
     }
     zod_valid_factory(item_name, rust_ident, parameters, published, reexport)
+}
+
+/// What a generic item's two functions are written over: each type parameter's schema typed by
+/// the value it reads, `ZodType<Item>`, so a call infers the parameter from the schema it hands
+/// over, then `input` at those parameters, read through the item's own factory.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn ts_generic_decoded(
+    item_name: &str,
+    parameters: &[String],
+    (input, drafted): (&str, bool),
+) -> TsDecoded {
+    TsDecoded {
+        arguments: parameters
+            .iter()
+            .map(|parameter| {
+                (
+                    zod_factory_argument(parameter),
+                    format!("ZodType<{parameter}>"),
+                )
+            })
+            .collect(),
+        bounds: format!("<{}>", parameters.join(", ")),
+        drafted,
+        input: input.to_owned(),
+        output: format!("{item_name}<{}>", parameters.join(", ")),
+        schema: format!(
+            "{item_name}$SchemaFactory({})",
+            zod_factory_argument_names(parameters)
+        ),
+    }
+}
+
+/// `decode{Name}` and `safeDecode{Name}`: a valid value made from `input`, which `tsc` checks, by
+/// the schema's own `parse` and `safeParse`, so the schema itself stays as every holder reads it.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn ts_decode_functions(item_name: &str, decoded: &TsDecoded) -> String {
+    let taken: Vec<&str> = decoded
+        .arguments
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let named = if decoded.drafted { "draft" } else { "value" };
+    let value = [named, "given", "held"]
+        .into_iter()
+        .find(|name| !taken.contains(name))
+        .unwrap_or(named);
+    let mut parameters = decoded
+        .arguments
+        .iter()
+        .fold(String::new(), |mut acc, (name, typed)| {
+            let _ = write!(acc, "\n  {name}: {typed},");
+            acc
+        });
+    let _ = write!(parameters, "\n  {value}: {},", decoded.input);
+    let (bounds, input, output, schema) = (
+        &decoded.bounds,
+        &decoded.input,
+        &decoded.output,
+        &decoded.schema,
+    );
+    format!(
+        "\n\n/** A valid `{item_name}` made from `{input}`, which `tsc` checks; throws what the schema \
+         refuses. */\nexport function decode{item_name}{bounds}({parameters}\n): {output} {{\n  return \
+         {schema}.parse({value});\n}}\n\n/** What `decode{item_name}` makes, or what the schema \
+         refuses, in place of throwing it. */\nexport function safeDecode{item_name}{bounds}({parameters}\n) \
+         {{\n  return {schema}.safeParse({value});\n}}"
+    )
 }
 
 /// The factory of a generic item's valid type, over its draft's factory at the same arguments. The
@@ -23875,11 +23985,19 @@ fn zod_valid_factory(
             .fold("ZodType".to_owned(), |below, _| {
                 format!("WeakMap<ZodType, {below}>")
             });
+        let decoders = ts_decode_functions(
+            item_name,
+            &ts_generic_decoded(
+                item_name,
+                parameters,
+                (&format!("{draft_name}<{}>", parameters.join(", ")), true),
+            ),
+        );
         format!(
             "const {builder} = {bounds}({}\n): ZodType =>\n  {sealed};\n\nconst {cache} = new \
              WeakMap<ZodType, {keyed}>();\n\nexport function {item_name}$SchemaFactory{bounds}({}\n): \
              ZodType<{item_name}<{outputs}>>;\nexport function {item_name}$SchemaFactory({}\n): \
-             ZodType {{\n{body}\n}}{default_block}{reexport}",
+             ZodType {{\n{body}\n}}{default_block}{reexport}{decoders}",
             zod_factory_arguments(parameters),
             zod_factory_arguments(parameters),
             zod_factory_widened_arguments(parameters)
@@ -24006,18 +24124,15 @@ fn zod_schema_with_examples(
     base: &proc_macro2::TokenStream,
     item_name: &str,
     parameters: &[String],
-    reexport: &str,
     examples_json: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let injected = zod_examples_injection(item_name, parameters);
     quote! {
         pub fn zod_schema() -> ::std::string::String {
             let base_schema = #base;
-            let defined = base_schema.strip_suffix(#reexport).unwrap_or(base_schema.as_str());
+            let defined = base_schema.as_str();
             let examples_json = #examples_json;
-            let mut result = #injected;
-            result.push_str(#reexport);
-            result
+            #injected
         }
     }
 }
@@ -24027,12 +24142,16 @@ fn zod_schema_with_examples(
 #[cfg(feature = "zod")]
 fn zod_examples_injection(item_name: &str, parameters: &[String]) -> proc_macro2::TokenStream {
     if parameters.is_empty() {
-        // The schema's own statement ends at its first `;`: the constants it makes follow it.
-        let anchor = format!("export const {item_name}$Schema = ");
+        // The schema's own statement ends at its first `;`, annotated or not: the constants and
+        // the decode functions follow it.
+        let plain = format!("export const {item_name}$Schema = ");
+        let annotated = format!("export const {item_name}$Schema: ");
         return quote! {{
             let examples_part = format!(".meta({{\n  examples: {}\n}})", examples_json);
-            let ends = defined
-                .find(#anchor)
+            let ends = [#plain, #annotated]
+                .into_iter()
+                .filter_map(|anchor| defined.find(anchor))
+                .min()
                 .and_then(|start| defined[start..].find(';').map(|end| start + end))
                 .or_else(|| defined.rfind(';'));
             if let ::core::option::Option::Some(pos) = ends {
@@ -24370,9 +24489,25 @@ fn generate_plain_enum_zod_schema_method(
         // When typescript feature is enabled, generate TypeScript-style Zod schema
         #[cfg(feature = "typescript")]
         {
+            // A drafted enum's functions are written beside its valid schema.
+            let decoders = if drafted {
+                String::new()
+            } else {
+                ts_decode_functions(
+                    item_name,
+                    &TsDecoded {
+                        arguments: Vec::new(),
+                        bounds: String::new(),
+                        drafted: false,
+                        input: item_name.to_owned(),
+                        output: item_name.to_owned(),
+                        schema: format!("{item_name}$Schema"),
+                    },
+                )
+            };
             quote::quote! {
                 pub fn zod_schema() -> ::std::string::String {
-                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}{}", #declared, #opened, #read, #checked, #closed, #description, #declared, #declared, #declared, #reexport, #valid)
+                    format!("const {}$RawSchema = {}{}{}{}.meta({{\n  description: \"{}\",\n}});\n\nexport const {}$Schema: ZodType<{}> = {}$RawSchema;{}{}{}", #declared, #opened, #read, #checked, #closed, #description, #declared, #declared, #declared, #reexport, #valid, #decoders)
                 }
             }
         }
@@ -24736,7 +24871,6 @@ fn generate_alias_zod_method(
             &quote! { #body.to_owned() },
             export_name,
             &parameters,
-            &reexport,
             &zod_examples_json(has_example),
         )
     }
