@@ -1632,7 +1632,7 @@ fn test_adjacent_variant_reader_reads_the_tag_key_and_ignores_the_content_key() 
         "Got: {ts}"
     );
     assert!(
-        ts.contains("switch ((value as { type?: unknown }).type) {"),
+        ts.contains("switch (value.type) {") && ts.contains("!(\"type\" in value)"),
         "reads the tag key alone. Got: {ts}"
     );
     assert!(!ts.contains("value?: unknown"), "Got: {ts}");

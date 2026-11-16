@@ -22,7 +22,9 @@ use super::refusal_from_violations;
 use super::unbounded;
 use super::{LiteralLeaf, literal_shape, sole_type_argument};
 use crate::features::model_schema_prop::{LiteralValue, parse_model_schema_prop_attributes};
-#[cfg(all(feature = "zod", feature = "serde"))]
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+use crate::features::serde::parse_serde_field_attributes;
+#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
 use crate::features::serde::parse_serde_type_attributes;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
 #[cfg(feature = "zod")]
@@ -58,9 +60,6 @@ pub struct Declared {
     pub debugs: Gate,
     pub derives: Vec<Path>,
     pub deserializes: Gate,
-    /// Whether a value of the type can be an array buffer view whole, which no freeze takes.
-    #[cfg(feature = "zod")]
-    pub holds_bytes_whole: bool,
     pub name: Option<Ident>,
     pub origin: Origin,
     pub serializes: Gate,
@@ -69,6 +68,8 @@ pub struct Declared {
     pub unit: bool,
     /// The variants of an enum, each with the `cfg` attributes it is under, in declaration order.
     pub variants: Vec<(Vec<Attribute>, Ident)>,
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    pub wrapping: Wrapping,
 }
 
 /// Whether, and under which `cfg`, an item derives a trait the valid type writes itself.
@@ -94,6 +95,24 @@ impl Gate {
     pub fn unless(self, refused: bool) -> Self {
         if refused { Self::Never } else { self }
     }
+}
+
+/// How the TypeScript valid type holds its draft, and whether its schema freezes what it parses.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum Wrapping {
+    /// Read-only, and not frozen: a value of it can be an array buffer view whole, which no freeze
+    /// takes.
+    #[cfg(feature = "zod")]
+    Bytes,
+    /// Read-only, and frozen by the schema.
+    #[default]
+    Frozen,
+    /// The draft under its brand alone, neither read-only nor frozen: an untagged enum, whose union
+    /// a mapped type would make circular where it holds itself and would turn a branded string
+    /// member into an object, and a tuple with no slot on the wire, which zod freezes into a list
+    /// of any length.
+    Unwrapped,
 }
 
 /// Who writes the type being expanded, which decides whether it has a draft.
@@ -1211,8 +1230,6 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
         debugs: gate_of(attrs, "Debug"),
         derives: wrapper_derives(attrs),
         deserializes: gate_of(attrs, "Deserialize"),
-        #[cfg(feature = "zod")]
-        holds_bytes_whole: holds_bytes_whole(item),
         name,
         origin,
         serializes: gate_of(attrs, "Serialize"),
@@ -1220,6 +1237,8 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
         checked,
         #[cfg(feature = "typescript")]
         unit: matches!(item, syn::Item::Struct(item_struct) if item_struct.generics.params.is_empty() && matches!(item_struct.fields, syn::Fields::Unit)),
+        #[cfg(any(feature = "typescript", feature = "zod"))]
+        wrapping: wrapping(item),
     };
     #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
     if let Some(declared_name) = &declared.name {
@@ -1259,7 +1278,57 @@ fn holds_bytes_whole(item: &syn::Item) -> bool {
 /// Whether the valid type's schema freezes the value it parses.
 #[cfg(feature = "zod")]
 pub fn freezes() -> bool {
-    DECLARED.with(|held| !held.borrow().holds_bytes_whole)
+    DECLARED.with(|held| {
+        let declared = held.borrow();
+        declared.wrapping == Wrapping::Frozen
+    })
+}
+
+/// Whether the TypeScript valid type of the item being expanded is its draft under the brand
+/// alone, as [`Wrapping::Unwrapped`] says.
+#[cfg(feature = "typescript")]
+pub fn unwrapped_draft() -> bool {
+    DECLARED.with(|held| held.borrow().wrapping == Wrapping::Unwrapped)
+}
+
+/// How the valid type of `item` holds its draft.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+fn wrapping(item: &syn::Item) -> Wrapping {
+    if unwrapped(item) {
+        return Wrapping::Unwrapped;
+    }
+    #[cfg(feature = "zod")]
+    if holds_bytes_whole(item) {
+        return Wrapping::Bytes;
+    }
+    Wrapping::Frozen
+}
+
+/// Whether the valid type of `item` is its draft under the brand alone.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+fn unwrapped(item: &syn::Item) -> bool {
+    match item {
+        #[cfg(feature = "serde")]
+        syn::Item::Enum(item_enum) => parse_serde_type_attributes(&item_enum.attrs).untagged,
+        syn::Item::Struct(item_struct) => {
+            matches!(&item_struct.fields, syn::Fields::Unnamed(fields) if fields.unnamed.iter().all(slot_skipped))
+        }
+        _ => false,
+    }
+}
+
+/// Whether serde neither writes nor reads the slot `field`.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+fn slot_skipped(field: &syn::Field) -> bool {
+    #[cfg(feature = "serde")]
+    {
+        parse_serde_field_attributes(&field.attrs).skip
+    }
+    #[cfg(not(feature = "serde"))]
+    {
+        let _ = field;
+        false
+    }
 }
 
 /// What the item being expanded declares.

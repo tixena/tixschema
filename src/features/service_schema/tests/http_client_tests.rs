@@ -360,7 +360,7 @@ fn a_tuple_success_reads_its_header_out_element_back_off_the_response() {
         "a missing declared header is a defect, not a silently absent value. Got: {method}"
     );
     assert!(
-        method.contains("const headerOut0 = rawHeaderOut0[1] as string;")
+        method.contains("const headerOut0 = rawHeaderOut0[1];")
             && method.contains("return { ok: true, value: [parsed.value, headerOut0] };"),
         "the body and the header ride the same tuple the result type declares. Got: {method}"
     );
@@ -619,7 +619,7 @@ fn a_stream_operation_with_header_out_composes_the_answer_and_the_header() {
          Got: {method}"
     );
     assert!(
-        method.contains("const headerOut0 = rawHeaderOut0[1] as string;"),
+        method.contains("const headerOut0 = rawHeaderOut0[1];"),
         "got: {method}"
     );
     assert_eq!(

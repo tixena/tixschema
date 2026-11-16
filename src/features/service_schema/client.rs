@@ -54,6 +54,7 @@ use crate::rename_rule::RenameRule;
 use crate::service_schema::parse::{
     BodyKind, HttpShape, OperationDef, OperationOutcome, ServiceDef, is_unit_type, option_inner,
 };
+use crate::service_schema::support::fault_fields_typescript_name;
 use crate::utils::ts_quoted;
 use core::fmt::Write as _;
 use core::iter::once;
@@ -205,6 +206,41 @@ fn factory(service: &ServiceDef) -> String {
     )
 }
 
+/// The reader of a reply a client's transport answered with: whether it succeeded, and the value or
+/// the error beside it, each read off the object as it is, never trusted to hold a shape.
+fn reply_fn(prefix: &str) -> String {
+    format!(
+        "/** A reply as the transport answered it: `ok`, and the value or the error beside it. */\n\
+         function {prefix}Reply(answered: unknown): {{ ok: boolean; value: unknown; error: unknown }} {{\n  \
+         if (typeof answered !== \"object\" || answered === null) return {{ ok: false, value: \
+         undefined, error: answered }};\n  \
+         return {{\n    \
+         ok: Reflect.get(answered, \"ok\") === true,\n    \
+         value: Reflect.get(answered, \"value\"),\n    \
+         error: Reflect.get(answered, \"error\"),\n  \
+         }};\n\
+         }}"
+    )
+}
+
+/// The reader of a fault the far side put in a reply's failure arm: read with the fault's own
+/// schema and sealed, a fault that does not read is a reply nobody promised, and an error that
+/// holds no fault is none.
+fn wire_fault_fn(named: &str, prefix: &str) -> String {
+    let fields = fault_fields_typescript_name(named);
+    format!(
+        "/** The fault the far side answered under `isServiceFault`, `undefined` where `error` holds none. */\n\
+         function {prefix}WireFault(operation: string, error: unknown): {named}Fault | undefined {{\n  \
+         if (typeof error !== \"object\" || error === null || Reflect.get(error, \"isServiceFault\") \
+         !== true) return undefined;\n  \
+         const read = {fields}$Schema.safeParse(Reflect.get(error, \"fault\"));\n  \
+         if (!read.success) return {prefix}ReplyFault(operation, read.error.issues);\n\
+         {minted}\n\
+         }}",
+        minted = fault::minted(named, "    ...read.data,")
+    )
+}
+
 /// The two readers a validation failure goes through, emitted only where there is a schema to fail
 /// against — and the thrower only where a one-way operation needs somewhere to put a fault.
 ///
@@ -239,6 +275,8 @@ fn fault_helpers(service: &ServiceDef) -> Vec<String> {
                  promised."
             ),
         ));
+        helpers.push(reply_fn(&prefix));
+        helpers.push(wire_fault_fn(&named, &prefix));
     }
     if service.operations.iter().any(|operation| {
         let shape = HttpShape::of(operation);
@@ -364,13 +402,13 @@ fn method(service: &ServiceDef, operation: &OperationDef) -> String {
         OperationOutcome::Reply { error, success }
             if !shape.header_out.is_empty() || !shape.error_header_out.is_empty() =>
         {
-            header_tuple_answer(&named, &prefix, wire, &shape, error, success, &headers)
+            header_tuple_answer(&prefix, wire, &shape, error, success, &headers)
         }
         OperationOutcome::Reply { error, success } => format!(
-            "      const {{ answered }} = await transport.request<{result}>({wire}, \
-             validated.sent, {headers});\n\
+            "      const {{ answered }} = await transport.request({wire}, validated.sent, \
+             {headers});\n      \
+             const reply = {prefix}Reply(answered);\n\
              {succeeded}{failed}",
-            result = answers(&named, operation),
             succeeded = success_stmt(&prefix, wire, &shape, success),
             failed = failure_stmt(&prefix, wire, &shape, error)
         ),
@@ -440,7 +478,6 @@ fn header_in_build_stmt(prefix: &str, operation: &OperationDef) -> (String, Stri
 /// `value` or `error`, and each header element is read back off the reply's own headers and
 /// rejoined into the tuple the operation declared.
 fn header_tuple_answer(
-    named: &str,
     prefix: &str,
     wire: &str,
     shape: &HttpShape,
@@ -448,19 +485,10 @@ fn header_tuple_answer(
     success: &Type,
     headers: &str,
 ) -> String {
-    let success_body = message::success_body(shape, success);
-    let error_body = message::body_type(shape.error_header_out.len(), error);
-    let value_ty = if is_unit_type(&success_body) {
-        "undefined".to_owned()
-    } else {
-        get_field_def("value", &success_body, "").typescript_typename()
-    };
-    let error_ty = get_field_def("error", error_body, "").typescript_typename();
     let mut stmt = format!(
-        "      const {{ answered, headers: replied }} = await transport.request<\n        \
-         | {{ ok: true; value: {value_ty} }}\n        \
-         | {{ ok: false; error: {error_ty} | {{ isServiceFault: true; fault: {named}Fault }} }}\n      \
-         >({wire}, validated.sent, {headers});\n"
+        "      const {{ answered, headers: replied }} = await transport.request({wire}, \
+         validated.sent, {headers});\n      \
+         const reply = {prefix}Reply(answered);\n"
     );
     stmt.push_str(&success_stmt(prefix, wire, shape, success));
     stmt.push_str(&failure_stmt(prefix, wire, shape, error));
@@ -472,14 +500,14 @@ fn header_tuple_answer(
 /// are rejoined onto it.
 fn success_stmt(prefix: &str, wire: &str, shape: &HttpShape, success: &Type) -> String {
     let body = message::success_body(shape, success);
-    let mut stmt = String::from("      if (answered.ok) {\n");
+    let mut stmt = String::from("      if (reply.ok) {\n");
     let value = if is_unit_type(&body) {
         "undefined"
     } else {
         let schema = get_field_def("value", &body, "").zod_type();
         let _ = write!(
             stmt,
-            "        const parsed = {schema}.safeParse(answered.value);\n        \
+            "        const parsed = {schema}.safeParse(reply.value);\n        \
              if (!parsed.success) {{\n          \
              return {{\n            \
              ok: false,\n            \
@@ -518,10 +546,10 @@ fn failure_stmt(prefix: &str, wire: &str, shape: &HttpShape, error: &Type) -> St
     let body = message::body_type(shape.error_header_out.len(), error);
     let schema = get_field_def("error", body, "").zod_type();
     let mut stmt = format!(
-        "      const error = answered.error;\n      \
-         if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) {{\n        \
-         return {{ ok: false, error }};\n      \
-         }}\n      \
+        "      const error = reply.error;\n      \
+         const wireFault = {prefix}WireFault({wire}, error);\n      \
+         if (wireFault !== undefined) return {{ ok: false, error: {{ isServiceFault: true, fault: \
+         wireFault }} }};\n      \
          const declared = {schema}.safeParse(error);\n      \
          if (!declared.success) {{\n        \
          return {{\n          \
@@ -722,11 +750,11 @@ fn transport_type(service: &str) -> String {
          headers: ReadonlyArray<readonly [string, string]>,\n  \
          ): Promise<void>;\n  \
          /** Sends a message and answers with the reply the far side wrote, and its headers. */\n  \
-         request<Answered>(\n    \
+         request(\n    \
          operation: string,\n    \
          payload: unknown,\n    \
          headers: ReadonlyArray<readonly [string, string]>,\n  \
-         ): Promise<{{ answered: Answered; headers: ReadonlyArray<readonly [string, string]> }}>;\n\
+         ): Promise<{{ answered: unknown; headers: ReadonlyArray<readonly [string, string]> }}>;\n\
          }};"
     )
 }

@@ -45,9 +45,11 @@ console.log(JSON.stringify(sent));
 "#;
 
 /// The schema stubs `StampClientServiceSchema::ts_http_client()` reads through, every schema a
-/// header's is built of through `z` among them.
+/// header's is built of through `z` among them, and the seal its faults carry, which the service's
+/// own text declares.
 const STAMP_SCHEMA_STUB: &str =
-    "const pass = { safeParse: (value) => ({ success: true, data: value }) };
+    "const stampClientServiceFaultSeal = Symbol(\"stampClientServiceFaultSeal\");
+const pass = { safeParse: (value) => ({ success: true, data: value }) };
 const built = () => new Proxy(pass, { get: (stub, key) => key in stub ? stub[key] : () => built() });
 const z = built();
 const StampReceipt$Schema = { safeParse: (value) => ({ success: true, data: value }) };

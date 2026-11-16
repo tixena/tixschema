@@ -87,11 +87,11 @@ There is no `InvoiceStatusDraft`, no `validate()` and no `.into()`; a struct tha
 ```typescript
 export type InvoiceStatus = "draft" | "past-due" | "paid";
 
-export const InvoiceStatus = {
+export const InvoiceStatus = Object.freeze({
   Draft: "draft",
   PastDue: "past-due",
   Paid: "paid",
-} as const satisfies Record<string, InvoiceStatus>;
+}) satisfies Record<string, InvoiceStatus>;
 ```
 
 It indexes a `Record<InvoiceStatus, number>` and narrows in a `switch` with no `default`. Dart, Swift and Kotlin write their native enum, with no draft and no valid class. A plain enum that names a `check`, and every other enum, keeps `{Name}Draft` and the valid type.
@@ -132,7 +132,7 @@ A draft that declares no rule becomes its valid type with `From`, which cannot f
 let rule: RuleResult = RuleResultDraft { passed: true, label: "sealed".to_owned() }.into();
 ```
 
-A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that has a draft, names no `check` and takes no parameter: `Payment.Pending` (TypeScript), `Payment.pending` (Dart and Swift) and `Payment.Pending` (Kotlin), for each unit variant whatever the other variants hold; a plain enum has no draft, so these are its own variants. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `ShipmentDraft$valid(draft)`, `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule.
+A type has `From` where it declares no rule of its own: no `model_schema_prop` constraint, no `check` on the type or on a member, no literal, and it is no brand. A member typed with another model type, a collection of them or a map of them is no rule, and a generic type with no rule has `From` at every filling. `.into()` does not judge a member written as a draft type, so a field names the valid type. A type that declares a rule has no `From`, and its value comes from `validate()?`. TypeScript, Dart, Swift and Kotlin have the same two. For an enum that has a draft, names no `check` and takes no parameter: `Payment.Pending` (TypeScript), `Payment.pending` (Dart and Swift) and `Payment.Pending` (Kotlin), for each unit variant whatever the other variants hold; a plain enum has no draft, so these are its own variants. For a unit struct that declares no rule: `SealAck` (TypeScript, a `const` beside the type), `SealAck.instance` (Dart and Swift) and `SealAck.instance` (Kotlin). And for the conversion: `draft.toValid()` (Dart and Kotlin) and `draft.valid` (Swift), on the draft of a type that declares no rule; TypeScript makes every valid value with `Shipment$Schema.parse(draft)`.
 
 #### `new`: a Valid Value From Its Fields
 
@@ -209,7 +209,7 @@ export type ShipmentDraft = {
 export type Shipment = Readonly<ShipmentDraft> & $brand<"Shipment">;
 ```
 
-`Shipment` is the draft read-only and branded. A draft that admits `null` (a newtype over an `Option`, over an alias of one, over `()` or over a model whose valid type admits `null`, and an untagged enum with a variant over any of these) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses.
+`Shipment` is the draft read-only and branded. An untagged enum and a tuple struct with no slot on the wire are branded and not made read-only: `Readonly<>` over a union that names a brand or the enum itself is no longer that union, and Zod types an empty tuple frozen as `readonly never[]`. So `Datum`, an untagged enum over a list of `Datum`, is `DatumDraft & $brand<"Datum">`, a `Kind` over a branded string is a `string`, and `Nothing`, a tuple struct whose slots are all skipped, is `NothingDraft & $brand<"Nothing">`; each schema is `XDraft$Schema.brand<"X">()`, which does not freeze. A draft that admits `null` (a newtype over an `Option`, over an alias of one, over `()` or over a model whose valid type admits `null`, and an untagged enum with a variant over any of these) keeps the `null` beside the branded rest, written `(Readonly<NonNullable<XDraft>> & $brand<"X">) | null`, because `X$Schema.parse(null)` returns `null` and an intersection with `null` would be `never`; its schema is `XDraft$Schema.readonly().brand<"X">().nullable()`, which refuses what the draft refuses. An untagged enum writes both with no `Readonly<>` and no `.readonly()`.
 
 A newtype, or an untagged enum with a variant, over a type parameter or over a model the expansion has not seen decided (declared below it, behind an alias, or in another crate) cannot say at expansion whether its draft admits `null`, so its valid type asks the compiler: `(Readonly<NonNullable<XDraft>> & $brand<"X">) | Extract<XDraft, null>`. `Extract<XDraft, null>` is `null` where the draft holds `null`, and `never` where it does not, so `Param<number | null>` admits `null`, `Param<number>` does not, and a holder of a model that is never `null` keeps refusing it. A model declared above its holder is decided before the holder expands and keeps the plain form or the `| null` form. The type of `X$Schema` itself is the branded draft's, which leaves `null` out of what `parse` is typed to return where this form applies; what it parses and refuses is the draft's.
 
@@ -231,23 +231,23 @@ weigh(shipment); // a Shipment is a ShipmentDraft: no cast.
 
 A value written by hand is not a `Shipment`, and a member of one cannot be assigned. `tsc --strict` answers `const shipment: Shipment = { label, parcelCount: 3 }` with ``error TS2322: Type '{ label: ParcelLabel; parcelCount: number; }' is not assignable to type 'Parcel'.`` and ``Property '[$brand]' is missing in type '{ label: ParcelLabel; parcelCount: number; }' but required in type '$brand<"Parcel">'``, and `shipment.parcelCount = 1` with ``error TS2540: Cannot assign to 'parcelCount' because it is a read-only property.`` The schema freezes the value it returns as well, so the same assignment in a script throws ``TypeError: Cannot assign to read only property 'parcelCount' of object '#<Object>'`` under `"use strict"`. The freeze is shallow: each member that is a model was frozen by its own schema. A value that is its own bytes is the one it cannot freeze, because `Object.freeze` refuses a typed array with elements: a tuple struct of `Vec<u8>` and an untagged enum with a variant of one `Vec<u8>` parse to an unfrozen value of the same type.
 
-TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out of anything, and no schema has seen it. That is the one way round the check, and it is a way a reader of the code can see. The same goes for a `Shipment` written in a `declare const`.
+TypeScript cannot stop an assertion: `value as Shipment` makes a `Shipment` out of anything, and no schema has seen it. That is the one way round the check, and it is a way a reader of the code can see. The same goes for a `Shipment` written in a `declare const`. The generated TypeScript writes no assertion of any kind, `as const` included: every value of a valid type it makes comes from a schema's `parse`.
 
-A plain enum that names no `check` is the bare string union with a `const` object of its literals (`Status.Active` is `"active"`), and has no draft, no `StatusDraft$valid` and no brand. An enum that has a draft and names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Payment.Pending`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), a unit struct that declares no rule has a `const` of its own name, and a type that declares no rule has `ShipmentDraft$valid(draft)`, which answers its valid type with no parse (the value is the draft itself, neither copied nor frozen):
+A plain enum that names no `check` is the bare string union with a frozen `const` object of its literals (`Status.Active` is `"active"`), and has no draft and no brand. An enum that has a draft and names no `check` has a constant of the valid type for each unit variant, in a `const` object beside the type with the same name (`Payment.Pending`, and for a tagged enum the value its tagging writes: `{ kind: "Idle" }`, `{ t: "Idle" }` or `"Idle"`), and a unit struct that declares no rule has a `const` of its own name. Each constant is the value its schema parses, written after the schema in the Zod text: `Payment.Pending` is a getter that answers `Payment$Schema.parse("Pending")` on its first read and the same value after it, since a parse while the module loads would reach a schema declared below before it exists. A draft of any type becomes its valid type through its schema:
 
 ```typescript
-import { Payment, PaymentDraft$valid, type PaymentDraft } from "./models";
+import { Payment, Payment$Schema, type PaymentDraft } from "./models";
 
 const open: Payment = Payment.Pending;
 const draft: PaymentDraft = { Card: "visa" };
-const closed: Payment = PaymentDraft$valid(draft);
+const closed: Payment = Payment$Schema.parse(draft);
 ```
 
-A type that declares a rule has neither, and a draft becomes its valid type through `Shipment$Schema.parse(draft)`.
+A type that declares a rule has no constant, since a rule could refuse it.
 
 Every client and dispatcher types each message and result as the valid type, so `client.ship(...)` takes a `Shipment` and a handler is handed one. Make the argument with `Shipment$Schema.parse(draft)`. A function a `check` names takes the draft, the type the rules run on: `function withACode<CodeType>(value: CrateDraft<CodeType>, ctx: ParsePayload<CrateDraft<CodeType>>)`, where a `Crate<CodeType>` stops the build of the consumer with ``error TS2345: Argument of type 'CrateDraft<unknown>' is not assignable to parameter of type 'Crate<unknown>'.`` A struct that flattens a model holds its keys among its own, so it holds the model's draft: `{ label: string } & MoorageDraft`.
 
-A type that declares a parameter publishes `WrapDraft<T>` and `Wrap<T>` of the same form, and two factories: `WrapDraft$SchemaFactory` answers the draft's schema as it always answered the type's, and `Wrap$SchemaFactory` answers a `ZodType<Wrap<...>>`, which names what the schema parses to, so `.shape` is not on it. `Wrap$SchemaDefault` and `WrapDraft$SchemaDefault` are each the factory at the declared defaults. A build with `typescript` and no `zod` writes the marker a brand writes there, `{ readonly [__brand_Shipment]: true }` after a `declare const __brand_Shipment: unique symbol;`.
+A type that declares a parameter publishes `WrapDraft<T>` and `Wrap<T>` of the same form, and two factories: `WrapDraft$SchemaFactory` answers the draft's schema as it always answered the type's, and `Wrap$SchemaFactory` answers a `ZodType<Wrap<...>>`, which names what the schema parses to, so `.shape` is not on it. `Wrap$SchemaDefault` and `WrapDraft$SchemaDefault` are each the factory at the declared defaults. A build with `typescript` and no `zod` writes no brand on a model type, since no schema is there to make a branded value: `Shipment` is `Readonly<ShipmentDraft>`, and each constant is the literal itself, typed with the valid type.
 
 #### Unit Structs
 
@@ -890,10 +890,6 @@ export type HistogramDraft = {
 };
 
 export type Histogram = Readonly<HistogramDraft> & $brand<"Histogram">;
-
-export function HistogramDraft$valid(draft: HistogramDraft): Histogram {
-  return draft as unknown as Histogram;
-}
 ```
 
 - **Where the note is written.** On a member whose type writes such a map at any depth, or names an alias, a brand or a tuple struct declared above it that carries the note. On the key a variant's slots are written under, its name or its content key. On a tuple struct, an alias and a brand whose value writes such a map, and on the name each republishes itself under. In the service code, on each method of a client and of an implementation whose message, header or part writes one, and on the `value` or the `error` of a result and of an outcome whose arm writes one. A type declared below the member that names it, or in another crate, is not looked into.
@@ -984,10 +980,6 @@ export type SpannedDraft = {
 };
 
 export type Spanned = Readonly<SpannedDraft> & $brand<"Spanned">;
-
-export function SpannedDraft$valid(draft: SpannedDraft): Spanned {
-  return draft as unknown as Spanned;
-}
 ```
 
 ```typescript
@@ -1027,10 +1019,6 @@ export type ReplyDraft = {
 };
 
 export type Reply = Readonly<ReplyDraft> & $brand<"Reply">;
-
-export function ReplyDraft$valid(draft: ReplyDraft): Reply {
-  return draft as unknown as Reply;
-}
 ```
 
 ```typescript

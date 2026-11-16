@@ -1079,10 +1079,6 @@ export type UserDraft = {
 };
 
 export type User = Readonly<UserDraft> & $brand<"User">;
-
-export function UserDraft$valid(draft: UserDraft): User {
-  return draft as unknown as User;
-}
 ```"#]
 ///
 /// `User::zod_schema()`:
@@ -1135,11 +1131,11 @@ export type Status =
   | "inactive"
   | "pending";
 
-export const Status = {
+export const Status = Object.freeze({
   Active: "active",
   Inactive: "inactive",
   Pending: "pending",
-} as const satisfies Record<string, Status>;
+}) satisfies Record<string, Status>;
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Status$Variant(value: unknown): string {
@@ -1234,14 +1230,10 @@ export type EventDraft = {
 
 export type Event = Readonly<EventDraft> & $brand<"Event">;
 
-export function EventDraft$valid(draft: EventDraft): Event {
-  return draft as unknown as Event;
-}
-
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Event$Variant(value: unknown): string {
-  if (typeof value !== "object" || value === null) return "";
-  switch ((value as { type?: unknown }).type) {
+  if (typeof value !== "object" || value === null || !("type" in value)) return "";
+  switch (value.type) {
     case "userCreated": return "UserCreated";
     case "userDeleted": return "UserDeleted";
     default: return "";
@@ -1456,10 +1448,6 @@ export type DocumentDraft = {
 };
 
 export type Document = Readonly<DocumentDraft> & $brand<"Document">;
-
-export function DocumentDraft$valid(draft: DocumentDraft): Document {
-  return draft as unknown as Document;
-}
 ```
 
 `Document::zod_schema()`:

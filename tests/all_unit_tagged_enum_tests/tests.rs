@@ -123,14 +123,9 @@ fn the_typescript_union_carries_the_tag_serde_writes() {
         format!(
             "export type BalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
              export type BalanceError = Readonly<BalanceErrorDraft> & $brand<\"BalanceError\">;\n\
-             export const BalanceError = {{\n  \
-             DbError: Object.freeze({{ {tag}: \"{db}\" }}) as BalanceError,\n  \
-             InsufficientBalance: Object.freeze({{ {tag}: \"{insufficient}\" }}) as BalanceError,\n}} as const;\n\
-             export function BalanceErrorDraft$valid(draft: BalanceErrorDraft): BalanceError {{\n  \
-             return draft as unknown as BalanceError;\n}}\n\
              export function BalanceError$Variant(value: unknown): string {{\n  \
-             if (typeof value !== \"object\" || value === null) return \"\";\n  \
-             switch ((value as {{ {tag}?: unknown }}).{tag}) {{\n    \
+             if (typeof value !== \"object\" || value === null || !(\"{tag}\" in value)) return \"\";\n  \
+             switch (value.{tag}) {{\n    \
              case \"{db}\": return \"DbError\";\n    \
              case \"{insufficient}\": return \"InsufficientBalance\";\n    \
              default: return \"\";\n  }}\n}}"
@@ -149,14 +144,9 @@ fn the_typescript_union_carries_an_adjacent_tag_too() {
         format!(
             "export type AdjacentBalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
              export type AdjacentBalanceError = Readonly<AdjacentBalanceErrorDraft> & $brand<\"AdjacentBalanceError\">;\n\
-             export const AdjacentBalanceError = {{\n  \
-             DbError: Object.freeze({{ {tag}: \"{db}\" }}) as AdjacentBalanceError,\n  \
-             InsufficientBalance: Object.freeze({{ {tag}: \"{insufficient}\" }}) as AdjacentBalanceError,\n}} as const;\n\
-             export function AdjacentBalanceErrorDraft$valid(draft: AdjacentBalanceErrorDraft): AdjacentBalanceError {{\n  \
-             return draft as unknown as AdjacentBalanceError;\n}}\n\
              export function AdjacentBalanceError$Variant(value: unknown): string {{\n  \
-             if (typeof value !== \"object\" || value === null) return \"\";\n  \
-             switch ((value as {{ {tag}?: unknown }}).{tag}) {{\n    \
+             if (typeof value !== \"object\" || value === null || !(\"{tag}\" in value)) return \"\";\n  \
+             switch (value.{tag}) {{\n    \
              case \"{db}\": return \"DbError\";\n    \
              case \"{insufficient}\": return \"InsufficientBalance\";\n    \
              default: return \"\";\n  }}\n}}"
@@ -170,8 +160,8 @@ fn an_all_unit_enum_naming_no_tag_still_publishes_the_string_union() {
     assert_eq!(
         ts_shape(&ExternalBalanceError::ts_definition()),
         "export type ExternalBalanceError =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
-         export const ExternalBalanceError = {\n  DbError: \"db-error\",\n  \
-         InsufficientBalance: \"insufficient-balance\",\n} as const satisfies Record<string, ExternalBalanceError>;\n\
+         export const ExternalBalanceError = Object.freeze({\n  DbError: \"db-error\",\n  \
+         InsufficientBalance: \"insufficient-balance\",\n}) satisfies Record<string, ExternalBalanceError>;\n\
          export function ExternalBalanceError$Variant(value: unknown): string {\n  \
          switch (value) {\n    \
          case \"db-error\": return \"DbError\";\n    \

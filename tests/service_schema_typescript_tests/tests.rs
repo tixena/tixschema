@@ -268,12 +268,14 @@ mod the_bundle_one_registration_line_produces {
     fn the_published_fault_is_the_fields_under_a_brand_the_bundle_exports_nowhere() {
         let (_, written) = written_bundle("tixschema_service_bundle_seal.ts");
         assert!(
-            written.contains("declare const probeServiceFaultSeal: unique symbol;"),
+            written.contains(
+                "const probeServiceFaultSeal: unique symbol = Symbol(\"probeServiceFaultSeal\");"
+            ),
             "the brand is keyed on a symbol, and a `unique symbol` is one no other declaration \
              spells. Got: {written}"
         );
         assert!(
-            !written.contains("export declare const probeServiceFaultSeal"),
+            !written.contains("export const probeServiceFaultSeal"),
             "an exported symbol is one an implementation can name, and a property it can write. \
              Got: {written}"
         );
@@ -303,25 +305,27 @@ mod the_bundle_one_registration_line_produces {
              the declared error, and the dispatcher answers an unrecognised operation and a \
              payload that failed. Got: {written}"
         );
+        let built = written
+            .matches("const built: ProbeServiceFaultFields = {")
+            .count();
         assert_eq!(
-            written
-                .matches("const built: ProbeServiceFaultFields = {")
-                .count(),
-            answering,
-            "every constructor builds the fields the Rust declaration published. Got: {written}"
+            built,
+            answering + 1,
+            "every constructor, and the client's reader of a fault the far side answered, builds \
+             the fields the Rust declaration published. Got: {written}"
         );
         assert_eq!(
             written
-                .matches("return built as ProbeServiceFault;")
+                .matches(
+                    "const fault: ProbeServiceFault = { ...built, [probeServiceFaultSeal]: true };"
+                )
                 .count(),
-            answering,
-            "one assertion per constructor and nowhere else. Got: {written}"
+            built,
+            "each fault built is sealed where it is built. Got: {written}"
         );
-        assert_eq!(
-            written.matches(" as ProbeServiceFault").count(),
-            answering,
-            "an assertion anywhere else in the bundle is a fault built outside the two places \
-             entitled to build one. Got: {written}"
+        assert!(
+            !written.contains(" as ProbeServiceFault"),
+            "no fault is made by an assertion. Got: {written}"
         );
     }
 
@@ -336,9 +340,10 @@ mod the_bundle_one_registration_line_produces {
         );
         let (_, bundle) = written_bundle("tixschema_service_bundle_brand_offwire.ts");
         assert!(
-            bundle.contains("declare const probeServiceFaultSeal"),
-            "`declare const` is what makes the symbol a type-level name with nothing emitted for \
-             it. Got: {bundle}"
+            bundle.contains(
+                "const probeServiceFaultSeal: unique symbol = Symbol(\"probeServiceFaultSeal\");"
+            ),
+            "the seal is a symbol, a key `JSON.stringify` never writes. Got: {bundle}"
         );
     }
 
@@ -905,7 +910,7 @@ mod the_envelope_typescript_declares_is_the_one_rust_writes {
         let written = ProbeServiceSchema::ts_service();
         assert!(
             written.contains(
-                "return { answered: { ok: false, error: { isServiceFault: true, fault } }, \
+                "return { answered: { ok: false, error: { isServiceFault: true, fault } }, fault, \
                  headers: [] };"
             ),
             "the framing this test writes by hand is the one the emitter writes. Got: {written}"

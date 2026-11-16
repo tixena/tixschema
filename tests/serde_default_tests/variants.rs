@@ -530,18 +530,10 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
         "",
         "export type Tide = Readonly<TideDraft> & $brand<\"Tide\">;",
         "",
-        "export const Tide = {",
-        "  Slack: Object.freeze({ kind: \"Slack\" }) as Tide,",
-        "} as const;",
-        "",
-        "export function TideDraft$valid(draft: TideDraft): Tide {",
-        "  return draft as unknown as Tide;",
-        "}",
-        "",
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */",
         "export function Tide$Variant(value: unknown): string {",
-        "  if (typeof value !== \"object\" || value === null) return \"\";",
-        "  switch ((value as { kind?: unknown }).kind) {",
+        "  if (typeof value !== \"object\" || value === null || !(\"kind\" in value)) return \"\";",
+        "  switch (value.kind) {",
         "    case \"Ebbing\": return \"Ebbing\";",
         "    case \"Slack\": return \"Slack\";",
         "    default: return \"\";",
@@ -567,6 +559,16 @@ export const TideDraft$Schema: ZodType<TideDraft> = TideDraft$RawSchema;
 
 export const Tide$Schema = TideDraft$Schema.readonly().brand<\"Tide\">().meta(TideDraft$Schema.meta() ?? {}).meta({
   examples: []
+});
+
+const Tide$Made: { Slack?: Tide } = {};
+
+export const Tide = Object.freeze({
+  get Slack(): Tide {
+    const made = Tide$Made.Slack ?? Tide$Schema.parse({ kind: \"Slack\" });
+    Tide$Made.Slack = made;
+    return made;
+  },
 });"
     );
 }

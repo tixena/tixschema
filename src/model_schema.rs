@@ -24,6 +24,8 @@ pub mod valid_type;
 
 use crate::utils::{is_rule_less, note_rule_less};
 use alloc::borrow::ToOwned;
+#[cfg(all(feature = "typescript", feature = "zod"))]
+use core::cell::RefCell;
 use core::fmt::Write as _;
 #[cfg(feature = "serde")]
 use core::iter;
@@ -83,6 +85,8 @@ use crate::bound_message::zod_error_arg;
 use crate::utils::asking_more;
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::escape_js_double_quoted;
+#[cfg(feature = "typescript")]
+use crate::utils::is_drafted_type;
 #[cfg(any(
     feature = "zod",
     feature = "dart",
@@ -1637,6 +1641,17 @@ struct PublishedBinding<'binding> {
     /// Whether the published expression *is* a sibling's own binding — see
     /// [`republishes_sibling_binding`].
     republished: bool,
+}
+
+/// The constants the item being written publishes beside its valid type, which its schema makes:
+/// the value of each unit variant, by the name of its constant, and whether the item is a unit
+/// struct, whose one value is its constant.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+#[derive(Default)]
+struct SchemaConstants {
+    item: String,
+    members: Vec<(String, String)>,
+    unit: bool,
 }
 
 /// What an untagged enum publishes beside its own binding so an object that flattens it can join
@@ -13037,14 +13052,16 @@ fn tagged_enum_variant_reader(
     pairs: &[(String, String)],
 ) -> String {
     let key = ts_member_key(tag_name);
+    // `in` narrows the object to one that holds the key, so the key reads with no cast.
     let read = if key.starts_with('"') {
-        format!("(value as Record<string, unknown>)[{key}]")
+        format!("value[{key}]")
     } else {
-        format!("(value as {{ {key}?: unknown }}).{key}")
+        format!("value.{key}")
     };
+    let held = ts_quoted(tag_name);
     format!(
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */\n\
-         export function {item_name}$Variant(value: unknown): string {{\n  if (typeof value !== \"object\" || value === null) return \"\";\n  switch ({read}) {{\n{}\n    default: return \"\";\n  }}\n}}",
+         export function {item_name}$Variant(value: unknown): string {{\n  if (typeof value !== \"object\" || value === null || !({held} in value)) return \"\";\n  switch ({read}) {{\n{}\n    default: return \"\";\n  }}\n}}",
         variant_reader_case_arms(pairs)
     )
 }
@@ -22942,30 +22959,28 @@ fn ts_valid_type(
     } else {
         String::new()
     };
+    // Only a schema's `parse` supplies the brand, so a build with no schema brands nothing.
     #[cfg(feature = "zod")]
-    let marker = format!("$brand<\"{item_name}\">");
+    let marker = format!(" & $brand<\"{item_name}\">");
     #[cfg(not(feature = "zod"))]
-    let marker = format!("{{ readonly [__brand_{item_name}]: true }}");
-    #[cfg(feature = "zod")]
-    let declared = String::new();
-    #[cfg(not(feature = "zod"))]
-    let declared = format!("\n\ndeclare const __brand_{item_name}: unique symbol;");
+    let marker = String::new();
     record_null_decided(rust_ident, nullable);
-    let body = match nullable {
-        NullAdmitted::Always => {
-            format!("(Readonly<NonNullable<{item_name}Draft{ts_generics}>> & {marker}) | null")
-        }
-        NullAdmitted::Perhaps => format!(
-            "(Readonly<NonNullable<{item_name}Draft{ts_generics}>> & {marker}) | Extract<{item_name}Draft{ts_generics}, null>"
-        ),
-        NullAdmitted::Never => {
-            format!("Readonly<{item_name}Draft{ts_generics}> & {marker}")
-        }
+    let draft = format!("{item_name}Draft{ts_generics}");
+    let (held, whole) = if valid_type::unwrapped_draft() {
+        (format!("NonNullable<{draft}>"), draft.clone())
+    } else {
+        (
+            format!("Readonly<NonNullable<{draft}>>"),
+            format!("Readonly<{draft}>"),
+        )
     };
-    let converts = ts_valid_conversion(item_name, ts_generics, constants);
-    format!(
-        "{declared}\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}{converts}"
-    )
+    let body = match nullable {
+        NullAdmitted::Always => format!("({held}{marker}) | null"),
+        NullAdmitted::Perhaps => format!("({held}{marker}) | Extract<{draft}, null>"),
+        NullAdmitted::Never => format!("{whole}{marker}"),
+    };
+    let converts = ts_valid_conversion(item_name, constants);
+    format!("\n\n{note}export type {item_name}{ts_generics} = {body};{reexport}{converts}")
 }
 
 /// The constant of each variant of a plain enum with no draft, as the plain literal the union
@@ -22981,48 +22996,126 @@ fn ts_plain_enum_members(item_name: &str, constants: &[(String, String)]) -> Str
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "\n\nexport const {item_name} = {{\n{members}\n}} as const satisfies Record<string, {item_name}>;"
+        "\n\nexport const {item_name} = Object.freeze({{\n{members}\n}}) satisfies Record<string, {item_name}>;"
     )
 }
 
-/// What only a type that declares no rule has beside its valid type: the constant of each unit
-/// variant of a plain enum, and `{Name}Draft$valid`, which makes the valid value of a draft no rule
-/// judges. The text is written between the marks `valid_type::settle` reads, which keeps it where
-/// the type declares no rule.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+thread_local! {
+    /// The constants [`ts_valid_conversion`] found for the item being expanded, which its zod
+    /// text writes once the schema that makes them is declared.
+    static SCHEMA_CONSTANTS: RefCell<SchemaConstants> = RefCell::new(SchemaConstants::default());
+}
+
+/// The constants of the valid type: the value of each unit variant of an enum that names no check,
+/// and the one value of a unit struct. With zod, the schema makes each of them, so the zod text
+/// writes them and this answers nothing. Without zod, the valid type is the draft read-only, and
+/// each constant is the literal itself.
 #[cfg(feature = "typescript")]
-fn ts_valid_conversion(
-    item_name: &str,
-    ts_generics: &str,
-    constants: &[(String, String)],
-) -> String {
+fn ts_valid_conversion(item_name: &str, constants: &[(String, String)]) -> String {
     let declared = valid_type::declared();
-    let members = if constants.is_empty() || declared.checked {
+    let members: Vec<(String, String)> = if declared.checked {
+        Vec::new()
+    } else {
+        constants
+            .iter()
+            .map(|(key, value)| (key.trim_start_matches("r#").to_owned(), value.clone()))
+            .collect()
+    };
+    #[cfg(feature = "zod")]
+    {
+        SCHEMA_CONSTANTS.with(|held| {
+            *held.borrow_mut() = SchemaConstants {
+                item: item_name.to_owned(),
+                members,
+                unit: declared.unit,
+            };
+        });
+        String::new()
+    }
+    #[cfg(not(feature = "zod"))]
+    {
+        let listed = if members.is_empty() {
+            String::new()
+        } else {
+            let lines = members
+                .iter()
+                .map(|(key, value)| format!("  {key}: {value},"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\n\nexport const {item_name} = Object.freeze({{\n{lines}\n}}) satisfies Record<string, {item_name}>;"
+            )
+        };
+        let unit = if declared.unit {
+            format!(
+                "{}\n\nexport const {item_name}: {item_name} = Object.freeze({{}});{}",
+                valid_type::SETTLE_OPEN,
+                valid_type::SETTLE_CLOSE
+            )
+        } else {
+            String::new()
+        };
+        format!("{listed}{unit}")
+    }
+}
+
+/// The constants [`ts_valid_conversion`] found, each made by the schema `item_name`'s `$Schema`
+/// binding declares just above: a unit struct's only where it declares no rule, which the settle
+/// marks keep.
+#[cfg(all(feature = "typescript", feature = "zod"))]
+fn zod_schema_constants(item_name: &str) -> String {
+    let SchemaConstants {
+        item,
+        members,
+        unit,
+    } = SCHEMA_CONSTANTS.with(RefCell::take);
+    if item != item_name {
+        return String::new();
+    }
+    // Each member is parsed on its first read and kept: a parse while the module loads would run
+    // the union's lazy members before a schema declared below them exists.
+    let listed = if members.is_empty() {
         String::new()
     } else {
-        let members = constants
+        let held = members
+            .iter()
+            .map(|(key, _)| format!("{key}?: {item_name}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let getters = members
             .iter()
             .map(|(key, value)| {
+                // The schema freezes what it parses, so the literal is handed to it unfrozen.
+                let literal = value
+                    .strip_prefix("Object.freeze(")
+                    .and_then(|inner| inner.strip_suffix(')'))
+                    .unwrap_or(value);
                 format!(
-                    "  {}: {value} as {item_name},",
-                    key.trim_start_matches("r#"),
+                    "  get {key}(): {item_name} {{\n    \
+                     const made = {item_name}$Made.{key} ?? {item_name}$Schema.parse({literal});\n    \
+                     {item_name}$Made.{key} = made;\n    \
+                     return made;\n  \
+                     }},"
                 )
             })
             .collect::<Vec<_>>()
             .join("\n");
-        format!("\n\nexport const {item_name} = {{\n{members}\n}} as const;")
-    };
-    let unit = if declared.unit {
         format!(
-            "{}\n\nexport const {item_name} = Object.freeze({{}}) as {item_name};",
-            valid_type::SETTLE_OPEN
+            "\n\nconst {item_name}$Made: {{ {held} }} = {{}};\n\n\
+             export const {item_name} = Object.freeze({{\n{getters}\n}});"
+        )
+    };
+    let made = if unit {
+        format!(
+            "{}\n\nexport const {item_name} = {item_name}$Schema.parse({{}});{}",
+            valid_type::SETTLE_OPEN,
+            valid_type::SETTLE_CLOSE
         )
     } else {
-        valid_type::SETTLE_OPEN.to_string()
+        String::new()
     };
-    format!(
-        "{members}{unit}\n\nexport function {item_name}Draft$valid{ts_generics}(draft: {item_name}Draft{ts_generics}): {item_name}{ts_generics} {{\n  return draft as unknown as {item_name}{ts_generics};\n}}{}",
-        valid_type::SETTLE_CLOSE
-    )
+    format!("{listed}{made}")
 }
 
 #[cfg(feature = "typescript")]
@@ -23118,9 +23211,9 @@ fn zod_published_members(
         });
     }
     #[cfg(feature = "typescript")]
-    let (bounds, closed) = (zod_factory_bounds(parameters), " as const");
+    let bounds = zod_factory_bounds(parameters);
     #[cfg(not(feature = "typescript"))]
-    let (bounds, closed) = (String::new(), "");
+    let bounds = String::new();
     let name = format!("{item_name}$MembersFactory");
     let filling = (0..parameters.len())
         .map(parameter_placeholder)
@@ -23128,7 +23221,7 @@ fn zod_published_members(
         .join(", ");
     Some(PublishedMembers {
         block: format!(
-            "export const {name} = {bounds}({}\n) => [\n{written}]{closed};\n\n",
+            "export const {name} = {bounds}({}\n) => [\n{written}];\n\n",
             zod_factory_arguments(parameters)
         ),
         binding: format!("{name}({filling})"),
@@ -23713,8 +23806,12 @@ fn zod_valid_binding(
 ) -> String {
     let draft_name = ts_draft_name(item_name);
     if parameters.is_empty() {
+        #[cfg(feature = "typescript")]
+        let constants = zod_schema_constants(item_name);
+        #[cfg(not(feature = "typescript"))]
+        let constants = String::new();
         return format!(
-            "export const {item_name}$Schema = {draft_name}$Schema{}{}{}.meta({draft_name}$Schema.meta() ?? {{}});{reexport}",
+            "export const {item_name}$Schema = {draft_name}$Schema{}{}{}.meta({draft_name}$Schema.meta() ?? {{}});{reexport}{constants}",
             if published.frozen { ".readonly()" } else { "" },
             zod_brand_call(item_name),
             if published.admits == DraftAdmits::Null {
@@ -23930,12 +24027,18 @@ fn zod_schema_with_examples(
 #[cfg(feature = "zod")]
 fn zod_examples_injection(item_name: &str, parameters: &[String]) -> proc_macro2::TokenStream {
     if parameters.is_empty() {
+        // The schema's own statement ends at its first `;`: the constants it makes follow it.
+        let anchor = format!("export const {item_name}$Schema = ");
         return quote! {{
             let examples_part = format!(".meta({{\n  examples: {}\n}})", examples_json);
-            if let ::core::option::Option::Some(pos) = defined.rfind(';') {
+            let ends = defined
+                .find(#anchor)
+                .and_then(|start| defined[start..].find(';').map(|end| start + end))
+                .or_else(|| defined.rfind(';'));
+            if let ::core::option::Option::Some(pos) = ends {
                 let mut injected = defined[..pos].to_string();
                 injected.push_str(&examples_part);
-                injected.push(';');
+                injected.push_str(&defined[pos..]);
                 injected
             } else {
                 format!("{}{}", defined, examples_part)
@@ -24491,7 +24594,20 @@ fn generate_ts_alias_method(
     let reexport = noted_ident_reexport_ts(rust_ident, export_name, ts_generics, noted);
 
     let docs_block = jsdoc_block(&inexact_key_noted(docs, noted), "");
-    let assumed = ts_assumed_draft(export_name, rust_ident, ts_generics);
+    let assumed = alias_target_draft(field_def).map_or_else(
+        || ts_assumed_draft(export_name, rust_ident, ts_generics),
+        |target| {
+            let mut declared =
+                format!("\n\nexport type {export_name}Draft{ts_generics} = {target};");
+            if rust_ident != export_name {
+                let _ = write!(
+                    declared,
+                    "\n\nexport type {rust_ident}Draft{ts_generics} = {export_name}Draft{ts_generics};"
+                );
+            }
+            declared
+        },
+    );
 
     quote! {
         pub fn ts_definition() -> ::std::string::String {
@@ -24505,6 +24621,31 @@ fn generate_ts_alias_method(
             )
         }
     }
+}
+
+/// The draft of the one model type an alias names, which a holder that flattens the alias names
+/// as `{Alias}Draft`: the target's own draft at the same arguments, or the target itself where it
+/// was declared above with no draft. `None` for an alias of anything but one named type.
+#[cfg(feature = "typescript")]
+fn alias_target_draft(field_def: &FieldDef) -> Option<String> {
+    let FieldDefType::SiblingType(name, _) = &field_def.field_type else {
+        return None;
+    };
+    if field_def.is_list() || field_def.is_optional() {
+        return None;
+    }
+    let target = field_def.typescript_typename();
+    if is_declared_ident(name) && !is_drafted_type(name) {
+        return Some(target);
+    }
+    let (base, arguments) = target
+        .split_once('<')
+        .map_or((target.as_str(), ""), |(base, rest)| (base, rest));
+    Some(if arguments.is_empty() {
+        format!("{base}Draft")
+    } else {
+        format!("{base}Draft<{arguments}")
+    })
 }
 
 /// The diagnostic an alias whose target the dispatch cannot render emits, in place of the whole

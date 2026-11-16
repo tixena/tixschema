@@ -301,7 +301,7 @@ fn frames() -> Vec<String> {
         .collect()
 }
 
-fn node_bundle() -> String {
+pub fn node_bundle() -> String {
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
         BellPeal::ts_definition(),

@@ -13,17 +13,18 @@ pub fn emit(service: &ServiceDef) -> Vec<String> {
 /// The body of a generated fault constructor: build the fields the Rust declaration published, then
 /// seal them.
 ///
-/// All three constructors — the dispatcher's two and the client's one — end this way, so the
-/// assertion the seal costs is written once, here, rather than at each site. `members` is the
-/// object's own lines, indented as they appear.
+/// Every fault the generated code makes ends this way, so the seal is put on in one place.
+/// `members` is the object's own lines, indented as they appear.
 #[cfg(feature = "zod")]
 pub fn minted(service: &str, members: &str) -> String {
     let fields = fault_fields_typescript_name(service);
+    let sealed = seal_name(service);
     format!(
         "  const built: {fields} = {{\n\
          {members}\n  \
          }};\n  \
-         return built as {service}Fault;"
+         const fault: {service}Fault = {{ ...built, [{sealed}]: true }};\n  \
+         return fault;"
     )
 }
 
@@ -38,9 +39,9 @@ pub fn said(fault: &str) -> String {
     )
 }
 
-/// The symbol the brand is keyed on. `declare const` rather than a value, so nothing is emitted for
-/// it and no fault gains a key on the wire; `unique symbol` so the property it keys is one no other
-/// declaration can spell.
+/// The symbol the brand is keyed on: a value, so the generated code puts the brand on with no cast,
+/// and a symbol, so `JSON.stringify` writes no key for it; `unique symbol` so the property it keys
+/// is one no other declaration can spell.
 fn seal(service: &str) -> String {
     let sealed = seal_name(service);
     format!(
@@ -49,11 +50,11 @@ fn seal(service: &str) -> String {
          *\n \
          * A module that cannot name this symbol cannot write the property it keys, and a value \
          without\n \
-         * that property is not a `{service}Fault`. It is `declare const` rather than a value: \
-         nothing\n \
-         * is emitted for it, and a fault carries no extra key on the wire.\n \
+         * that property is not a `{service}Fault`. A symbol key is never written by \
+         `JSON.stringify`,\n \
+         * so a fault carries no extra key on the wire.\n \
          */\n\
-         declare const {sealed}: unique symbol;"
+         const {sealed}: unique symbol = Symbol(\"{sealed}\");"
     )
 }
 

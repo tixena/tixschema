@@ -170,6 +170,8 @@ export type DocumentRecordDraft = {
 export type DocumentRecord = Readonly<DocumentRecordDraft> & $brand<"DocumentRecord">;
 ```
 
+An alias of one model type also declares the draft that type has at the same arguments, which a struct that flattens the alias names, in this crate or in another: `#[model_schema(name = "Shelves")] pub type ShelfList = Shelf<Parcel>;` writes `export type ShelvesDraft = ShelfDraft<Parcel>;`, and `export type ShelfListDraft = ShelvesDraft;` where the Rust name is not the published one. A brand or a plain enum declared above the alias has no draft, and the alias's draft is the type itself.
+
 Under the `swift` feature, an alias of a list, a map or an `Option` is declared above every type whose field names it, as [the Swift client](swift.md#validate-in-the-swift-client) states.
 
 An alias of an `Option` is named by a field alone, but under `nullable`. Its own type describes the `Option` of a field, `T | undefined`, whose `None` leaves the key out. Everywhere else serde writes `None` as `null`: an item of a list, a value of a map, a position of a tuple, a type argument, an arm of a `Result`, a slot of a tuple struct and the slot of a variant. There the holder writes the type the alias names in place, as an `Option` written there is written:

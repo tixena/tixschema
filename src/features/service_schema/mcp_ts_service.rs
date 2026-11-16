@@ -129,7 +129,7 @@ function __p__McpText(value: unknown): string {
     if (prototype === Object.prototype || prototype === null) {
       const members: Array<string> = [];
       for (const key of Object.keys(value).sort()) {
-        const held: unknown = (value as Record<string, unknown>)[key];
+        const held: unknown = Reflect.get(value, key);
         if (held !== undefined && typeof held !== "function" && typeof held !== "symbol") {
           members.push(`${JSON.stringify(key)}:${__p__McpText(held)}`);
         }
@@ -140,10 +140,20 @@ function __p__McpText(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+/** Whether `value` is an object that is no list, whose members are read as they are. */
+function __p__McpObjectIs(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `value` itself where it is an object that is no list, so a write through it reaches it. */
 function __p__McpObject(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return __p__McpObjectIs(value) ? value : undefined;
+}
+
+/** The envelope a dispatcher answered: `ok`, and the value or the error beside it. */
+function __p__McpEnvelope(answered: unknown): { ok: boolean; value: unknown; error: unknown } {
+  if (typeof answered !== "object" || answered === null) return { ok: false, value: undefined, error: answered };
+  return { ok: Reflect.get(answered, "ok") === true, value: Reflect.get(answered, "value"), error: Reflect.get(answered, "error") };
 }"#;
 
 const WRITER: &str = r#"/** Where the transport writes a message beyond the answer: one line on stdio, one event on HTTP. A write that rejects means the client has gone. */
@@ -414,7 +424,7 @@ async function __p__McpListResources(
   if (page !== undefined) {
     if ("error" in page.answer) return __p__McpReplied(200, { id, error: page.answer.error });
     const listed = __p__McpObject(page.answer.result) ?? {};
-    if (Array.isArray(listed.resources)) resources.push(...(listed.resources as ReadonlyArray<unknown>));
+    if (Array.isArray(listed.resources)) resources.push(...listed.resources);
     for (const key of ["ttlMs", "cacheScope"]) {
       if (listed[key] !== undefined) result[key] = listed[key];
     }
@@ -477,11 +487,13 @@ async function __p__McpListen(
   const notified = (method: string, given: Record<string, unknown>): string =>
     __p__McpText({ jsonrpc: "2.0", method, params: { ...given, _meta: { [__p__McpSubscription]: id } } });
   const lists = agreed.resourcesListChanged === true;
-  const watched = Array.isArray(agreed.resourceSubscriptions) ? (agreed.resourceSubscriptions as ReadonlyArray<string>) : [];
-  const followed = Array.isArray(agreed.taskIds) ? (agreed.taskIds as ReadonlyArray<string>) : [];
+  const texts = (listed: unknown): ReadonlyArray<string> =>
+    Array.isArray(listed) ? listed.filter((held: unknown): held is string => typeof held === "string") : [];
+  const watched = texts(agreed.resourceSubscriptions);
+  const followed = texts(agreed.taskIds);
   const ended = __p__McpReplied(200, { id, result: { _meta: { ...info, [__p__McpSubscription]: id }, resultType: "complete" } });
   if (!(await call.write(notified("notifications/subscriptions/acknowledged", { notifications: agreed })))) return ended;
-  const stopped = call.stopped.then(() => "stopped" as const);
+  const stopped = call.stopped.then((): "stopped" => "stopped");
   for (;;) {
     const change = await Promise.race([changes(), stopped]);
     if (call.cancelled || change === "stopped") return ended;
@@ -881,7 +893,7 @@ function __p__McpPanicked(operation: string, thrown: unknown): __N__McpAnswer {
 
 /** `value` in base64: a `Uint8Array`, or the array of bytes a dispatcher writes it as. */
 function __p__McpBase64(value: unknown): string {
-  const bytes = value instanceof Uint8Array ? value : Uint8Array.from(Array.isArray(value) ? (value as ReadonlyArray<number>) : []);
+  const bytes = value instanceof Uint8Array ? value : Uint8Array.from(Array.isArray(value) ? value : []);
   let binary = "";
   for (let at = 0; at < bytes.length; at += 4096) binary += String.fromCharCode(...bytes.subarray(at, at + 4096));
   return btoa(binary);
@@ -973,7 +985,7 @@ __ANSWERS__      payload = operation.wrapped ? held.value : rest;
     }
     const { dispatched } = attempt;
     if (dispatched === undefined) return { result: __p__McpEmpty };
-    const answered = dispatched.answered as { ok: boolean; value?: unknown; error?: unknown };
+    const answered = __p__McpEnvelope(dispatched.answered);
     const beside = (names: ReadonlyArray<string>): Record<string, unknown> => {
       const written: Record<string, unknown> = {};
       for (const name of names) {
@@ -999,9 +1011,9 @@ __TASK_START____BLOCKS__      let structured: unknown;
       };
     }
     const error = answered.error;
-    const fault = typeof error === "object" && error !== null && "isServiceFault" in error;
-__ASKING__    const faulted = error as { fault: object };
-    const named = fault ? { ...faulted, fault: { ...faulted.fault, operation: operation.tool } } : error;
+    const framed = dispatched.fault;
+    const fault = framed !== undefined;
+__ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault: { ...framed, operation: operation.tool } } : error;
     const body =
       !fault && operation.errorHeadersOut.length > 0
         ? { value: error, ...beside(operation.errorHeadersOut) }
@@ -1022,7 +1034,7 @@ __ASKING__    const faulted = error as { fault: object };
     if (unread !== undefined) return __p__McpDeclined({ fault: unread, isServiceFault: true }, refusal);
     const attempt = await attempted(ctx, operation, payload, []);
     if ("thrown" in attempt) return __p__McpPanicked(operation, attempt.thrown);
-    const answered = attempt.dispatched?.answered as { ok: boolean; value?: unknown; error?: unknown } | undefined;
+    const answered = attempt.dispatched === undefined ? undefined : __p__McpEnvelope(attempt.dispatched.answered);
     if (answered === undefined || !answered.ok) return __p__McpDeclined(answered?.error, refusal);
     return { result: success(answered.value) };
   };
@@ -1043,12 +1055,12 @@ __ASKING__    const faulted = error as { fault: object };
       return answering(ctx, operation.operation, operation.schema, path, "Skill file not found", (value) => {
         const given: Record<string, unknown> = { uri };
         if (operation.blob) {
-          const pair = value as ReadonlyArray<unknown>;
+          const pair: ReadonlyArray<unknown> = Array.isArray(value) ? value : [];
           given.mimeType = pair[1];
           given.blob = __p__McpBase64(pair[0]);
         } else {
           given.mimeType = "text/markdown";
-          given.text = path === "SKILL.md" ? `${operation.frontmatter}${value as string}` : value;
+          given.text = path === "SKILL.md" ? `${operation.frontmatter}${String(value)}` : value;
         }
         return { cacheScope: "private", contents: [given], resultType: "complete", ttlMs: 0 };
       });
@@ -1067,7 +1079,7 @@ __ASKING__    const faulted = error as { fault: object };
               : Object.fromEntries(operation.members.map(([at, key]) => [key, captured[at]]));
       return answering(ctx, operation.operation, operation.schema, payload, "Resource not found", (value) => {
         const given: Record<string, unknown> = { uri };
-        const pair = operation.blob ? (value as ReadonlyArray<unknown>) : [];
+        const pair: ReadonlyArray<unknown> = operation.blob && Array.isArray(value) ? value : [];
         if (operation.blob) {
           given.mimeType = pair[1];
           given.blob = __p__McpBase64(pair[0]);
@@ -1131,7 +1143,7 @@ __PROMPTING____TASKING__  const completing = async (ctx: Ctx, call: Record<strin
         { [operation.typed]: typed, [operation.chosen]: chosen },
         "Completion refused",
         (value) => {
-          const suggested = Array.isArray(value) ? (value as ReadonlyArray<unknown>) : [];
+          const suggested: ReadonlyArray<unknown> = Array.isArray(value) ? value : [];
           const completion: Record<string, unknown> = {
             hasMore: suggested.length > 100,
             values: suggested.slice(0, 100),
@@ -1172,10 +1184,10 @@ const PROMPTING: &str = r#"  const prompting = async (ctx: Ctx, call: Record<str
       description: operation.doc,
       messages: operation.text
         ? [{ content: { text: value, type: "text" }, role: "user" }]
-        : (Array.isArray(value) ? (value as ReadonlyArray<Record<string, unknown>>) : []).map((message) => ({
-            content: __p__McpBlock(message.content),
-            role: message.role,
-          })),
+        : (Array.isArray(value) ? value : []).map((message: unknown) => {
+            const held = __p__McpObject(message) ?? {};
+            return { content: __p__McpBlock(held.content), role: held.role };
+          }),
       resultType: "complete",
     }));
   };
@@ -2594,7 +2606,7 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
                         .collect();
                     let _ = writeln!(
                         body,
-                        "    if (matches(name, [{}] as const)) return {};",
+                        "    if (matches(name, [{}])) return {};",
                         pairs.join(", "),
                         list(needed)
                     );
