@@ -17,7 +17,9 @@
 //! above the holder or not.
 //! Each case in `foundation_refusals/` is a crate of its own, held to the `.stderr` file beside
 //! it; the initializer written twice, in `foundation_refusals/written_twice/`, is held to the code
-//! and the name of each error, which rustc reports differently from one release to the next.
+//! and the name of each error, which rustc reports differently from one release to the next, and
+//! the alias no `#[model_schema]` recorded, in `foundation_refusals/rearranging_alias_unrecorded/`,
+//! to the text tixschema writes into each error, beside notes rustc words differently.
 
 // Every `.stderr` but the ones in `foundation_refusals/const_argument_without_a_feature/` and
 // `foundation_refusals/brand_without_serde/`, whose crates turn no feature on, was written with
@@ -41,6 +43,7 @@ mod tests {
     use std::path::Path;
     use std::process::Command;
 
+    use regex::Regex;
     use serde_json::Value;
     use trybuild::TestCases;
 
@@ -107,17 +110,7 @@ mod tests {
     /// from one release to the next.
     #[test]
     fn a_placeholder_that_names_no_member_of_a_declared_message_is_refused() {
-        let errors = errors_of(
-            "path_names_no_member",
-            &format!(
-                "tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
-                 bson2 = {{ package = \"bson\", version = \"2.15\", features = [\"chrono-0_4\"] }}\n\
-                 chrono = {{ version = \">=0.4.40\", features = [\"serde\"] }}\n\
-                 serde = {{ version = \"1\", features = [\"derive\"] }}\n\
-                 serde_json = \"1\"\n",
-                env!("CARGO_MANIFEST_DIR")
-            ),
-        );
+        let errors = errors_of("path_names_no_member", &every_feature_dependencies());
         let refused = |operation: &str, placeholder: &str| {
             format!(
                 "evaluation panicked: service_schema: operation `{operation}`'s path names \
@@ -169,6 +162,43 @@ mod tests {
         }
     }
 
+    /// Held to the code, the message, the label and the note tixschema writes into each error.
+    #[test]
+    fn a_member_written_with_an_alias_no_model_schema_recorded_is_refused() {
+        let errors = errors_of(
+            "rearranging_alias_unrecorded",
+            &every_feature_dependencies(),
+        );
+        // Each type is named as rustc prints it, with its module path or not.
+        let path = r"(?:\w+::)*";
+        let message = Regex::new(&format!(
+            "^model_schema: `{path}Page<PageDraft<{path}Parcel<ParcelDraft>>>` fills a type \
+             parameter of the generic model this member holds, where the member's type writes \
+             `{path}Parcel<ParcelDraft>`: the member's type is an alias that rearranges the \
+             parameters of the model it names, and a holder hands the model what fills each of \
+             its own parameters$"
+        ))
+        .unwrap();
+        let written = [
+            "write the generic model the alias names, with its parameters filled, in place of the \
+             alias",
+            "= note: for `type PagesOf<Item> = Page<Page<Item>>`, a member that holds \
+             `PagesOf<Parcel>` is written `Page<Page<Parcel>>`",
+        ];
+        assert_eq!(errors.len(), 2, "another count of errors: {errors:#?}");
+        for error in &errors {
+            assert_eq!(error["code"]["code"], "E0277", "got: {error:#?}");
+            assert!(
+                message.is_match(error["message"].as_str().unwrap_or_default()),
+                "got: {error:#?}"
+            );
+            let rendered = error["rendered"].as_str().unwrap_or_default();
+            for line in written {
+                assert!(rendered.contains(line), "no `{line}` in:\n{rendered}");
+            }
+        }
+    }
+
     /// Asserts that the errors rustc reports for `case`, built as a crate whose manifest lists
     /// `dependencies`, render as the `main.stderr` beside it.
     fn assert_rendered_with_no_feature(case: &str, dependencies: &str) {
@@ -184,30 +214,32 @@ mod tests {
         assert_eq!(rendered.trim_end(), expected.trim_end());
     }
 
+    /// The manifest dependencies of a case built with every feature this file is compiled under.
+    fn every_feature_dependencies() -> String {
+        format!(
+            "tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
+             bson2 = {{ package = \"bson\", version = \"2.15\", features = [\"chrono-0_4\"] }}\n\
+             chrono = {{ version = \">=0.4.40\", features = [\"serde\"] }}\n\
+             serde = {{ version = \"1\", features = [\"derive\"] }}\n\
+             serde_json = \"1\"\n",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
+
     /// The code and the message of each error rustc reports for the case, the closing count apart.
     fn errors_of_written_twice() -> Vec<(String, String)> {
-        errors_of(
-            "written_twice",
-            &format!(
-                "tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
-                 bson2 = {{ package = \"bson\", version = \"2.15\", features = [\"chrono-0_4\"] }}\n\
-                 chrono = {{ version = \">=0.4.40\", features = [\"serde\"] }}\n\
-                 serde = {{ version = \"1\", features = [\"derive\"] }}\n\
-                 serde_json = \"1\"\n",
-                env!("CARGO_MANIFEST_DIR")
-            ),
-        )
-        .iter()
-        .map(|error| {
-            (
-                error["code"]["code"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-                error["message"].as_str().unwrap_or_default().to_owned(),
-            )
-        })
-        .collect()
+        errors_of("written_twice", &every_feature_dependencies())
+            .iter()
+            .map(|error| {
+                (
+                    error["code"]["code"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                    error["message"].as_str().unwrap_or_default().to_owned(),
+                )
+            })
+            .collect()
     }
 
     /// Each error rustc reports for `foundation_refusals/{case}/main.rs`, built as a crate whose
