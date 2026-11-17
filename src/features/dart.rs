@@ -116,8 +116,7 @@ const DART_RESERVED: [&str; 33] = [
     "with",
 ];
 
-/// The text [`integer_read`] fills in, which the tests of the emitted text fill in the same way.
-const INTEGER_READ: &str = include_str!("dart/integer_read.txt");
+include!("dart/integer_read.rs");
 
 /// The helper a class reads a flattened member with, and an enum reads a braced variant under an
 /// internal tag with. serde reads such a value from the keys its holder buffers and places a
