@@ -10,7 +10,7 @@ fn a_successful_reply_is_checked_against_the_declared_success() {
     assert!(
         body.contains("\"get-open-balance\": OpenBalanceResponse$Schema,")
             && body.contains("const schema = billingServiceSuccessSchemas[operation];")
-            && body.contains("const parsed = schema.safeParse(envelope.value);"),
+            && body.contains("const parsed = schema.safeParse(envelope[\"value\"]);"),
         "a success the transport handed back is answered as an `OpenBalanceResponse`, so it is \
          parsed as one first. Got: {body}"
     );
@@ -230,7 +230,7 @@ fn every_reply_is_checked_against_the_operation_s_own_table_before_a_caller_sees
     let written = ws_client_of(MIXED_SERVICE);
     assert!(
         written.contains("const schema = billingServiceSuccessSchemas[operation];")
-            && written.contains("schema.safeParse(envelope.value)")
+            && written.contains("schema.safeParse(envelope[\"value\"])")
             && written.contains("billingServiceErrorSchemas[operation]?.safeParse(error)"),
         "got: {written}"
     );

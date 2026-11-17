@@ -440,8 +440,8 @@ fn test_compliant_optionals_typescript() {
 
     // Same `skip_serializing_if` on both; the flag on `tag` is the only difference.
     assert!(
-        ts.contains("tag?: string;"),
-        "expected `tag?: string;`:\n{ts}"
+        ts.contains("tag?: string | undefined;"),
+        "expected `tag?: string | undefined;`:\n{ts}"
     );
     assert!(
         ts.contains("note: string | undefined;"),

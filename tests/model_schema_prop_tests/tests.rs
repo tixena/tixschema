@@ -687,7 +687,10 @@ fn an_enums_check_leaves_a_literal_field_alone_in_the_json_schema() {
 fn test_ts_optional_struct_typescript() {
     let ts = TsOptionalStruct::ts_definition();
 
-    assert!(ts.contains("f?: Inner;"), "expected `f?: Inner;` in:\n{ts}");
+    assert!(
+        ts.contains("f?: Inner | undefined;"),
+        "expected `f?: Inner | undefined;` in:\n{ts}"
+    );
     assert!(
         !ts.contains("f: Inner | undefined"),
         "did not expect required-key form for `f` in:\n{ts}"
@@ -696,7 +699,10 @@ fn test_ts_optional_struct_typescript() {
     let g = omitted_member("g", "Inner");
     assert!(ts.contains(&g), "expected control `{g}` in:\n{ts}");
 
-    assert!(ts.contains("h?: Inner;"), "expected `h?: Inner;` in:\n{ts}");
+    assert!(
+        ts.contains("h?: Inner | undefined;"),
+        "expected `h?: Inner | undefined;` in:\n{ts}"
+    );
 }
 
 #[test]
@@ -741,8 +747,8 @@ fn test_ts_optional_variant_typescript() {
     let ts = TsOptionalVariant::ts_definition();
 
     assert!(
-        ts.contains("filter?: Inner;"),
-        "expected `filter?: Inner;` in variant TS:\n{ts}"
+        ts.contains("filter?: Inner | undefined;"),
+        "expected `filter?: Inner | undefined;` in variant TS:\n{ts}"
     );
     assert!(
         !ts.contains("filter: Inner | undefined"),

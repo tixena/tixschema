@@ -79,9 +79,10 @@ fn a_generic_one_reaches_itself_through_a_function_stating_what_it_parses() {
          ZodType<NestsUnderAParameter<IdType[\"_zod\"][\"output\"]>>;\nfunction \
          NestsUnderAParameter$SchemaSelf(\n  idType: ZodType,\n): ZodType {\n  return \
          NestsUnderAParameter$SchemaFactory(idType);\n}\n\n",
-        ") =>\n  z.tuple([idType, z.array(z.lazy(() => \
+        "): ZodType =>\n  z.tuple([idType, z.array(z.lazy(() => \
          NestsUnderAParameter$SchemaSelf(idType)))]);",
-        "interface NestsUnderAParameterDraft$SchemaOf<IdType extends ZodType> extends ReturnType<",
+        "type NestsUnderAParameterDraft$SchemaOf<IdType extends ZodType> = \
+         ZodType<NestsUnderAParameterDraft<IdType[\"_zod\"][\"output\"]>>;",
     ] {
         assert!(zod.contains(written), "want: {written}\ngot: {zod}");
     }

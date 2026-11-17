@@ -203,13 +203,13 @@ export const External$Schema: ZodType<External> = z.unknown().check((ctx) => { i
   }),
 ]).superRefine((_read, ctx) => {
   const held = ctx.value;
-  const carrying = [["Fields", "struct variant"], ["Pair", "tuple variant"], ["Single", "newtype variant"]];
+  const carrying = [{ name: "Fields", expected: "struct variant" }, { name: "Pair", expected: "tuple variant" }, { name: "Single", expected: "newtype variant" }];
   const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : [];
   const at = ctx.issues.findIndex((issue) => issue.code === "invalid_union" && (issue.path ?? []).length === 0);
   const refused = ctx.issues[at];
-  const named = typeof held === "string" ? carrying.find(([name]) => name === held) : undefined;
+  const named = typeof held === "string" ? carrying.find((pair) => pair.name === held) : undefined;
   const arm = keys.length === 1 && refused?.code === "invalid_union" ? refused.errors.find((issues) => issues.some((issue) => issue.path[0] === keys[0])) : undefined;
-  if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named[1], input: undefined, path: [named[0]], params: { variant: true } });
+  if (named !== undefined && refused?.code === "invalid_union") ctx.issues.splice(at, 1, { code: "custom", message: "invalid type: unit variant, expected " + named.expected, input: undefined, path: [named.name], params: { variant: true } });
   else if (arm !== undefined) ctx.issues.splice(at, 1, ...arm.map((issue) => ({ ...issue, input: undefined })));
 }, { when: () => true })).meta({
   examples: []

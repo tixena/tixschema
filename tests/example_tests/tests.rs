@@ -662,7 +662,7 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     #[cfg(feature = "typescript")]
     assert!(
         zod.contains(
-            "export const Kept$Schema = KeptDraft$Schema.readonly().brand<\"Kept\">().meta({\n  \
+            "export const Kept$Schema: ZodType & { _zod: { output: Kept } } = KeptDraft$Schema.readonly().brand<\"Kept\">().meta({\n  \
              ...(KeptDraft$Schema.meta() ?? {}),\n  id: \"Kept\",\n  examples: \
              [{\"value\":\"x\"}]\n});"
         ),
@@ -1185,7 +1185,7 @@ fn an_alias_publishes_an_empty_list() {
     let score = score_schema::Schema::zod_schema();
     assert!(
         score.ends_with(
-            ".meta({\n  examples: []\n});\n\nexport const Score$Schema = ScoreType$Schema;"
+            ".meta({\n  examples: []\n});\n\nexport const Score$Schema: typeof ScoreType$Schema = ScoreType$Schema;"
         ),
         "Got: {score}"
     );

@@ -736,7 +736,7 @@ fn test_tuple_single_union_zod() {
     #[cfg(feature = "typescript")]
     assert!(
         zod.contains(
-            "export const DateValue$Schema = DateValueDraft$Schema.brand<\"DateValue\">().meta({
+            "export const DateValue$Schema: ZodType & { _zod: { output: DateValue } } = DateValueDraft$Schema.brand<\"DateValue\">().meta({
   ...(DateValueDraft$Schema.meta() ?? {}),
   id: \"DateValue\",
   examples: []

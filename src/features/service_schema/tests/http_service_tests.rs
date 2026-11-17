@@ -66,199 +66,7 @@ const ONE_STATUS_HTTP_SERVICE: &str = "
 
 /// The expected emitted dispatcher text: the error status is read through the declared enum's
 /// own generated `WindowError$Variant` reader rather than an `errorCode` cast.
-const EXPECTED: &str = "/** One operation's method, path template and status table, for an adapter that registers a handler per route. */
-export type ConversationClientServiceHttpRoute = {
-  errorStatuses: ReadonlyArray<number>;
-  method: string;
-  okStatus: number;
-  operation: string;
-  path: string;
-};
-
-/** The declared route table, in declaration order. `{field}` placeholders are written as declared. */
-export const conversationClientServiceHttpRoutes: ReadonlyArray<ConversationClientServiceHttpRoute> = [
-  { errorStatuses: [], method: \"DELETE\", okStatus: 204, operation: \"purge-conversation\", path: \"/v1/conversations/{conversation_id}\" },
-  { errorStatuses: [404], method: \"GET\", okStatus: 200, operation: \"window\", path: \"/v1/conversations/{conversation_id}/window\" },
-];
-
-/** One HTTP request in plain terms. The body is undecoded bytes, as the Rust `IncomingRequest` carries it. */
-export type ConversationClientServiceHttpRequest = {
-  body: Uint8Array;
-  headers: ReadonlyArray<readonly [string, string]>;
-  method: string;
-  path: string;
-  query: string;
-};
-
-/** One HTTP response in plain terms, for an adapter to write back however its framework answers. */
-export type ConversationClientServiceHttpResponse = {
-  body: Uint8Array;
-  headers: ReadonlyArray<readonly [string, string]>;
-  status: number;
-};
-
-/** Decides what one fault answers with. The default: 404 unknown-operation, 500 handler-panic, 400 otherwise, the fault as JSON. */
-export type ConversationClientServiceHttpFaultHandler = (fault: ConversationClientServiceFault) => ConversationClientServiceHttpResponse;
-
-/**
- * `value` as it is written to the wire: each `bigint` through `JSON.rawJSON`, the JSON number of
- * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that `number`, and any
- * other is refused. Each `Date` is its RFC 3339 text with no fraction on whole seconds, as
- * chrono writes it. Each `Uint8Array` is the plain array of its bytes.
- */
-function conversationClientServiceHttpAnswered(value: unknown): unknown {
-  if (typeof value === \"bigint\") {
-    const raw: unknown = Reflect.get(JSON, \"rawJSON\");
-    if (typeof raw === \"function\") return raw(value.toString());
-    if (Number.isSafeInteger(Number(value))) return Number(value);
-    throw new RangeError(`${value} is written exactly only through JSON.rawJSON, which this runtime has not`);
-  }
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \"Z\");
-  }
-  if (value instanceof Uint8Array) return Array.from(value);
-  if (Array.isArray(value)) return value.map((held) => conversationClientServiceHttpAnswered(held));
-  if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
-    return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, conversationClientServiceHttpAnswered(held)]));
-  }
-  return value;
-}
-
-function conversationClientServiceHttpJson(status: number, headers: ReadonlyArray<readonly [string, string]>, value: unknown): ConversationClientServiceHttpResponse {
-  return { status, headers: [...headers, [\"content-type\", \"application/json\"]], body: new TextEncoder().encode(JSON.stringify(conversationClientServiceHttpAnswered(value))) };
-}
-
-export function conversationClientServiceHttpDefaultFaultHandler(fault: ConversationClientServiceFault): ConversationClientServiceHttpResponse {
-  const status = fault.kind === \"unknown-operation\" ? 404 : fault.kind === \"handler-panic\" ? 500 : 400;
-  return conversationClientServiceHttpJson(status, [], fault);
-}
-
-function conversationClientServiceHttpFault(kind: ConversationClientServiceFaultFields[\"kind\"], operation: string, detail: string): ConversationClientServiceFault {
-  const built: ConversationClientServiceFaultFields = {
-    detail,
-    field: undefined,
-    kind,
-    operation,
-  };
-  const fault: ConversationClientServiceFault = { ...built, [conversationClientServiceFaultSeal]: true };
-  return fault;
-}
-
-/** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a placeholder takes one non-empty segment, percent-decoded, and nothing may remain. */
-function conversationClientServiceHttpMatchPath(template: ReadonlyArray<string | null>, path: string): Array<string> | undefined {
-  let rest = path;
-  const captured: Array<string> = [];
-  for (const token of template) {
-    if (token !== null) {
-      if (!rest.startsWith(token)) return undefined;
-      rest = rest.slice(token.length);
-    } else {
-      const end = rest.indexOf(\"/\") === -1 ? rest.length : rest.indexOf(\"/\");
-      const value = rest.slice(0, end);
-      if (value === \"\") return undefined;
-      captured.push(conversationClientServiceHttpPercentDecoded(value));
-      rest = rest.slice(end);
-    }
-  }
-  return rest === \"\" ? captured : undefined;
-}
-
-/** Mirrors the Rust `percent_decoded`: each `%XX` escape decoded to the byte it names, anything else kept, and the bytes read as UTF-8, lossily. */
-function conversationClientServiceHttpPercentDecoded(raw: string): string {
-  const bytes: Array<number> = [];
-  for (const piece of raw.split(/(%[0-9A-Fa-f]{2})/)) {
-    if (/^%[0-9A-Fa-f]{2}$/.test(piece)) bytes.push(parseInt(piece.slice(1), 16));
-    else bytes.push(...new TextEncoder().encode(piece));
-  }
-  return new TextDecoder().decode(new Uint8Array(bytes));
-}
-
-/** Mirrors the Rust `parse_query`: split on `&`, split each pair once on `=`, percent-decode both halves. */
-function conversationClientServiceHttpParseQuery(raw: string): Map<string, string> {
-  const parsed = new Map<string, string>();
-  for (const pair of raw.split(\"&\")) {
-    if (pair === \"\") continue;
-    const at = pair.indexOf(\"=\");
-    const [key, value] = at === -1 ? [pair, \"\"] : [pair.slice(0, at), pair.slice(at + 1)];
-    parsed.set(decodeURIComponent(key), decodeURIComponent(value));
-  }
-  return parsed;
-}
-
-/** The Rust `decode_expr` coercion for a numeric argument: an integer, else a float, else the text itself. */
-function conversationClientServiceHttpCoerceNumber(raw: string): unknown {
-  if (/^-?\\d+$/.test(raw)) return Number(raw);
-  const asFloat = Number(raw);
-  return raw.trim() !== \"\" && Number.isFinite(asFloat) ? asFloat : raw;
-}
-
-/** The envelope a dispatcher answered: `ok`, and the value or the error beside it. */
-function conversationClientServiceHttpEnvelope(answered: unknown): { ok: boolean; value: unknown; error: unknown } {
-  if (typeof answered !== \"object\" || answered === null) return { ok: false, value: undefined, error: answered };
-  return {
-    ok: Reflect.get(answered, \"ok\") === true,
-    value: Reflect.get(answered, \"value\"),
-    error: Reflect.get(answered, \"error\"),
-  };
-}
-
-/**
- * Turns an implementation into the function an adapter drives it with: one request in, one
- * response out. Matches the route table in declaration order, assembles the operation's message
- * exactly as the Rust dispatcher does, parses it through the generated dispatcher (which checks
- * it against its schema), and maps the outcome to a status and a body.
- */
-export function createConversationClientServiceHttpDispatcher<Ctx>(
-  impl: ConversationClientServiceImpl<Ctx>,
-  onFault: ConversationClientServiceHttpFaultHandler = conversationClientServiceHttpDefaultFaultHandler,
-): (ctx: Ctx, request: ConversationClientServiceHttpRequest) => Promise<ConversationClientServiceHttpResponse> {
-  const dispatch = createConversationClientServiceDispatcher(impl);
-  const answer = async (ctx: Ctx, operation: string, payload: unknown, headers: ReadonlyArray<readonly [string, string]>, okStatus: number, errorStatus: (error: unknown) => number) => {
-    let dispatched: ConversationClientServiceDispatched | undefined;
-    try {
-      dispatched = await dispatch(ctx, operation, payload, headers);
-    } catch (thrown) {
-      return onFault(conversationClientServiceHttpFault(\"handler-panic\", operation, thrown instanceof Error ? thrown.message : String(thrown)));
-    }
-    if (dispatched === undefined) return { status: okStatus, headers: [], body: new Uint8Array() };
-    const envelope = conversationClientServiceHttpEnvelope(dispatched.answered);
-    if (envelope.ok) return conversationClientServiceHttpJson(okStatus, [], envelope.value);
-    if (dispatched.fault !== undefined) return onFault(dispatched.fault);
-    return conversationClientServiceHttpJson(errorStatus(envelope.error), [], envelope.error);
-  };
-  return async (ctx, request) => {
-    const { method, path } = request;
-    // purge-conversation: DELETE /v1/conversations/{conversation_id} \u{2014} the message IS the one placeholder (a wire scalar).
-    if (method === \"DELETE\") {
-      const captured = conversationClientServiceHttpMatchPath([\"/v1/conversations/\", null], path);
-      if (captured !== undefined) {
-        const [conversation_id] = captured;
-        return answer(ctx, \"purge-conversation\", conversation_id, [], 204, () => 422);
-      }
-    }
-    // window: GET /v1/conversations/{conversation_id}/window \u{2014} a macro-generated message: placeholder-bound fields come from the path, the rest from the query string, each with its own coercion.
-    if (method === \"GET\") {
-      const captured = conversationClientServiceHttpMatchPath([\"/v1/conversations/\", null, \"/window\"], path);
-      if (captured !== undefined) {
-        const [conversation_id] = captured;
-        const queryMap = conversationClientServiceHttpParseQuery(request.query);
-        const message: Record<string, unknown> = {};
-        message[\"conversationId\"] = conversation_id;
-        {
-          const raw = queryMap.get(\"limit\");
-          message[\"limit\"] = raw === undefined ? null : conversationClientServiceHttpCoerceNumber(raw);
-        }
-        return answer(ctx, \"window\", message, [], 200, (error) => {
-          switch (WindowError$Variant(error)) {
-            case \"NotFound\": return 404;
-            default: return 422;
-          }
-        });
-      }
-    }
-    return onFault(conversationClientServiceHttpFault(\"unknown-operation\", `${method} ${path}`, \"the service answers to no route by that method and path\"));
-  };
-}";
+const EXPECTED: &str = "/** One operation's method, path template and status table, for an adapter that registers a handler per route. */\nexport type ConversationClientServiceHttpRoute = {\n  errorStatuses: ReadonlyArray<number>;\n  method: string;\n  okStatus: number;\n  operation: string;\n  path: string;\n};\n\n/** The declared route table, in declaration order. `{field}` placeholders are written as declared. */\nexport const conversationClientServiceHttpRoutes: ReadonlyArray<ConversationClientServiceHttpRoute> = [\n  { errorStatuses: [], method: \"DELETE\", okStatus: 204, operation: \"purge-conversation\", path: \"/v1/conversations/{conversation_id}\" },\n  { errorStatuses: [404], method: \"GET\", okStatus: 200, operation: \"window\", path: \"/v1/conversations/{conversation_id}/window\" },\n];\n\n/** One HTTP request in plain terms. The body is undecoded bytes, as the Rust `IncomingRequest` carries it. */\nexport type ConversationClientServiceHttpRequest = {\n  body: Uint8Array;\n  headers: ReadonlyArray<readonly [string, string]>;\n  method: string;\n  path: string;\n  query: string;\n};\n\n/** One HTTP response in plain terms, for an adapter to write back however its framework answers. */\nexport type ConversationClientServiceHttpResponse = {\n  body: Uint8Array;\n  headers: ReadonlyArray<readonly [string, string]>;\n  status: number;\n};\n\n/** Decides what one fault answers with. The default: 404 unknown-operation, 500 handler-panic, 400 otherwise, the fault as JSON. */\nexport type ConversationClientServiceHttpFaultHandler = (fault: ConversationClientServiceFault) => ConversationClientServiceHttpResponse;\n\n/**\n * `value` as it is written to the wire: each `bigint` through `JSON.rawJSON`, the JSON number of\n * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that `number`, and any\n * other is refused. Each `Date` is its RFC 3339 text with no fraction on whole seconds, as\n * chrono writes it. Each `Uint8Array` is the plain array of its bytes.\n */\nfunction conversationClientServiceHttpAnswered(value: unknown): unknown {\n  if (typeof value === \"bigint\") {\n    const raw: unknown = Reflect.get(JSON, \"rawJSON\");\n    if (typeof raw === \"function\") return raw(value.toString());\n    if (Number.isSafeInteger(Number(value))) return Number(value);\n    throw new RangeError(`${value} is written exactly only through JSON.rawJSON, which this runtime has not`);\n  }\n  if (value instanceof Date) {\n    return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \"Z\");\n  }\n  if (value instanceof Uint8Array) return Array.from(value);\n  if (Array.isArray(value)) return value.map((held) => conversationClientServiceHttpAnswered(held));\n  if (typeof value === \"object\" && value !== null && Object.getPrototypeOf(value) === Object.prototype) {\n    return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, conversationClientServiceHttpAnswered(held)]));\n  }\n  return value;\n}\n\nfunction conversationClientServiceHttpJson(status: number, headers: ReadonlyArray<readonly [string, string]>, value: unknown): ConversationClientServiceHttpResponse {\n  return { status, headers: [...headers, [\"content-type\", \"application/json\"]], body: new TextEncoder().encode(JSON.stringify(conversationClientServiceHttpAnswered(value))) };\n}\n\nexport function conversationClientServiceHttpDefaultFaultHandler(fault: ConversationClientServiceFault): ConversationClientServiceHttpResponse {\n  const status = fault.kind === \"unknown-operation\" ? 404 : fault.kind === \"handler-panic\" ? 500 : 400;\n  return conversationClientServiceHttpJson(status, [], fault);\n}\n\nfunction conversationClientServiceHttpFault(kind: ConversationClientServiceFaultFields[\"kind\"], operation: string, detail: string): ConversationClientServiceFault {\n  const built: ConversationClientServiceFaultFields = {\n    detail,\n    field: undefined,\n    kind,\n    operation,\n  };\n  const fault: ConversationClientServiceFault = { ...built, [conversationClientServiceFaultSeal]: true };\n  return fault;\n}\n\n/** Mirrors the Rust `match_path`: a literal token is stripped as a prefix, a placeholder takes one non-empty segment, percent-decoded, and nothing may remain. */\nfunction conversationClientServiceHttpMatchPath(template: ReadonlyArray<string | null>, path: string): Array<string> | undefined {\n  let rest = path;\n  const captured: Array<string> = [];\n  for (const token of template) {\n    if (token !== null) {\n      if (!rest.startsWith(token)) return undefined;\n      rest = rest.slice(token.length);\n    } else {\n      const end = rest.indexOf(\"/\") === -1 ? rest.length : rest.indexOf(\"/\");\n      const value = rest.slice(0, end);\n      if (value === \"\") return undefined;\n      captured.push(conversationClientServiceHttpPercentDecoded(value));\n      rest = rest.slice(end);\n    }\n  }\n  return rest === \"\" ? captured : undefined;\n}\n\n/** Mirrors the Rust `percent_decoded`: each `%XX` escape decoded to the byte it names, anything else kept, and the bytes read as UTF-8, lossily. */\nfunction conversationClientServiceHttpPercentDecoded(raw: string): string {\n  const bytes: Array<number> = [];\n  for (const piece of raw.split(/(%[0-9A-Fa-f]{2})/)) {\n    if (/^%[0-9A-Fa-f]{2}$/.test(piece)) bytes.push(parseInt(piece.slice(1), 16));\n    else bytes.push(...new TextEncoder().encode(piece));\n  }\n  return new TextDecoder().decode(new Uint8Array(bytes));\n}\n\n/** Mirrors the Rust `parse_query`: split on `&`, split each pair once on `=`, percent-decode both halves. */\nfunction conversationClientServiceHttpParseQuery(raw: string): Map<string, string> {\n  const parsed = new Map<string, string>();\n  for (const pair of raw.split(\"&\")) {\n    if (pair === \"\") continue;\n    const at = pair.indexOf(\"=\");\n    const [key, value] = at === -1 ? [pair, \"\"] : [pair.slice(0, at), pair.slice(at + 1)];\n    parsed.set(decodeURIComponent(key), decodeURIComponent(value));\n  }\n  return parsed;\n}\n\n/** The Rust `decode_expr` coercion for a numeric argument: an integer, else a float, else the text itself. */\nfunction conversationClientServiceHttpCoerceNumber(raw: string): unknown {\n  if (/^-?\\d+$/.test(raw)) return Number(raw);\n  const asFloat = Number(raw);\n  return raw.trim() !== \"\" && Number.isFinite(asFloat) ? asFloat : raw;\n}\n\n/** The envelope a dispatcher answered: `ok`, and the value or the error beside it. */\nfunction conversationClientServiceHttpEnvelope(answered: unknown): { ok: boolean; value: unknown; error: unknown } {\n  if (typeof answered !== \"object\" || answered === null) return { ok: false, value: undefined, error: answered };\n  return {\n    ok: Reflect.get(answered, \"ok\") === true,\n    value: Reflect.get(answered, \"value\"),\n    error: Reflect.get(answered, \"error\"),\n  };\n}\n\n/**\n * Turns an implementation into the function an adapter drives it with: one request in, one\n * response out. Matches the route table in declaration order, assembles the operation's message\n * exactly as the Rust dispatcher does, parses it through the generated dispatcher (which checks\n * it against its schema), and maps the outcome to a status and a body.\n */\nexport function createConversationClientServiceHttpDispatcher<Ctx>(\n  impl: ConversationClientServiceImpl<Ctx>,\n  onFault: ConversationClientServiceHttpFaultHandler = conversationClientServiceHttpDefaultFaultHandler,\n): (ctx: Ctx, request: ConversationClientServiceHttpRequest) => Promise<ConversationClientServiceHttpResponse> {\n  const dispatch = createConversationClientServiceDispatcher(impl);\n  const answer = async (ctx: Ctx, operation: string, payload: unknown, headers: ReadonlyArray<readonly [string, string]>, okStatus: number, errorStatus: (error: unknown) => number) => {\n    let dispatched: ConversationClientServiceDispatched | undefined;\n    try {\n      dispatched = await dispatch(ctx, operation, payload, headers);\n    } catch (thrown) {\n      return onFault(conversationClientServiceHttpFault(\"handler-panic\", operation, thrown instanceof Error ? thrown.message : String(thrown)));\n    }\n    if (dispatched === undefined) return { status: okStatus, headers: [], body: new Uint8Array() };\n    const envelope = conversationClientServiceHttpEnvelope(dispatched.answered);\n    if (envelope.ok) return conversationClientServiceHttpJson(okStatus, [], envelope.value);\n    if (dispatched.fault !== undefined) return onFault(dispatched.fault);\n    return conversationClientServiceHttpJson(errorStatus(envelope.error), [], envelope.error);\n  };\n  return async (ctx, request) => {\n    const { method, path } = request;\n    // purge-conversation: DELETE /v1/conversations/{conversation_id} \u{2014} the message IS the one placeholder (a wire scalar).\n    if (method === \"DELETE\") {\n      const captured = conversationClientServiceHttpMatchPath([\"/v1/conversations/\", null], path);\n      const [conversation_id] = captured ?? [];\n      if (conversation_id !== undefined) {\n        return answer(ctx, \"purge-conversation\", conversation_id, [], 204, () => 422);\n      }\n    }\n    // window: GET /v1/conversations/{conversation_id}/window \u{2014} a macro-generated message: placeholder-bound fields come from the path, the rest from the query string, each with its own coercion.\n    if (method === \"GET\") {\n      const captured = conversationClientServiceHttpMatchPath([\"/v1/conversations/\", null, \"/window\"], path);\n      const [conversation_id] = captured ?? [];\n      if (conversation_id !== undefined) {\n        const queryMap = conversationClientServiceHttpParseQuery(request.query);\n        const message: Record<string, unknown> = {};\n        message[\"conversationId\"] = conversation_id;\n        {\n          const raw = queryMap.get(\"limit\");\n          message[\"limit\"] = raw === undefined ? null : conversationClientServiceHttpCoerceNumber(raw);\n        }\n        return answer(ctx, \"window\", message, [], 200, (error) => {\n          switch (WindowError$Variant(error)) {\n            case \"NotFound\": return 404;\n            default: return 422;\n          }\n        });\n      }\n    }\n    return onFault(conversationClientServiceHttpFault(\"unknown-operation\", `${method} ${path}`, \"the service answers to no route by that method and path\"));\n  };\n}";
 
 #[test]
 fn a_declared_error_crosses_with_every_field_it_carries() {
@@ -646,9 +454,9 @@ fn a_unit_success_reaches_the_same_answer_closure_as_any_other_reply() {
 fn a_placeholder_named_after_a_word_typescript_refuses_is_held_under_a_trailing_underscore() {
     let written = http_service_of(RESERVED_WORD_SERVICE);
     for moved in [
-        "const [in_] = captured;",
+        "const [in_] = captured ?? [];",
         "message[\"in\"] = in_;",
-        "const [class_] = captured;",
+        "const [class_] = captured ?? [];",
         "message[/*__TIXSCHEMA_WIRE_KEY:object:class__*/] = \
          lookupServiceHttpPathText(class_, /*__TIXSCHEMA_WIRE_FORM:object:class__*/);",
     ] {
@@ -660,7 +468,7 @@ fn a_placeholder_named_after_a_word_typescript_refuses_is_held_under_a_trailing_
 fn a_placeholder_named_after_a_local_of_the_dispatcher_is_held_under_another_name() {
     let written = http_service_of(SHADOWED_LOCAL_SERVICE);
     for moved in [
-        "const [message_] = captured;",
+        "const [message_] = captured ?? [];",
         "message[\"message\"] = message_;",
     ] {
         assert!(written.contains(moved), "no `{moved}` in: {written}");

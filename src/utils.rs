@@ -2285,7 +2285,13 @@ pub fn noted_ident_reexport_ts(
 #[cfg(feature = "zod")]
 pub fn ident_reexport_zod(rust_ident: &str, export_name: &str, binding_suffix: &str) -> String {
     ident_reexport_name(rust_ident, export_name).map_or_else(String::new, |referenced| {
-        format!("\n\nexport const {referenced}{binding_suffix} = {export_name}{binding_suffix};")
+        #[cfg(feature = "typescript")]
+        let typed = format!(": typeof {export_name}{binding_suffix}");
+        #[cfg(not(feature = "typescript"))]
+        let typed = String::new();
+        format!(
+            "\n\nexport const {referenced}{binding_suffix}{typed} = {export_name}{binding_suffix};"
+        )
     })
 }
 

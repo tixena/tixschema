@@ -810,18 +810,22 @@ fn arm(operation: &OperationDef, ctx: &DispatcherContext) -> String {
         "      const captured = {prefix}HttpMatchPath([{}], path);",
         path_token_list(&shape.path)
     );
-    out.push_str("      if (captured !== undefined) {\n");
     let placeholder_names = shape.placeholder_names();
-    if !placeholder_names.is_empty() {
-        let _ = writeln!(
-            out,
-            "        const [{}] = captured;",
-            placeholder_names
-                .iter()
-                .map(|name| message::placeholder_local(name))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+    if placeholder_names.is_empty() {
+        out.push_str("      if (captured !== undefined) {\n");
+    } else {
+        // Each placeholder is read off the match and held to be there, so that it is a string
+        // where it is read rather than a string or `undefined`.
+        let locals: Vec<String> = placeholder_names
+            .iter()
+            .map(|name| message::placeholder_local(name))
+            .collect();
+        let _ = writeln!(out, "      const [{}] = captured ?? [];", locals.join(", "));
+        let present: Vec<String> = locals
+            .iter()
+            .map(|local| format!("{local} !== undefined"))
+            .collect();
+        let _ = writeln!(out, "      if ({}) {{", present.join(" && "));
     }
     let (setup, message_expr) = message_build(operation, &shape, prefix);
     out.push_str(&setup);

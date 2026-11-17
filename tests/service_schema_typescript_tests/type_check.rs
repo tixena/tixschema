@@ -39,11 +39,30 @@ use tixschema::model_schema;
 /// Names the compiler to run, for a machine that has one somewhere other than `PATH`.
 const COMPILER_VAR: &str = "TIXSCHEMA_TSC";
 
-/// What every check compiles under. `--strict` is the bar a consuming codebase sets; `--pretty
-/// false` keeps a diagnostic readable when it lands in an assertion message.
-const UNDER: [&str; 10] = [
+/// What every check compiles under: `--strict` and every type-checking flag beside it, as a
+/// consuming codebase may set any of them; `--pretty false` keeps a diagnostic readable when it
+/// lands in an assertion message.
+const UNDER: [&str; 28] = [
     "--noEmit",
     "--strict",
+    "--noUncheckedIndexedAccess",
+    "--exactOptionalPropertyTypes",
+    "--noImplicitReturns",
+    "--noImplicitOverride",
+    "--noFallthroughCasesInSwitch",
+    "--noPropertyAccessFromIndexSignature",
+    "--noUnusedLocals",
+    "--noUnusedParameters",
+    "--allowUnreachableCode",
+    "false",
+    "--allowUnusedLabels",
+    "false",
+    "--noUncheckedSideEffectImports",
+    "--verbatimModuleSyntax",
+    "--isolatedModules",
+    "--erasableSyntaxOnly",
+    "--isolatedDeclarations",
+    "--declaration",
     "--pretty",
     "false",
     "--target",
@@ -71,16 +90,16 @@ type ZodParsed<Parsed> =
   | { success: false; error: { issues: ReadonlyArray<ZodIssue> } };
 
 declare interface ZodType<Parsed = unknown> {
-  readonly _out: Parsed;
+  readonly _zod: { readonly output: Parsed };
   brand<Name extends string>(): ZodBuilder;
   meta(data?: object): ZodBuilder;
-  parse(value: unknown): this[\"_out\"];
+  parse(value: unknown): this[\"_zod\"][\"output\"];
   readonly(): ZodBuilder;
-  safeParse(value: unknown): ZodParsed<this[\"_out\"]>;
+  safeParse(value: unknown): ZodParsed<this[\"_zod\"][\"output\"]>;
 }
 
 declare namespace z {
-  type output<Schema extends ZodType> = Schema[\"_out\"];
+  type output<Schema extends ZodType> = Schema[\"_zod\"][\"output\"];
 }
 
 declare type $brand<Name extends string> = { readonly [brand: symbol]: Name };
@@ -129,6 +148,22 @@ const MODULES_VAR: &str = "TIXSCHEMA_NODE_MODULES";
 const ZOD_PROJECT: &str = r#"{
   "compilerOptions": {
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "isolatedDeclarations": true,
+    "declaration": true,
     "noEmit": true,
     "module": "nodenext",
     "moduleResolution": "nodenext",
@@ -245,7 +280,7 @@ declare const http: RenamedPathProbeServiceHttpTransport;
 declare const ownKey: RenamedPathProbeServiceOwnKeyOutcome;
 declare const renamed: RenamedPathProbeServiceRenamedOutcome;
 
-export const served = createRenamedPathProbeServiceHttpDispatcher<null>({
+export const served: unknown = createRenamedPathProbeServiceHttpDispatcher<null>({
   ownKey: async () => ownKey,
   renamed: async () => renamed,
 });
@@ -292,11 +327,11 @@ declare const streamed: SpooledProbeServiceStreamOutcome;
 declare const alone: StreamedProbeServiceStreamOutcome;
 
 const spool = async (_ctx: null, _req: string) => spooled;
-export const dispatch = createSpooledProbeServiceDispatcher<null>({ spool });
-export const detach = attachSpooledProbeServiceWsDispatcher<null>(socket, null, { spool }, () => {});
-export const served = createSpooledProbeServiceHttpDispatcher<null>({ spool, stream: async () => streamed });
-export const servedAlone = createStreamedProbeServiceHttpDispatcher<null>({ stream: async () => alone });
-export const detachAlone = attachStreamedProbeServiceWsDispatcher<null>(streamedSocket, null, {}, () => {});
+export const dispatch: unknown = createSpooledProbeServiceDispatcher<null>({ spool });
+export const detach: unknown = attachSpooledProbeServiceWsDispatcher<null>(socket, null, { spool }, () => {});
+export const served: unknown = createSpooledProbeServiceHttpDispatcher<null>({ spool, stream: async () => streamed });
+export const servedAlone: unknown = createStreamedProbeServiceHttpDispatcher<null>({ stream: async () => alone });
+export const detachAlone: unknown = attachStreamedProbeServiceWsDispatcher<null>(streamedSocket, null, {}, () => {});
 
 export async function read(): Promise<string> {
   const said: Array<string> = [];
@@ -328,8 +363,8 @@ declare const bus: SpooledProbeServiceTransport;
 declare const spooled: SpooledProbeServiceSpoolOutcome;
 declare const streamed: SpooledProbeServiceStreamOutcome;
 
-export const called = createSpooledProbeServiceClient(bus).stream("a");
-export const dispatch = createSpooledProbeServiceDispatcher<null>({
+export const called: unknown = createSpooledProbeServiceClient(bus).stream("a");
+export const dispatch: unknown = createSpooledProbeServiceDispatcher<null>({
   spool: async () => spooled,
   stream: async () => streamed,
 });
@@ -348,7 +383,7 @@ const IMPLEMENTATION_HEAD: &str = r#"import {
 
 type ProbeContext = { loggerName: string };
 
-export const dispatch = createProbeServiceDispatcher<ProbeContext>({
+export const dispatch: unknown = createProbeServiceDispatcher<ProbeContext>({
 "#;
 
 #[cfg(feature = "zod")]
@@ -649,7 +684,7 @@ const implementation: HeaderProbeServiceImpl<ProbeContext> = {
 
 declare const socket: WebSocket;
 
-export const detach = attachHeaderProbeServiceWsDispatcher<ProbeContext>(
+export const detach: unknown = attachHeaderProbeServiceWsDispatcher<ProbeContext>(
   socket,
   { loggerName: "probe" },
   implementation,
@@ -671,7 +706,7 @@ const UNIT_SUCCESS_IMPLEMENTATION_HEAD: &str = r#"import {
 
 type PingContext = { loggerName: string };
 
-export const dispatch = createUnitPingServiceDispatcher<PingContext>({
+export const dispatch: unknown = createUnitPingServiceDispatcher<PingContext>({
 "#;
 
 #[cfg(feature = "zod")]
@@ -1924,10 +1959,45 @@ fn valid_constants_bundle() -> String {
 /// Compiles `caller` beside [`valid_constants_bundle`].
 #[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
 fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
-    let head = "import { Parcel$Schema, ParcelDraft$Schema, ParcelLane, \
-                ParcelLane$Schema, ParcelNote$Schema, type Parcel, \
-                type ParcelDraft, type ParcelLane as Lane, type ParcelNote, \
-                type ParcelNoteDraft, ParcelMove, ParcelAdjacent, ParcelExternal, ParcelStamp, ParcelRecord$Schema, type ParcelRecord } from \"./bundle.js\";\n";
+    // Only what `caller` reads, as a module under `noUnusedLocals` imports.
+    let reads = |name: &str| {
+        caller.match_indices(name).any(|(at, _)| {
+            let part = |held: Option<char>| {
+                held.is_some_and(|next| next.is_alphanumeric() || next == '_' || next == '$')
+            };
+            !part(caller[..at].chars().next_back())
+                && !part(caller[at + name.len()..].chars().next())
+        })
+    };
+    let imported: Vec<&str> = [
+        "Parcel$Schema",
+        "ParcelDraft$Schema",
+        "ParcelLane",
+        "ParcelLane$Schema",
+        "ParcelNote$Schema",
+        "type Parcel",
+        "type ParcelDraft",
+        "type ParcelLane as Lane",
+        "type ParcelNote",
+        "type ParcelNoteDraft",
+        "ParcelMove",
+        "ParcelAdjacent",
+        "ParcelExternal",
+        "ParcelStamp",
+        "ParcelRecord$Schema",
+        "type ParcelRecord",
+    ]
+    .into_iter()
+    .filter(|item| item.rsplit(' ').next().is_some_and(reads))
+    .collect();
+    let head = if imported.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "import {{ {} }} from \"./bundle.js\";\n",
+            imported.join(", ")
+        )
+    };
     let files = [
         ("bundle.ts", valid_constants_bundle()),
         ("caller.ts", format!("{head}{caller}")),

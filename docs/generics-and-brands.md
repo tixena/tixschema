@@ -44,7 +44,7 @@ const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
   examples: [],
 });
 
-export const CorrelationId$Schema: typeof CorrelationId$RawSchema = CorrelationId$RawSchema;
+export const CorrelationId$Schema: ZodType & { _zod: { output: CorrelationId } } = CorrelationId$RawSchema;
 ```
 
 A brand with a type parameter publishes `X$SchemaFactory` plus `X$SchemaDefault` instead, exactly
@@ -61,24 +61,22 @@ pub struct UserId<IdType>(IdType);
 export type UserId<IdType> = IdType & $brand<"UserId">;
 const buildUserId$Schema = <IdType extends ZodType>(
   idType: IdType,
-) =>
+): ZodType =>
   idType.meta({
   description: "UserId",
   examples: [],
 }).brand<"UserId">();
 
-type UserId$SchemaOf<IdType extends ZodType> = ReturnType<
-  typeof buildUserId$Schema<IdType>
->;
+type UserId$SchemaOf<IdType extends ZodType> = ZodType<UserId<IdType["_zod"]["output"]>>;
 
-const UserId$SchemaFactoryCache = new WeakMap<ZodType, UserId$SchemaOf<ZodType>>();
+const UserId$SchemaFactoryCache = new WeakMap<ZodType, ZodType>();
 
 export function UserId$SchemaFactory<IdType extends ZodType>(
   idType: IdType,
 ): UserId$SchemaOf<IdType>;
 export function UserId$SchemaFactory(
   idType: ZodType,
-): UserId$SchemaOf<ZodType> {
+): ZodType {
   const hit = UserId$SchemaFactoryCache.get(idType);
   if (hit) return hit;
 
@@ -87,9 +85,7 @@ export function UserId$SchemaFactory(
   return schema;
 }
 
-const UserId$RawSchemaDefault = UserId$SchemaFactory(z.string());
-
-export const UserId$SchemaDefault: typeof UserId$RawSchemaDefault = UserId$RawSchemaDefault;
+export const UserId$SchemaDefault: ZodType<UserId<string>> = UserId$SchemaFactory(z.string());
 ```
 
 With `typescript` only (no `zod`):
@@ -101,14 +97,12 @@ export type UserId<IdType> = IdType & { readonly [__brand_UserId]: true };
 Rules:
 - Generic parameter names are preserved exactly (`IdType` stays `IdType` in TypeScript)
 - A brand with no type parameter publishes the `$RawSchema`/`$Schema` const pair; a brand with a
-  type parameter publishes `$SchemaFactory`/`$SchemaDefault` instead, the default binding its
-  factory call to `{Name}$RawSchemaDefault` first — the parameter's inner composes the factory's
-  bound argument (`idType`), never the opaque `z.unknown()`
-- Either binding is annotated `typeof` the raw `const` beneath it, never a Zod class: `.brand()`
-  narrows at the value position, and the class an inner renders to is zod's to decide
-  (the `DateTime<Tz>` schema is a `ZodPipe`, `z.iso.date()` a `ZodISODate`, a brand over a brand a
-  `$ZodBranded` of a `$ZodBranded`). Reading the annotation off the value is the one spelling that
-  stays true of all of them
+  type parameter publishes `$SchemaFactory`/`$SchemaDefault` instead — the parameter's inner
+  composes the factory's bound argument (`idType`), never the opaque `z.unknown()`
+- `X$Schema` is annotated `ZodType & { _zod: { output: X } }` (`ts_schema_type`), never a Zod
+  class and never `ZodType<X>`: `.brand()` brands only `_zod.output`, so a branded schema is not
+  assignable to `ZodType<X>`, and the class an inner renders to is zod's to decide. The default is
+  annotated `ZodType<X<…>>` at the declared defaults
 - Serde transparent serialization works normally — the newtype is invisible in JSON
 - The JSON Schema of a brand over a `char` is the one-character string a `char` is, `{"type":
   "string", "minLength": 1, "maxLength": 1}`: `branded_json_inner` hands a `char` to the slot
@@ -195,12 +189,11 @@ A generic type may reach itself, directly or through a second type reaching back
 hoists it into `$defs` once and points a `$ref` at that definition; TypeScript writes the name
 inside itself with its arguments; Zod calls the factory again with the argument the outer call was
 handed, the memo cache being what ends the recursion — the schema is cached before the recursive
-call is made. A builder that defers a reference — a member behind a getter, an operand behind
-`z.lazy` — reads its type back under `interface X$SchemaOf<…> extends ReturnType<…> {}` where every
-other generic item keeps the `type` alias: `zod_schema_of` decides, off `defers_a_reference`. A
-declaration file writes a type that reaches itself only by name, and writes an alias as the
-structure it resolves to, with `any` where that structure recurs; the interface is what a second
-package, reading the `.d.ts`, parses the recursive member through.
+call is made. Every generic item states its schema type by name: `zod_schema_of` writes
+`type X$SchemaOf<…> = ZodType<X<P["_zod"]["output"], …>>`, the builder returns `ZodType`, and the
+factory is a precise overload over an implementation typed `ZodType`, so `isolatedDeclarations`
+reads no inferred type. A declaration file writes the alias as it is, and a second package reading
+the `.d.ts` parses a recursive member as the type all the way down.
 `tests/generic_types_tests/declarations.rs` compiles that second package for real.
 
 A tuple struct has no key to write a getter on. `tuple_slot_zod` writes a slot that reaches the

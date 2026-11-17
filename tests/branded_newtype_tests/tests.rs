@@ -70,19 +70,16 @@ mod zod_ts_tests {
 
     #[cfg(feature = "serde")]
     #[test]
-    fn an_unconstrained_generic_brands_default_is_annotated_by_value() {
+    fn an_unconstrained_generic_brands_default_is_typed_by_what_it_parses_to() {
         let zod = RoleId::<String>::zod_schema();
         assert!(
-            zod.contains("const RoleId$RawSchemaDefault = RoleId$SchemaFactory(z.string());"),
-            "Got:\n{zod}"
-        );
-        assert!(
             zod.contains(
-                "export const RoleId$SchemaDefault: typeof RoleId$RawSchemaDefault = \
-                 RoleId$RawSchemaDefault;"
+                "export const RoleId$SchemaDefault: ZodType<RoleId<string>> = \
+                 RoleId$SchemaFactory(z.string());"
             ),
             "Got:\n{zod}"
         );
+        assert!(!zod.contains("$RawSchemaDefault"), "Got:\n{zod}");
     }
 
     #[cfg(feature = "serde")]
@@ -110,7 +107,10 @@ mod zod_ts_tests {
     fn test_branded_newtype_non_generic_zod() {
         let zod = CorrelationId::zod_schema();
         assert!(zod.contains("z.string().brand"), "Got: {zod}");
-        assert!(zod.contains("typeof CorrelationId$RawSchema"), "Got: {zod}");
+        assert!(
+            zod.contains("ZodType & { _zod: { output: CorrelationId } }"),
+            "Got: {zod}"
+        );
     }
 
     #[cfg(feature = "serde")]
@@ -122,7 +122,7 @@ mod zod_ts_tests {
             "Should contain raw schema. Got: {zod}"
         );
         assert!(
-            zod.contains("export const CorrelationId$Schema: typeof CorrelationId$RawSchema = CorrelationId$RawSchema"),
+            zod.contains("export const CorrelationId$Schema: ZodType & { _zod: { output: CorrelationId } } = CorrelationId$RawSchema"),
             "Should contain exported schema referencing raw schema. Got: {zod}"
         );
     }
@@ -464,7 +464,7 @@ mod objectid_branded_surface_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("PlainObjectId$Schema: typeof PlainObjectId$RawSchema"),
+            zod.contains("PlainObjectId$Schema: ZodType & { _zod: { output: PlainObjectId } }"),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -492,7 +492,7 @@ mod objectid_branded_surface_tests {
             "a string check must never sit on the $oid object. Got:\n{zod}"
         );
         assert!(
-            zod.contains("HexObjectId$Schema: typeof HexObjectId$RawSchema"),
+            zod.contains("HexObjectId$Schema: ZodType & { _zod: { output: HexObjectId } }"),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -570,7 +570,7 @@ mod objectid_branded_surface_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("ObjectIdList$Schema: typeof ObjectIdList$RawSchema"),
+            zod.contains("ObjectIdList$Schema: ZodType & { _zod: { output: ObjectIdList } }"),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -997,7 +997,7 @@ mod constrained_generic_branded_tests {
         let zod = StrictDocumentId::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const StrictDocumentId$RawSchemaDefault = \
+                "export const StrictDocumentId$SchemaDefault: ZodType<StrictDocumentId<string>> = \
                  StrictDocumentId$SchemaFactory(z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${[...String(issue.input)].length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: \"does not match pattern '^[a-f0-9]{24}$'\" })));"
             ),
             "Got:\n{zod}"
@@ -1034,18 +1034,13 @@ mod constrained_generic_branded_tests {
         let zod = OuterId::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const OuterId$RawSchemaDefault = OuterId$SchemaFactory(z.lazy(() => \
+                "export const OuterId$SchemaDefault: ZodType<OuterId<StrictDocumentId<string>>> = \
+                 OuterId$SchemaFactory(z.lazy(() => \
                  StrictDocumentId$SchemaDefault.check(z.minLength(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` }))));"
             ),
             "Got:\n{zod}"
         );
-        assert!(
-            zod.contains(
-                "export const OuterId$SchemaDefault: typeof OuterId$RawSchemaDefault = \
-                 OuterId$RawSchemaDefault;"
-            ),
-            "Got:\n{zod}"
-        );
+        assert!(!zod.contains("$RawSchemaDefault"), "Got:\n{zod}");
     }
 
     #[test]
@@ -1154,18 +1149,12 @@ mod constrained_default_names_a_sibling_tests {
         let zod = OuterBrand::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const OuterBrand$RawSchemaDefault = \
+                "export const OuterBrand$SchemaDefault: ZodType<OuterBrand<InnerString>> = \
                  OuterBrand$SchemaFactory(z.lazy(() => InnerString$Schema.check(z.minLength(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }))));"
             ),
             "Got:\n{zod}"
         );
-        assert!(
-            zod.contains(
-                "export const OuterBrand$SchemaDefault: typeof OuterBrand$RawSchemaDefault = \
-                 OuterBrand$RawSchemaDefault;"
-            ),
-            "Got:\n{zod}"
-        );
+        assert!(!zod.contains("$RawSchemaDefault"), "Got:\n{zod}");
     }
 
     #[cfg(feature = "zod")]
@@ -1438,7 +1427,7 @@ mod branded_composite_inner_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("LabelList$Schema: typeof LabelList$RawSchema"),
+            zod.contains("LabelList$Schema: ZodType & { _zod: { output: LabelList } }"),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -1461,7 +1450,7 @@ mod branded_composite_inner_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("WeightMap$Schema: typeof WeightMap$RawSchema"),
+            zod.contains("WeightMap$Schema: ZodType & { _zod: { output: WeightMap } }"),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -1484,7 +1473,7 @@ mod branded_composite_inner_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("LabelPair$Schema: typeof LabelPair$RawSchema"),
+            zod.contains("LabelPair$Schema: ZodType & { _zod: { output: LabelPair } }"),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -1506,7 +1495,8 @@ mod branded_composite_inner_tests {
             serde_json::json!({ "type": "array", "items": { "type": "string" }, "uniqueItems": true })
         );
         assert!(
-            LabelSet::zod_schema().contains("LabelSet$Schema: typeof LabelSet$RawSchema"),
+            LabelSet::zod_schema()
+                .contains("LabelSet$Schema: ZodType & { _zod: { output: LabelSet } }"),
             "Got:\n{}",
             LabelSet::zod_schema()
         );
@@ -1520,7 +1510,8 @@ mod branded_composite_inner_tests {
             })
         );
         assert!(
-            ByteQuad::zod_schema().contains("ByteQuad$Schema: typeof ByteQuad$RawSchema"),
+            ByteQuad::zod_schema()
+                .contains("ByteQuad$Schema: ZodType & { _zod: { output: ByteQuad } }"),
             "Got:\n{}",
             ByteQuad::zod_schema()
         );
@@ -1559,7 +1550,8 @@ mod branded_composite_inner_tests {
             })
         );
         assert!(
-            LabelRow::zod_schema().contains("LabelRow$Schema: typeof LabelRow$RawSchema"),
+            LabelRow::zod_schema()
+                .contains("LabelRow$Schema: ZodType & { _zod: { output: LabelRow } }"),
             "Got:\n{}",
             LabelRow::zod_schema()
         );
@@ -2055,7 +2047,7 @@ mod branded_sibling_inner_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("WrappedPart$Schema: typeof WrappedPart$RawSchema"),
+            zod.contains("WrappedPart$Schema: ZodType & { _zod: { output: WrappedPart } }"),
             "Got:\n{zod}"
         );
         assert_eq!(WrappedPart::json_schema(), Part::json_schema());
@@ -2074,7 +2066,8 @@ mod branded_sibling_inner_tests {
     fn a_forward_declared_sibling_brand_carries_the_named_types_schema() {
         assert_eq!(WrappedTail::json_schema(), Tail::json_schema());
         assert!(
-            WrappedTail::zod_schema().contains("WrappedTail$Schema: typeof WrappedTail$RawSchema"),
+            WrappedTail::zod_schema()
+                .contains("WrappedTail$Schema: ZodType & { _zod: { output: WrappedTail } }"),
             "Got:\n{}",
             WrappedTail::zod_schema()
         );
@@ -2118,7 +2111,7 @@ mod branded_sibling_inner_tests {
             "Got:\n{zod}"
         );
         assert!(
-            zod.contains("ShortSlug$Schema: typeof ShortSlug$RawSchema"),
+            zod.contains("ShortSlug$Schema: ZodType & { _zod: { output: ShortSlug } }"),
             "Got:\n{zod}"
         );
     }
@@ -2221,7 +2214,7 @@ mod branded_sibling_inner_tests {
 
     #[cfg(feature = "zod")]
     #[test]
-    fn every_sibling_inner_brand_reads_its_annotation_off_its_own_raw_schema() {
+    fn every_sibling_inner_brand_is_typed_by_what_it_parses_to() {
         for (name, zod) in [
             ("PlainNumTag", PlainNumTag::zod_schema()),
             ("PlainBoolTag", PlainBoolTag::zod_schema()),
@@ -2232,27 +2225,26 @@ mod branded_sibling_inner_tests {
             ("WrappedBrand", WrappedBrand::zod_schema()),
             ("WrappedChoice", WrappedChoice::zod_schema()),
         ] {
-            let line =
-                format!("export const {name}$Schema: typeof {name}$RawSchema = {name}$RawSchema;");
+            let line = format!(
+                "export const {name}$Schema: ZodType & {{ _zod: {{ output: {name} }} }} = \
+                 {name}$RawSchema;"
+            );
             assert!(zod.contains(&line), "want: {line}\ngot:\n{zod}");
         }
     }
 
     #[cfg(feature = "zod")]
     #[test]
-    fn a_generic_brands_default_over_a_generic_sibling_is_annotated_by_value() {
+    fn a_generic_brands_default_over_a_generic_sibling_is_typed_by_what_it_parses_to() {
         let zod = OpenTag::<String>::zod_schema();
         assert!(
-            zod.contains("const OpenTag$RawSchemaDefault = OpenTag$SchemaFactory(z.string());"),
-            "Got:\n{zod}"
-        );
-        assert!(
             zod.contains(
-                "export const OpenTag$SchemaDefault: typeof OpenTag$RawSchemaDefault = \
-                 OpenTag$RawSchemaDefault;"
+                "export const OpenTag$SchemaDefault: ZodType<OpenTag<string>> = \
+                 OpenTag$SchemaFactory(z.string());"
             ),
             "Got:\n{zod}"
         );
+        assert!(!zod.contains("$RawSchemaDefault"), "Got:\n{zod}");
     }
 }
 
@@ -2483,7 +2475,7 @@ mod branded_chrono_zod_tests {
     pub struct InstantFamily<IdType>(IdType);
 
     #[test]
-    fn every_chrono_brand_reads_its_annotation_off_its_own_raw_schema() {
+    fn every_chrono_brand_is_typed_by_what_it_parses_to() {
         for (name, value, zod) in [
             (
                 "UtcStamp",
@@ -2514,14 +2506,16 @@ mod branded_chrono_zod_tests {
         ] {
             let raw = format!("const {name}$RawSchema = {value}.brand<\"{name}\">()");
             assert!(zod.contains(&raw), "want: {raw}\ngot:\n{zod}");
-            let line =
-                format!("export const {name}$Schema: typeof {name}$RawSchema = {name}$RawSchema;");
+            let line = format!(
+                "export const {name}$Schema: ZodType & {{ _zod: {{ output: {name} }} }} = \
+                 {name}$RawSchema;"
+            );
             assert!(zod.contains(&line), "want: {line}\ngot:\n{zod}");
         }
     }
 
     #[test]
-    fn a_time_brand_reads_its_annotation_off_its_own_raw_schema() {
+    fn a_time_brand_is_typed_by_what_it_parses_to() {
         let zod = ClockStamp::zod_schema();
         assert!(
             zod.contains("const ClockStamp$RawSchema = z.preprocess("),
@@ -2533,8 +2527,7 @@ mod branded_chrono_zod_tests {
         );
         assert!(
             zod.contains(
-                "export const ClockStamp$Schema: typeof ClockStamp$RawSchema = \
-                 ClockStamp$RawSchema;"
+                "export const ClockStamp$Schema: ZodType & { _zod: { output: ClockStamp } } = ClockStamp$RawSchema;"
             ),
             "Got:\n{zod}"
         );
@@ -2554,25 +2547,24 @@ mod branded_chrono_zod_tests {
     ///   more.
     /// ```
     #[test]
-    fn a_generic_brands_default_at_a_chrono_filling_is_annotated_by_value() {
-        for (name, argument, zod) in [
+    fn a_generic_brands_default_at_a_chrono_filling_is_typed_by_what_it_parses_to() {
+        for (name, filled, argument, zod) in [
             (
                 "DayFamily",
+                "string",
                 "z.iso.date()",
                 DayFamily::<NaiveDate>::zod_schema(),
             ),
             (
                 "InstantFamily",
+                "Date",
                 "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
                 InstantFamily::<DateTime<Utc>>::zod_schema(),
             ),
         ] {
-            let bound =
-                format!("const {name}$RawSchemaDefault = {name}$SchemaFactory({argument});");
-            assert!(zod.contains(&bound), "want: {bound}\ngot:\n{zod}");
             let line = format!(
-                "export const {name}$SchemaDefault: typeof {name}$RawSchemaDefault = \
-                 {name}$RawSchemaDefault;"
+                "export const {name}$SchemaDefault: ZodType<{name}<{filled}>> = \
+                 {name}$SchemaFactory({argument});"
             );
             assert!(zod.contains(&line), "want: {line}\ngot:\n{zod}");
         }

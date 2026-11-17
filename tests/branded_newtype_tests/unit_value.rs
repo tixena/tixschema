@@ -66,9 +66,7 @@ fn typescript_describes_a_unit_as_null() {
 fn zod_describes_a_unit_as_null() {
     assert_eq!(
         UnitBrand::zod_schema(),
-        "const UnitBrand$RawSchema = z.null().brand<\"UnitBrand\">().meta({\n  id: \"UnitBrand\",\n  \
-         description: \"A brand over `()`.\",\n  examples: [],\n});\n\nexport const UnitBrand$Schema: \
-         typeof UnitBrand$RawSchema = UnitBrand$RawSchema;\n\n/** A valid `UnitBrand` made from `null`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeUnitBrand(\n  value: null,\n): UnitBrand {\n  return UnitBrand$Schema.parse(value);\n}\n\n/** What `decodeUnitBrand` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeUnitBrand(\n  value: null,\n) {\n  return UnitBrand$Schema.safeParse(value);\n}"
+        "const UnitBrand$RawSchema = z.null().brand<\"UnitBrand\">().meta({\n  id: \"UnitBrand\",\n  description: \"A brand over `()`.\",\n  examples: [],\n});\n\nexport const UnitBrand$Schema: ZodType & { _zod: { output: UnitBrand } } = UnitBrand$RawSchema;\n\n/** A valid `UnitBrand` made from `null`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeUnitBrand(\n  value: null,\n): UnitBrand {\n  return UnitBrand$Schema.parse(value);\n}\n\n/** What `decodeUnitBrand` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeUnitBrand(\n  value: null,\n): ReturnType<ZodType<UnitBrand>[\"safeParse\"]> {\n  return UnitBrand$Schema.safeParse(value);\n}"
     );
     let holder = UnitHolder::zod_schema();
     assert!(

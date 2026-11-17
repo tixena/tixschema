@@ -160,7 +160,7 @@ fn test_zod_with_typescript_feature_includes_type_annotations() {
     );
     assert!(
         zod.contains(
-            "export const BasicStruct$Schema = BasicStructDraft$Schema.readonly().brand<\"BasicStruct\">().meta({
+            "export const BasicStruct$Schema: ZodType & { _zod: { output: BasicStruct } } = BasicStructDraft$Schema.readonly().brand<\"BasicStruct\">().meta({
   ...(BasicStructDraft$Schema.meta() ?? {}),
   id: \"BasicStruct\",
   examples: []

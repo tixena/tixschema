@@ -60,7 +60,7 @@ const DataElementSampleValueEntryDraft$RawSchema =
 
 export const DataElementSampleValueEntryDraft$Schema: ZodType<DataElementSampleValueEntryDraft> = DataElementSampleValueEntryDraft$RawSchema;
 
-export const DataElementSampleValueEntry$Schema = DataElementSampleValueEntryDraft$Schema.readonly().brand<"DataElementSampleValueEntry">().meta({
+export const DataElementSampleValueEntry$Schema: ZodType & { _zod: { output: DataElementSampleValueEntry } } = DataElementSampleValueEntryDraft$Schema.readonly().brand<"DataElementSampleValueEntry">().meta({
   ...(DataElementSampleValueEntryDraft$Schema.meta() ?? {}),
   id: "DataElementSampleValueEntry",
   examples: []

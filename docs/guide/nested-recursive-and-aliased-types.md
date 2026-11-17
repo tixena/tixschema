@@ -61,7 +61,7 @@ const TreeNodeDraft$RawSchema = z.strictObject({
 
 export const TreeNodeDraft$Schema: ZodType<TreeNodeDraft> = TreeNodeDraft$RawSchema;
 
-export const TreeNode$Schema = TreeNodeDraft$Schema.readonly().brand<"TreeNode">().meta({
+export const TreeNode$Schema: ZodType & { _zod: { output: TreeNode } } = TreeNodeDraft$Schema.readonly().brand<"TreeNode">().meta({
   ...(TreeNodeDraft$Schema.meta() ?? {}),
   id: "TreeNode",
   examples: []

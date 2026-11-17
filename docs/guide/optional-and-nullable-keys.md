@@ -21,14 +21,14 @@ Generated TypeScript:
 ```typescript
 export type ProfileDraft = {
   name: string;
-  nickname?: string;
+  nickname?: string | undefined;
   nickHandle: string | undefined;
 };
 
 export type Profile = Readonly<ProfileDraft> & $brand<"Profile">;
 ```
 
-`nick_handle` is the same field without the flag, so the flag is the whole of the difference between those two lines.
+`nick_handle` is the same field without the flag, so the flag is the whole of the difference between those two lines: the `?` that lets the key be left out. The `undefined` beside it is what the Zod schema reads there, which `exactOptionalPropertyTypes` keeps apart from a key that is absent.
 
 This is a TypeScript-only knob -- the Zod schema and JSON Schema are unchanged (the field is already optional in both, flagged or not). The flag is only valid on `Option<T>` fields, an alias of an `Option` declared above among them; applying it to a non-`Option` field is a compile error. It composes with `as = Type`, which names the type the field already renders.
 

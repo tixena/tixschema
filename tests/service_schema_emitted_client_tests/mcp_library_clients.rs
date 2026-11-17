@@ -73,8 +73,8 @@ fn the_typescript_client_of_the_library_service_type_checks() {
     let text = typescript();
     let usage = "import { BookRequest$Schema, createLibraryServiceMcpClient, type LibraryServiceMcpTransport } from \"./bundle.js\";\n\
                  declare const transport: LibraryServiceMcpTransport;\n\
-                 export const client = createLibraryServiceMcpClient(transport);\n\
-                 export const call = client.getBook(BookRequest$Schema.parse({ book_id: \"book-1\" }));\n";
+                 const client = createLibraryServiceMcpClient(transport);\n\
+                 export const call: unknown = client.getBook(BookRequest$Schema.parse({ book_id: \"book-1\" }));\n";
     let Some((succeeded, said)) = compiled_with_modules(
         "mcp-library-client-types",
         "TIXSCHEMA_TSC",

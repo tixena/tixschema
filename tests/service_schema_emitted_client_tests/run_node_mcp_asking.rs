@@ -221,7 +221,7 @@ declare const impl: AskingServiceImpl<number>;
 declare const transport: AskingServiceMcpTransport;
 declare const previewTransport: PreviewServiceMcpTransport;
 
-export const dispatcher = createAskingServiceMcpDispatcher(impl);
+export const dispatcher: unknown = createAskingServiceMcpDispatcher(impl);
 export const kinds: ReadonlyArray<string> = askingServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
 export const blocks: ReadonlyArray<McpContent> = [
   { type: "text", text: "a chart" },
@@ -229,7 +229,7 @@ export const blocks: ReadonlyArray<McpContent> = [
   { type: "resource", uri: "workspace://documents/doc-3", blob: new Uint8Array() },
 ];
 
-export async function usage() {
+export async function usage(): Promise<unknown> {
   const client = createAskingServiceMcpClient(transport);
   const first = await client.deleteDocument({ documentId: "doc-1", confirmation: undefined });
   if (!first.ok && !("isServiceFault" in first.error) && first.error.errorCode === "needs-confirmation") {

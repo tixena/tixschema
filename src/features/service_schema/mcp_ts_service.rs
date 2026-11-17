@@ -22,6 +22,25 @@ use syn::Type;
 const DEFAULT_TTL_MS: u64 = 0;
 const DEFAULT_CACHE_SCOPE: &str = "private";
 
+/// The function `McpScopes` reads a resource template's scopes through: whether `uri` is the
+/// template, each placeholder standing for one non-empty path segment.
+const TEMPLATE_MATCHES: &str = "  const matches = (uri: string, template: ReadonlyArray<readonly [string, boolean]>): boolean => {\n    \
+                                let rest = uri;\n    \
+                                for (const [text, placeholder] of template) {\n      \
+                                if (placeholder) {\n        \
+                                const slash = rest.indexOf(\"/\");\n        \
+                                const end = slash < 0 ? rest.length : slash;\n        \
+                                if (end === 0) return false;\n        \
+                                rest = rest.slice(end);\n      \
+                                } else if (rest.startsWith(text)) {\n        \
+                                rest = rest.slice(text.length);\n      \
+                                } else {\n        \
+                                return false;\n      \
+                                }\n    \
+                                }\n    \
+                                return rest.length === 0;\n  \
+                                };\n";
+
 /// The text `ts_mcp_service()` and `ts_mcp_client()` replace with the version of the crate that
 /// declared the service, quoted as a string literal.
 pub const VERSION_MARKER: &str = "/*__TIXSCHEMA_MCP_VERSION__*/";
@@ -182,8 +201,8 @@ export class __N__McpCall {
   async progress(done: number, total?: number, message?: string): Promise<void> {
     if (this.token === undefined || this.gone) return;
     const params: Record<string, unknown> = { progress: done, progressToken: this.token };
-    if (total !== undefined) params.total = total;
-    if (message !== undefined) params.message = message;
+    if (total !== undefined) params["total"] = total;
+    if (message !== undefined) params["message"] = message;
     await this.write(__p__McpText({ jsonrpc: "2.0", method: "notifications/progress", params }));
   }
 
@@ -251,7 +270,7 @@ export type __N__McpHost = {
 };
 
 function __p__McpToken(message: Record<string, unknown>): string | number | bigint | undefined {
-  const token = __p__McpObject(__p__McpObject(message.params)?._meta)?.progressToken;
+  const token = __p__McpObject(__p__McpObject(message["params"])?.["_meta"])?.["progressToken"];
   return typeof token === "string" || typeof token === "number" || typeof token === "bigint" ? token : undefined;
 }"#;
 
@@ -268,8 +287,8 @@ function __p__McpReplied(status: number, body: Record<string, unknown>): __N__Mc
 
 /** A reply whose public answer is private where the server's name came from the caller. */
 function __p__McpPrivately(body: Record<string, unknown>, named: boolean): Record<string, unknown> {
-  const result = __p__McpObject(body.result);
-  return named && result?.cacheScope === "public" ? { ...body, result: { ...result, cacheScope: "private" } } : body;
+  const result = __p__McpObject(body["result"]);
+  return named && result?.["cacheScope"] === "public" ? { ...body, result: { ...result, cacheScope: "private" } } : body;
 }
 
 function __p__McpRefused(
@@ -316,14 +335,14 @@ function __p__McpReread(message: Record<string, unknown>, text: string): Record<
   }
   const reread = __p__McpObject(again);
   if (reread === undefined) return message;
-  const id = reread.id;
+  const id = reread["id"];
   const floated =
     id instanceof Number || (typeof id === "number" && !Number.isInteger(id))
       ? { ...message, id: new __N__McpRaw(__p__McpFloatText(Number(id))) }
       : message;
-  const params = __p__McpObject(floated.params);
-  const arguments_ = __p__McpObject(reread.params)?.arguments;
-  if (floated.method !== "tools/call" || params === undefined || params.arguments === undefined || arguments_ === undefined) {
+  const params = __p__McpObject(floated["params"]);
+  const arguments_ = __p__McpObject(reread["params"])?.["arguments"];
+  if (floated["method"] !== "tools/call" || params === undefined || params["arguments"] === undefined || arguments_ === undefined) {
     return floated;
   }
   return { ...floated, params: { ...params, arguments: arguments_ } };
@@ -350,10 +369,10 @@ function __p__McpCapabilities(endpoint: __N__McpEndpoint, listens: boolean): Rec
       if (held !== undefined) __p__McpJoined(merged, held);
     }
   }
-  const resources = __p__McpObject(merged.resources);
+  const resources = __p__McpObject(merged["resources"]);
   if (listens && resources !== undefined) {
-    resources.listChanged = true;
-    resources.subscribe = true;
+    resources["listChanged"] = true;
+    resources["subscribe"] = true;
   }
   return merged;
 }
@@ -362,7 +381,7 @@ function __p__McpCapabilities(endpoint: __N__McpEndpoint, listens: boolean): Rec
 function __p__McpTasked(endpoint: __N__McpEndpoint): boolean {
   return endpoint.parts.some((part) =>
     part.capabilities.some(
-      (text) => __p__McpObject(__p__McpObject(__p__McpRead(text))?.extensions)?.["io.modelcontextprotocol/tasks"] !== undefined,
+      (text) => __p__McpObject(__p__McpObject(__p__McpRead(text))?.["extensions"])?.["io.modelcontextprotocol/tasks"] !== undefined,
     ),
   );
 }
@@ -370,13 +389,13 @@ function __p__McpTasked(endpoint: __N__McpEndpoint): boolean {
 /** What a routed request asks for: the tool, the URI, the prompt, or the URI of the template or the name of the prompt a completion is for. */
 function __p__McpNamed(params: Record<string, unknown> | undefined, method: string): string | undefined {
   const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-  if (method === "tools/call" || method === "prompts/get") return text(params?.name);
-  if (method === "resources/read") return text(params?.uri);
-  if (method === "skills/get") return text(params?.name) ?? text(params?.uri);
-  if (method === "tasks/get" || method === "tasks/cancel" || method === "tasks/update") return text(params?.taskId);
-  if (text(__p__McpObject(params?.argument)?.name) === undefined) return undefined;
-  const reference = __p__McpObject(params?.ref);
-  return reference?.type === "ref/prompt" ? text(reference.name) : text(reference?.uri);
+  if (method === "tools/call" || method === "prompts/get") return text(params?.["name"]);
+  if (method === "resources/read") return text(params?.["uri"]);
+  if (method === "skills/get") return text(params?.["name"]) ?? text(params?.["uri"]);
+  if (method === "tasks/get" || method === "tasks/cancel" || method === "tasks/update") return text(params?.["taskId"]);
+  if (text(__p__McpObject(params?.["argument"])?.["name"]) === undefined) return undefined;
+  const reference = __p__McpObject(params?.["ref"]);
+  return reference?.["type"] === "ref/prompt" ? text(reference["name"]) : text(reference?.["uri"]);
 }
 
 type __N__McpListingStart =
@@ -406,7 +425,7 @@ async function __p__McpListResources(
   endpoint: __N__McpEndpoint,
   route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
 ): Promise<__N__McpHandled> {
-  const start = __p__McpListingStart(params?.cursor, endpoint.parts.length);
+  const start = __p__McpListingStart(params?.["cursor"], endpoint.parts.length);
   if (start === undefined) return __p__McpRefused(id, 200, -32602, "Invalid cursor");
   let page: { readonly part: number; readonly answer: __N__McpAnswer } | undefined;
   for (let part = start.part; part < endpoint.parts.length; part += 1) {
@@ -424,18 +443,18 @@ async function __p__McpListResources(
   if (page !== undefined) {
     if ("error" in page.answer) return __p__McpReplied(200, { id, error: page.answer.error });
     const listed = __p__McpObject(page.answer.result) ?? {};
-    if (Array.isArray(listed.resources)) resources.push(...listed.resources);
+    if (Array.isArray(listed["resources"])) resources.push(...listed["resources"]);
     for (const key of ["ttlMs", "cacheScope"]) {
       if (listed[key] !== undefined) result[key] = listed[key];
     }
-    const own = typeof listed.nextCursor === "string" && listed.nextCursor !== "" ? listed.nextCursor : undefined;
+    const own = typeof listed["nextCursor"] === "string" && listed["nextCursor"] !== "" ? listed["nextCursor"] : undefined;
     if (own !== undefined) {
-      result.nextCursor = `${page.part}:${own}`;
+      result["nextCursor"] = `${page.part}:${own}`;
     } else if (page.part + 1 < endpoint.parts.length) {
-      result.nextCursor = `${page.part + 1}:`;
+      result["nextCursor"] = `${page.part + 1}:`;
     }
   }
-  result.resources = resources;
+  result["resources"] = resources;
   return __p__McpReplied(200, __p__McpPrivately({ id, result }, named));
 }
 
@@ -443,11 +462,11 @@ async function __p__McpListResources(
 function __p__McpTaskView(taskId: string, state: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const view: Record<string, unknown> = { ...state, taskId };
   if ("result" in view) {
-    view.result = {
-      content: [{ text: __p__McpText(view.result), type: "text" }],
+    view["result"] = {
+      content: [{ text: __p__McpText(view["result"]), type: "text" }],
       isError: false,
       resultType: "complete",
-      structuredContent: view.result,
+      structuredContent: view["result"],
     };
   }
   return view;
@@ -465,32 +484,32 @@ async function __p__McpListen(
   changes: __N__McpChanges,
 ): Promise<__N__McpHandled> {
   const invalid = (detail: string): __N__McpHandled => __p__McpRefused(id, 200, -32602, `Invalid params: ${detail}`);
-  const filter = __p__McpObject(params?.notifications);
+  const filter = __p__McpObject(params?.["notifications"]);
   if (filter === undefined) return invalid("subscriptions/listen needs `notifications`");
-  const uris = filter.resourceSubscriptions;
-  if (filter.resourcesListChanged !== undefined && typeof filter.resourcesListChanged !== "boolean") {
+  const uris = filter["resourceSubscriptions"];
+  if (filter["resourcesListChanged"] !== undefined && typeof filter["resourcesListChanged"] !== "boolean") {
     return invalid("`resourcesListChanged` is not a boolean");
   }
   if (uris !== undefined && !(Array.isArray(uris) && uris.every((uri: unknown) => typeof uri === "string"))) {
     return invalid("`resourceSubscriptions` is not an array of strings");
   }
-  const tasks = filter.taskIds;
+  const tasks = filter["taskIds"];
   if (tasks !== undefined && !(Array.isArray(tasks) && tasks.every((task: unknown) => typeof task === "string"))) {
     return invalid("`taskIds` is not an array of strings");
   }
   const agreed: Record<string, unknown> = {};
-  if (endpoint.parts.some((part) => part.capabilities.some((text) => __p__McpObject(__p__McpRead(text))?.resources !== undefined))) {
-    if (filter.resourcesListChanged === true) agreed.resourcesListChanged = true;
-    if (Array.isArray(uris) && uris.length > 0) agreed.resourceSubscriptions = uris;
+  if (endpoint.parts.some((part) => part.capabilities.some((text) => __p__McpObject(__p__McpRead(text))?.["resources"] !== undefined))) {
+    if (filter["resourcesListChanged"] === true) agreed["resourcesListChanged"] = true;
+    if (Array.isArray(uris) && uris.length > 0) agreed["resourceSubscriptions"] = uris;
   }
-  if (__p__McpTasked(endpoint) && Array.isArray(tasks) && tasks.length > 0) agreed.taskIds = tasks;
+  if (__p__McpTasked(endpoint) && Array.isArray(tasks) && tasks.length > 0) agreed["taskIds"] = tasks;
   const notified = (method: string, given: Record<string, unknown>): string =>
     __p__McpText({ jsonrpc: "2.0", method, params: { ...given, _meta: { [__p__McpSubscription]: id } } });
-  const lists = agreed.resourcesListChanged === true;
+  const lists = agreed["resourcesListChanged"] === true;
   const texts = (listed: unknown): ReadonlyArray<string> =>
     Array.isArray(listed) ? listed.filter((held: unknown): held is string => typeof held === "string") : [];
-  const watched = texts(agreed.resourceSubscriptions);
-  const followed = texts(agreed.taskIds);
+  const watched = texts(agreed["resourceSubscriptions"]);
+  const followed = texts(agreed["taskIds"]);
   const ended = __p__McpReplied(200, { id, result: { _meta: { ...info, [__p__McpSubscription]: id }, resultType: "complete" } });
   if (!(await call.write(notified("notifications/subscriptions/acknowledged", { notifications: agreed })))) return ended;
   const stopped = call.stopped.then((): "stopped" => "stopped");
@@ -521,11 +540,11 @@ async function __p__McpHandle(
   route: (part: number, method: string, params: unknown) => Promise<__N__McpAnswer | undefined>,
   listening?: (id: unknown, params: Record<string, unknown> | undefined, info: Record<string, unknown>) => Promise<__N__McpHandled>,
 ): Promise<__N__McpHandled> {
-  const id = message.id;
-  const method = message.method;
+  const id = message["id"];
+  const method = message["method"];
   if (typeof method !== "string") return __p__McpRefused(id, 400, -32600, "Invalid Request");
-  const params = __p__McpObject(message.params);
-  const meta = __p__McpObject(params?._meta) ?? {};
+  const params = __p__McpObject(message["params"]);
+  const meta = __p__McpObject(params?.["_meta"]) ?? {};
   for (const key of [__p__McpMetaProtocol, __p__McpMetaCapabilities]) {
     if (meta[key] === undefined) {
       return __p__McpRefused(id, 400, -32602, `Missing required _meta key: ${key}`);
@@ -600,7 +619,7 @@ async function __p__McpHandle(
       return __p__McpListResources(id, params, info, named, endpoint, route);
     case "skills/list": {
       const skills = endpoint.parts.flatMap((part) => part.skills);
-      const dynamic = skills.some((text) => __p__McpObject(__p__McpRead(text))?.resources === "dynamic");
+      const dynamic = skills.some((text) => __p__McpObject(__p__McpRead(text))?.["resources"] === "dynamic");
       return replied(200, {
         id,
         result: {
@@ -697,8 +716,8 @@ export async function __p__McpServe<Ctx>(
   if (!parsed.ok) return parsed.refused.text;
   const message = parsed.message;
   if (!("id" in message)) {
-    if (message.method === "notifications/cancelled") {
-      host.inFlight.cancel(__p__McpObject(message.params)?.requestId);
+    if (message["method"] === "notifications/cancelled") {
+      host.inFlight.cancel(__p__McpObject(message["params"])?.["requestId"]);
     }
     return undefined;
   }
@@ -710,7 +729,7 @@ export async function __p__McpServe<Ctx>(
       changes === undefined
         ? undefined
         : (id: unknown, params: Record<string, unknown> | undefined, info: Record<string, unknown>) => {
-            entered.leave = host.inFlight.enter(message.id, call);
+            entered.leave = host.inFlight.enter(message["id"], call);
             return __p__McpListen(id, params, info, endpoint, call, changes);
           };
     const handled = await __p__McpHandle(
@@ -721,7 +740,7 @@ export async function __p__McpServe<Ctx>(
       endpoint,
       async (part, method, params) => {
         if (entered.ctx === undefined) {
-          entered.leave = host.inFlight.enter(message.id, call);
+          entered.leave = host.inFlight.enter(message["id"], call);
           entered.ctx = { built: ctx(call) };
         }
         return route(entered.ctx.built, part, method, params);
@@ -736,15 +755,15 @@ export async function __p__McpServe<Ctx>(
 
 const INTERVIEW: &str = r#"/** Whether the client declared the elicitation `mode`: an empty `elicitation` is a form. */
 function __p__McpElicits(call: Record<string, unknown>, mode: "form" | "url"): boolean {
-  const held = __p__McpObject(__p__McpObject(__p__McpObject(call._meta)?.[__p__McpMetaCapabilities])?.elicitation);
+  const held = __p__McpObject(__p__McpObject(__p__McpObject(call["_meta"])?.[__p__McpMetaCapabilities])?.["elicitation"]);
   if (held === undefined) return false;
-  if (mode === "url") return __p__McpObject(held.url) !== undefined;
-  return __p__McpObject(held.form) !== undefined || held.url === undefined;
+  if (mode === "url") return __p__McpObject(held["url"]) !== undefined;
+  return __p__McpObject(held["form"]) !== undefined || held["url"] === undefined;
 }
 
 /** Whether the user declined or dismissed the request keyed `key`. */
 function __p__McpDismissed(call: Record<string, unknown>, key: string): boolean {
-  const action = __p__McpObject(__p__McpObject(call.inputResponses)?.[key])?.action;
+  const action = __p__McpObject(__p__McpObject(call["inputResponses"])?.[key])?.["action"];
   return action === "decline" || action === "cancel";
 }
 
@@ -764,7 +783,7 @@ function __p__McpAsking(
   const held = interview.tag === "" ? __p__McpObject(written?.[interview.wire]) : written?.[interview.tag] === interview.wire ? written : undefined;
   const arm = interview.content === "" ? held : __p__McpObject(held?.[interview.content]);
   if (arm === undefined) return undefined;
-  const message = typeof arm.message === "string" ? arm.message : undefined;
+  const message = typeof arm["message"] === "string" ? arm["message"] : undefined;
   if (interview.answers !== undefined) {
     if (declined || !__p__McpElicits(call, "form")) return undefined;
     return __p__McpInputRequired(interview.answers, {
@@ -773,9 +792,9 @@ function __p__McpAsking(
       requestedSchema: new __N__McpRaw(interview.form ?? "{}"),
     });
   }
-  if (typeof arm.url !== "string" || message === undefined) return undefined;
+  if (typeof arm["url"] !== "string" || message === undefined) return undefined;
   if (__p__McpDismissed(call, interview.wire) || !__p__McpElicits(call, "url")) return undefined;
-  return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm.url });
+  return __p__McpInputRequired(interview.wire, { message, mode: "url", url: arm["url"] });
 }"#;
 
 const BLOCK: &str = "/** One block of `content`, which the dispatcher has already written as the specification writes it. */
@@ -811,8 +830,8 @@ type __p__McpIssue = {
   readonly code: string;
   readonly message: string;
   readonly path: ReadonlyArray<PropertyKey>;
-  readonly keys?: ReadonlyArray<string>;
-  readonly params?: { readonly undeserializable?: unknown; readonly numberKey?: unknown; readonly union?: unknown };
+  readonly keys?: ReadonlyArray<string> | undefined;
+  readonly params?: { readonly undeserializable?: unknown; readonly numberKey?: unknown; readonly union?: unknown } | undefined;
 };
 
 /** Whether `issue` keeps the arguments from reading. serde reads them out of a value, where a `Result` of other than one key is a value of the wrong kind. */
@@ -832,10 +851,11 @@ function __p__McpNoNumber(issue: __p__McpIssue): string | undefined {
 
 /** The path of an issue: below `unrecognized_keys`, the first key, or the untagged enum that holds the key where the issue is marked as one; any other issue at its own path, as serde names an enum none of whose variants it chose. */
 function __p__McpSteps(issue: __p__McpIssue): ReadonlyArray<PropertyKey> {
-  if (issue.code === "unrecognized_keys" && issue.keys !== undefined) {
+  const key = issue.keys?.[0];
+  if (issue.code === "unrecognized_keys" && key !== undefined) {
     return typeof issue.params?.union === "number"
       ? issue.path.slice(0, issue.path.length - issue.params.union)
-      : [...issue.path, issue.keys[0]];
+      : [...issue.path, key];
   }
   return issue.path;
 }
@@ -943,9 +963,9 @@ export function create__N__McpRoute<Ctx>(
       (thrown: unknown) => ({ thrown }),
     );
   const calling = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
-    const operation = __p__McpOperations.find((candidate) => candidate.kind === "tool" && candidate.tool === call.name);
+    const operation = __p__McpOperations.find((candidate) => candidate.kind === "tool" && candidate.tool === call["name"]);
     if (operation === undefined || operation.kind !== "tool") return undefined;
-    const given: unknown = call.arguments === undefined ? {} : call.arguments;
+    const given: unknown = call["arguments"] === undefined ? {} : call["arguments"];
     const held = __p__McpObject(given);
     const headers: Array<readonly [string, string]> = [];
     let payload: unknown = given;__DECLINED__
@@ -956,12 +976,12 @@ export function create__N__McpRoute<Ctx>(
         const carried = held[name];
         if (carried !== undefined) headers.push([name, __p__McpText(carried)]);
       }
-__ANSWERS__      payload = operation.wrapped ? held.value : rest;
+__ANSWERS__      payload = operation.wrapped ? held["value"] : rest;
     }
     const refused =
       held === undefined && given !== null
         ? __FAULT__("undeserializable-payload", operation.tool, "the arguments are not a JSON object")
-        : operation.wrapped && held !== undefined && held.value === undefined
+        : operation.wrapped && held !== undefined && held["value"] === undefined
           ? __FAILED__(operation.tool, [{ detail: "missing field `value`", field: "value" }])
           : undefined;
     const unread = refused ?? __p__McpUnread(operation.schema, payload, operation.tool, operation.interview?.answers);
@@ -1039,7 +1059,7 @@ __ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault
     return { result: success(answered.value) };
   };
   const reading = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
-    const uri = call.uri;
+    const uri = call["uri"];
     if (typeof uri !== "string") return undefined;
     const folder = __p__McpSkillFiles.get(uri);
     if (folder !== undefined) {
@@ -1056,11 +1076,11 @@ __ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault
         const given: Record<string, unknown> = { uri };
         if (operation.blob) {
           const pair: ReadonlyArray<unknown> = Array.isArray(value) ? value : [];
-          given.mimeType = pair[1];
-          given.blob = __p__McpBase64(pair[0]);
+          given["mimeType"] = pair[1];
+          given["blob"] = __p__McpBase64(pair[0]);
         } else {
-          given.mimeType = "text/markdown";
-          given.text = path === "SKILL.md" ? `${operation.frontmatter}${String(value)}` : value;
+          given["mimeType"] = "text/markdown";
+          given["text"] = path === "SKILL.md" ? `${operation.frontmatter}${String(value)}` : value;
         }
         return { cacheScope: "private", contents: [given], resultType: "complete", ttlMs: 0 };
       });
@@ -1081,11 +1101,11 @@ __ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault
         const given: Record<string, unknown> = { uri };
         const pair: ReadonlyArray<unknown> = operation.blob && Array.isArray(value) ? value : [];
         if (operation.blob) {
-          given.mimeType = pair[1];
-          given.blob = __p__McpBase64(pair[0]);
+          given["mimeType"] = pair[1];
+          given["blob"] = __p__McpBase64(pair[0]);
         } else {
-          given.mimeType = operation.mimeType;
-          given.text = value;
+          given["mimeType"] = operation.mimeType;
+          given["text"] = value;
         }
         return { cacheScope: operation.cacheScope, contents: [given], resultType: "complete", ttlMs: operation.ttlMs };
       });
@@ -1093,14 +1113,14 @@ __ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault
     return undefined;
   };
   const getting = (call: Record<string, unknown>): __N__McpAnswer | undefined => {
-    const name = typeof call.name === "string" ? call.name : undefined;
-    const uri = typeof call.uri === "string" ? call.uri : undefined;
+    const name = typeof call["name"] === "string" ? call["name"] : undefined;
+    const uri = typeof call["uri"] === "string" ? call["uri"] : undefined;
     for (const text of __p__McpPart.skills) {
       const entry = __p__McpObject(__p__McpRead(text));
       if (entry === undefined) continue;
-      const held = __p__McpObject(entry.frontmatter);
-      if (!((name !== undefined && held?.name === name) || (uri !== undefined && entry.uri === uri))) continue;
-      const dynamic = entry.resources === "dynamic";
+      const held = __p__McpObject(entry["frontmatter"]);
+      if (!((name !== undefined && held?.["name"] === name) || (uri !== undefined && entry["uri"] === uri))) continue;
+      const dynamic = entry["resources"] === "dynamic";
       return {
         result: {
           cacheScope: dynamic ? "private" : "public",
@@ -1115,7 +1135,7 @@ __ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault
   const listing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
     const operation = __p__McpOperations.find((candidate) => candidate.kind === "listing");
     if (operation === undefined || operation.kind !== "listing") return undefined;
-    const payload = operation.cursor ? (typeof call.cursor === "string" ? call.cursor : null) : {};
+    const payload = operation.cursor ? (typeof call["cursor"] === "string" ? call["cursor"] : null) : {};
     return answering(ctx, operation.operation, operation.schema, payload, "Resources could not be listed", (value) => ({
       ...(__p__McpObject(value) ?? {}),
       cacheScope: operation.cacheScope,
@@ -1124,16 +1144,16 @@ __ASKING__    const named = framed !== undefined ? { isServiceFault: true, fault
     }));
   };
 __PROMPTING____TASKING__  const completing = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
-    const reference = __p__McpObject(call.ref);
-    const argument = __p__McpObject(call.argument);
+    const reference = __p__McpObject(call["ref"]);
+    const argument = __p__McpObject(call["argument"]);
     if (reference === undefined) return undefined;
-    const kind = reference.type === "ref/resource" ? "resource" : reference.type === "ref/prompt" ? "prompt" : undefined;
-    const uri = kind === "prompt" ? reference.name : reference.uri;
-    const parameter = argument?.name;
+    const kind = reference["type"] === "ref/resource" ? "resource" : reference["type"] === "ref/prompt" ? "prompt" : undefined;
+    const uri = kind === "prompt" ? reference["name"] : reference["uri"];
+    const parameter = argument?.["name"];
     if (kind === undefined || typeof uri !== "string" || typeof parameter !== "string") return undefined;
-    const typed = typeof argument?.value === "string" ? argument.value : "";
-    const context = __p__McpObject(call.context);
-    const chosen = context !== undefined && "arguments" in context ? context.arguments : {};
+    const typed = typeof argument?.["value"] === "string" ? argument["value"] : "";
+    const context = __p__McpObject(call["context"]);
+    const chosen = context !== undefined && "arguments" in context ? context["arguments"] : {};
     for (const operation of __p__McpOperations) {
       if (operation.kind !== "completion" || operation.reference !== kind || operation.uri !== uri || operation.parameter !== parameter) continue;
       return answering(
@@ -1148,7 +1168,7 @@ __PROMPTING____TASKING__  const completing = async (ctx: Ctx, call: Record<strin
             hasMore: suggested.length > 100,
             values: suggested.slice(0, 100),
           };
-          if (suggested.length > 100) completion.total = suggested.length;
+          if (suggested.length > 100) completion["total"] = suggested.length;
           return { completion, resultType: "complete" };
         },
       );
@@ -1176,9 +1196,9 @@ __PROMPT_CASE____TASK_CASE__      case "skills/get":
 }"#;
 
 const PROMPTING: &str = r#"  const prompting = async (ctx: Ctx, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
-    const operation = __p__McpOperations.find((candidate) => candidate.kind === "prompt" && candidate.prompt === call.name);
+    const operation = __p__McpOperations.find((candidate) => candidate.kind === "prompt" && candidate.prompt === call["name"]);
     if (operation === undefined || operation.kind !== "prompt") return undefined;
-    const given = __p__McpObject(call.arguments) ?? {};
+    const given = __p__McpObject(call["arguments"]) ?? {};
     const payload = operation.source === "empty" ? {} : operation.source === "single" ? (given[operation.key] ?? null) : given;
     return answering(ctx, operation.operation, operation.schema, payload, `${operation.prompt}: the service refused the prompt`, (value) => ({
       description: operation.doc,
@@ -1186,7 +1206,7 @@ const PROMPTING: &str = r#"  const prompting = async (ctx: Ctx, call: Record<str
         ? [{ content: { text: value, type: "text" }, role: "user" }]
         : (Array.isArray(value) ? value : []).map((message: unknown) => {
             const held = __p__McpObject(message) ?? {};
-            return { content: __p__McpBlock(held.content), role: held.role };
+            return { content: __p__McpBlock(held["content"]), role: held["role"] };
           }),
       resultType: "complete",
     }));
@@ -1195,11 +1215,11 @@ const PROMPTING: &str = r#"  const prompting = async (ctx: Ctx, call: Record<str
 
 const TASK_START: &str = r#"      if (operation.task !== undefined) {
         const handle: Record<string, unknown> = { ...(__p__McpObject(answered.value) ?? {}), status: "working" };
-        const declares = __p__McpObject(__p__McpObject(__p__McpObject(call._meta)?.[__p__McpMetaCapabilities])?.extensions)?.[
+        const declares = __p__McpObject(__p__McpObject(__p__McpObject(call["_meta"])?.[__p__McpMetaCapabilities])?.["extensions"])?.[
           "io.modelcontextprotocol/tasks"
         ];
         if (__p__McpObject(declares) !== undefined) {
-          return { result: { ...handle, resultType: "task", taskId: `${operation.tool}:${String(handle.taskId)}` } };
+          return { result: { ...handle, resultType: "task", taskId: `${operation.tool}:${String(handle["taskId"])}` } };
         }
         return {
           result: {
@@ -1213,7 +1233,7 @@ const TASK_START: &str = r#"      if (operation.task !== undefined) {
 "#;
 
 const TASKING: &str = r#"  const tasking = async (ctx: Ctx, method: string, call: Record<string, unknown>): Promise<__N__McpAnswer | undefined> => {
-    const taskId = typeof call.taskId === "string" ? call.taskId : undefined;
+    const taskId = typeof call["taskId"] === "string" ? call["taskId"] : undefined;
     const colon = taskId === undefined ? -1 : taskId.indexOf(":");
     if (taskId === undefined || colon < 0) return undefined;
     const tool = taskId.slice(0, colon);
@@ -1240,7 +1260,7 @@ const TASKING: &str = r#"  const tasking = async (ctx: Ctx, method: string, call
     }
     const target = named(start.task.update);
     if (target === undefined) return undefined;
-    const responses = __p__McpObject(call.inputResponses);
+    const responses = __p__McpObject(call["inputResponses"]);
     if (responses === undefined) {
       return { error: { code: -32602, message: "Invalid params: tasks/update needs `inputResponses`" } };
     }
@@ -1254,8 +1274,8 @@ const TASKING: &str = r#"  const tasking = async (ctx: Ctx, method: string, call
         {
           [idKey ?? ""]: held,
           [keyKey ?? ""]: key,
-          [actionKey ?? ""]: typeof response?.action === "string" ? response.action : "",
-          [contentKey ?? ""]: response?.content === undefined ? null : __p__McpText(response.content),
+          [actionKey ?? ""]: typeof response?.["action"] === "string" ? response["action"] : "",
+          [contentKey ?? ""]: response?.["content"] === undefined ? null : __p__McpText(response["content"]),
         },
         `${tool}: the service refused the answer`,
         () => ({ resultType: "complete" }),
@@ -1278,10 +1298,10 @@ const PROMPT_CASE: &str = r#"      case "prompts/get":
 
 const ANSWERS: &str = r#"      const answers = operation.interview?.answers;
       if (answers !== undefined) {
-        const response = __p__McpObject(__p__McpObject(call.inputResponses)?.[answers]);
+        const response = __p__McpObject(__p__McpObject(call["inputResponses"])?.[answers]);
         if (response !== undefined) {
-          if (response.action === "accept") {
-            rest[answers] = response.content ?? {};
+          if (response["action"] === "accept") {
+            rest[answers] = response["content"] ?? {};
           } else {
             delete rest[answers];
             declined = true;
@@ -1526,11 +1546,11 @@ export async function __p__McpServeHttp<Ctx>(
   if (!parsed.ok) return __p__McpHttpReplied(parsed.refused);
   const message = parsed.message;
   if (!("id" in message)) return __p__McpHttpReplied(202);
-  const method = message.method;
+  const method = message["method"];
   if (typeof method === "string") {
-    const params = __p__McpObject(message.params);
+    const params = __p__McpObject(message["params"]);
     const expected: Array<readonly [string, unknown]> = [
-      ["MCP-Protocol-Version", __p__McpObject(params?._meta)?.[__p__McpMetaProtocol]],
+      ["MCP-Protocol-Version", __p__McpObject(params?.["_meta"])?.[__p__McpMetaProtocol]],
       ["Mcp-Method", method],
     ];
     const named = __p__McpNamedBy.get(method);
@@ -1539,7 +1559,7 @@ export async function __p__McpServeHttp<Ctx>(
       const carried = __p__McpHeader(request, header);
       const read = carried === undefined ? undefined : header === "Mcp-Name" ? __p__McpHeaderText(carried) : carried;
       if (read === undefined || read !== wanted) {
-        return __p__McpHttpReplied(__p__McpRefused(message.id, 400, -32020, `Header mismatch: ${header}`));
+        return __p__McpHttpReplied(__p__McpRefused(message["id"], 400, -32020, `Header mismatch: ${header}`));
       }
     }
   }
@@ -1692,16 +1712,16 @@ function McpBytes$Base64(value: Uint8Array): string {
 
 /** `block` as the specification writes it, which is how every transport of the service carries it. */
 export function McpContent$Wire(block: McpContent): Record<string, unknown> {
-  switch (block.type) {
+  switch (block["type"]) {
     case "text":
-      return { text: block.text, type: "text" };
+      return { text: block["text"], type: "text" };
     case "image":
     case "audio":
-      return { data: McpBytes$Base64(block.data), mimeType: block.mimeType, type: block.type };
+      return { data: McpBytes$Base64(block.data), mimeType: block["mimeType"], type: block["type"] };
     case "resource_link":
       return {
         ...(block.description === undefined ? {} : { description: block.description }),
-        ...(block.mimeType === undefined ? {} : { mimeType: block.mimeType }),
+        ...(block["mimeType"] === undefined ? {} : { mimeType: block["mimeType"] }),
         name: block.name,
         ...(block.title === undefined ? {} : { title: block.title }),
         type: "resource_link",
@@ -1711,8 +1731,8 @@ export function McpContent$Wire(block: McpContent): Record<string, unknown> {
       return {
         resource: {
           ...("blob" in block ? { blob: McpBytes$Base64(block.blob) } : {}),
-          ...(block.mimeType === undefined ? {} : { mimeType: block.mimeType }),
-          ...("text" in block ? { text: block.text } : {}),
+          ...(block["mimeType"] === undefined ? {} : { mimeType: block["mimeType"] }),
+          ...("text" in block ? { text: block["text"] } : {}),
           uri: block.uri,
         },
         type: "resource",
@@ -1797,10 +1817,13 @@ const McpTask$Members = {
 };
 
 /** The schema a client reads the handle of a task by. */
-export const McpTask$Schema = z.object(McpTask$Members);
+export const McpTask$Schema: ZodType<McpTask> = z.object(McpTask$Members);
 
 /** The schema a client reads where a task stands by, given the schema of its result. */
-export function McpTaskState$SchemaFactory<Result extends ZodType>(result: Result) {
+export function McpTaskState$SchemaFactory<Result extends ZodType>(
+  result: Result,
+): ZodType<McpTaskState<Result["_zod"]["output"]>>;
+export function McpTaskState$SchemaFactory(result: ZodType): ZodType {
   return z.discriminatedUnion("status", [
     z.object({ ...McpTask$Members, status: z.literal("working") }),
     z.object({
@@ -1979,15 +2002,15 @@ pub fn page_types(service: &ServiceDef) -> String {
      export interface @N@McpResource {\n  \
      uri: string;\n  \
      name: string;\n  \
-     title?: string;\n  \
-     description?: string;\n  \
-     mimeType?: string;\n  \
-     size?: number;\n\
+     title?: string | undefined;\n  \
+     description?: string | undefined;\n  \
+     mimeType?: string | undefined;\n  \
+     size?: number | undefined;\n\
      }\n\n\
      /** One page of `resources/list`, with the cursor of the next where there is one. */\n\
      export interface @N@McpResourcePage {\n  \
      resources: Array<@N@McpResource>;\n  \
-     nextCursor?: string;\n\
+     nextCursor?: string | undefined;\n\
      }\n\n\
      /** One resource of a listing, read as `resources/list` writes it. */\n\
      export const @N@McpResource$Schema: ZodType<@N@McpResource> = z.object({\n  \
@@ -2554,24 +2577,7 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
     };
     let mut body = String::new();
     if table.has_templates() {
-        body.push_str(
-            "  const matches = (uri: string, template: ReadonlyArray<readonly [string, boolean]>): boolean => {\n    \
-             let rest = uri;\n    \
-             for (const [text, placeholder] of template) {\n      \
-             if (placeholder) {\n        \
-             const slash = rest.indexOf(\"/\");\n        \
-             const end = slash < 0 ? rest.length : slash;\n        \
-             if (end === 0) return false;\n        \
-             rest = rest.slice(end);\n      \
-             } else if (rest.startsWith(text)) {\n        \
-             rest = rest.slice(text.length);\n      \
-             } else {\n        \
-             return false;\n      \
-             }\n    \
-             }\n    \
-             return rest.length === 0;\n  \
-             };\n",
-        );
+        body.push_str(TEMPLATE_MATCHES);
     }
     if !table.tools.is_empty() {
         body.push_str("  if (method === \"tools/call\") {\n    switch (name) {\n");
@@ -2634,9 +2640,11 @@ fn scopes(service: &ServiceDef, prefix: &str) -> String {
         }
         body.push_str("  }\n");
     }
+    let method = message::parameter_read_in(&body, "method");
+    let name = message::parameter_read_in(&body, "name");
     format!(
         "/** The scopes a caller needs for the request `method` and `name` name, none for any other. */\n\
-         export function {prefix}McpScopes(method: string, name: string | undefined): ReadonlyArray<string> {{\n\
+         export function {prefix}McpScopes({method}: string, {name}: string | undefined): ReadonlyArray<string> {{\n\
          {body}  return [];\n\
          }}"
     )

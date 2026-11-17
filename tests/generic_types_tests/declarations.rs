@@ -247,6 +247,22 @@ export function wide(data: Uint8Array<ArrayBufferLike>): BytesImageDraft {
 const BYTES_CONSUMER_PROJECT: &str = r#"{
   "compilerOptions": {
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "isolatedDeclarations": true,
+    "declaration": true,
     "noEmit": true,
     "module": "nodenext",
     "moduleResolution": "nodenext",
@@ -1569,7 +1585,7 @@ const CONSUMER: &str = r#"import {
 } from "./lib/index.js";
 import { z } from "zod";
 
-const node = DeclaredNode$SchemaFactory(z.string());
+const node: ReturnType<typeof DeclaredNode$SchemaFactory<z.ZodString>> = DeclaredNode$SchemaFactory(z.string());
 
 export function childrenFromFactory(parsed: z.infer<typeof node>): DeclaredNode<string>[] {
   return parsed.children;
@@ -1581,25 +1597,25 @@ export function childrenFromDefault(
   return parsed.children;
 }
 
-const holder = DeclaredHolder$SchemaFactory(z.string());
+const holder: ReturnType<typeof DeclaredHolder$SchemaFactory<z.ZodString>> = DeclaredHolder$SchemaFactory(z.string());
 
 export function heldFromFactory(parsed: z.infer<typeof holder>): DeclaredNode<string>[] {
   return parsed.nodes;
 }
 
-const choice = DeclaredChoice$SchemaFactory(z.string());
+const choice: ReturnType<typeof DeclaredChoice$SchemaFactory<z.ZodString>> = DeclaredChoice$SchemaFactory(z.string());
 
 export function chosenFromFactory(parsed: z.infer<typeof choice>): DeclaredChoice<string> {
   return parsed;
 }
 
-const slots = DeclaredSlots$SchemaFactory(z.string());
+const slots: ReturnType<typeof DeclaredSlots$SchemaFactory<z.ZodString>> = DeclaredSlots$SchemaFactory(z.string());
 
 export function slotsFromFactory(parsed: z.infer<typeof slots>): DeclaredSlots<string>[] {
   return parsed[1];
 }
 
-const chain = DeclaredChain$SchemaFactory(z.string());
+const chain: ReturnType<typeof DeclaredChain$SchemaFactory<z.ZodString>> = DeclaredChain$SchemaFactory(z.string());
 
 export function nextFromFactory(parsed: z.infer<typeof chain>): DeclaredChain<string> | undefined {
   return parsed.next;
@@ -1611,7 +1627,7 @@ export function keyedFromFactory(
   return parsed.by_key;
 }
 
-const maps = DeclaredMaps$SchemaFactory(z.string());
+const maps: ReturnType<typeof DeclaredMaps$SchemaFactory<z.ZodString>> = DeclaredMaps$SchemaFactory(z.string());
 
 export function heldMapFromFactory(
   parsed: z.infer<typeof maps>
@@ -1631,7 +1647,7 @@ export function rowsFromFactory(
   return parsed.rows;
 }
 
-const ahead = DeclaredAhead$SchemaFactory(z.string());
+const ahead: ReturnType<typeof DeclaredAhead$SchemaFactory<z.ZodString>> = DeclaredAhead$SchemaFactory(z.string());
 
 export function aheadFromFactory(
   parsed: z.infer<typeof ahead>
@@ -1643,6 +1659,22 @@ export function aheadFromFactory(
 const CONSUMER_PROJECT: &str = r#"{
   "compilerOptions": {
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "isolatedDeclarations": true,
+    "declaration": true,
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "target": "ES2022",
@@ -1662,7 +1694,7 @@ const UNWRAPPED_USES: &str = r#"
 export const sounding: Sounding = Sounding$Schema.parse([1, "a", { deep: [true] }]);
 export const kind: HullKind = HullKind$Schema.parse("form/round");
 export const kindText: string = kind;
-export const byKind = { [kind]: 1 };
+export const byKind: Record<string, number> = { [kind]: 1 };
 export const label: string = HullKind$Schema.parse("bow");
 export const rigging: Rigging = Rigging$Schema.parse({ mast: "main", spareLines: [] });
 export const spare: Unrigged = rigging.spareLines;
@@ -1810,6 +1842,21 @@ export function withItsCode<CodeType>(value: CodedCrateDraft<CodeType>, ctx: Par
 const PROJECT: &str = r#"{
   "compilerOptions": {
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "isolatedDeclarations": true,
     "declaration": true,
     "module": "nodenext",
     "moduleResolution": "nodenext",
@@ -4013,6 +4060,41 @@ fn stand_down() {
     });
 }
 
+/// `source` with a [`PREAMBLE`] that imports only the header types the bundle names, as the header
+/// of a consumer under `noUnusedLocals` does: that flag refuses an import nothing reads.
+fn with_the_header_it_names(source: &str) -> String {
+    let Some(bundle) = source.strip_prefix(PREAMBLE) else {
+        return source.to_owned();
+    };
+    let names = |name: &str| {
+        bundle.match_indices(name).any(|(at, _)| {
+            let part = |held: Option<char>| {
+                held.is_some_and(|next| next.is_alphanumeric() || next == '_' || next == '$')
+            };
+            !part(bundle[..at].chars().next_back())
+                && !part(bundle[at + name.len()..].chars().next())
+        })
+    };
+    let from_zod: Vec<&str> = ["ZodType", "$brand"]
+        .into_iter()
+        .filter(|name| names(name))
+        .collect();
+    let mut header = String::from("import * as zod from \"zod\";\n");
+    if !from_zod.is_empty() {
+        writeln!(
+            header,
+            "import type {{ {} }} from \"zod\";",
+            from_zod.join(", ")
+        )
+        .unwrap();
+    }
+    if names("SomeType") {
+        header.push_str("import type { SomeType } from \"zod/v4/core\";\n");
+    }
+    header.push_str("\nconst z = zod;");
+    format!("{header}{bundle}")
+}
+
 /// The first package in a directory of its own for the check `named`, compiled with its
 /// declarations, or `None` where the compiler or `zod` is not reachable.
 fn built(named: &str) -> Option<PathBuf> {
@@ -4033,7 +4115,7 @@ fn built_from(named: &str, source: &str) -> Option<PathBuf> {
     symlink(&modules, at.join("node_modules")).unwrap();
     fs::write(at.join("package.json"), PACKAGE).unwrap();
     fs::write(at.join("tsconfig.json"), PROJECT).unwrap();
-    fs::write(at.join("src/index.ts"), source).unwrap();
+    fs::write(at.join("src/index.ts"), with_the_header_it_names(source)).unwrap();
 
     let Some((emitted, said)) = compiled(&at, "tsconfig.json") else {
         fs::remove_dir_all(&at).unwrap();
