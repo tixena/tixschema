@@ -283,11 +283,11 @@ const ENDPOINT_CALLERS: &str = r#"import {
   type DocumentServiceMcpPart,
 } from "./bundle.js";
 
-export const apart = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
-export const alone = documentServiceMcpEndpoint(archiveServiceMcpPart);
+export const apart: unknown = documentServiceMcpEndpoint(documentServiceMcpPart, billingServiceMcpPart);
+export const alone: unknown = documentServiceMcpEndpoint(archiveServiceMcpPart);
 
 declare const unseen: DocumentServiceMcpPart;
-export const widened = documentServiceMcpEndpoint(unseen, unseen);
+export const widened: unknown = documentServiceMcpEndpoint(unseen, unseen);
 "#;
 
 /// An endpoint whose two parts both name `tool:get-version`.
@@ -297,7 +297,7 @@ const SHARED_NAME_CALLER: &str = r#"import {
   documentServiceMcpPart,
 } from "./bundle.js";
 
-export const shared = documentServiceMcpEndpoint(documentServiceMcpPart, archiveServiceMcpPart);
+export const shared: unknown = documentServiceMcpEndpoint(documentServiceMcpPart, archiveServiceMcpPart);
 "#;
 
 /// The client and the server written against what they publish.
@@ -337,7 +337,7 @@ export const dispatcher: (
 ) => Promise<string | undefined> = createDocumentServiceMcpDispatcher(impl);
 export const reported: Promise<void> = new DocumentServiceMcpCall("token", writer).progress(1, 3, "one of three");
 export const cancelled: boolean = new DocumentServiceMcpCall().cancelled;
-export const http = createDocumentServiceMcpHttpDispatcher(
+export const http: unknown = createDocumentServiceMcpHttpDispatcher(
   impl,
   { allowedOrigins: [] },
   async (request: DocumentServiceMcpHttpRequest, call: DocumentServiceMcpCall) =>
@@ -361,13 +361,13 @@ export const denied: ReadonlyArray<DocumentServiceMcpDenied> = [
   { kind: "forbidden" },
 ];
 export const needed: ReadonlyArray<string> = documentServiceMcpScopes("tools/call", documentServiceMcpName({ method: "POST", path: "/", headers: [], body: new Uint8Array() }));
-export const route = createDocumentServiceMcpRoute(impl);
-export const serve = documentServiceMcpServe;
-export const serveHttp = documentServiceMcpServeHttp;
-export const operations = documentServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
+export const route: unknown = createDocumentServiceMcpRoute(impl);
+export const serve: unknown = documentServiceMcpServe;
+export const serveHttp: unknown = documentServiceMcpServeHttp;
+export const operations: unknown = documentServiceMcpOperations.flatMap((operation) => (operation.kind === "tool" ? [operation.tool] : []));
 export const names: readonly ["tool:check-drafts", "tool:check-many", "tool:check-maybe", "tool:check-named", "tool:check-pair", "tool:get-tagged", "tool:get-version", "tool:lookup-document", "tool:rename-document", "tool:touch-document"] = documentServiceMcpPart.names;
 
-export async function usage() {
+export async function usage(): Promise<unknown> {
   const client = createDocumentServiceMcpClient(transport);
   const version = await client.getVersion(GetVersionRequest$Schema.parse({ document_id: "doc-1" }));
   if (version.ok) {

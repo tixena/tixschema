@@ -34,25 +34,23 @@ export type Wrapper<IdType> = Readonly<WrapperDraft<IdType>> & $brand<"Wrapper">
 
 const buildWrapper$Schema = <IdType extends ZodType>(
   idType: IdType,
-) =>
+): ZodType =>
   z.strictObject({
   children: z.array(idType),
   id: idType,
   name: z.string(),
 });
 
-type Wrapper$SchemaOf<IdType extends ZodType> = ReturnType<
-  typeof buildWrapper$Schema<IdType>
->;
+type Wrapper$SchemaOf<IdType extends ZodType> = ZodType<Wrapper<IdType["_zod"]["output"]>>;
 
-const Wrapper$SchemaFactoryCache = new WeakMap<ZodType, Wrapper$SchemaOf<ZodType>>();
+const Wrapper$SchemaFactoryCache = new WeakMap<ZodType, ZodType>();
 
 export function Wrapper$SchemaFactory<IdType extends ZodType>(
   idType: IdType,
 ): Wrapper$SchemaOf<IdType>;
 export function Wrapper$SchemaFactory(
   idType: ZodType,
-): Wrapper$SchemaOf<ZodType> {
+): ZodType {
   const hit = Wrapper$SchemaFactoryCache.get(idType);
   if (hit) return hit;
 
@@ -113,18 +111,16 @@ export type Node<IdType> = Readonly<NodeDraft<IdType>> & $brand<"Node">;
 
 const buildNodeDraft$Schema = <IdType extends ZodType>(
   idType: IdType,
-) =>
+): ZodType =>
   z.strictObject({
   get children() { return z.array(Node$SchemaFactory(idType)); },
   id: idType,
 });
 
-interface NodeDraft$SchemaOf<IdType extends ZodType> extends ReturnType<
-  typeof buildNodeDraft$Schema<IdType>
-> {}
+type NodeDraft$SchemaOf<IdType extends ZodType> = ZodType<NodeDraft<IdType["_zod"]["output"]>>;
 ```
 
-The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. A type whose builder defers a reference reads its schema type back under an `interface` rather than the `type` alias every other generic type keeps: a declaration file (`.d.ts`) writes a type that reaches itself only by name, and an alias is written there as the structure it resolves to, with `any` at the point the structure recurs. Under the interface the draft's members are typed by the valid factory, which states what it parses, so a second package reading the declarations parses `children` as `Node<…>` all the way down.
+The member is written as a getter so that the call is made after the factory has reached its cache rather than while its object is still being built. Every generic type states its schema type by name, as a `ZodType` of the type each filling parses to: a declaration file (`.d.ts`) writes that type as it is, so a second package reading the declarations parses `children` as `Node<…>` all the way down.
 
 A generic tuple struct that holds itself has no getter to defer behind, and the types of a tuple's slots are read as the tuple is built, so its builder cannot read its own factory's type there. It reaches itself through a function of its own, `X$SchemaSelf`, declared to return what the factory's schema parses -- `ZodType<X<IdType["_zod"]["output"]>>` -- and called behind `z.lazy`. The factory keeps its own precise return type. Where a cycle spans two types, the reference the getter is written on is the one pointing *forward* -- at a type declared below -- because that is the reference no cycle can be built without: if every reference in a cycle named something already declared, declaration positions would have to decrease all the way round. Deferring those leaves nothing that can cycle, and every reference pointing back at a type already declared is written as it stands.
 
@@ -211,20 +207,20 @@ Each factory declares its own store, so a generated module is the types in it an
 A `WeakMap` fixes both of its own parameters at construction, so its value type cannot depend on its key type; a store declared beside the factory is therefore keyed and valued at the widened `ZodType` spelling. What recovers the precise types is an **overload**: the signature a caller sees names real type parameters, and the implementation beneath it takes the widened ones the store is written at. The read is then already the implementation's return type, so there is nothing to cast.
 
 ```typescript
-const Wrapper$SchemaFactoryCache = new WeakMap<ZodType, Wrapper$SchemaOf<ZodType>>();
+const Wrapper$SchemaFactoryCache = new WeakMap<ZodType, ZodType>();
 
 export function Wrapper$SchemaFactory<IdType extends ZodType>(
   idType: IdType,
 ): Wrapper$SchemaOf<IdType>;
 export function Wrapper$SchemaFactory(
   idType: ZodType,
-): Wrapper$SchemaOf<ZodType> { ... }
+): ZodType { ... }
 ```
 
 A type declaring N parameters writes N nested levels, each keyed by one argument, and the levels below the first are built where they are first needed:
 
 ```typescript
-const Quintet$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, Quintet$SchemaOf<ZodType, ZodType, ZodType, ZodType, ZodType>>>>>>();
+const Quintet$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, ZodType>>>>>();
 ```
 
 Nothing in the emitted output is `as`, `any`, or `unknown`, and nothing a caller passes is written to. The store holds the arguments weakly, so a schema nobody else holds is collected rather than pinned for the life of the module.
@@ -243,7 +239,7 @@ export type WrapperType<T> = Array<T>;
 
 const buildWrapperType$Schema = <T extends ZodType>(
   t: T,
-) =>
+): ZodType =>
   z.array(t);
 ```
 
@@ -348,24 +344,22 @@ Generated TypeScript (with `zod` feature):
 export type UserId<IdType> = IdType & $brand<"UserId">;
 const buildUserId$Schema = <IdType extends ZodType>(
   idType: IdType,
-) =>
+): ZodType =>
   idType.meta({
   description: "UserId",
   examples: [],
 }).brand<"UserId">();
 
-type UserId$SchemaOf<IdType extends ZodType> = ReturnType<
-  typeof buildUserId$Schema<IdType>
->;
+type UserId$SchemaOf<IdType extends ZodType> = ZodType<UserId<IdType["_zod"]["output"]>>;
 
-const UserId$SchemaFactoryCache = new WeakMap<ZodType, UserId$SchemaOf<ZodType>>();
+const UserId$SchemaFactoryCache = new WeakMap<ZodType, ZodType>();
 
 export function UserId$SchemaFactory<IdType extends ZodType>(
   idType: IdType,
 ): UserId$SchemaOf<IdType>;
 export function UserId$SchemaFactory(
   idType: ZodType,
-): UserId$SchemaOf<ZodType> {
+): ZodType {
   const hit = UserId$SchemaFactoryCache.get(idType);
   if (hit) return hit;
 
@@ -374,9 +368,7 @@ export function UserId$SchemaFactory(
   return schema;
 }
 
-const UserId$RawSchemaDefault = UserId$SchemaFactory(z.string());
-
-export const UserId$SchemaDefault: typeof UserId$RawSchemaDefault = UserId$RawSchemaDefault;
+export const UserId$SchemaDefault: ZodType<UserId<string>> = UserId$SchemaFactory(z.string());
 
 /** A valid `UserId` made from `IdType`, which `tsc` checks; throws what the schema refuses. */
 export function decodeUserId<IdType>(
@@ -390,7 +382,7 @@ export function decodeUserId<IdType>(
 export function safeDecodeUserId<IdType>(
   idType: ZodType<IdType>,
   value: IdType,
-) {
+): ReturnType<ZodType<UserId<IdType>>["safeParse"]> {
   return UserId$SchemaFactory(idType).safeParse(value);
 }
 
@@ -401,7 +393,7 @@ const CorrelationId$RawSchema = z.string().brand<"CorrelationId">().meta({
   examples: [],
 });
 
-export const CorrelationId$Schema: typeof CorrelationId$RawSchema = CorrelationId$RawSchema;
+export const CorrelationId$Schema: ZodType & { _zod: { output: CorrelationId } } = CorrelationId$RawSchema;
 
 /** A valid `CorrelationId` made from `string`, which `tsc` checks; throws what the schema refuses. */
 export function decodeCorrelationId(
@@ -413,7 +405,7 @@ export function decodeCorrelationId(
 /** What `decodeCorrelationId` makes, or what the schema refuses, in place of throwing it. */
 export function safeDecodeCorrelationId(
   value: string,
-) {
+): ReturnType<ZodType<CorrelationId>["safeParse"]> {
   return CorrelationId$Schema.safeParse(value);
 }
 ```
@@ -639,7 +631,7 @@ const SlugId$RawSchema = z.string().min(3, { error: (issue) => `too short: minim
   examples: [],
 });
 
-export const SlugId$Schema: typeof SlugId$RawSchema = SlugId$RawSchema;
+export const SlugId$Schema: ZodType & { _zod: { output: SlugId } } = SlugId$RawSchema;
 ```
 
 Serde deserialization validates automatically:
@@ -755,24 +747,22 @@ Generated Zod:
 ```typescript
 const buildDocumentId$Schema = <IdType extends ZodType>(
   idType: IdType,
-) =>
+): ZodType =>
   idType.meta({
   description: "Generic document identifier.\n- `DocumentId<String>` for API/HTTP layer\n- `DocumentId<ObjectId>` for `MongoDB` layer",
   examples: ["64de3d95ff45b119e5b53a7e"],
 }).brand<"DocumentId">();
 
-type DocumentId$SchemaOf<IdType extends ZodType> = ReturnType<
-  typeof buildDocumentId$Schema<IdType>
->;
+type DocumentId$SchemaOf<IdType extends ZodType> = ZodType<DocumentId<IdType["_zod"]["output"]>>;
 
-const DocumentId$SchemaFactoryCache = new WeakMap<ZodType, DocumentId$SchemaOf<ZodType>>();
+const DocumentId$SchemaFactoryCache = new WeakMap<ZodType, ZodType>();
 
 export function DocumentId$SchemaFactory<IdType extends ZodType>(
   idType: IdType,
 ): DocumentId$SchemaOf<IdType>;
 export function DocumentId$SchemaFactory(
   idType: ZodType,
-): DocumentId$SchemaOf<ZodType> {
+): ZodType {
   const hit = DocumentId$SchemaFactoryCache.get(idType);
   if (hit) return hit;
 
@@ -781,9 +771,7 @@ export function DocumentId$SchemaFactory(
   return schema;
 }
 
-const DocumentId$RawSchemaDefault = DocumentId$SchemaFactory(z.string());
-
-export const DocumentId$SchemaDefault: typeof DocumentId$RawSchemaDefault = DocumentId$RawSchemaDefault;
+export const DocumentId$SchemaDefault: ZodType<DocumentId<string>> = DocumentId$SchemaFactory(z.string());
 
 /** A valid `DocumentId` made from `IdType`, which `tsc` checks; throws what the schema refuses. */
 export function decodeDocumentId<IdType>(
@@ -797,7 +785,7 @@ export function decodeDocumentId<IdType>(
 export function safeDecodeDocumentId<IdType>(
   idType: ZodType<IdType>,
   value: IdType,
-) {
+): ReturnType<ZodType<DocumentId<IdType>>["safeParse"]> {
   return DocumentId$SchemaFactory(idType).safeParse(value);
 }
 ```

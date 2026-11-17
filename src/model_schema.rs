@@ -1608,10 +1608,6 @@ struct BrandedDefaultChecks {
 /// parameters as `clippy::too_many_arguments` admits.
 #[cfg(feature = "zod")]
 struct ZodDefaultInputs<'defaults> {
-    /// Whether `$SchemaDefault`'s annotation is read back off the value it binds rather than
-    /// restating the type the item declares — see [`raw_default_block`].
-    #[cfg(feature = "typescript")]
-    annotated_by_value: bool,
     constrained: Option<(&'defaults str, &'defaults BrandedDefaultChecks)>,
     default_types: &'defaults [(syn::Ident, syn::Type)],
 }
@@ -1648,8 +1644,8 @@ struct PublishedBinding<'binding> {
     identified: SchemaId,
     /// The functions `preprocess` names on the type, each written around its own expression.
     preprocess: &'binding [FunctionName],
-    /// Whether the published expression *is* a sibling's own binding — see
-    /// [`republishes_sibling_binding`].
+    /// Whether the published expression is a sibling's own binding
+    /// ([`republishes_sibling_binding`]), whose schema may carry a brand.
     republished: bool,
 }
 
@@ -10437,10 +10433,10 @@ fn tuple_struct_schema_impl_items(
             checks: &args.check,
             default_types: &args.default_types,
             preprocess: &args.preprocess,
-            republished: tuple_struct_republishes_slot(&slots.shape),
             drafted: valid_type::has_draft(),
             frozen: valid_type::freezes(),
             identified: SchemaId::Named,
+            republished: tuple_struct_republishes_slot(&slots.shape),
             admits: if tuple_struct_null(&slots.shape) == NullAdmitted::Always {
                 DraftAdmits::Null
             } else {
@@ -11726,9 +11722,6 @@ fn build_branded_zod_schema_method(
             _ => None,
         };
         let defaults = ZodDefaultInputs {
-            // `.brand()` narrows at the value position, which no restated type can name.
-            #[cfg(feature = "typescript")]
-            annotated_by_value: true,
             constrained: constrained_default,
             default_types: &args.default_types,
         };
@@ -15378,7 +15371,7 @@ fn render_untagged_named(
                 "{}{}: {}",
                 ts_member_key(&ts_member_name(&fld.name)),
                 fld.optional_key_marker(),
-                fld.typescript_typename()
+                fld.member_typescript_typename()
             )
         })
         .collect::<Vec<_>>()
@@ -16668,7 +16661,7 @@ fn write_named_variant_fields(
             member_jsdoc_block(&inexact_key_noted(&fld.docs, fld.writes_an_inexact_key())),
             key,
             fld.optional_key_marker(),
-            fld.typescript_typename()
+            fld.member_typescript_typename()
         );
 
         #[cfg(feature = "zod")]
@@ -18523,7 +18516,7 @@ fn write_field_type_and_schema(
         member_jsdoc_block(&inexact_key_noted(&fld.docs, fld.writes_an_inexact_key())),
         key,
         fld.optional_key_marker(),
-        fld.typescript_typename()
+        fld.member_typescript_typename()
     );
 
     #[cfg(feature = "zod")]
@@ -23033,9 +23026,24 @@ fn ts_plain_enum_members(item_name: &str, constants: &[(String, String)]) -> Str
         .map(|(key, value)| format!("  {}: {value},", key.trim_start_matches("r#")))
         .collect::<Vec<_>>()
         .join("\n");
+    let typed = constants_type(
+        constants
+            .iter()
+            .map(|(key, value)| (key.trim_start_matches("r#"), value.as_str())),
+    );
     format!(
-        "\n\nexport const {item_name} = Object.freeze({{\n{members}\n}}) satisfies Record<string, {item_name}>;"
+        "\n\nexport const {item_name}: {typed} = Object.freeze({{\n{members}\n}}) satisfies Record<string, {item_name}>;"
     )
+}
+
+/// The type of an enum's frozen constants, each key read-only at the type it holds: what a
+/// declaration file writes, which `isolatedDeclarations` will not read off the object.
+#[cfg(feature = "typescript")]
+fn constants_type<'held>(members: impl Iterator<Item = (&'held str, &'held str)>) -> String {
+    let listed: Vec<String> = members
+        .map(|(key, typed)| format!("readonly {key}: {typed}"))
+        .collect();
+    format!("{{ {} }}", listed.join("; "))
 }
 
 #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -23081,8 +23089,9 @@ fn ts_valid_conversion(item_name: &str, constants: &[(String, String)]) -> Strin
                 .map(|(key, value)| format!("  {key}: {value},"))
                 .collect::<Vec<_>>()
                 .join("\n");
+            let typed = constants_type(members.iter().map(|(key, _)| (key.as_str(), item_name)));
             format!(
-                "\n\nexport const {item_name} = Object.freeze({{\n{lines}\n}}) satisfies Record<string, {item_name}>;"
+                "\n\nexport const {item_name}: {typed} = Object.freeze({{\n{lines}\n}}) satisfies Record<string, {item_name}>;"
             )
         };
         let unit = if declared.unit {
@@ -23139,14 +23148,15 @@ fn zod_schema_constants(item_name: &str) -> String {
             })
             .collect::<Vec<_>>()
             .join("\n");
+        let typed = constants_type(members.iter().map(|(key, _)| (key.as_str(), item_name)));
         format!(
             "\n\nconst {item_name}$Made: {{ {held} }} = {{}};\n\n\
-             export const {item_name} = Object.freeze({{\n{getters}\n}});"
+             export const {item_name}: {typed} = Object.freeze({{\n{getters}\n}});"
         )
     };
     let made = if unit {
         format!(
-            "{}\n\nexport const {item_name} = {item_name}$Schema.parse({{}});{}",
+            "{}\n\nexport const {item_name}: {item_name} = {item_name}$Schema.parse({{}});{}",
             valid_type::SETTLE_OPEN,
             valid_type::SETTLE_CLOSE
         )
@@ -23241,27 +23251,58 @@ fn zod_published_members(
         let _ = writeln!(acc, "  {},", zod_preprocess_wrap(filled, &args.preprocess));
         acc
     });
+    // A tuple, so that a holder reads each member by its index as a schema rather than as a schema
+    // or `undefined`.
+    #[cfg(feature = "typescript")]
+    let tupled = |each: &str| format!("readonly [{}]", vec![each; members.len()].join(", "));
     if parameters.is_empty() {
+        #[cfg(feature = "typescript")]
+        let typed = format!(
+            ": {}",
+            tupled(&format!("ZodType<{}>", ts_draft_name(item_name)))
+        );
+        #[cfg(not(feature = "typescript"))]
+        let typed = String::new();
         let binding = format!("{item_name}$Members");
         return Some(PublishedMembers {
-            block: format!("export const {binding} = [\n{written}];\n\n"),
+            block: format!("export const {binding}{typed} = [\n{written}];\n\n"),
             binding,
         });
     }
-    #[cfg(feature = "typescript")]
-    let bounds = zod_factory_bounds(parameters);
-    #[cfg(not(feature = "typescript"))]
-    let bounds = String::new();
     let name = format!("{item_name}$MembersFactory");
     let filling = (0..parameters.len())
         .map(parameter_placeholder)
         .collect::<Vec<_>>()
         .join(", ");
+    // The overload states what each filling's members parse to, which a member written over a
+    // parameter cannot be shown to under `exactOptionalPropertyTypes`, as a schema factory does.
+    #[cfg(feature = "typescript")]
+    let declared = {
+        let outputs: Vec<String> = parameters
+            .iter()
+            .map(|parameter| format!("{parameter}[\"_zod\"][\"output\"]"))
+            .collect();
+        let filled = format!(
+            "ZodType<{}<{}>>",
+            ts_draft_name(item_name),
+            outputs.join(", ")
+        );
+        format!(
+            "export function {name}{}({}\n): {};\nexport function {name}({}\n): {} {{",
+            zod_factory_bounds(parameters),
+            zod_factory_arguments(parameters),
+            tupled(&filled),
+            zod_factory_widened_arguments(parameters),
+            tupled("ZodType")
+        )
+    };
+    #[cfg(not(feature = "typescript"))]
+    let declared = format!(
+        "export function {name}({}\n) {{",
+        zod_factory_arguments(parameters)
+    );
     Some(PublishedMembers {
-        block: format!(
-            "export const {name} = {bounds}({}\n) => [\n{written}];\n\n",
-            zod_factory_arguments(parameters)
-        ),
+        block: format!("{declared}\n  return [\n{written}];\n}}\n\n"),
         binding: format!("{name}({filling})"),
     })
 }
@@ -23385,19 +23426,16 @@ fn zod_cache_name(item_name: &str) -> String {
 }
 
 /// What that key holds: the schema itself where the item declares one parameter, and a `WeakMap`
-/// chain keyed by the arguments after the first where it declares more. Every type parameter in it
-/// is bound by the factory's own signature — a dependency a module-scope store cannot express.
+/// chain keyed by the arguments after the first where it declares more. The schema is held as a
+/// `ZodType`: the factory's own signature states what each filling parses to.
 #[cfg(all(feature = "zod", feature = "typescript"))]
-fn zod_cache_type(item_name: &str, parameters: &[String]) -> String {
-    let widened = parameters
+fn zod_cache_type(parameters: &[String]) -> String {
+    parameters
         .iter()
-        .map(|_| "ZodType")
-        .collect::<Vec<_>>()
-        .join(", ");
-    parameters.iter().skip(1).fold(
-        format!("WeakMap<ZodType, {item_name}$SchemaOf<{widened}>>"),
-        |below, _| format!("WeakMap<ZodType, {below}>"),
-    )
+        .skip(1)
+        .fold("WeakMap<ZodType, ZodType>".to_owned(), |below, _| {
+            format!("WeakMap<ZodType, {below}>")
+        })
 }
 
 /// The implementation signature's parameter list — every argument widened to `ZodType`, the type
@@ -23424,14 +23462,9 @@ fn zod_factory_declaration(item_name: &str, parameters: &[String], bounds: &str)
     };
     #[cfg(feature = "typescript")]
     let written = {
-        let widened = parameters
-            .iter()
-            .map(|_| "ZodType")
-            .collect::<Vec<_>>()
-            .join(", ");
         format!(
             "export function {item_name}$SchemaFactory{bounds}({}\n): {item_name}$SchemaOf<{}>;\n\
-             export function {item_name}$SchemaFactory({}\n): {item_name}$SchemaOf<{widened}>",
+             export function {item_name}$SchemaFactory({}\n): ZodType",
             zod_factory_arguments(parameters),
             parameters.join(", "),
             zod_factory_widened_arguments(parameters)
@@ -23565,11 +23598,6 @@ fn zod_default_block(
     let call = format!("{item_name}$SchemaFactory({})", arguments.join(", "));
 
     #[cfg(feature = "typescript")]
-    if defaults.annotated_by_value {
-        return raw_default_block(item_name, &call);
-    }
-
-    #[cfg(feature = "typescript")]
     let annotation = format!(
         ": ZodType<{item_name}<{}>>",
         fields
@@ -23584,47 +23612,18 @@ fn zod_default_block(
     format!("\n\nexport const {item_name}$SchemaDefault{annotation} = {call};")
 }
 
-/// The `$SchemaDefault` of an item whose annotation is read back off the value: the call is bound
-/// to a raw `const` first so the export can name its type, the same two lines [`zod_const_block`]
-/// writes one level up. A generic item has no `$RawSchema` of its own to name.
+/// The type a factory's schema is stated as: a `ZodType` of the item's TypeScript type at each
+/// argument's output, which a declaration file writes as it is, with nothing read off the builder.
 #[cfg(all(feature = "zod", feature = "typescript"))]
-fn raw_default_block(item_name: &str, call: &str) -> String {
+fn zod_schema_of(item_name: &str, bounds: &str, parameters: &[String]) -> String {
+    let outputs: Vec<String> = parameters
+        .iter()
+        .map(|parameter| format!("{parameter}[\"_zod\"][\"output\"]"))
+        .collect();
     format!(
-        "\n\nconst {item_name}$RawSchemaDefault = {call};\n\nexport const \
-         {item_name}$SchemaDefault: typeof {item_name}$RawSchemaDefault = \
-         {item_name}$RawSchemaDefault;"
+        "type {item_name}$SchemaOf{bounds} = ZodType<{item_name}<{}>>;",
+        outputs.join(", ")
     )
-}
-
-/// The name a factory's return type is read back under. A builder that defers a reference may
-/// reach its own type through it, and a declaration file writes such a type only by name: an
-/// interface is printed as its name, where an alias is printed as the structure it resolves to,
-/// with `any` at the point that structure recurs.
-#[cfg(all(feature = "zod", feature = "typescript"))]
-fn zod_schema_of(
-    item_name: &str,
-    bounds: &str,
-    builder: &str,
-    parameters: &[String],
-    preamble: &str,
-    expression: &str,
-) -> String {
-    let read_back = format!(
-        "ReturnType<\n  typeof {builder}<{}>\n>",
-        parameters.join(", ")
-    );
-    if defers_a_reference(preamble) || defers_a_reference(expression) {
-        format!("interface {item_name}$SchemaOf{bounds} extends {read_back} {{}}")
-    } else {
-        format!("type {item_name}$SchemaOf{bounds} = {read_back};")
-    }
-}
-
-/// Whether `zod` holds a member written behind a getter or an operand written behind `z.lazy`,
-/// the two spellings a reference is deferred in.
-#[cfg(all(feature = "zod", feature = "typescript"))]
-fn defers_a_reference(zod: &str) -> bool {
-    zod.contains("() { return ") || zod.contains("z.lazy(() => ")
 }
 
 /// What a generic type's Zod surface is written as, with each map the type holds of itself read
@@ -23688,11 +23687,15 @@ fn zod_factory_block_around(
 
     // A merged object binds its own keys ahead of the branches that read them, and the keys are
     // composed from the arguments, so the binding sits inside the builder.
+    #[cfg(feature = "typescript")]
+    let typed = ": ZodType";
+    #[cfg(not(feature = "typescript"))]
+    let typed = "";
     let built = if preamble.is_empty() {
-        format!("const {builder} = {bounds}({arguments}\n) =>\n  {expression};")
+        format!("const {builder} = {bounds}({arguments}\n){typed} =>\n  {expression};")
     } else {
         format!(
-            "const {builder} = {bounds}({arguments}\n) => {{\n  {preamble}  return {expression};\n}};"
+            "const {builder} = {bounds}({arguments}\n){typed} => {{\n  {preamble}  return {expression};\n}};"
         )
     };
 
@@ -23700,10 +23703,8 @@ fn zod_factory_block_around(
     #[cfg(feature = "typescript")]
     let declarations = format!(
         "{}\n\nconst {cache} = new {}();\n\n",
-        zod_schema_of(
-            item_name, &bounds, &builder, parameters, preamble, expression
-        ),
-        zod_cache_type(item_name, parameters)
+        zod_schema_of(item_name, &bounds, parameters),
+        zod_cache_type(parameters)
     );
     #[cfg(not(feature = "typescript"))]
     let declarations = format!("const {cache} = new WeakMap();\n\n");
@@ -23771,6 +23772,18 @@ fn zod_meta_id(name: &str) -> String {
     format!(".meta({{ id: \"{name}\" }})")
 }
 
+/// The type a schema of the TypeScript type `name` is declared as. A branded one is
+/// `ZodType & { _zod: { output: Name } }`: `.brand()` brands `_zod.output` alone, so a branded
+/// schema is not assignable to `ZodType<Name>`.
+#[cfg(all(feature = "zod", feature = "typescript"))]
+fn ts_schema_type(name: &str, branded: bool) -> String {
+    if branded {
+        format!("ZodType & {{ _zod: {{ output: {name} }} }}")
+    } else {
+        format!("ZodType<{name}>")
+    }
+}
+
 /// The binding a type that declares no parameter publishes: the raw schema, then the exported
 /// `const` annotated with the type it validates. The annotation is the only place a TypeScript
 /// type is named, so a build without `typescript` writes the same value under a bare `const`.
@@ -23780,17 +23793,13 @@ fn zod_const_block(
     preamble: &str,
     expression: &str,
     reexport: &str,
-    annotated_by_value: bool,
+    branded: bool,
 ) -> String {
     #[cfg(feature = "typescript")]
     {
-        // `.brand()` narrows at the value position, which restating the item's own type discards,
-        // so such a binding reads its type back off what it published.
-        let annotation = if annotated_by_value {
-            format!("typeof {item_name}$RawSchema")
-        } else {
-            format!("ZodType<{item_name}>")
-        };
+        // Named as the type it validates, so that a declaration file states it without the raw
+        // binding's: `isolatedDeclarations` refuses a type it would have to read off a value.
+        let annotation = ts_schema_type(item_name, branded);
         format!(
             "{preamble}const {item_name}$RawSchema = {expression};\n\nexport const \
              {item_name}$Schema: {annotation} = {item_name}$RawSchema;{reexport}"
@@ -23798,7 +23807,7 @@ fn zod_const_block(
     }
     #[cfg(not(feature = "typescript"))]
     {
-        let _: &_ = &annotated_by_value;
+        let _: &_ = &branded;
         format!("{preamble}export const {item_name}$Schema = {expression};{reexport}")
     }
 }
@@ -23880,8 +23889,12 @@ fn zod_valid_binding(
         );
         #[cfg(not(feature = "typescript"))]
         let decoders = String::new();
+        #[cfg(feature = "typescript")]
+        let typed = format!(": {}", ts_schema_type(item_name, true));
+        #[cfg(not(feature = "typescript"))]
+        let typed = String::new();
         return format!(
-            "export const {item_name}$Schema = {sealed}.meta({{\n  ...({draft_name}$Schema.meta() ?? {{}}),\n  id: \"{item_name}\",\n}});\
+            "export const {item_name}$Schema{typed} = {sealed}.meta({{\n  ...({draft_name}$Schema.meta() ?? {{}}),\n  id: \"{item_name}\",\n}});\
              {reexport}{constants}{decoders}"
         );
     }
@@ -23950,8 +23963,8 @@ fn ts_decode_functions(item_name: &str, decoded: &TsDecoded) -> String {
         "\n\n/** A valid `{item_name}` made from `{input}`, which `tsc` checks; throws what the schema \
          refuses. */\nexport function decode{item_name}{bounds}({parameters}\n): {output} {{\n  return \
          {schema}.parse({value});\n}}\n\n/** What `decode{item_name}` makes, or what the schema \
-         refuses, in place of throwing it. */\nexport function safeDecode{item_name}{bounds}({parameters}\n) \
-         {{\n  return {schema}.safeParse({value});\n}}"
+         refuses, in place of throwing it. */\nexport function safeDecode{item_name}{bounds}({parameters}\n): \
+         ReturnType<ZodType<{output}>[\"safeParse\"]> {{\n  return {schema}.safeParse({value});\n}}"
     )
 }
 
@@ -23976,8 +23989,6 @@ fn zod_valid_factory(
     let body = zod_factory_body(item_name, parameters, "");
     let cache = zod_cache_name(item_name);
     let defaults = ZodDefaultInputs {
-        #[cfg(feature = "typescript")]
-        annotated_by_value: true,
         constrained: None,
         default_types: published.default_types,
     };
@@ -24067,8 +24078,6 @@ fn zod_published_unit(
         )
     } else {
         let defaults = ZodDefaultInputs {
-            #[cfg(feature = "typescript")]
-            annotated_by_value: published.republished,
             constrained: None,
             default_types: published.default_types,
         };
@@ -24363,10 +24372,10 @@ fn generate_zod_schema_method(
                 checks: &args.check,
                 default_types: &args.default_types,
                 preprocess: &args.preprocess,
-                republished: false,
                 drafted: valid_type::has_draft(),
                 frozen: valid_type::freezes(),
                 identified: SchemaId::Named,
+                republished: false,
                 admits: DraftAdmits::Nothing,
             },
             &preamble,
@@ -24525,8 +24534,8 @@ fn generate_plain_enum_zod_schema_method(
                     drafted,
                     frozen: true,
                     identified: SchemaId::Named,
-                    admits: DraftAdmits::Nothing,
                     republished: false,
+                    admits: DraftAdmits::Nothing,
                 },
                 &valid_reexport,
             );
@@ -24696,10 +24705,10 @@ fn generate_enum_zod_schema_method_after(
                 checks: &args.check,
                 default_types: &args.default_types,
                 preprocess: &args.preprocess,
-                republished: false,
                 drafted: valid_type::has_draft(),
                 frozen: valid_type::freezes(),
                 identified: SchemaId::Named,
+                republished: false,
                 admits: if admits_null {
                     DraftAdmits::Null
                 } else {
@@ -24887,7 +24896,6 @@ fn generate_alias_zod_method(
     let schema_code = surface.zod_type_deferring_a_later_type();
     let parameters = type_parameters_in_scope(&alias.generics);
     let reexport = zod_binding_reexport(rust_ident, export_name, &parameters);
-    let republished = republishes_sibling_binding(&surface);
     let shows_sibling = shows_sibling_examples(&surface);
     let body = zod_published_binding(
         export_name,
@@ -24899,10 +24907,10 @@ fn generate_alias_zod_method(
             checks: &[],
             default_types,
             preprocess: &[],
-            republished,
             drafted: false,
             frozen: false,
             identified: SchemaId::Unnamed,
+            republished: republishes_sibling_binding(&surface),
             admits: DraftAdmits::Nothing,
         },
         "",

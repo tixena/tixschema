@@ -292,6 +292,25 @@ fn dispatcher(service: &ServiceDef) -> String {
         .map(|operation| arm(service, operation))
         .collect::<Vec<_>>()
         .join("\n");
+    let implemented = message::parameter_read_in(&arms, "impl");
+    // A trailing argument the arms never read is left off, and one before an argument they read
+    // is named as unread.
+    let parts = message::reads_name(&arms, "parts");
+    let headers = message::reads_name(&arms, "headers");
+    let mut arguments = vec![
+        message::parameter_read_in(&arms, "ctx"),
+        "operation".to_owned(),
+        message::parameter_read_in(&arms, "payload"),
+    ];
+    match (headers, parts) {
+        (true, _) => arguments.push("headers = []".to_owned()),
+        (false, true) => arguments.push("_headers".to_owned()),
+        (false, false) => {}
+    }
+    if parts {
+        arguments.push("parts = []".to_owned());
+    }
+    let taken = arguments.join(", ");
     format!(
         "/**\n \
          * Turns a `{named}` implementation into the function a transport drives it with.\n \
@@ -306,7 +325,7 @@ fn dispatcher(service: &ServiceDef) -> String {
          reply.\n \
          */\n\
          export function create{named}Dispatcher<Ctx>(\n  \
-         impl: {driven},\n\
+         {implemented}: {driven},\n\
          ): (\n  \
          ctx: Ctx,\n  \
          operation: string,\n  \
@@ -314,7 +333,7 @@ fn dispatcher(service: &ServiceDef) -> String {
          headers?: ReadonlyArray<readonly [string, string]>,\n  \
          parts?: ReadonlyArray<readonly [string, unknown]>,\n\
          ) => Promise<{named}Dispatched | undefined> {{\n  \
-         return async (ctx, operation, payload, headers = [], parts = []) => {{\n    \
+         return async ({taken}) => {{\n    \
          switch (operation) {{\n\
          {arms}\n      \
          default:\n        \

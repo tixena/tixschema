@@ -159,12 +159,12 @@ const USAGE: &str = r#"import {
 declare const impl: GuideServiceImpl<number>;
 declare const transport: GuideServiceMcpTransport;
 
-export const dispatcher = createGuideServiceMcpDispatcher(impl);
+export const dispatcher: unknown = createGuideServiceMcpDispatcher(impl);
 export const prompts: ReadonlyArray<string> = guideServiceMcpOperations.flatMap((operation) => (operation.kind === "prompt" ? [operation.prompt] : []));
 export const role: McpRole = "assistant";
 export const message: McpPromptMessage = { role, content: { type: "text", text: "a guide" } as McpContent };
 
-export async function usage() {
+export async function usage(): Promise<unknown> {
   const client = createGuideServiceMcpClient(transport);
   const greeting = await client.greet("Ana");
   if (greeting.ok) {

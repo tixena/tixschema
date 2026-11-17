@@ -126,9 +126,10 @@ fn the_dispatcher_factory_answers_with_a_dispatch_function() {
         "got: {written}"
     );
     assert!(
-        written.contains("return async (ctx, operation, payload, headers = [], parts = []) => {"),
-        "both extra arguments default to an empty list so every existing three-argument call \
-         still compiles. Got: {written}"
+        written.contains("return async (ctx, operation, payload) => {"),
+        "the dispatch function takes the arguments its arms read; the type declared above keeps \
+         the two others optional, so every existing three-argument call still compiles. Got: \
+         {written}"
     );
 }
 
@@ -464,7 +465,7 @@ fn the_dispatcher_has_no_arm_for_an_operation_only_http_rest_carries() {
     assert!(
         written.contains(
             "export function createUploadClientServiceDispatcher<Ctx>(\n  \
-             impl: Omit<UploadClientServiceImpl<Ctx>, \"uploadDocument\">,\n"
+             _impl: Omit<UploadClientServiceImpl<Ctx>, \"uploadDocument\">,\n"
         ),
         "got: {written}"
     );

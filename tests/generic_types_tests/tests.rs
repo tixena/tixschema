@@ -481,7 +481,10 @@ mod zod {
     fn the_ident_reexport_names_the_factory() {
         let zod = Holder::<String>::zod_schema();
         assert!(
-            zod.contains("export const Holder$SchemaFactory = RenamedHolder$SchemaFactory;"),
+            zod.contains(
+                "export const Holder$SchemaFactory: typeof RenamedHolder$SchemaFactory = \
+                 RenamedHolder$SchemaFactory;"
+            ),
             "Got: {zod}"
         );
         assert!(!publishes_a_schema_const(&zod, "Holder"), "Got: {zod}");
@@ -492,7 +495,10 @@ mod zod {
     fn the_default_is_reexported_alongside_the_factory() {
         let zod = Holder::<String>::zod_schema();
         assert!(
-            zod.contains("export const Holder$SchemaDefault = RenamedHolder$SchemaDefault;"),
+            zod.contains(
+                "export const Holder$SchemaDefault: typeof RenamedHolder$SchemaDefault = \
+                 RenamedHolder$SchemaDefault;"
+            ),
             "Got: {zod}"
         );
     }
@@ -634,7 +640,7 @@ mod zod {
         );
         assert!(zod.contains("id: idType,"), "Got: {zod}");
         assert!(
-            zod.contains(".and(z.lazy(() => Envelope$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.undeserializable === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
+            zod.contains(".and(z.lazy(() => Envelope$Schema).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === \"custom\" && issue.params?.[\"variant\"] === true ? { ...issue, path: [] } : issue.code === \"custom\" && issue.params?.[\"undeserializable\"] === true && issue.message === \"expected value\" ? { ...issue, message: ((held) => held === undefined ? \"invalid type: expected string or map\" : typeof held === \"object\" && held !== null && !Array.isArray(held) ? \"invalid value: map, expected map with a single key\" : \"invalid type: \" + ((held) => typeof held === \"number\" ? (Number.isInteger(held) ? \"integer `\" : \"floating point `\") + held + \"`\" : Object.prototype.toString.call(held) === \"[object Number]\" ? \"floating point `\" + Number(held) + \"`\" : typeof held === \"string\" ? \"string \" + JSON.stringify(held) : typeof held === \"boolean\" ? \"boolean `\" + held + \"`\" : Array.isArray(held) ? \"sequence\" : held === null ? \"unit value\" : \"map\")(held) + \", expected string or map\")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === \"object\" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === \"object\" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = [\"invalid_type\", \"invalid_union\", \"invalid_value\"].includes(issue.code) && !(issue.code === \"invalid_value\" && issue.inst?._zod.def.error !== undefined); const width = [\"too_big\", \"too_small\"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }))"),
             "Got: {zod}"
         );
     }
@@ -674,18 +680,19 @@ mod zod {
 
     #[cfg(all(feature = "serde", feature = "typescript"))]
     #[test]
-    fn the_factory_return_type_is_read_back_off_the_builder() {
+    fn the_factory_states_its_schema_as_the_type_each_filling_parses_to() {
         let zod = Wrapper::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const buildWrapperDraft$Schema = <IdType extends ZodType>(\n  idType: IdType,\n) =>"
+                "const buildWrapperDraft$Schema = <IdType extends ZodType>(\n  idType: \
+                 IdType,\n): ZodType =>"
             ),
             "Got: {zod}"
         );
         assert!(
             zod.contains(
-                "type WrapperDraft$SchemaOf<IdType extends ZodType> = ReturnType<\n  typeof \
-                 buildWrapperDraft$Schema<IdType>\n>;"
+                "type WrapperDraft$SchemaOf<IdType extends ZodType> = \
+                 ZodType<WrapperDraft<IdType[\"_zod\"][\"output\"]>>;"
             ),
             "Got: {zod}"
         );
@@ -723,8 +730,7 @@ mod zod {
         let zod = Wrapper::<String>::zod_schema();
         assert!(
             zod.contains(
-                "const WrapperDraft$SchemaFactoryCache = new WeakMap<ZodType, \
-                 WrapperDraft$SchemaOf<ZodType>>();"
+                "const WrapperDraft$SchemaFactoryCache = new WeakMap<ZodType, ZodType>();"
             ),
             "Got: {zod}"
         );
@@ -732,7 +738,7 @@ mod zod {
             zod.contains(
                 "export function WrapperDraft$SchemaFactory<IdType extends ZodType>(\n  idType: \
                  IdType,\n): WrapperDraft$SchemaOf<IdType>;\nexport function \
-                 WrapperDraft$SchemaFactory(\n  idType: ZodType,\n): WrapperDraft$SchemaOf<ZodType> {"
+                 WrapperDraft$SchemaFactory(\n  idType: ZodType,\n): ZodType {"
             ),
             "Got: {zod}"
         );
@@ -746,8 +752,7 @@ mod zod {
         assert!(
             zod.contains(
                 "const QuintetDraft$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, \
-                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, QuintetDraft$SchemaOf<ZodType, \
-                 ZodType, ZodType, ZodType, ZodType>>>>>>();"
+                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, ZodType>>>>>();"
             ),
             "Got: {zod}"
         );

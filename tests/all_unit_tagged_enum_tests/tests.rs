@@ -159,14 +159,7 @@ fn the_typescript_union_carries_an_adjacent_tag_too() {
 fn an_all_unit_enum_naming_no_tag_still_publishes_the_string_union() {
     assert_eq!(
         ts_shape(&ExternalBalanceError::ts_definition()),
-        "export type ExternalBalanceError =\n  | \"db-error\"\n  | \"insufficient-balance\";\n\
-         export const ExternalBalanceError = Object.freeze({\n  DbError: \"db-error\",\n  \
-         InsufficientBalance: \"insufficient-balance\",\n}) satisfies Record<string, ExternalBalanceError>;\n\
-         export function ExternalBalanceError$Variant(value: unknown): string {\n  \
-         switch (value) {\n    \
-         case \"db-error\": return \"DbError\";\n    \
-         case \"insufficient-balance\": return \"InsufficientBalance\";\n    \
-         default: return \"\";\n  }\n}"
+        "export type ExternalBalanceError =\n  | \"db-error\"\n  | \"insufficient-balance\";\nexport const ExternalBalanceError: { readonly DbError: \"db-error\"; readonly InsufficientBalance: \"insufficient-balance\" } = Object.freeze({\n  DbError: \"db-error\",\n  InsufficientBalance: \"insufficient-balance\",\n}) satisfies Record<string, ExternalBalanceError>;\nexport function ExternalBalanceError$Variant(value: unknown): string {\n  switch (value) {\n    case \"db-error\": return \"DbError\";\n    case \"insufficient-balance\": return \"InsufficientBalance\";\n    default: return \"\";\n  }\n}"
     );
 }
 

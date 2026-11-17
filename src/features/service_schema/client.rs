@@ -190,6 +190,7 @@ fn factory(service: &ServiceDef) -> String {
         .map(|operation| method(service, operation))
         .collect::<Vec<_>>()
         .join("\n");
+    let transport = message::parameter_read_in(&methods, "transport");
     format!(
         "/**\n \
          * Binds a `{named}` client to a transport.\n \
@@ -198,7 +199,7 @@ fn factory(service: &ServiceDef) -> String {
          no\n \
          * message type has to reserve a key for routing.\n \
          */\n\
-         export function create{named}Client(transport: {named}Transport): {named}Client {{\n  \
+         export function create{named}Client({transport}: {named}Transport): {named}Client {{\n  \
          return {{\n\
          {methods}\n  \
          }};\n\
@@ -337,9 +338,9 @@ pub(super) fn issues_fault_fn(named: &str, function: &str, doc: &str) -> String 
          function {function}(\n  \
          operation: string,\n  \
          issues: ReadonlyArray<{{\n    \
-         code?: string;\n    \
-         keys?: ReadonlyArray<string>;\n    \
-         params?: {{ undeserializable?: unknown; union?: unknown }};\n    \
+         code?: string | undefined;\n    \
+         keys?: ReadonlyArray<string> | undefined;\n    \
+         params?: {{ undeserializable?: unknown; union?: unknown }} | undefined;\n    \
          path: ReadonlyArray<PropertyKey>;\n    \
          message: string;\n  \
          }}>,\n\

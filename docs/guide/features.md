@@ -148,6 +148,8 @@ The bundle declares everything it names except what that header brings in. `z` i
 | `SomeType` | an optional or `nullable` field that holds a generic type |
 | `ObjectId` | an `ObjectId` field, under the `mongodb` feature: the consuming codebase declares it, as `{ $oid: string }` or as the type its own driver gives it |
 
+The bundle compiles under `strict` and every other type-checking flag `tsc` 5.9.3 has: `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitReturns`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `noPropertyAccessFromIndexSignature`, `noUnusedLocals`, `noUnusedParameters`, `allowUnreachableCode: false`, `allowUnusedLabels: false`, `noUncheckedSideEffectImports`, `verbatimModuleSyntax`, `isolatedModules`, `erasableSyntaxOnly` and `isolatedDeclarations`. The service surfaces and the clients compile under the same flags. Under `noUnusedLocals` the header imports only the names its bundle uses: a header that imports `SomeType` into a bundle with no optional field of a generic type stops `tsc` with ``error TS6133: 'SomeType' is declared but its value is never read.``
+
 ### Alternatives
 
 There are several ways to run the generation:

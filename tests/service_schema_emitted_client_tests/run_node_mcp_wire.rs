@@ -149,7 +149,7 @@ declare const impl: ShelfWireServiceImpl<number>;
 declare const transport: Parameters<typeof createShelfWireServiceClient>[0];
 
 export const block: McpContent = McpContent$Schema.parse({ type: "text", text: "a" });
-export async function usage() {
+export async function usage(): Promise<unknown> {
   const client = createShelfWireServiceClient(transport);
   const described = await client.describeShelf(ShelfWireRequest$Schema.parse({ shelf: "history" }));
   if (described.ok) {
@@ -163,7 +163,7 @@ export async function usage() {
   }
   return impl === undefined ? 2 : 3;
 }
-export const http = createShelfWireServiceHttpClient;
+export const http: unknown = createShelfWireServiceHttpClient;
 "#;
 
 fn bundle() -> String {

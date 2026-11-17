@@ -31,7 +31,10 @@ mod under_the_serde_feature {
     #[test]
     fn the_flag_decides_the_spelling_the_omission_attribute_leaves_open() {
         let predicate = UnderAPredicate::ts_definition();
-        assert!(member(&predicate, "a?: string;"), "Got: {predicate}");
+        assert!(
+            member(&predicate, "a?: string | undefined;"),
+            "Got: {predicate}"
+        );
         assert!(
             member(&predicate, "b: string | undefined;"),
             "Got: {predicate}"
@@ -39,7 +42,7 @@ mod under_the_serde_feature {
 
         let skip_serializing = UnderSkipSerializing::ts_definition();
         assert!(
-            member(&skip_serializing, "a?: string;"),
+            member(&skip_serializing, "a?: string | undefined;"),
             "Got: {skip_serializing}"
         );
         assert!(
@@ -71,7 +74,7 @@ mod without_the_serde_feature {
     fn the_flag_writes_the_optional_key_for_a_field_nothing_else_speaks_for() {
         let ts = Profile::ts_definition();
 
-        assert!(member(&ts, "nickname?: string;"), "Got: {ts}");
+        assert!(member(&ts, "nickname?: string | undefined;"), "Got: {ts}");
         assert!(member(&ts, "nickHandle: string | undefined;"), "Got: {ts}");
         assert!(member(&ts, "name: string;"), "Got: {ts}");
     }
@@ -88,7 +91,10 @@ mod without_the_serde_feature {
             ),
             "the README no longer declares the no-serde shape verbatim"
         );
-        for line in ["  nickname?: string;", "  nickHandle: string | undefined;"] {
+        for line in [
+            "  nickname?: string | undefined;",
+            "  nickHandle: string | undefined;",
+        ] {
             assert!(
                 readme.lines().any(|written| written == line),
                 "the README no longer shows this member verbatim: {line}"
@@ -133,8 +139,9 @@ mod without_the_serde_feature {
 }
 
 /// Whether the emission writes this member, matched as a whole line so a spelling that merely
-/// starts the same cannot pass for it — `nickname?: string;` and `nickname: string | undefined;`
-/// are the two answers this file is about, and neither may be read off a prefix of the other.
+/// starts the same cannot pass for it — `nickname?: string | undefined;` and
+/// `nickname: string | undefined;` are the two answers this file is about, and neither may be read
+/// off a prefix of the other.
 fn member(ts: &str, line: &str) -> bool {
     ts.lines().any(|written| written.trim() == line)
 }

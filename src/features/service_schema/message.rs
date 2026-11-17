@@ -400,6 +400,34 @@ pub fn wire_form_marker(operation: &OperationDef, placeholder: &str) -> String {
     )
 }
 
+/// Whether the TypeScript `code` reads the local or parameter `name`: `name` as a whole identifier,
+/// with no `.` before it, and no `:` after it unless a `?` comes before it, which an object's key
+/// and a declaration have and a conditional's arm does not.
+pub fn reads_name(code: &str, name: &str) -> bool {
+    let part_of_a_name = |at: Option<char>| {
+        at.is_some_and(|held| held.is_alphanumeric() || held == '_' || held == '$')
+    };
+    code.match_indices(name).any(|(at, _)| {
+        let before = code[..at].chars().next_back();
+        let after = &code[at + name.len()..];
+        let keyed = after.trim_start().starts_with(':') && !code[..at].trim_end().ends_with('?');
+        !part_of_a_name(before)
+            && before != Some('.')
+            && !part_of_a_name(after.chars().next())
+            && !keyed
+    })
+}
+
+/// `name` where `code` reads it, and `_name`, which `noUnusedParameters` takes as unread on
+/// purpose, where it does not.
+pub fn parameter_read_in(code: &str, name: &str) -> String {
+    if reads_name(code, name) {
+        name.to_owned()
+    } else {
+        format!("_{name}")
+    }
+}
+
 /// The TypeScript name of an operation's own argument: its Rust name camel-cased. An argument is
 /// taken by position, so moving its name changes nothing for a caller.
 pub fn parameter_name(parameter: &Ident) -> String {

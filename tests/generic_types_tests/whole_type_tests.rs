@@ -147,8 +147,7 @@ mod zod {
         assert!(
             zod.contains(
                 "const ArchiveEntryDraft$SchemaFactoryCache = new WeakMap<ZodType, WeakMap<ZodType, \
-                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, ArchiveEntryDraft$SchemaOf<ZodType, \
-                 ZodType, ZodType, ZodType, ZodType>>>>>>();"
+                 WeakMap<ZodType, WeakMap<ZodType, WeakMap<ZodType, ZodType>>>>>();"
             ),
             "Got: {zod}"
         );
@@ -213,29 +212,21 @@ mod zod {
     }
 
     #[test]
-    fn a_generic_that_defers_a_reference_reads_its_schema_type_back_under_an_interface() {
-        let node = ArchiveNode::<String>::zod_schema();
-        assert!(
-            node.contains(
-                "interface ArchiveNodeDraft$SchemaOf<IdType extends ZodType> extends ReturnType<\n  \
-                 typeof buildArchiveNodeDraft$Schema<IdType>\n> {}\n"
-            ),
-            "Got: {node}"
-        );
-
-        let branch = ArchiveBranch::<String>::zod_schema();
-        assert!(
-            branch.contains(
-                "interface ArchiveBranchDraft$SchemaOf<IdType extends ZodType> extends ReturnType<"
-            ),
-            "Got: {branch}"
-        );
-
-        let trunk = ArchiveTrunk::<String>::zod_schema();
-        assert!(
-            trunk.contains("type ArchiveTrunkDraft$SchemaOf<IdType extends ZodType> = ReturnType<"),
-            "Got: {trunk}"
-        );
+    fn a_generic_that_defers_a_reference_states_its_schema_type_by_name() {
+        for (zod, named) in [
+            (ArchiveNode::<String>::zod_schema(), "ArchiveNodeDraft"),
+            (ArchiveBranch::<String>::zod_schema(), "ArchiveBranchDraft"),
+            (ArchiveTrunk::<String>::zod_schema(), "ArchiveTrunkDraft"),
+        ] {
+            assert!(
+                zod.contains(&format!(
+                    "type {named}$SchemaOf<IdType extends ZodType> = \
+                     ZodType<{named}<IdType[\"_zod\"][\"output\"]>>;"
+                )),
+                "Got: {zod}"
+            );
+            assert!(!zod.contains("interface "), "Got: {zod}");
+        }
     }
 
     #[test]
@@ -489,14 +480,13 @@ mod readme {
             &[
                 "const buildNodeDraft$Schema = <IdType extends ZodType>(",
                 "  idType: IdType,",
-                ") =>",
+                "): ZodType =>",
                 "  z.strictObject({",
                 "  get children() { return z.array(Node$SchemaFactory(idType)); },",
                 "  id: idType,",
                 "});",
-                "interface NodeDraft$SchemaOf<IdType extends ZodType> extends ReturnType<",
-                "  typeof buildNodeDraft$Schema<IdType>",
-                "> {}",
+                "type NodeDraft$SchemaOf<IdType extends ZodType> = \
+                 ZodType<NodeDraft<IdType[\"_zod\"][\"output\"]>>;",
             ],
         );
     }

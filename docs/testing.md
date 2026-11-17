@@ -39,14 +39,14 @@ pub struct User {
 
 ```typescript
 // no block
-export const Plain$Schema = PlainDraft$Schema.readonly().brand<"Plain">().meta({
+export const Plain$Schema: ZodType & { _zod: { output: Plain } } = PlainDraft$Schema.readonly().brand<"Plain">().meta({
   ...(PlainDraft$Schema.meta() ?? {}),
   id: "Plain",
   examples: []
 });
 
 // two blocks
-export const SeveralExamples$Schema = SeveralExamplesDraft$Schema.readonly().brand<"SeveralExamples">().meta({
+export const SeveralExamples$Schema: ZodType & { _zod: { output: SeveralExamples } } = SeveralExamplesDraft$Schema.readonly().brand<"SeveralExamples">().meta({
   ...(SeveralExamplesDraft$Schema.meta() ?? {}),
   id: "SeveralExamples",
   examples: [{"value":1},{"value":2}]
@@ -299,7 +299,7 @@ The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is st
 2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature without `serde`, alone and in `typescript,zod` and `dart,swift,kotlin`)
 3. `cargo test --verbose` (basic tests)
 4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
-5. `just typecheck-ts` (the emitted TypeScript through a real `tsc --strict`, and a second package compiled against the declarations emitted for it)
+5. `just typecheck-ts` (the emitted TypeScript through a real `tsc` under `strict` and every other type-checking flag it has, `isolatedDeclarations` with `declaration` among them, and a second package compiled against the declarations emitted for it)
 6. `just lint-slow`, then `just run-slow`, both on beta (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 8. Discord notification with build status

@@ -1094,7 +1094,7 @@ const UserDraft$RawSchema = z.strictObject({
 
 export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
 
-export const User$Schema = UserDraft$Schema.readonly().brand<"User">().meta({
+export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.readonly().brand<"User">().meta({
   ...(UserDraft$Schema.meta() ?? {}),
   id: "User",
   examples: []
@@ -1110,7 +1110,7 @@ export function decodeUser(
 /** What `decodeUser` makes, or what the schema refuses, in place of throwing it. */
 export function safeDecodeUser(
   draft: UserDraft,
-) {
+): ReturnType<ZodType<User>["safeParse"]> {
   return User$Schema.safeParse(draft);
 }
 ```"#]
@@ -1147,7 +1147,7 @@ export type Status =
   | "inactive"
   | "pending";
 
-export const Status = Object.freeze({
+export const Status: { readonly Active: "active"; readonly Inactive: "inactive"; readonly Pending: "pending" } = Object.freeze({
   Active: "active",
   Inactive: "inactive",
   Pending: "pending",
@@ -1167,7 +1167,7 @@ export function Status$Variant(value: unknown): string {
 /// `Status::zod_schema()`:
 ///
 #[doc = r#"```typescript
-const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const [key] = keys; if (!["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
+const Status$RawSchema = z.enum(["active", "inactive", "pending"]).superRefine((_read, ctx) => { const held = Reflect.get(ctx, "value"); if (held === undefined || typeof held === "string") return; const keys = typeof held === "object" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if (keys.length !== 1) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "expected value", input: held, params: { undeserializable: true } }); return; } const key = keys[0]; if (key === undefined || !["active", "inactive", "pending"].includes(key)) return; const value = Reflect.get(held, key); if (value !== null) { ctx.issues.splice(0, ctx.issues.length, { code: "custom", message: "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(value) + ", expected unit", input: value, path: [key] }); return; } ctx.issues.splice(0, ctx.issues.length); Reflect.set(ctx, "value", key); }, { when: () => true }).meta({
   id: "Status",
   description: "Status",
   examples: [],
@@ -1185,7 +1185,7 @@ export function decodeStatus(
 /** What `decodeStatus` makes, or what the schema refuses, in place of throwing it. */
 export function safeDecodeStatus(
   value: Status,
-) {
+): ReturnType<ZodType<Status>["safeParse"]> {
   return Status$Schema.safeParse(value);
 }
 ```"#]
@@ -1283,11 +1283,11 @@ const EventDraft$RawSchema = z.discriminatedUnion("type", [z.strictObject({
   type: z.literal("userDeleted"),
   reason: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),
   user_id: z.string(),
-})]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === "custom" && issue.params?.variant === true ? { ...issue, path: [] } : issue.code === "custom" && issue.params?.undeserializable === true && issue.message === "expected value" ? { ...issue, message: ((held) => held === undefined ? "invalid type: expected string or map" : typeof held === "object" && held !== null && !Array.isArray(held) ? "invalid value: map, expected map with a single key" : "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(held) + ", expected string or map")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }).meta({ id: "EventDraft" });
+})]).superRefine((_read, ctx) => { ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => { const buffered = ((issue) => issue.code === "custom" && issue.params?.["variant"] === true ? { ...issue, path: [] } : issue.code === "custom" && issue.params?.["undeserializable"] === true && issue.message === "expected value" ? { ...issue, message: ((held) => held === undefined ? "invalid type: expected string or map" : typeof held === "object" && held !== null && !Array.isArray(held) ? "invalid value: map, expected map with a single key" : "invalid type: " + ((held) => typeof held === "number" ? (Number.isInteger(held) ? "integer `" : "floating point `") + held + "`" : Object.prototype.toString.call(held) === "[object Number]" ? "floating point `" + Number(held) + "`" : typeof held === "string" ? "string " + JSON.stringify(held) : typeof held === "boolean" ? "boolean `" + held + "`" : Array.isArray(held) ? "sequence" : held === null ? "unit value" : "map")(held) + ", expected string or map")(issue.input), params: undefined, path: [] } : undefined)(issue); if (buffered !== undefined) return buffered; const steps = issue.path ?? []; const last = steps[steps.length - 1]; let above = ctx.value; for (const step of steps.slice(0, -1)) above = typeof above === "object" && above !== null ? Object.getOwnPropertyDescriptor(above, step)?.value : undefined; const absent = last !== undefined && !(typeof above === "object" && above !== null && Object.prototype.hasOwnProperty.call(above, last)); const refused = ["invalid_type", "invalid_union", "invalid_value"].includes(issue.code) && !(issue.code === "invalid_value" && issue.inst?._zod.def.error !== undefined); const width = ["too_big", "too_small"].includes(issue.code) && issue.inst?._zod.def.error === undefined; if (absent && steps.length > 1 && refused) return { ...issue, path: [last] }; return width || (!absent && refused) ? { ...issue, path: [] } : issue; })); }, { when: () => true }).meta({ id: "EventDraft" });
 
 export const EventDraft$Schema: ZodType<EventDraft> = EventDraft$RawSchema;
 
-export const Event$Schema = EventDraft$Schema.readonly().brand<"Event">().meta({
+export const Event$Schema: ZodType & { _zod: { output: Event } } = EventDraft$Schema.readonly().brand<"Event">().meta({
   ...(EventDraft$Schema.meta() ?? {}),
   id: "Event",
   examples: []
@@ -1303,7 +1303,7 @@ export function decodeEvent(
 /** What `decodeEvent` makes, or what the schema refuses, in place of throwing it. */
 export function safeDecodeEvent(
   draft: EventDraft,
-) {
+): ReturnType<ZodType<Event>["safeParse"]> {
   return Event$Schema.safeParse(draft);
 }
 
@@ -1512,7 +1512,7 @@ const DocumentDraft$RawSchema = z.strictObject({
 
 export const DocumentDraft$Schema: ZodType<DocumentDraft> = DocumentDraft$RawSchema;
 
-export const Document$Schema = DocumentDraft$Schema.readonly().brand<"Document">().meta({
+export const Document$Schema: ZodType & { _zod: { output: Document } } = DocumentDraft$Schema.readonly().brand<"Document">().meta({
   ...(DocumentDraft$Schema.meta() ?? {}),
   id: "Document",
   examples: []
@@ -1528,7 +1528,7 @@ export function decodeDocument(
 /** What `decodeDocument` makes, or what the schema refuses, in place of throwing it. */
 export function safeDecodeDocument(
   draft: DocumentDraft,
-) {
+): ReturnType<ZodType<Document>["safeParse"]> {
   return Document$Schema.safeParse(draft);
 }
 ```

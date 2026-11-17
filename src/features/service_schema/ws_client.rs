@@ -324,17 +324,17 @@ fn settle_all_stmt(prefix: &str) -> String {
 fn checked_reader_stmt(prefix: &str) -> String {
     format!(
         "  const checked = (operation: string, envelope: Record<string, unknown>): unknown => {{\n    \
-         if (envelope.ok === true) {{\n      \
+         if (envelope[\"ok\"] === true) {{\n      \
          const schema = {prefix}SuccessSchemas[operation];\n      \
          if (schema === undefined) return {{ ok: true, value: undefined }};\n      \
-         const parsed = schema.safeParse(envelope.value);\n      \
+         const parsed = schema.safeParse(envelope[\"value\"]);\n      \
          if (!parsed.success) {{\n        \
          return {{ ok: false, error: {{ isServiceFault: true, fault: {prefix}IssuesFault(operation, \
          parsed.error.issues) }} }};\n      \
          }}\n      \
          return envelope;\n    \
          }}\n    \
-         const error = envelope.error;\n    \
+         const error = envelope[\"error\"];\n    \
          if (typeof error === \"object\" && error !== null && \"isServiceFault\" in error) return \
          envelope;\n    \
          const parsed = {prefix}ErrorSchemas[operation]?.safeParse(error);\n    \

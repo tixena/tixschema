@@ -803,20 +803,25 @@ fn the_float_schemas_read_into_the_types_they_read_into_before() {
         "{}\n\n\
          type Same<Left, Right> = [Left] extends [Right] ? ([Right] extends [Left] ? true : false) \
          : false;\n\
-         export const readAsBefore: Same<\n  z.infer<typeof SoundingDraft$RawSchema>,\n  \
+         const readAsBefore: Same<\n  z.infer<typeof SoundingDraft$RawSchema>,\n  \
          {{ depth: bigint; fathoms: number; reading: number; swell: number }}\n> = true;\n\
-         export const writtenAsBefore: Same<z.output<typeof SoundingDraft$RawSchema>, SoundingDraft> = \
+         const writtenAsBefore: Same<z.output<typeof SoundingDraft$RawSchema>, SoundingDraft> = \
          true;\n\
-         export const leveledAsBefore: Same<z.infer<typeof LeveledDraft$RawSchema>, LeveledDraft> = true;\n\
-         export const gradedAsBefore: Same<z.infer<typeof GradedDraft$RawSchema>, GradedDraft> = true;\n\
-         export function narrowed(value: z.infer<typeof GradedDraft$RawSchema>): number {{\n  \
+         const leveledAsBefore: Same<z.infer<typeof LeveledDraft$RawSchema>, LeveledDraft> = true;\n\
+         const gradedAsBefore: Same<z.infer<typeof GradedDraft$RawSchema>, GradedDraft> = true;\n\
+         function narrowed(value: z.infer<typeof GradedDraft$RawSchema>): number {{\n  \
          return value.grade === 2 ? value.gain : value.note.length;\n}}\n\
-         export const rankedAsBefore: Same<z.infer<typeof RankedDraft$RawSchema>, RankedDraft> = true;\n\
-         export const mixedAsBefore: Same<z.infer<typeof MixedDraft$RawSchema>, MixedDraft> = true;\n\
-         export const countedAsBefore: Same<z.infer<typeof CountedDraft$RawSchema>, CountedDraft> = true;\n\
-         export const replacedAsBefore: Same<z.infer<typeof ReplacedDraft$RawSchema>, ReplacedDraft> = true;\n\
-         export function narrowedRank(value: z.infer<typeof RankedDraft$RawSchema>): number {{\n  \
+         const rankedAsBefore: Same<z.infer<typeof RankedDraft$RawSchema>, RankedDraft> = true;\n\
+         const mixedAsBefore: Same<z.infer<typeof MixedDraft$RawSchema>, MixedDraft> = true;\n\
+         const countedAsBefore: Same<z.infer<typeof CountedDraft$RawSchema>, CountedDraft> = true;\n\
+         const replacedAsBefore: Same<z.infer<typeof ReplacedDraft$RawSchema>, ReplacedDraft> = true;\n\
+         function narrowedRank(value: z.infer<typeof RankedDraft$RawSchema>): number {{\n  \
          return value.grade === 2 ? value.gain : value.note.length;\n}}\n\
+         // Read here, and exported as a boolean and a list: a declaration file of this module names no\n\
+         // raw schema, which `isolatedDeclarations` would ask to be typed.\n\
+         export const asBefore: boolean = readAsBefore && writtenAsBefore && leveledAsBefore && \
+         gradedAsBefore && rankedAsBefore && mixedAsBefore && countedAsBefore && replacedAsBefore;\n\
+         export const narrowings: ReadonlyArray<unknown> = [narrowed, narrowedRank];\n\
          export function typedTally(value: unknown): unknown {{\n  return value;\n}}\n\
          export function typedCount(value: unknown): unknown {{\n  return value;\n}}\n\
          export function replacedCount(value: unknown): unknown {{\n  return value;\n}}\n\

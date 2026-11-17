@@ -109,33 +109,33 @@ async function __p__Call(
   if (message === undefined) {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer is no JSON object") };
   }
-  const failure = __p__Object(message.error);
+  const failure = __p__Object(message["error"]);
   if (failure !== undefined) {
-    const data = __p__Object(failure.data);
-    const sealed = data?.isServiceFault === true ? __p__FaultOf(data.fault) : undefined;
+    const data = __p__Object(failure["data"]);
+    const sealed = data?.["isServiceFault"] === true ? __p__FaultOf(data["fault"]) : undefined;
     if (sealed !== undefined) return { kind: "fault", fault: sealed };
     return {
       kind: "fault",
-      fault: __p__TransportFailure(operation, `${String(failure.code)}: ${String(failure.message)}`),
+      fault: __p__TransportFailure(operation, `${String(failure["code"])}: ${String(failure["message"])}`),
     };
   }
-  const result = __p__Object(message.result);
+  const result = __p__Object(message["result"]);
   if (result === undefined) {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer holds neither a result nor an error") };
   }
-  if (result.isError !== true) {
-    let structured: unknown = result.structuredContent;
+  if (result["isError"] !== true) {
+    let structured: unknown = result["structuredContent"];
     try {
-      structured = __p__Object(__p__Object(__p__ValueRead(answered))?.result)?.structuredContent;
+      structured = __p__Object(__p__Object(__p__ValueRead(answered))?.["result"])?.["structuredContent"];
     } catch {
-      structured = result.structuredContent;
+      structured = result["structuredContent"];
     }
-    return { kind: "success", structured, blocks: result.content };
+    return { kind: "success", structured, blocks: result["content"] };
   }
-  const blocks: ReadonlyArray<unknown> = Array.isArray(result.content) ? result.content : [];
+  const blocks: ReadonlyArray<unknown> = Array.isArray(result["content"]) ? result["content"] : [];
   const errorText = blocks
     .map((block) => __p__Object(block))
-    .find((block) => block?.type === "text" && typeof block.text === "string")?.text;
+    .find((block) => block?.["type"] === "text" && typeof block["text"] === "string")?.["text"];
   if (typeof errorText !== "string") {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the error answer holds no text") };
   }
@@ -145,8 +145,8 @@ async function __p__Call(
   } catch (rejected) {
     return { kind: "fault", fault: __p__Undeserializable(operation, `the error text is no JSON: ${String(rejected)}`) };
   }
-  if (__p__Object(carried)?.isServiceFault === true) {
-    const sealed = __p__FaultOf(__p__Object(carried)?.fault);
+  if (__p__Object(carried)?.["isServiceFault"] === true) {
+    const sealed = __p__FaultOf(__p__Object(carried)?.["fault"]);
     return {
       kind: "fault",
       fault: sealed ?? __p__Undeserializable(operation, "a fault did not match the expected shape"),
@@ -186,8 +186,8 @@ const PAIR_SOURCE: &str = r#"/** The structured pair of an answer: its own, or i
 function __p__PairSource(structured: unknown, blocks: unknown): unknown {
   if (structured !== undefined) return structured;
   const block = Array.isArray(blocks) ? __p__Object(blocks[0]) : undefined;
-  const bytes = __p__Unbase64(block?.data);
-  return bytes === undefined || typeof block?.mimeType !== "string" ? undefined : [bytes, block.mimeType];
+  const bytes = __p__Unbase64(block?.["data"]);
+  return bytes === undefined || typeof block?.["mimeType"] !== "string" ? undefined : [bytes, block["mimeType"]];
 }"#;
 
 const LIST: &str = r#"/** The blocks of `content`, each read into a `McpContent`. */
@@ -213,7 +213,7 @@ function __p__Blocks(content: unknown): { ok: true; value: Array<McpContent> } |
     const entries: ReadonlyArray<unknown> = content;
     for (const entry of entries) {
       const block = __p__Held(entry);
-      switch (block.type) {
+      switch (block["type"]) {
         case "text":
           read.push({ type: "text", text: text(block, "text") });
           break;
@@ -234,9 +234,9 @@ function __p__Blocks(content: unknown): { ok: true; value: Array<McpContent> } |
           });
           break;
         case "resource": {
-          const resource = __p__Held(block.resource);
+          const resource = __p__Held(block["resource"]);
           read.push(
-            resource.blob === undefined
+            resource["blob"] === undefined
               ? { type: "resource", uri: text(resource, "uri"), mimeType: optional(resource, "mimeType"), text: text(resource, "text") }
               : { type: "resource", uri: text(resource, "uri"), mimeType: optional(resource, "mimeType"), blob: bytes(resource, "blob") },
           );
@@ -307,30 +307,30 @@ async function __p__Prompt(
   if (message === undefined) {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer is no JSON object") };
   }
-  const failure = __p__Object(message.error);
+  const failure = __p__Object(message["error"]);
   if (failure !== undefined) {
-    const data = __p__Object(failure.data);
-    const sealed = data?.isServiceFault === true ? __p__FaultOf(data.fault) : undefined;
+    const data = __p__Object(failure["data"]);
+    const sealed = data?.["isServiceFault"] === true ? __p__FaultOf(data["fault"]) : undefined;
     if (sealed !== undefined) return { kind: "fault", fault: sealed };
-    if (failure.code === -32602 && failure.data !== undefined && failure.data !== null && data?.isServiceFault !== true) {
-      return { kind: "declared", error: failure.data };
+    if (failure["code"] === -32602 && failure["data"] !== undefined && failure["data"] !== null && data?.["isServiceFault"] !== true) {
+      return { kind: "declared", error: failure["data"] };
     }
     return {
       kind: "fault",
-      fault: __p__TransportFailure(operation, `${String(failure.code)}: ${String(failure.message)}`),
+      fault: __p__TransportFailure(operation, `${String(failure["code"])}: ${String(failure["message"])}`),
     };
   }
-  const result = __p__Object(message.result);
+  const result = __p__Object(message["result"]);
   if (result === undefined) {
     return { kind: "fault", fault: __p__Undeserializable(operation, "the answer holds neither a result nor an error") };
   }
-  return { kind: "success", messages: result.messages };
+  return { kind: "success", messages: result["messages"] };
 }"#;
 
 const PROMPT_TEXT: &str = r#"/** The text of the first message of a prompt's result, `undefined` where it holds none. */
 function __p__PromptText(messages: unknown): string | undefined {
   const first = Array.isArray(messages) ? __p__Object(messages[0]) : undefined;
-  const text = __p__Object(first?.content)?.text;
+  const text = __p__Object(first?.["content"])?.["text"];
   return typeof text === "string" ? text : undefined;
 }"#;
 
@@ -343,11 +343,11 @@ function __p__Messages(
   const listed: ReadonlyArray<unknown> = messages;
   for (const entry of listed) {
     const held = __p__Held(entry);
-    const role = held.role;
+    const role = held["role"];
     if (role !== "user" && role !== "assistant") {
       return { ok: false, detail: "a message of a role this client does not read" };
     }
-    const block = __p__Blocks([held.content]);
+    const block = __p__Blocks([held["content"]]);
     if (!block.ok) return block;
     const content = block.value[0];
     if (content === undefined) return { ok: false, detail: "a message holds no content" };
@@ -814,7 +814,7 @@ fn declared_arm(
     let source = if shape.error_header_out.is_empty() {
         "called.error"
     } else {
-        "received.value"
+        "received[\"value\"]"
     };
     let mut stmt = String::from("      if (called.kind === \"declared\") {\n");
     if !shape.error_header_out.is_empty() {
@@ -888,7 +888,7 @@ fn success_arm(
     }
     let pair_source = format!("{prefix}PairSource(called.structured, called.blocks)");
     let source = if !shape.header_out.is_empty() {
-        "received.value"
+        "received[\"value\"]"
     } else if is_content_pair(operation) {
         pair_source.as_str()
     } else {

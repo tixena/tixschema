@@ -227,11 +227,16 @@ fn without_ident_reexport(surface: &str, ident: &str, exported: &str) -> String 
         )
         .replace(&format!("\n\nexport type {ident} = {exported};"), "")
         .replace(
-            &format!("\n\nexport const {ident}Draft$Schema = {exported}Draft$Schema;"),
+            &format!(
+                "\n\nexport const {ident}Draft$Schema: typeof {exported}Draft$Schema = \
+                 {exported}Draft$Schema;"
+            ),
             "",
         )
         .replace(
-            &format!("\n\nexport const {ident}$Schema = {exported}$Schema;"),
+            &format!(
+                "\n\nexport const {ident}$Schema: typeof {exported}$Schema = {exported}$Schema;"
+            ),
             "",
         )
 }
@@ -436,7 +441,7 @@ fn ts_definition_is_one_text_with_jsonschema_on_and_off() {
         ),
         (
             InvoiceStatus::ts_definition(),
-            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatus =\n  | \"draft\"\n  | \"paid\";\n\nexport const InvoiceStatus = Object.freeze({\n  Draft: \"draft\",\n  Paid: \"paid\",\n}) satisfies Record<string, InvoiceStatus>;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceStatus$Variant(value: unknown): string {\n  switch (value) {\n    case \"draft\": return \"Draft\";\n    case \"paid\": return \"Paid\";\n    default: return \"\";\n  }\n}",
+            "/**\n * Where an invoice stands.\n * \n */\nexport type InvoiceStatus =\n  | \"draft\"\n  | \"paid\";\n\nexport const InvoiceStatus: { readonly Draft: \"draft\"; readonly Paid: \"paid\" } = Object.freeze({\n  Draft: \"draft\",\n  Paid: \"paid\",\n}) satisfies Record<string, InvoiceStatus>;\n\n/** The Rust variant name `value` carries, or \"\" where it carries none. */\nexport function InvoiceStatus$Variant(value: unknown): string {\n  switch (value) {\n    case \"draft\": return \"Draft\";\n    case \"paid\": return \"Paid\";\n    default: return \"\";\n  }\n}",
         ),
         (
             InvoiceEvent::ts_definition(),
@@ -489,7 +494,7 @@ fn the_json_schema_is_the_text_it_was() {
 fn the_zod_schema_is_the_text_it_was() {
     assert_eq!(
         Invoice::zod_schema(),
-        "const InvoiceDraft$RawSchema = z.strictObject({\n  customer: Customer$Schema,\n  items: z.array(LineItem$Schema),\n  number: z.string(),\n}).meta({ id: \"InvoiceDraft\" });\n\nexport const InvoiceDraft$Schema: ZodType<InvoiceDraft> = InvoiceDraft$RawSchema;\n\nexport const Invoice$Schema = InvoiceDraft$Schema.readonly().brand<\"Invoice\">().meta({\n  ...(InvoiceDraft$Schema.meta() ?? {}),\n  id: \"Invoice\",\n  examples: []\n});\n\n/** A valid `Invoice` made from `InvoiceDraft`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeInvoice(\n  draft: InvoiceDraft,\n): Invoice {\n  return Invoice$Schema.parse(draft);\n}\n\n/** What `decodeInvoice` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeInvoice(\n  draft: InvoiceDraft,\n) {\n  return Invoice$Schema.safeParse(draft);\n}"
+        "const InvoiceDraft$RawSchema = z.strictObject({\n  customer: Customer$Schema,\n  items: z.array(LineItem$Schema),\n  number: z.string(),\n}).meta({ id: \"InvoiceDraft\" });\n\nexport const InvoiceDraft$Schema: ZodType<InvoiceDraft> = InvoiceDraft$RawSchema;\n\nexport const Invoice$Schema: ZodType & { _zod: { output: Invoice } } = InvoiceDraft$Schema.readonly().brand<\"Invoice\">().meta({\n  ...(InvoiceDraft$Schema.meta() ?? {}),\n  id: \"Invoice\",\n  examples: []\n});\n\n/** A valid `Invoice` made from `InvoiceDraft`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeInvoice(\n  draft: InvoiceDraft,\n): Invoice {\n  return Invoice$Schema.parse(draft);\n}\n\n/** What `decodeInvoice` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeInvoice(\n  draft: InvoiceDraft,\n): ReturnType<ZodType<Invoice>[\"safeParse\"]> {\n  return Invoice$Schema.safeParse(draft);\n}"
     );
 }
 

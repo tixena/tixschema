@@ -151,64 +151,11 @@ fn a_default_that_breaks_its_bound_is_refused_with_its_member_named() {
 fn the_zod_schema_parses_the_default_of_each_member() {
     assert_eq!(
         Wharf::zod_schema(),
-        "const WharfDraft$RawSchema = z.strictObject({
-  dock: z.string().prefault(\"\"),
-  gangway: Gangway$Schema.prefault({\"label\":\"main\",\"width\":2}),
-  gate: z.string().prefault(\"north\"),
-  label: z.string(),
-}).meta({ id: \"WharfDraft\" });
-
-export const WharfDraft$Schema: ZodType<WharfDraft> = WharfDraft$RawSchema;
-
-export const Wharf$Schema = WharfDraft$Schema.readonly().brand<\"Wharf\">().meta({
-  ...(WharfDraft$Schema.meta() ?? {}),
-  id: \"Wharf\",
-  examples: []
-});
-
-/** A valid `Wharf` made from `WharfDraft`, which `tsc` checks; throws what the schema refuses. */
-export function decodeWharf(
-  draft: WharfDraft,
-): Wharf {
-  return Wharf$Schema.parse(draft);
-}
-
-/** What `decodeWharf` makes, or what the schema refuses, in place of throwing it. */
-export function safeDecodeWharf(
-  draft: WharfDraft,
-) {
-  return Wharf$Schema.safeParse(draft);
-}"
+        "const WharfDraft$RawSchema = z.strictObject({\n  dock: z.string().prefault(\"\"),\n  gangway: Gangway$Schema.prefault({\"label\":\"main\",\"width\":2}),\n  gate: z.string().prefault(\"north\"),\n  label: z.string(),\n}).meta({ id: \"WharfDraft\" });\n\nexport const WharfDraft$Schema: ZodType<WharfDraft> = WharfDraft$RawSchema;\n\nexport const Wharf$Schema: ZodType & { _zod: { output: Wharf } } = WharfDraft$Schema.readonly().brand<\"Wharf\">().meta({\n  ...(WharfDraft$Schema.meta() ?? {}),\n  id: \"Wharf\",\n  examples: []\n});\n\n/** A valid `Wharf` made from `WharfDraft`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeWharf(\n  draft: WharfDraft,\n): Wharf {\n  return Wharf$Schema.parse(draft);\n}\n\n/** What `decodeWharf` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeWharf(\n  draft: WharfDraft,\n): ReturnType<ZodType<Wharf>[\"safeParse\"]> {\n  return Wharf$Schema.safeParse(draft);\n}"
     );
     assert_eq!(
         Jetty::zod_schema(),
-        "const JettyDraft$RawSchema = z.strictObject({
-  berths: z.number().int().min(0).max(4294967295).prefault(4),
-  dock: z.string().prefault(\"east\"),
-  moorings: z.array(z.string()).prefault([\"a\",\"b\"]),
-}).meta({ id: \"JettyDraft\" });
-
-export const JettyDraft$Schema: ZodType<JettyDraft> = JettyDraft$RawSchema;
-
-export const Jetty$Schema = JettyDraft$Schema.readonly().brand<\"Jetty\">().meta({
-  ...(JettyDraft$Schema.meta() ?? {}),
-  id: \"Jetty\",
-  examples: []
-});
-
-/** A valid `Jetty` made from `JettyDraft`, which `tsc` checks; throws what the schema refuses. */
-export function decodeJetty(
-  draft: JettyDraft,
-): Jetty {
-  return Jetty$Schema.parse(draft);
-}
-
-/** What `decodeJetty` makes, or what the schema refuses, in place of throwing it. */
-export function safeDecodeJetty(
-  draft: JettyDraft,
-) {
-  return Jetty$Schema.safeParse(draft);
-}"
+        "const JettyDraft$RawSchema = z.strictObject({\n  berths: z.number().int().min(0).max(4294967295).prefault(4),\n  dock: z.string().prefault(\"east\"),\n  moorings: z.array(z.string()).prefault([\"a\",\"b\"]),\n}).meta({ id: \"JettyDraft\" });\n\nexport const JettyDraft$Schema: ZodType<JettyDraft> = JettyDraft$RawSchema;\n\nexport const Jetty$Schema: ZodType & { _zod: { output: Jetty } } = JettyDraft$Schema.readonly().brand<\"Jetty\">().meta({\n  ...(JettyDraft$Schema.meta() ?? {}),\n  id: \"Jetty\",\n  examples: []\n});\n\n/** A valid `Jetty` made from `JettyDraft`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeJetty(\n  draft: JettyDraft,\n): Jetty {\n  return Jetty$Schema.parse(draft);\n}\n\n/** What `decodeJetty` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeJetty(\n  draft: JettyDraft,\n): ReturnType<ZodType<Jetty>[\"safeParse\"]> {\n  return Jetty$Schema.safeParse(draft);\n}"
     );
     assert!(
         Pontoon::zod_schema().contains(
@@ -491,32 +438,7 @@ fn the_zod_schema_parses_the_empty_collection_of_each_list_set_and_map() {
 fn a_type_with_no_default_writes_the_zod_text_it_wrote() {
     assert_eq!(
         Gangway::zod_schema(),
-        "const GangwayDraft$RawSchema = z.strictObject({
-  label: z.string(),
-  width: z.number().int().min(0).max(4294967295),
-}).meta({ id: \"GangwayDraft\" });
-
-export const GangwayDraft$Schema: ZodType<GangwayDraft> = GangwayDraft$RawSchema;
-
-export const Gangway$Schema = GangwayDraft$Schema.readonly().brand<\"Gangway\">().meta({
-  ...(GangwayDraft$Schema.meta() ?? {}),
-  id: \"Gangway\",
-  examples: []
-});
-
-/** A valid `Gangway` made from `GangwayDraft`, which `tsc` checks; throws what the schema refuses. */
-export function decodeGangway(
-  draft: GangwayDraft,
-): Gangway {
-  return Gangway$Schema.parse(draft);
-}
-
-/** What `decodeGangway` makes, or what the schema refuses, in place of throwing it. */
-export function safeDecodeGangway(
-  draft: GangwayDraft,
-) {
-  return Gangway$Schema.safeParse(draft);
-}"
+        "const GangwayDraft$RawSchema = z.strictObject({\n  label: z.string(),\n  width: z.number().int().min(0).max(4294967295),\n}).meta({ id: \"GangwayDraft\" });\n\nexport const GangwayDraft$Schema: ZodType<GangwayDraft> = GangwayDraft$RawSchema;\n\nexport const Gangway$Schema: ZodType & { _zod: { output: Gangway } } = GangwayDraft$Schema.readonly().brand<\"Gangway\">().meta({\n  ...(GangwayDraft$Schema.meta() ?? {}),\n  id: \"Gangway\",\n  examples: []\n});\n\n/** A valid `Gangway` made from `GangwayDraft`, which `tsc` checks; throws what the schema refuses. */\nexport function decodeGangway(\n  draft: GangwayDraft,\n): Gangway {\n  return Gangway$Schema.parse(draft);\n}\n\n/** What `decodeGangway` makes, or what the schema refuses, in place of throwing it. */\nexport function safeDecodeGangway(\n  draft: GangwayDraft,\n): ReturnType<ZodType<Gangway>[\"safeParse\"]> {\n  return Gangway$Schema.safeParse(draft);\n}"
     );
 }
 

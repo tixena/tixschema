@@ -159,11 +159,11 @@ const USAGE: &str = r#"import {
 declare const impl: JobServiceImpl<number>;
 declare const transport: JobServiceMcpTransport;
 
-export const dispatcher = createJobServiceMcpDispatcher(impl);
+export const dispatcher: unknown = createJobServiceMcpDispatcher(impl);
 export const handle: McpTask = { taskId: "7f3a", createdAt: "2026-11-01T20:00:00Z", lastUpdatedAt: "2026-11-01T20:00:00Z", ttlMs: null };
 export const state: McpTaskState<{ files: number }> = { ...handle, status: "completed", result: { files: 3 } };
 
-export async function usage() {
+export async function usage(): Promise<unknown> {
   const client = createJobServiceMcpClient(transport);
   const started = await client.startExport(ExportRequest$Schema.parse({ folder: "reports" }));
   if (!started.ok) return 0;

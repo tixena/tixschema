@@ -1279,6 +1279,21 @@ impl FieldDef {
         }
     }
 
+    /// The TypeScript type a member is declared with: [`Self::typescript_typename`], and beside it
+    /// `undefined` where the key may be absent, which Zod's output holds there and
+    /// `exactOptionalPropertyTypes` keeps apart from an absent key.
+    pub fn member_typescript_typename(&self) -> String {
+        let named = self.typescript_typename();
+        // An alias of an `Option` is written `T | undefined` under its own name.
+        let admits_undefined = named.split(" | ").any(|arm| arm == "undefined")
+            || (self.array_depth == 0 && self.option_alias_target().is_some());
+        if self.key_may_be_absent() && !admits_undefined {
+            format!("{named} | undefined")
+        } else {
+            named
+        }
+    }
+
     /// The draft of the model this field names, which is what an object holds of it where it
     /// writes the model's keys among its own: the type the Zod schema of the keys parses to. A
     /// model not met above is taken to be one that has a draft.
@@ -3165,10 +3180,10 @@ pub fn zod_buffered_words() -> String {
 #[cfg(feature = "zod")]
 pub fn zod_buffered_issue() -> String {
     format!(
-        "(issue) => issue.code === \"custom\" && issue.params?.variant === true ? {{ ...issue, \
-         path: [] }} : issue.code === \"custom\" && issue.params?.undeserializable === true && \
-         issue.message === \"{EXPECTED_VALUE}\" ? {{ ...issue, message: ({})(issue.input), params: \
-         undefined, path: [] }} : undefined",
+        "(issue) => issue.code === \"custom\" && issue.params?.[\"variant\"] === true ? {{ ...issue, \
+         path: [] }} : issue.code === \"custom\" && issue.params?.[\"undeserializable\"] === true \
+         && issue.message === \"{EXPECTED_VALUE}\" ? {{ ...issue, message: ({})(issue.input), \
+         params: undefined, path: [] }} : undefined",
         zod_buffered_words()
     )
 }
@@ -3197,19 +3212,25 @@ fn zod_named_arm(carrying: &[(String, &str)]) -> String {
     }
     let pairs: Vec<String> = carrying
         .iter()
-        .map(|(name, expected)| format!("[{}, {}]", ts_quoted(name), ts_quoted(expected)))
+        .map(|(name, expected)| {
+            format!(
+                "{{ name: {}, expected: {} }}",
+                ts_quoted(name),
+                ts_quoted(expected)
+            )
+        })
         .collect();
     format!(
         ".superRefine((_read, ctx) => {{ const held = ctx.value; const carrying = [{}]; const keys \
          = typeof held === \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) \
          : []; const at = ctx.issues.findIndex((issue) => issue.code === \"invalid_union\" && \
          (issue.path ?? []).length === 0); const refused = ctx.issues[at]; const named = typeof held \
-         === \"string\" ? carrying.find(([name]) => name === held) : undefined; const arm = \
+         === \"string\" ? carrying.find((pair) => pair.name === held) : undefined; const arm = \
          keys.length === 1 && refused?.code === \"invalid_union\" ? refused.errors.find((issues) \
          => issues.some((issue) => issue.path[0] === keys[0])) : undefined; if (named !== \
          undefined && refused?.code === \"invalid_union\") ctx.issues.splice(at, 1, {{ code: \
-         \"custom\", message: \"invalid type: unit variant, expected \" + named[1], input: \
-         undefined, path: [named[0]], params: {{ variant: true }} }}); else if (arm !== undefined) \
+         \"custom\", message: \"invalid type: unit variant, expected \" + named.expected, \
+         input: undefined, path: [named.name], params: {{ variant: true }} }}); else if (arm !== undefined) \
          ctx.issues.splice(at, 1, ...arm.map((issue) => ({{ ...issue, input: undefined }}))); }}, \
          {{ when: () => true }})",
         pairs.join(", ")
@@ -3254,7 +3275,7 @@ pub fn zod_plain_enum(options: &str) -> String {
          \"object\" && held !== null && !Array.isArray(held) ? Object.keys(held) : []; if \
          (keys.length !== 1) {{ ctx.issues.splice(0, ctx.issues.length, {{ code: \"custom\", message: \
          \"{EXPECTED_VALUE}\", input: held, params: {{ undeserializable: true }} }}); \
-         return; }} const [key] = keys; if (![{options}].includes(key)) return; \
+         return; }} const key = keys[0]; if (key === undefined || ![{options}].includes(key)) return; \
          const value = Reflect.get(held, key); if (value !== null) {{ \
          ctx.issues.splice(0, ctx.issues.length, {{ code: \"custom\", message: \"invalid type: \" + \
          ({ZOD_SAID})(value) + \", expected unit\", input: value, path: [key] }}); return; }} \

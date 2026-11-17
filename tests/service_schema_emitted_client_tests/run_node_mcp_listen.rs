@@ -223,7 +223,7 @@ export const dispatcher: (
   changes?: LibraryServiceMcpChanges,
 ) => Promise<string | undefined> = createLibraryServiceMcpDispatcher(impl);
 export const answered: Promise<string | undefined> = dispatcher("{}", () => 1, writer, inFlight, changes);
-export const over = createLibraryServiceMcpHttpDispatcher(
+export const over: unknown = createLibraryServiceMcpHttpDispatcher(
   impl,
   { allowedOrigins: [] },
   async () => ({ ctx: 1 }),
