@@ -952,7 +952,11 @@ fn a_ts_reexport_is_written_only_where_the_export_moved_off_the_ident() {
 fn a_zod_reexport_is_written_only_where_the_export_moved_off_the_ident() {
     assert_eq!(
         ident_reexport_zod("LaterAlias", "LaterAliasType", "$Schema"),
-        "\n\nexport const LaterAlias$Schema: typeof LaterAliasType$Schema = LaterAliasType$Schema;"
+        if cfg!(feature = "typescript") {
+            "\n\nexport const LaterAlias$Schema: typeof LaterAliasType$Schema = LaterAliasType$Schema;"
+        } else {
+            "\n\nexport const LaterAlias$Schema = LaterAliasType$Schema;"
+        }
     );
     for ident in ["PlainItem", "PlainItemData"] {
         assert_eq!(
@@ -968,7 +972,11 @@ fn a_zod_reexport_is_written_only_where_the_export_moved_off_the_ident() {
 fn a_zod_reexport_carries_the_suffix_the_item_published_under() {
     assert_eq!(
         ident_reexport_zod("Holder", "RenamedHolder", "$SchemaFactory"),
-        "\n\nexport const Holder$SchemaFactory: typeof RenamedHolder$SchemaFactory = RenamedHolder$SchemaFactory;"
+        if cfg!(feature = "typescript") {
+            "\n\nexport const Holder$SchemaFactory: typeof RenamedHolder$SchemaFactory = RenamedHolder$SchemaFactory;"
+        } else {
+            "\n\nexport const Holder$SchemaFactory = RenamedHolder$SchemaFactory;"
+        }
     );
 }
 

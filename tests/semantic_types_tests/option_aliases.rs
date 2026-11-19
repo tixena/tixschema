@@ -102,6 +102,15 @@ fn typescript_writes_an_alias_of_an_option_outside_a_field_with_null() {
 #[test]
 fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
     let held = format!("z.nullable({COUNT})");
+    // The binding a schema is written under: the raw one its annotated binding reads, in a build
+    // with `typescript`, and the exported one in a build without.
+    let opens = |name: &str| {
+        if cfg!(feature = "typescript") {
+            format!("const {name}$RawSchema = ")
+        } else {
+            format!("export const {name}$Schema = ")
+        }
+    };
     let leadsman = Leadsman::zod_schema();
     for written in [
         format!("keyed: z.record(z.string(), {held}),"),
@@ -148,12 +157,16 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
         (
             Reckoned::zod_schema(),
             format!(
-                "const ReckonedDraft$RawSchema = z.tuple([{held}, {COUNT}]).meta({{ id: \"ReckonedDraft\" }});"
+                "{}z.tuple([{held}, {COUNT}]).meta({{ id: \"ReckonedDraft\" }});",
+                opens("ReckonedDraft")
             ),
         ),
         (
             Deepsea::zod_schema(),
-            format!("const DeepseaDraft$RawSchema = {held}.meta({{ id: \"DeepseaDraft\" }});"),
+            format!(
+                "{}{held}.meta({{ id: \"DeepseaDraft\" }});",
+                opens("DeepseaDraft")
+            ),
         ),
         (Sinker::zod_schema(), format!("\"Depth\": {held},")),
         (
@@ -164,8 +177,14 @@ fn zod_writes_an_alias_of_an_option_outside_a_field_as_a_nullable_schema() {
         (
             plummet_schema::Schema::zod_schema(),
             format!(
-                "const PlummetType$RawSchema = z.union([z.null().transform(() => undefined), \
-                 {COUNT}, z.undefined()]).prefault(undefined);"
+                "{}z.union([z.null().transform(() => undefined), {COUNT}, \
+                 z.undefined()]).prefault(undefined){}",
+                opens("PlummetType"),
+                if cfg!(feature = "typescript") {
+                    ";"
+                } else {
+                    ".meta({"
+                }
             ),
         ),
     ] {
