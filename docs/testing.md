@@ -39,14 +39,14 @@ pub struct User {
 
 ```typescript
 // no block
-export const Plain$Schema: ZodType & { _zod: { output: Plain } } = PlainDraft$Schema.readonly().brand<"Plain">().meta({
+export const Plain$Schema: ZodType & { _zod: { output: Plain } } = PlainDraft$Schema.brand<"Plain">().meta({
   ...(PlainDraft$Schema.meta() ?? {}),
   id: "Plain",
   examples: []
 });
 
 // two blocks
-export const SeveralExamples$Schema: ZodType & { _zod: { output: SeveralExamples } } = SeveralExamplesDraft$Schema.readonly().brand<"SeveralExamples">().meta({
+export const SeveralExamples$Schema: ZodType & { _zod: { output: SeveralExamples } } = SeveralExamplesDraft$Schema.brand<"SeveralExamples">().meta({
   ...(SeveralExamplesDraft$Schema.meta() ?? {}),
   id: "SeveralExamples",
   examples: [{"value":1},{"value":2}]

@@ -201,7 +201,7 @@ fn test_a_tuple_struct_zod_schema_is_annotated_with_its_typescript_type() {
     let zod = Pair::zod_schema();
     assert!(
         zod.contains(
-            "export const Pair$Schema: ZodType & { _zod: { output: Pair } } = PairDraft$Schema.readonly().brand<\"Pair\">().meta({
+            "export const Pair$Schema: ZodType & { _zod: { output: Pair } } = PairDraft$Schema.brand<\"Pair\">().meta({
   ...(PairDraft$Schema.meta() ?? {}),
   id: \"Pair\",
   examples: []

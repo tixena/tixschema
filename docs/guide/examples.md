@@ -46,7 +46,7 @@ const UserDraft$RawSchema = z.strictObject({
 
 export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
 
-export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.readonly().brand<"User">().meta({
+export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.brand<"User">().meta({
   ...(UserDraft$Schema.meta() ?? {}),
   id: "User",
   examples: [{"age":25,"email":"john@example.com","name":"John Doe"}]
@@ -123,7 +123,7 @@ const ShapeDraft$RawSchema = z.discriminatedUnion("kind", [z.strictObject({
 
 export const ShapeDraft$Schema: ZodType<ShapeDraft> = ShapeDraft$RawSchema;
 
-export const Shape$Schema: ZodType & { _zod: { output: Shape } } = ShapeDraft$Schema.readonly().brand<"Shape">().meta({
+export const Shape$Schema: ZodType & { _zod: { output: Shape } } = ShapeDraft$Schema.brand<"Shape">().meta({
   ...(ShapeDraft$Schema.meta() ?? {}),
   id: "Shape",
   examples: [{"kind":"Circle","radius":2},{"kind":"Square","side":3}]
@@ -162,7 +162,7 @@ const PlainDraft$RawSchema = z.strictObject({
 
 export const PlainDraft$Schema: ZodType<PlainDraft> = PlainDraft$RawSchema;
 
-export const Plain$Schema: ZodType & { _zod: { output: Plain } } = PlainDraft$Schema.readonly().brand<"Plain">().meta({
+export const Plain$Schema: ZodType & { _zod: { output: Plain } } = PlainDraft$Schema.brand<"Plain">().meta({
   ...(PlainDraft$Schema.meta() ?? {}),
   id: "Plain",
   examples: []

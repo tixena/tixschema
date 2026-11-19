@@ -1770,8 +1770,9 @@ const DECODED_REFUSED: [(&str, &str); 11] = [
 ];
 
 /// Reads what `parse` and the decode functions answer through the schemas of `decoded`, once
-/// loaded.
-const DECODED_DRIVER: &str = r#"import * as made from "./lib/index.js";
+/// loaded, and whether each value and constant takes the `_id` a MongoDB driver writes on insert.
+const DECODED_DRIVER: &str = r#"import * as zod from "zod";
+import * as made from "./lib/index.js";
 const nested = made.DecodedManifest$Schema.safeParse({ note: "n", parcel: { label: "", parcelCount: 3 } });
 const wide = made.DecodedWide$Schema.parse({ count: 7 });
 const noted = made.DecodedNoted$Schema.parse({ note: null });
@@ -1780,6 +1781,12 @@ const broken = made.safeDecodeDecodedParcel({ label: "", parcelCount: 3 });
 const label = made.safeDecodeDecodedLabel("");
 let thrown = "";
 try { made.decodeDecodedParcel({ label: "", parcelCount: 3 }); } catch (error) { thrown = error.issues[0].message; }
+const manifest = made.DecodedManifest$Schema.parse({ note: "n", parcel: { label: "a", parcelCount: 1 } });
+manifest._id = "stored";
+const node = made.DecodedNode$Schema.parse({ children: [{ children: [], name: "leaf" }], name: "root" });
+const wrapped = made.DecodedWrap$SchemaFactory(zod.string()).parse({ inner: "held" });
+const frozen = [manifest, manifest.parcel, node.children, wrapped, made.DecodedPayment, made.DecodedShipping, made.DecodedShipping.Pickup, made.DecodedStatus]
+  .map((value) => Object.isFrozen(value));
 console.log(JSON.stringify([
   nested.error?.issues[0]?.path,
   typeof wide.count,
@@ -1789,6 +1796,9 @@ console.log(JSON.stringify([
   thrown,
   label.success,
   made.DecodedPayment.Pending === made.DecodedPayment.Pending,
+  frozen,
+  manifest._id,
+  made.DecodedShipping.Pickup,
 ]));
 "#;
 
@@ -1821,7 +1831,7 @@ console.log(JSON.stringify([
 const IDENTIFIED_READ: &str = r#"[["IdentifiedDepthDraft","IdentifiedDepth"],[{"fathoms":3}],["IdentifiedFathomDraft","IdentifiedFathom","IdentifiedFathom"],["IdentifiedSignalDraft","IdentifiedSignal"],"IdentifiedMark",["IdentifiedCode","A harbour code.",["NYC"]],"IdentifiedTone",[null,null,null],[true,null],[],null]"#;
 
 /// What [`DECODED_DRIVER`] prints.
-const DECODED_READ: &str = r#"[["parcel","label"],"bigint",true,true,false,"too short: minimum length is 1, got 0",false,true]"#;
+const DECODED_READ: &str = r#"[["parcel","label"],"bigint",true,false,false,"too short: minimum length is 1, got 0",false,true,[false,false,false,false,false,false,false,false],"stored",{"kind":"Pickup"}]"#;
 
 /// What a consumer's module writes ahead of the generated text. `z` is bound as a constant, which
 /// names no type: the weakest binding a consumer's own module may hand the bundle.

@@ -1094,7 +1094,7 @@ const UserDraft$RawSchema = z.strictObject({
 
 export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
 
-export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.readonly().brand<"User">().meta({
+export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.brand<"User">().meta({
   ...(UserDraft$Schema.meta() ?? {}),
   id: "User",
   examples: []
@@ -1147,11 +1147,11 @@ export type Status =
   | "inactive"
   | "pending";
 
-export const Status: { readonly Active: "active"; readonly Inactive: "inactive"; readonly Pending: "pending" } = Object.freeze({
+export const Status: { readonly Active: "active"; readonly Inactive: "inactive"; readonly Pending: "pending" } = {
   Active: "active",
   Inactive: "inactive",
   Pending: "pending",
-}) satisfies Record<string, Status>;
+} satisfies Record<string, Status>;
 
 /** The Rust variant name `value` carries, or "" where it carries none. */
 export function Status$Variant(value: unknown): string {
@@ -1287,7 +1287,7 @@ const EventDraft$RawSchema = z.discriminatedUnion("type", [z.strictObject({
 
 export const EventDraft$Schema: ZodType<EventDraft> = EventDraft$RawSchema;
 
-export const Event$Schema: ZodType & { _zod: { output: Event } } = EventDraft$Schema.readonly().brand<"Event">().meta({
+export const Event$Schema: ZodType & { _zod: { output: Event } } = EventDraft$Schema.brand<"Event">().meta({
   ...(EventDraft$Schema.meta() ?? {}),
   id: "Event",
   examples: []
@@ -1512,7 +1512,7 @@ const DocumentDraft$RawSchema = z.strictObject({
 
 export const DocumentDraft$Schema: ZodType<DocumentDraft> = DocumentDraft$RawSchema;
 
-export const Document$Schema: ZodType & { _zod: { output: Document } } = DocumentDraft$Schema.readonly().brand<"Document">().meta({
+export const Document$Schema: ZodType & { _zod: { output: Document } } = DocumentDraft$Schema.brand<"Document">().meta({
   ...(DocumentDraft$Schema.meta() ?? {}),
   id: "Document",
   examples: []

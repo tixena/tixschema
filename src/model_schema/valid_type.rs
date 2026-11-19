@@ -22,13 +22,11 @@ use super::refusal_from_violations;
 use super::unbounded;
 use super::{LiteralLeaf, literal_shape, sole_type_argument};
 use crate::features::model_schema_prop::{LiteralValue, parse_model_schema_prop_attributes};
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::features::serde::parse_serde_field_attributes;
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::features::serde::parse_serde_type_attributes;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
-#[cfg(feature = "zod")]
-use crate::field_type::get_field_def;
 use crate::field_type::held_literal;
 #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
 use crate::utils::record_drafted_type;
@@ -68,7 +66,7 @@ pub struct Declared {
     pub unit: bool,
     /// The variants of an enum, each with the `cfg` attributes it is under, in declaration order.
     pub variants: Vec<(Vec<Attribute>, Ident)>,
-    #[cfg(any(feature = "typescript", feature = "zod"))]
+    #[cfg(feature = "typescript")]
     pub wrapping: Wrapping,
 }
 
@@ -97,21 +95,16 @@ impl Gate {
     }
 }
 
-/// How the TypeScript valid type holds its draft, and whether its schema freezes what it parses.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+/// How the TypeScript valid type holds its draft.
+#[cfg(feature = "typescript")]
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Wrapping {
-    /// Read-only, and not frozen: a value of it can be an array buffer view whole, which no freeze
-    /// takes.
-    #[cfg(feature = "zod")]
-    Bytes,
-    /// Read-only, and frozen by the schema.
+    /// The draft read-only, under its brand.
     #[default]
-    Frozen,
-    /// The draft under its brand alone, neither read-only nor frozen: an untagged enum, whose union
-    /// a mapped type would make circular where it holds itself and would turn a branded string
-    /// member into an object, and a tuple with no slot on the wire, which zod freezes into a list
-    /// of any length.
+    ReadOnly,
+    /// The draft under its brand alone, not read-only: an untagged enum, whose union a mapped type
+    /// would make circular where it holds itself and would turn a branded string member into an
+    /// object, and a tuple with no slot on the wire.
     Unwrapped,
 }
 
@@ -1237,7 +1230,7 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
         checked,
         #[cfg(feature = "typescript")]
         unit: matches!(item, syn::Item::Struct(item_struct) if item_struct.generics.params.is_empty() && matches!(item_struct.fields, syn::Fields::Unit)),
-        #[cfg(any(feature = "typescript", feature = "zod"))]
+        #[cfg(feature = "typescript")]
         wrapping: wrapping(item),
     };
     #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
@@ -1250,40 +1243,6 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
     DECLARED.with(|held| *held.borrow_mut() = declared);
 }
 
-/// Whether a value of `item` is its bytes, which `Object.freeze` refuses: a struct of one slot of
-/// bytes, and an untagged enum with a variant of one slot of bytes.
-#[cfg(feature = "zod")]
-fn holds_bytes_whole(item: &syn::Item) -> bool {
-    let bytes = |fields: &syn::Fields| match fields {
-        syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots
-            .unnamed
-            .first()
-            .is_some_and(|slot| get_field_def("_slot", &slot.ty, "").writes_bytes()),
-        syn::Fields::Named(_) | syn::Fields::Unnamed(_) | syn::Fields::Unit => false,
-    };
-    match item {
-        syn::Item::Struct(item_struct) => bytes(&item_struct.fields),
-        #[cfg(feature = "serde")]
-        syn::Item::Enum(item_enum) => {
-            parse_serde_type_attributes(&item_enum.attrs).untagged
-                && item_enum
-                    .variants
-                    .iter()
-                    .any(|variant| bytes(&variant.fields))
-        }
-        _ => false,
-    }
-}
-
-/// Whether the valid type's schema freezes the value it parses.
-#[cfg(feature = "zod")]
-pub fn freezes() -> bool {
-    DECLARED.with(|held| {
-        let declared = held.borrow();
-        declared.wrapping == Wrapping::Frozen
-    })
-}
-
 /// Whether the TypeScript valid type of the item being expanded is its draft under the brand
 /// alone, as [`Wrapping::Unwrapped`] says.
 #[cfg(feature = "typescript")]
@@ -1292,20 +1251,17 @@ pub fn unwrapped_draft() -> bool {
 }
 
 /// How the valid type of `item` holds its draft.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "typescript")]
 fn wrapping(item: &syn::Item) -> Wrapping {
     if unwrapped(item) {
-        return Wrapping::Unwrapped;
+        Wrapping::Unwrapped
+    } else {
+        Wrapping::ReadOnly
     }
-    #[cfg(feature = "zod")]
-    if holds_bytes_whole(item) {
-        return Wrapping::Bytes;
-    }
-    Wrapping::Frozen
 }
 
 /// Whether the valid type of `item` is its draft under the brand alone.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(feature = "typescript")]
 fn unwrapped(item: &syn::Item) -> bool {
     match item {
         #[cfg(feature = "serde")]
@@ -1318,17 +1274,15 @@ fn unwrapped(item: &syn::Item) -> bool {
 }
 
 /// Whether serde neither writes nor reads the slot `field`.
-#[cfg(any(feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "serde"))]
 fn slot_skipped(field: &syn::Field) -> bool {
-    #[cfg(feature = "serde")]
-    {
-        parse_serde_field_attributes(&field.attrs).skip
-    }
-    #[cfg(not(feature = "serde"))]
-    {
-        let _ = field;
-        false
-    }
+    parse_serde_field_attributes(&field.attrs).skip
+}
+
+/// Whether serde neither writes nor reads the slot `field`: never, in a build with no `serde`.
+#[cfg(all(feature = "typescript", not(feature = "serde")))]
+const fn slot_skipped(_field: &syn::Field) -> bool {
+    false
 }
 
 /// What the item being expanded declares.

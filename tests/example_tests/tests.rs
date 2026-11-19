@@ -662,7 +662,7 @@ fn a_plain_const_still_carries_its_example_on_the_exported_binding() {
     #[cfg(feature = "typescript")]
     assert!(
         zod.contains(
-            "export const Kept$Schema: ZodType & { _zod: { output: Kept } } = KeptDraft$Schema.readonly().brand<\"Kept\">().meta({\n  \
+            "export const Kept$Schema: ZodType & { _zod: { output: Kept } } = KeptDraft$Schema.brand<\"Kept\">().meta({\n  \
              ...(KeptDraft$Schema.meta() ?? {}),\n  id: \"Kept\",\n  examples: \
              [{\"value\":\"x\"}]\n});"
         ),
