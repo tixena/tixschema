@@ -246,7 +246,7 @@ mod constrained_branded_tests {
             "Should still have brand. Got:\n{zod}"
         );
         assert!(
-            zod.contains("export const SlugId$Schema:"),
+            zod.contains(&format!("export const SlugId$Schema{}", typed(":"))),
             "Should have $Schema. Got:\n{zod}"
         );
     }
@@ -980,8 +980,8 @@ mod constrained_generic_branded_tests {
     #[test]
     fn the_factorys_own_parameter_carries_no_check() {
         let zod = StrictDocumentId::<String>::zod_schema();
-        let builder_end = zod.find("type StrictDocumentId$SchemaOf").unwrap();
-        let builder = &zod[..builder_end];
+        let end = zod.find(&builder_end("StrictDocumentId")).unwrap();
+        let builder = &zod[..end];
         for check in [".min(", ".max(", ".check("] {
             assert!(
                 !builder.contains(check),
@@ -996,10 +996,12 @@ mod constrained_generic_branded_tests {
     fn the_default_composes_the_factory_with_the_constrained_argument() {
         let zod = StrictDocumentId::<String>::zod_schema();
         assert!(
-            zod.contains(
-                "export const StrictDocumentId$SchemaDefault: ZodType<StrictDocumentId<string>> = \
-                 StrictDocumentId$SchemaFactory(z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${[...String(issue.input)].length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: \"does not match pattern '^[a-f0-9]{24}$'\" })));"
-            ),
+            zod.contains(&[
+                "export const StrictDocumentId$SchemaDefault",
+                typed(": ZodType<StrictDocumentId<string>>"),
+                " = StrictDocumentId$SchemaFactory(z.string().min(24, { error: (issue) => `too short: minimum length is 24, got ${[...String(issue.input)].length}` }).max(24, { error: (issue) => `too long: maximum length is 24, got ${[...String(issue.input)].length}` }).check(z.regex(/^[a-f0-9]{24}$/, { error: \"does not match pattern '^[a-f0-9]{24}$'\" })));",
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
     }
@@ -1033,11 +1035,13 @@ mod constrained_generic_branded_tests {
      {
         let zod = OuterId::<String>::zod_schema();
         assert!(
-            zod.contains(
-                "export const OuterId$SchemaDefault: ZodType<OuterId<StrictDocumentId<string>>> = \
-                 OuterId$SchemaFactory(z.lazy(() => \
-                 StrictDocumentId$SchemaDefault.check(z.minLength(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` }))));"
-            ),
+            zod.contains(&[
+                "export const OuterId$SchemaDefault",
+                typed(": ZodType<OuterId<StrictDocumentId<string>>>"),
+                " = OuterId$SchemaFactory(z.lazy(() => \
+                 StrictDocumentId$SchemaDefault.check(z.minLength(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` }))));",
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
         assert!(!zod.contains("$RawSchemaDefault"), "Got:\n{zod}");
@@ -1148,10 +1152,12 @@ mod constrained_default_names_a_sibling_tests {
      {
         let zod = OuterBrand::<String>::zod_schema();
         assert!(
-            zod.contains(
-                "export const OuterBrand$SchemaDefault: ZodType<OuterBrand<InnerString>> = \
-                 OuterBrand$SchemaFactory(z.lazy(() => InnerString$Schema.check(z.minLength(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }))));"
-            ),
+            zod.contains(&[
+                "export const OuterBrand$SchemaDefault",
+                typed(": ZodType<OuterBrand<InnerString>>"),
+                " = OuterBrand$SchemaFactory(z.lazy(() => InnerString$Schema.check(z.minLength(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }))));",
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
         assert!(!zod.contains("$RawSchemaDefault"), "Got:\n{zod}");
@@ -1161,8 +1167,8 @@ mod constrained_default_names_a_sibling_tests {
     #[test]
     fn the_factorys_own_parameter_carries_no_check() {
         let zod = OuterBrand::<String>::zod_schema();
-        let builder_end = zod.find("type OuterBrand$SchemaOf").unwrap();
-        let builder = &zod[..builder_end];
+        let end = zod.find(&builder_end("OuterBrand")).unwrap();
+        let builder = &zod[..end];
         for check in [".min(", ".max(", ".check("] {
             assert!(
                 !builder.contains(check),
@@ -1423,7 +1429,14 @@ mod branded_composite_inner_tests {
         );
         let zod = LabelList::zod_schema();
         assert!(
-            zod.contains(r#"const LabelList$RawSchema = z.array(z.string()).brand<"LabelList">()"#),
+            zod.contains(
+                &[
+                    brand_binding("LabelList"),
+                    "z.array(z.string())".to_owned(),
+                    brand_call("LabelList"),
+                ]
+                .concat()
+            ),
             "Got:\n{zod}"
         );
         assert!(
@@ -1445,7 +1458,12 @@ mod branded_composite_inner_tests {
         let zod = WeightMap::zod_schema();
         assert!(
             zod.contains(
-                r#"const WeightMap$RawSchema = z.record(z.string(), z.number().int().min(0).max(4294967295)).brand<"WeightMap">()"#
+                &[
+                    brand_binding("WeightMap"),
+                    "z.record(z.string(), z.number().int().min(0).max(4294967295))".to_owned(),
+                    brand_call("WeightMap"),
+                ]
+                .concat()
             ),
             "Got:\n{zod}"
         );
@@ -1468,7 +1486,12 @@ mod branded_composite_inner_tests {
         let zod = LabelPair::zod_schema();
         assert!(
             zod.contains(
-                r#"const LabelPair$RawSchema = z.tuple([z.string(), z.number().int().min(0).max(4294967295)]).brand<"LabelPair">()"#
+                &[
+                    brand_binding("LabelPair"),
+                    "z.tuple([z.string(), z.number().int().min(0).max(4294967295)])".to_owned(),
+                    brand_call("LabelPair"),
+                ]
+                .concat()
             ),
             "Got:\n{zod}"
         );
@@ -2043,7 +2066,14 @@ mod branded_sibling_inner_tests {
         );
         let zod = WrappedPart::zod_schema();
         assert!(
-            zod.contains(r#"const WrappedPart$RawSchema = Part$Schema.brand<"WrappedPart">()"#),
+            zod.contains(
+                &[
+                    brand_binding("WrappedPart"),
+                    "Part$Schema".to_owned(),
+                    brand_call("WrappedPart"),
+                ]
+                .concat()
+            ),
             "Got:\n{zod}"
         );
         assert!(
@@ -2065,6 +2095,19 @@ mod branded_sibling_inner_tests {
     #[test]
     fn a_forward_declared_sibling_brand_carries_the_named_types_schema() {
         assert_eq!(WrappedTail::json_schema(), Tail::json_schema());
+        assert!(
+            WrappedTail::zod_schema().contains(
+                &[
+                    brand_binding("WrappedTail"),
+                    "Tail$Schema".to_owned(),
+                    brand_call("WrappedTail"),
+                ]
+                .concat()
+            ),
+            "Got:\n{}",
+            WrappedTail::zod_schema()
+        );
+        #[cfg(feature = "typescript")]
         assert!(
             WrappedTail::zod_schema()
                 .contains("WrappedTail$Schema: ZodType & { _zod: { output: WrappedTail } }"),
@@ -2107,9 +2150,15 @@ mod branded_sibling_inner_tests {
         );
         let zod = ShortSlug::zod_schema();
         assert!(
-            zod.contains(r#"const ShortSlug$RawSchema = Slug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"ShortSlug">()"#),
+            zod.contains(&[
+                brand_binding("ShortSlug"),
+                "Slug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })".to_owned(),
+                brand_call("ShortSlug"),
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
+        #[cfg(feature = "typescript")]
         assert!(
             zod.contains("ShortSlug$Schema: ZodType & { _zod: { output: ShortSlug } }"),
             "Got:\n{zod}"
@@ -2127,9 +2176,12 @@ mod branded_sibling_inner_tests {
         );
         let zod = EarlySlug::zod_schema();
         assert!(
-            zod.contains(
-                r#"const EarlySlug$RawSchema = LateSlug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"EarlySlug">()"#
-            ),
+            zod.contains(&[
+                brand_binding("EarlySlug"),
+                "LateSlug$Schema.min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })".to_owned(),
+                brand_call("EarlySlug"),
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
     }
@@ -2146,9 +2198,12 @@ mod branded_sibling_inner_tests {
         let zod = FixedTag::zod_schema();
         #[cfg(feature = "zod")]
         assert!(
-            zod.contains(
-                r#"const FixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"FixedTag">()"#
-            ),
+            zod.contains(&[
+                brand_binding("FixedTag"),
+                "LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })".to_owned(),
+                brand_call("FixedTag"),
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
         FixedTag::new(LateTag::new("abcd".to_owned()).unwrap())
@@ -2169,9 +2224,12 @@ mod branded_sibling_inner_tests {
         let zod = TrailingFixedTag::zod_schema();
         #[cfg(feature = "zod")]
         assert!(
-            zod.contains(
-                r#"const TrailingFixedTag$RawSchema = LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` }).brand<"TrailingFixedTag">()"#
-            ),
+            zod.contains(&[
+                brand_binding("TrailingFixedTag"),
+                "LateTag$SchemaFactory(z.string()).min(3, { error: (issue) => `too short: minimum length is 3, got ${[...String(issue.input)].length}` })".to_owned(),
+                brand_call("TrailingFixedTag"),
+            ]
+            .concat()),
             "Got:\n{zod}"
         );
         #[cfg(all(feature = "typescript", feature = "zod"))]
@@ -2231,10 +2289,14 @@ mod branded_sibling_inner_tests {
             ("WrappedBrand", WrappedBrand::zod_schema()),
             ("WrappedChoice", WrappedChoice::zod_schema()),
         ] {
-            let line = format!(
-                "export const {name}$Schema: ZodType & {{ _zod: {{ output: {name} }} }} = \
-                 {name}$RawSchema;"
-            );
+            let line = if cfg!(feature = "typescript") {
+                format!(
+                    "export const {name}$Schema: ZodType & {{ _zod: {{ output: {name} }} }} = \
+                     {name}$RawSchema;"
+                )
+            } else {
+                brand_binding(name)
+            };
             assert!(zod.contains(&line), "want: {line}\ngot:\n{zod}");
         }
     }
@@ -2245,8 +2307,12 @@ mod branded_sibling_inner_tests {
         let zod = OpenTag::<String>::zod_schema();
         assert!(
             zod.contains(
-                "export const OpenTag$SchemaDefault: ZodType<OpenTag<string>> = \
-                 OpenTag$SchemaFactory(z.string());"
+                &[
+                    "export const OpenTag$SchemaDefault",
+                    typed(": ZodType<OpenTag<string>>"),
+                    " = OpenTag$SchemaFactory(z.string());",
+                ]
+                .concat()
             ),
             "Got:\n{zod}"
         );
@@ -2385,7 +2451,14 @@ mod branded_chrono_inner_tests {
     fn the_zod_value_of_a_chrono_brand_is_the_one_a_field_writes() {
         let zod = Stamp::zod_schema();
         assert!(
-            zod.contains(r#"const Stamp$RawSchema = z.iso.date().brand<"Stamp">()"#),
+            zod.contains(
+                &[
+                    brand_binding("Stamp"),
+                    "z.iso.date()".to_owned(),
+                    brand_call("Stamp"),
+                ]
+                .concat()
+            ),
             "Got:\n{zod}"
         );
         assert_eq!(
@@ -3138,5 +3211,48 @@ fn brand_marker(item_name: &str) -> String {
     {
         let _: &str = item_name;
         ".brand()".to_owned()
+    }
+}
+
+/// What the Zod text writes between a binding's name and ` = `: `annotation`, which only a build
+/// with `typescript` writes.
+#[cfg(all(feature = "serde", feature = "zod"))]
+const fn typed(annotation: &str) -> &str {
+    if cfg!(feature = "typescript") {
+        annotation
+    } else {
+        ""
+    }
+}
+
+/// How the Zod text opens the schema of the brand `name`: the raw binding its annotated one reads,
+/// in a build with `typescript`, and the exported binding itself in one without.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn brand_binding(name: &str) -> String {
+    if cfg!(feature = "typescript") {
+        format!("const {name}$RawSchema = ")
+    } else {
+        format!("export const {name}$Schema = ")
+    }
+}
+
+/// The brand call of `name`, which names the brand only where `typescript` types it.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn brand_call(name: &str) -> String {
+    if cfg!(feature = "typescript") {
+        format!(".brand<\"{name}\">()")
+    } else {
+        ".brand()".to_owned()
+    }
+}
+
+/// Where the Zod text of the generic brand `name` ends its builder: at the type of what it parses
+/// to, in a build with `typescript`, and at its cache in one without.
+#[cfg(all(feature = "serde", feature = "zod"))]
+fn builder_end(name: &str) -> String {
+    if cfg!(feature = "typescript") {
+        format!("type {name}$SchemaOf")
+    } else {
+        format!("const {name}$SchemaFactoryCache")
     }
 }

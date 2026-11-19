@@ -145,7 +145,10 @@ fn test_typescript_disabled_struct_ts_definition_not_available() {
 fn test_typescript_disabled_struct_zod_schema_javascript_style() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
-    assert!(zod_schema.contains("export const TypeScriptTestUser$Schema = z.strictObject({"));
+    assert!(zod_schema.contains("export const TypeScriptTestUserDraft$Schema = z.strictObject({"));
+    assert!(zod_schema.contains(
+        "export const TypeScriptTestUser$Schema = TypeScriptTestUserDraft$Schema.brand()"
+    ));
     assert!(zod_schema.contains("id: z.string()"));
     assert!(zod_schema.contains("name: z.string()"));
     assert!(zod_schema.contains("age: z.number().int()"));
@@ -253,7 +256,10 @@ fn test_typescript_and_zod_both_enabled() {
 fn test_typescript_disabled_zod_enabled() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
-    assert!(zod_schema.contains("export const TypeScriptTestUser$Schema = z.strictObject({"));
+    assert!(zod_schema.contains("export const TypeScriptTestUserDraft$Schema = z.strictObject({"));
+    assert!(zod_schema.contains(
+        "export const TypeScriptTestUser$Schema = TypeScriptTestUserDraft$Schema.brand()"
+    ));
     assert!(!zod_schema.contains(": ZodType<TypeScriptTestUser>"));
 }
 

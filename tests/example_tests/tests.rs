@@ -1183,10 +1183,13 @@ fn an_alias_publishes_an_empty_list() {
 
     // An alias publishes under its own name with `Type` after it, and its ident beside that.
     let score = score_schema::Schema::zod_schema();
+    let reexport = if cfg!(feature = "typescript") {
+        "export const Score$Schema: typeof ScoreType$Schema = ScoreType$Schema;"
+    } else {
+        "export const Score$Schema = ScoreType$Schema;"
+    };
     assert!(
-        score.ends_with(
-            ".meta({\n  examples: []\n});\n\nexport const Score$Schema: typeof ScoreType$Schema = ScoreType$Schema;"
-        ),
+        score.ends_with(&format!(".meta({{\n  examples: []\n}});\n\n{reexport}")),
         "Got: {score}"
     );
     assert_eq!(score.matches(".meta(").count(), 1, "Got: {score}");

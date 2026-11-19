@@ -458,8 +458,12 @@ fn test_zod_without_typescript_uses_simple_export() {
     let zod = Simple::zod_schema();
 
     assert!(
-        zod.contains("export const Simple$Schema = z.strictObject({"),
+        zod.contains("export const SimpleDraft$Schema = z.strictObject({"),
         "Without typescript, should use simple export. Got: {zod}"
+    );
+    assert!(
+        zod.contains("export const Simple$Schema = SimpleDraft$Schema.brand()"),
+        "Without typescript, the valid schema brands the draft's. Got: {zod}"
     );
     assert!(
         !zod.contains("ZodType"),

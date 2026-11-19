@@ -481,10 +481,12 @@ mod zod {
     fn the_ident_reexport_names_the_factory() {
         let zod = Holder::<String>::zod_schema();
         assert!(
-            zod.contains(
+            zod.contains(if cfg!(feature = "typescript") {
                 "export const Holder$SchemaFactory: typeof RenamedHolder$SchemaFactory = \
                  RenamedHolder$SchemaFactory;"
-            ),
+            } else {
+                "export const Holder$SchemaFactory = RenamedHolder$SchemaFactory;"
+            }),
             "Got: {zod}"
         );
         assert!(!publishes_a_schema_const(&zod, "Holder"), "Got: {zod}");
@@ -495,10 +497,12 @@ mod zod {
     fn the_default_is_reexported_alongside_the_factory() {
         let zod = Holder::<String>::zod_schema();
         assert!(
-            zod.contains(
+            zod.contains(if cfg!(feature = "typescript") {
                 "export const Holder$SchemaDefault: typeof RenamedHolder$SchemaDefault = \
                  RenamedHolder$SchemaDefault;"
-            ),
+            } else {
+                "export const Holder$SchemaDefault = RenamedHolder$SchemaDefault;"
+            }),
             "Got: {zod}"
         );
     }

@@ -239,6 +239,14 @@ fn without_ident_reexport(surface: &str, ident: &str, exported: &str) -> String 
             ),
             "",
         )
+        .replace(
+            &format!("\n\nexport const {ident}Draft$Schema = {exported}Draft$Schema;"),
+            "",
+        )
+        .replace(
+            &format!("\n\nexport const {ident}$Schema = {exported}$Schema;"),
+            "",
+        )
 }
 
 /// The ` * ` lines a definition's `JSDoc` block is written from, delimiters and surrounding
