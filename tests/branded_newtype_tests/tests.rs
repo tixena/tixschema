@@ -2174,10 +2174,16 @@ mod branded_sibling_inner_tests {
             ),
             "Got:\n{zod}"
         );
-        #[cfg(feature = "typescript")]
+        #[cfg(all(feature = "typescript", feature = "zod"))]
         assert_eq!(
             TrailingFixedTag::ts_definition(),
             r#"export type TrailingFixedTag = LateTag<string> & $brand<"TrailingFixedTag">;"#
+        );
+        #[cfg(all(feature = "typescript", not(feature = "zod")))]
+        assert_eq!(
+            TrailingFixedTag::ts_definition(),
+            "declare const __brand_TrailingFixedTag: unique symbol;\nexport type TrailingFixedTag = \
+             LateTag<string> & { readonly [__brand_TrailingFixedTag]: true };"
         );
         TrailingFixedTag::new(LateTag::new("abcd".to_owned()).unwrap())
             .map(|_| ())

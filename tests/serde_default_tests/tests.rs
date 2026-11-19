@@ -22,6 +22,8 @@ use crate::dart_integer_read::integer_read;
 use crate::kotlin_numbers::without_number_readers;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 use crate::kotlin_thrown::{THROWN, held_refusal};
+#[cfg(all(feature = "serde", feature = "typescript"))]
+use crate::typescript_brand::brand_after;
 
 /// The write of `Gangway`'s `u32`, held to its range.
 #[cfg(feature = "dart")]
@@ -445,6 +447,10 @@ fn a_type_with_no_default_writes_the_zod_text_it_wrote() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
+    let valid = format!(
+        "export type Gangway = Readonly<GangwayDraft>{};",
+        brand_after("Gangway")
+    );
     let lines = [
         "/**",
         " * A gangway, a type of the consumer's own with a `Default` of its own.",
@@ -463,7 +469,7 @@ fn a_type_with_no_default_writes_the_typescript_text_it_wrote() {
         "  width: number;",
         "};",
         "",
-        "export type Gangway = Readonly<GangwayDraft> & $brand<\"Gangway\">;",
+        &valid,
     ];
     assert_eq!(Gangway::ts_definition(), lines.join("\n"));
 }

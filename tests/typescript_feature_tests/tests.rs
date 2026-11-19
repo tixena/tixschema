@@ -262,5 +262,9 @@ fn test_typescript_disabled_zod_enabled() {
 fn test_typescript_enabled_zod_disabled() {
     let ts_definition = TypeScriptTestUser::ts_definition();
 
-    assert!(ts_definition.contains("export type TypeScriptTestUser = {"));
+    assert!(ts_definition.contains("export type TypeScriptTestUserDraft = {"));
+    assert!(
+        ts_definition
+            .contains("export type TypeScriptTestUser = Readonly<TypeScriptTestUserDraft>;")
+    );
 }
