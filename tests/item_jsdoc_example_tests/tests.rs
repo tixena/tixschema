@@ -29,7 +29,7 @@ pub struct DocumentedStruct {
 /// };
 /// println!("Item: {:?}", item);
 /// ```
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", feature = "zod"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WrappedImportStruct {
@@ -398,15 +398,21 @@ fn a_documented_alias_publishes_its_rust_example_as_one_example() {
     );
 }
 
-/// An alias that names a published type and writes no block states no examples of its own.
-#[cfg(all(feature = "serde", feature = "zod"))]
+/// An alias of a documented struct holds the valid value of the type it names.
+#[cfg(feature = "serde")]
 #[test]
-fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
+fn an_alias_with_no_block_holds_the_valid_type_it_names() {
     let held: DocumentedStructRef = DocumentedStructDraft {
         label: "alpha".to_owned(),
     }
     .into();
     assert_eq!(held.label, "alpha");
+}
+
+/// An alias that names a published type and writes no block states no examples of its own.
+#[cfg(all(feature = "serde", feature = "zod"))]
+#[test]
+fn an_alias_with_no_block_publishes_the_examples_of_the_type_it_names() {
     let zod = documented_struct_ref_schema::Schema::zod_schema();
     assert!(!zod.contains(".meta("), "Got: {zod}");
     assert!(

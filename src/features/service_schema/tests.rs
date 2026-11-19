@@ -1838,7 +1838,7 @@ fn a_build_that_publishes_no_client_still_publishes_every_type_the_wire_carries(
     for asked in [
         "VoidInvoiceRequest :: ts_definition",
         "billing_service_schema :: BillingServiceFaultFields :: ts_definition",
-        "declare const billingServiceFaultSeal: unique symbol;",
+        "const billingServiceFaultSeal: unique symbol = Symbol(\\\"billingServiceFaultSeal\\\");",
         "export type BillingServiceGetOpenBalanceResult =",
     ] {
         assert!(

@@ -1,6 +1,8 @@
 //! Tests of `#[serde(flatten)]`: the intersection, the merged schema and the choices a flattened
 //! source multiplies into.
 
+#[cfg(feature = "typescript")]
+use crate::typescript_brand::brand_after;
 #[cfg(feature = "mongodb")]
 use bson2::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -2478,7 +2480,12 @@ fn test_a_named_non_nullable_flatten_type_is_byte_identical() {
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type NamedPlainHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & PlainOptBaseDraft;\n\nexport type NamedPlainHolder = Readonly<NamedPlainHolderDraft> & $brand<\"NamedPlainHolder\">;"
+        [
+            "export type NamedPlainHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & PlainOptBaseDraft;\n\nexport type NamedPlainHolder = Readonly<NamedPlainHolderDraft>",
+            &brand_after("NamedPlainHolder"),
+            ";",
+        ]
+        .concat()
     );
 }
 
@@ -2508,7 +2515,12 @@ fn test_a_non_optional_flatten_type_is_byte_identical() {
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type MultiFlattenDraft = {\n  /**\n   * id\n   * \n   */\n  id: string;\n} & BasePartDraft & ExtraPartDraft;\n\nexport type MultiFlatten = Readonly<MultiFlattenDraft> & $brand<\"MultiFlatten\">;"
+        [
+            "export type MultiFlattenDraft = {\n  /**\n   * id\n   * \n   */\n  id: string;\n} & BasePartDraft & ExtraPartDraft;\n\nexport type MultiFlatten = Readonly<MultiFlattenDraft>",
+            &brand_after("MultiFlatten"),
+            ";",
+        ]
+        .concat()
     );
 }
 
@@ -2963,7 +2975,12 @@ fn test_an_all_object_tagged_direct_flatten_type_closes_each_variant_against_the
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type ExtObjDirectHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n});\n\nexport type ExtObjDirectHolder = Readonly<ExtObjDirectHolderDraft> & $brand<\"ExtObjDirectHolder\">;"
+        [
+            "export type ExtObjDirectHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n});\n\nexport type ExtObjDirectHolder = Readonly<ExtObjDirectHolderDraft>",
+            &brand_after("ExtObjDirectHolder"),
+            ";",
+        ]
+        .concat()
     );
 }
 
@@ -3460,7 +3477,12 @@ fn test_the_optional_all_object_tagged_flatten_type_names_the_keys_its_absence_l
     let declared = &ts[ts.find("export type").unwrap()..];
     assert_eq!(
         declared,
-        "export type OptExtObjHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & (({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}) | { [K in Exclude<keyof ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}), \"own\">]?: never });\n\nexport type OptExtObjHolder = Readonly<OptExtObjHolderDraft> & $brand<\"OptExtObjHolder\">;"
+        [
+            "export type OptExtObjHolderDraft = {\n  /**\n   * own\n   * \n   */\n  own: string;\n} & (({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}) | { [K in Exclude<keyof ({\n  /**\n   * One\n   * \n   */\n  \"One\": FlatFirst;\n  \"Two\"?: never;\n} | {\n  /**\n   * Two\n   * \n   */\n  \"Two\": FlatSecond;\n  \"One\"?: never;\n}), \"own\">]?: never });\n\nexport type OptExtObjHolder = Readonly<OptExtObjHolderDraft>",
+            &brand_after("OptExtObjHolder"),
+            ";",
+        ]
+        .concat()
     );
 }
 
@@ -3537,7 +3559,8 @@ fn test_an_inline_untagged_direct_flatten_type_closes_each_member_against_the_ot
             format!(
                 "export type {holder}Draft = {{\n  /**\n   * own\n   * \n   */\n  own: string;\n}} & \
                  ({{ left: string; right?: never }} | {{ right: boolean; left?: never }});\n\n\
-                 export type {holder} = Readonly<{holder}Draft> & $brand<\"{holder}\">;"
+                 export type {holder} = Readonly<{holder}Draft>{};",
+                brand_after(holder)
             ),
             "{holder} does not close each member against the other"
         );

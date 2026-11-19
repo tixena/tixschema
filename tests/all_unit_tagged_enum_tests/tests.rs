@@ -117,12 +117,23 @@ fn an_all_unit_enum_naming_no_tag_is_written_as_the_bare_variant_name() {
 fn the_typescript_union_carries_the_tag_serde_writes() {
     let (tag, db) = wire_tag(&BalanceErrorDraft::DbError);
     let (_, insufficient) = wire_tag(&BalanceErrorDraft::InsufficientBalance);
+    #[cfg(feature = "zod")]
+    let valid =
+        "export type BalanceError = Readonly<BalanceErrorDraft> & $brand<\"BalanceError\">;\n";
+    #[cfg(not(feature = "zod"))]
+    let valid = format!(
+        "export type BalanceError = Readonly<BalanceErrorDraft>;\n\
+         export const BalanceError: {{ readonly DbError: BalanceError; readonly InsufficientBalance: BalanceError }} = {{\n  \
+         DbError: {{ {tag}: \"{db}\" }},\n  \
+         InsufficientBalance: {{ {tag}: \"{insufficient}\" }},\n\
+         }} satisfies Record<string, BalanceError>;\n"
+    );
 
     assert_eq!(
         ts_shape(&BalanceError::ts_definition()),
         format!(
             "export type BalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
-             export type BalanceError = Readonly<BalanceErrorDraft> & $brand<\"BalanceError\">;\n\
+             {valid}\
              export function BalanceError$Variant(value: unknown): string {{\n  \
              if (typeof value !== \"object\" || value === null || !(\"{tag}\" in value)) return \"\";\n  \
              switch (value.{tag}) {{\n    \
@@ -138,12 +149,22 @@ fn the_typescript_union_carries_the_tag_serde_writes() {
 fn the_typescript_union_carries_an_adjacent_tag_too() {
     let (tag, db) = wire_tag(&AdjacentBalanceErrorDraft::DbError);
     let (_, insufficient) = wire_tag(&AdjacentBalanceErrorDraft::InsufficientBalance);
+    #[cfg(feature = "zod")]
+    let valid = "export type AdjacentBalanceError = Readonly<AdjacentBalanceErrorDraft> & $brand<\"AdjacentBalanceError\">;\n";
+    #[cfg(not(feature = "zod"))]
+    let valid = format!(
+        "export type AdjacentBalanceError = Readonly<AdjacentBalanceErrorDraft>;\n\
+         export const AdjacentBalanceError: {{ readonly DbError: AdjacentBalanceError; readonly InsufficientBalance: AdjacentBalanceError }} = {{\n  \
+         DbError: {{ {tag}: \"{db}\" }},\n  \
+         InsufficientBalance: {{ {tag}: \"{insufficient}\" }},\n\
+         }} satisfies Record<string, AdjacentBalanceError>;\n"
+    );
 
     assert_eq!(
         ts_shape(&AdjacentBalanceError::ts_definition()),
         format!(
             "export type AdjacentBalanceErrorDraft = {{\n  {tag}: \"{db}\";\n}} | {{\n  {tag}: \"{insufficient}\";\n}};\n\
-             export type AdjacentBalanceError = Readonly<AdjacentBalanceErrorDraft> & $brand<\"AdjacentBalanceError\">;\n\
+             {valid}\
              export function AdjacentBalanceError$Variant(value: unknown): string {{\n  \
              if (typeof value !== \"object\" || value === null || !(\"{tag}\" in value)) return \"\";\n  \
              switch (value.{tag}) {{\n    \

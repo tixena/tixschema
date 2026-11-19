@@ -9,8 +9,12 @@ use super::keyed_models::{
     WideKeyed, WideKeyedAdjacent, WideKeyedBrand, WideKeyedEvent, WideKeyedSlot, WideKeyedSlots,
     wide_keyed_alias_schema,
 };
+use crate::typescript_brand::brand_after;
+#[cfg(feature = "zod")]
 use alloc::collections::BTreeMap;
+#[cfg(feature = "zod")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "zod")]
 use tixschema::model_schema;
 
 /// The line of a `JSDoc` block that carries the note, at a member's indent.
@@ -22,6 +26,7 @@ const NOTE_BLOCK: &str = "/** @deprecated A map key above 2^53 - 1 (900719925474
                           not held exactly as a number. */";
 
 // The README's example, declared as the README declares it: a doc comment would be its JSDoc.
+#[cfg(feature = "zod")]
 #[model_schema()]
 #[derive(Deserialize, Serialize)]
 pub struct Histogram {
@@ -143,7 +148,8 @@ fn a_type_whose_value_writes_such_a_map_carries_the_note() {
         format!(
             "/**\n * A map keyed by an `i64` as the value of a struct of one slot.\n * \n\
              {type_noted}\n */\nexport type WideKeyedSlotDraft = Partial<Record<number, boolean>>;\n\n\
-             {NOTE_BLOCK}\nexport type WideKeyedSlot = Readonly<WideKeyedSlotDraft> & $brand<\"WideKeyedSlot\">;"
+             {NOTE_BLOCK}\nexport type WideKeyedSlot = Readonly<WideKeyedSlotDraft>{};",
+            brand_after("WideKeyedSlot")
         )
     );
     assert_eq!(
@@ -151,7 +157,8 @@ fn a_type_whose_value_writes_such_a_map_carries_the_note() {
         format!(
             "/**\n * A map keyed by an `i64` in a struct of two slots.\n * \n{type_noted}\n \
              */\nexport type WideKeyedSlotsDraft = [Partial<Record<number, boolean>>, number];\n\n\
-             {NOTE_BLOCK}\nexport type WideKeyedSlots = Readonly<WideKeyedSlotsDraft> & $brand<\"WideKeyedSlots\">;"
+             {NOTE_BLOCK}\nexport type WideKeyedSlots = Readonly<WideKeyedSlotsDraft>{};",
+            brand_after("WideKeyedSlots")
         )
     );
     assert_eq!(
@@ -162,9 +169,13 @@ fn a_type_whose_value_writes_such_a_map_carries_the_note() {
              type WideKeyedAlias = WideKeyedAliasType;"
         )
     );
+    #[cfg(feature = "zod")]
+    let marker = "";
+    #[cfg(not(feature = "zod"))]
+    let marker = "declare const __brand_WideKeyedBrand: unique symbol;\n";
     assert!(
         WideKeyedBrand::ts_definition().starts_with(&format!(
-            "{NOTE_BLOCK}\nexport type WideKeyedBrand = Partial<Record<number, boolean>> & "
+            "{marker}{NOTE_BLOCK}\nexport type WideKeyedBrand = Partial<Record<number, boolean>> & "
         )),
         "in: {}",
         WideKeyedBrand::ts_definition()
@@ -188,6 +199,8 @@ fn each_member_that_writes_a_map_keyed_by_a_u64_carries_the_note() {
     );
 }
 
+/// The guide shows what a build with `zod` writes, whose valid type carries the brand.
+#[cfg(feature = "zod")]
 #[test]
 fn the_readme_shows_the_note_the_macro_writes() {
     let readme = include_str!("../../docs/guide/models.md");

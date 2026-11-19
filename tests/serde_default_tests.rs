@@ -24,6 +24,11 @@ mod dart_integer_read;
 #[path = "serde_default_tests/tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[cfg(all(feature = "serde", feature = "typescript"))]
+#[path = "support/typescript_brand.rs"]
+mod typescript_brand;
+
 /// What the Swift emitter writes into a type whose reads read a fixed-width integer.
 #[cfg(test)]
 #[cfg(feature = "swift")]

@@ -19,6 +19,11 @@ mod keyed_models;
 mod keyed;
 
 #[cfg(test)]
+#[cfg(feature = "typescript")]
+#[path = "support/typescript_brand.rs"]
+mod typescript_brand;
+
+#[cfg(test)]
 #[path = "wide_integer_tests/tests.rs"]
 mod tests;
 

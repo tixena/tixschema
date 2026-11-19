@@ -8,6 +8,11 @@ extern crate alloc;
 mod tests;
 
 #[cfg(test)]
+#[cfg(all(feature = "serde", feature = "typescript"))]
+#[path = "support/typescript_brand.rs"]
+mod typescript_brand;
+
+#[cfg(test)]
 #[cfg(feature = "serde")]
 #[path = "flatten_tests/maps.rs"]
 mod maps;

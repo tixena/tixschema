@@ -7,6 +7,8 @@
 use crate::dart_integer_read::integer_read;
 #[cfg(all(feature = "kotlin", feature = "serde"))]
 use crate::kotlin_numbers::without_number_readers;
+#[cfg(all(feature = "serde", feature = "typescript"))]
+use crate::typescript_brand::brand_after;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -504,6 +506,10 @@ fn the_zod_schema_of_a_member_no_refusal_reaches_is_as_before() {
 #[cfg(all(feature = "serde", feature = "typescript"))]
 #[test]
 fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
+    let valid = format!(
+        "export type Tide = Readonly<TideDraft>{};",
+        brand_after("Tide")
+    );
     let lines = [
         "/**",
         " * An enum none of whose members is read as a default.",
@@ -528,8 +534,10 @@ fn an_enum_with_no_default_writes_the_typescript_text_it_wrote() {
         "  kind: \"Slack\";",
         "};",
         "",
-        "export type Tide = Readonly<TideDraft> & $brand<\"Tide\">;",
+        &valid,
         "",
+        #[cfg(not(feature = "zod"))]
+        "export const Tide: { readonly Slack: Tide } = {\n  Slack: { kind: \"Slack\" },\n} satisfies Record<string, Tide>;\n",
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */",
         "export function Tide$Variant(value: unknown): string {",
         "  if (typeof value !== \"object\" || value === null || !(\"kind\" in value)) return \"\";",
