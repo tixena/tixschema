@@ -1639,8 +1639,6 @@ struct PublishedBinding<'binding> {
     default_types: &'binding [(syn::Ident, syn::Type)],
     /// Whether the item is published as a draft and a valid type.
     drafted: bool,
-    /// Whether the valid type's schema freezes what it parses.
-    frozen: bool,
     identified: SchemaId,
     /// The functions `preprocess` names on the type, each written around its own expression.
     preprocess: &'binding [FunctionName],
@@ -10434,7 +10432,6 @@ fn tuple_struct_schema_impl_items(
             default_types: &args.default_types,
             preprocess: &args.preprocess,
             drafted: valid_type::has_draft(),
-            frozen: valid_type::freezes(),
             identified: SchemaId::Named,
             republished: tuple_struct_republishes_slot(&slots.shape),
             admits: if tuple_struct_null(&slots.shape) == NullAdmitted::Always {
@@ -13217,7 +13214,7 @@ fn tagged_ts_definition_method(
     );
     let key = ts_member_key(tag_name);
     let constants = ts_unit_variant_constants(item_enum, casing, &ts_generics, |wire| {
-        format!("Object.freeze({{ {key}: {} }})", ts_quoted(wire))
+        format!("{{ {key}: {} }}", ts_quoted(wire))
     });
     generate_discriminated_enum_ts_definition_method(
         docs,
@@ -23032,11 +23029,11 @@ fn ts_plain_enum_members(item_name: &str, constants: &[(String, String)]) -> Str
             .map(|(key, value)| (key.trim_start_matches("r#"), value.as_str())),
     );
     format!(
-        "\n\nexport const {item_name}: {typed} = Object.freeze({{\n{members}\n}}) satisfies Record<string, {item_name}>;"
+        "\n\nexport const {item_name}: {typed} = {{\n{members}\n}} satisfies Record<string, {item_name}>;"
     )
 }
 
-/// The type of an enum's frozen constants, each key read-only at the type it holds: what a
+/// The type of an enum's constants, each key read-only at the type it holds: what a
 /// declaration file writes, which `isolatedDeclarations` will not read off the object.
 #[cfg(feature = "typescript")]
 fn constants_type<'held>(members: impl Iterator<Item = (&'held str, &'held str)>) -> String {
@@ -23091,12 +23088,12 @@ fn ts_valid_conversion(item_name: &str, constants: &[(String, String)]) -> Strin
                 .join("\n");
             let typed = constants_type(members.iter().map(|(key, _)| (key.as_str(), item_name)));
             format!(
-                "\n\nexport const {item_name}: {typed} = Object.freeze({{\n{lines}\n}}) satisfies Record<string, {item_name}>;"
+                "\n\nexport const {item_name}: {typed} = {{\n{lines}\n}} satisfies Record<string, {item_name}>;"
             )
         };
         let unit = if declared.unit {
             format!(
-                "{}\n\nexport const {item_name}: {item_name} = Object.freeze({{}});{}",
+                "{}\n\nexport const {item_name}: {item_name} = {{}};{}",
                 valid_type::SETTLE_OPEN,
                 valid_type::SETTLE_CLOSE
             )
@@ -23132,12 +23129,7 @@ fn zod_schema_constants(item_name: &str) -> String {
             .join("; ");
         let getters = members
             .iter()
-            .map(|(key, value)| {
-                // The schema freezes what it parses, so the literal is handed to it unfrozen.
-                let literal = value
-                    .strip_prefix("Object.freeze(")
-                    .and_then(|inner| inner.strip_suffix(')'))
-                    .unwrap_or(value);
+            .map(|(key, literal)| {
                 format!(
                     "  get {key}(): {item_name} {{\n    \
                      const made = {item_name}$Made.{key} ?? {item_name}$Schema.parse({literal});\n    \
@@ -23151,7 +23143,7 @@ fn zod_schema_constants(item_name: &str) -> String {
         let typed = constants_type(members.iter().map(|(key, _)| (key.as_str(), item_name)));
         format!(
             "\n\nconst {item_name}$Made: {{ {held} }} = {{}};\n\n\
-             export const {item_name}: {typed} = Object.freeze({{\n{getters}\n}});"
+             export const {item_name}: {typed} = {{\n{getters}\n}};"
         )
     };
     let made = if unit {
@@ -23849,7 +23841,7 @@ fn zod_published_binding(
 }
 
 /// What a drafted item publishes beside its draft's binding: the schema the draft's schema becomes
-/// once it is frozen and branded, and which only a parse returns. A generic item publishes a
+/// once it is branded, and which only a parse returns. A generic item publishes a
 /// factory of them, built from the draft's factory at the same arguments.
 #[cfg(feature = "zod")]
 fn zod_valid_binding(
@@ -23866,8 +23858,7 @@ fn zod_valid_binding(
         #[cfg(not(feature = "typescript"))]
         let constants = String::new();
         let sealed = format!(
-            "{draft_name}$Schema{}{}{}",
-            if published.frozen { ".readonly()" } else { "" },
+            "{draft_name}$Schema{}{}",
             zod_brand_call(item_name),
             if published.admits == DraftAdmits::Null {
                 ".nullable()"
@@ -23970,7 +23961,7 @@ fn ts_decode_functions(item_name: &str, decoded: &TsDecoded) -> String {
 
 /// The factory of a generic item's valid type, over its draft's factory at the same arguments. The
 /// schema it answers is stated by what it parses to rather than read off the draft's: a type that
-/// holds itself, or another that holds it, has no end to read the freeze and brand of back.
+/// holds itself, or another that holds it, has no end to read the brand of back.
 #[cfg(feature = "zod")]
 fn zod_valid_factory(
     item_name: &str,
@@ -23994,15 +23985,7 @@ fn zod_valid_factory(
     };
     let default_block = zod_default_block(item_name, rust_ident, parameters, &defaults);
     let draft_call = format!("{draft_name}$SchemaFactory({names})");
-    let sealed = format!(
-        "{}{}",
-        if published.frozen {
-            format!("z.readonly({draft_call})")
-        } else {
-            draft_call
-        },
-        zod_brand_call(item_name)
-    );
+    let sealed = format!("{draft_call}{}", zod_brand_call(item_name));
     #[cfg(feature = "typescript")]
     {
         let bounds = zod_factory_bounds(parameters);
@@ -24373,7 +24356,6 @@ fn generate_zod_schema_method(
                 default_types: &args.default_types,
                 preprocess: &args.preprocess,
                 drafted: valid_type::has_draft(),
-                frozen: valid_type::freezes(),
                 identified: SchemaId::Named,
                 republished: false,
                 admits: DraftAdmits::Nothing,
@@ -24532,7 +24514,6 @@ fn generate_plain_enum_zod_schema_method(
                     default_types: &[],
                     preprocess: &[],
                     drafted,
-                    frozen: true,
                     identified: SchemaId::Named,
                     republished: false,
                     admits: DraftAdmits::Nothing,
@@ -24706,7 +24687,6 @@ fn generate_enum_zod_schema_method_after(
                 default_types: &args.default_types,
                 preprocess: &args.preprocess,
                 drafted: valid_type::has_draft(),
-                frozen: valid_type::freezes(),
                 identified: SchemaId::Named,
                 republished: false,
                 admits: if admits_null {
@@ -24908,7 +24888,6 @@ fn generate_alias_zod_method(
             default_types,
             preprocess: &[],
             drafted: false,
-            frozen: false,
             identified: SchemaId::Unnamed,
             republished: republishes_sibling_binding(&surface),
             admits: DraftAdmits::Nothing,

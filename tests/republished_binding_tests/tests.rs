@@ -358,7 +358,7 @@ fn an_example_on_a_republished_binding_lands_on_the_value_the_annotation_reads()
     let zod = ExampledSlot::zod_schema();
     assert!(
         zod.contains(
-            "export const ExampledSlot$Schema: ZodType & { _zod: { output: ExampledSlot } } = ExampledSlotDraft$Schema.readonly().brand<\"ExampledSlot\">().meta({
+            "export const ExampledSlot$Schema: ZodType & { _zod: { output: ExampledSlot } } = ExampledSlotDraft$Schema.brand<\"ExampledSlot\">().meta({
   ...(ExampledSlotDraft$Schema.meta() ?? {}),
   id: \"ExampledSlot\",
   examples: [\"corr-1\"]
@@ -415,7 +415,7 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     for (zod, line) in [
         (
             HoldsBrands::zod_schema(),
-            "export const HoldsBrands$Schema: ZodType & { _zod: { output: HoldsBrands } } = HoldsBrandsDraft$Schema.readonly().brand<\"HoldsBrands\">().meta({
+            "export const HoldsBrands$Schema: ZodType & { _zod: { output: HoldsBrands } } = HoldsBrandsDraft$Schema.brand<\"HoldsBrands\">().meta({
   ...(HoldsBrandsDraft$Schema.meta() ?? {}),
   id: \"HoldsBrands\",
   examples: []
@@ -439,7 +439,7 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
         ),
         (
             FlattenOnly::zod_schema(),
-            "export const FlattenOnly$Schema: ZodType & { _zod: { output: FlattenOnly } } = FlattenOnlyDraft$Schema.readonly().brand<\"FlattenOnly\">().meta({
+            "export const FlattenOnly$Schema: ZodType & { _zod: { output: FlattenOnly } } = FlattenOnlyDraft$Schema.brand<\"FlattenOnly\">().meta({
   ...(FlattenOnlyDraft$Schema.meta() ?? {}),
   id: \"FlattenOnly\",
   examples: []

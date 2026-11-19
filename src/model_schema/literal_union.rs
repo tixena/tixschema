@@ -61,7 +61,7 @@ pub enum Shape {
 pub struct Candidate {
     option: String,
     plain: String,
-    /// What closes the option once it is extended: the freeze and brand of a valid type.
+    /// What closes the option once it is extended: the brand of a valid type.
     sealed: String,
     shape: Shape,
 }
@@ -182,7 +182,7 @@ pub fn newtype_candidate(zod: &str, slot: &FieldDef, enum_name: &str) -> Candida
     }
 }
 
-/// The strict object of the draft `stem` names, and what freezes and brands it as the valid type
+/// The strict object of the draft `stem` names, and what brands it as the valid type
 /// once the union has extended it: built from the draft's own binding, which keeps the shape the
 /// union reads its key from where the valid type's `$Schema` is annotated.
 fn valid_object(stem: &str) -> (String, String) {
@@ -190,15 +190,12 @@ fn valid_object(stem: &str) -> (String, String) {
     {
         (
             format!("{stem}Draft$RawSchema"),
-            format!(".readonly().brand<\"{stem}\">()"),
+            format!(".brand<\"{stem}\">()"),
         )
     }
     #[cfg(not(feature = "typescript"))]
     {
-        (
-            format!("{stem}Draft$Schema"),
-            ".readonly().brand()".to_owned(),
-        )
+        (format!("{stem}Draft$Schema"), ".brand()".to_owned())
     }
 }
 

@@ -530,7 +530,7 @@ fn test_the_compiler_validated_examples_are_declarable_and_show_what_they_emit()
             "  age: z.number().int().min(0).max(4294967295),",
             "}).meta({ id: \"UserDraft\" });",
             "export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;",
-            "export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.readonly().brand<\"User\">().meta({",
+            "export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.brand<\"User\">().meta({",
             "  ...(UserDraft$Schema.meta() ?? {}),",
             "  id: \"User\",",
             "  examples: [{\"age\":25,\"email\":\"john@example.com\",\"name\":\"John Doe\"}]",

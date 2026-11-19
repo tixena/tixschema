@@ -50,7 +50,7 @@ const BERTHAGE_ZOD: &str = r#"const BerthageDraft$RawSchema = z.discriminatedUni
 
 export const BerthageDraft$Schema: ZodType<BerthageDraft> = BerthageDraft$RawSchema;
 
-export const Berthage$Schema: ZodType & { _zod: { output: Berthage } } = BerthageDraft$Schema.readonly().brand<"Berthage">().meta({
+export const Berthage$Schema: ZodType & { _zod: { output: Berthage } } = BerthageDraft$Schema.brand<"Berthage">().meta({
   ...(BerthageDraft$Schema.meta() ?? {}),
   id: "Berthage",
   examples: []

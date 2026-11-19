@@ -1,7 +1,7 @@
 //! The models the decode functions are checked against: a struct with a rule, a holder of it, an
-//! `f64`, an `i64`, an `Option`, an externally tagged enum and a holder of it, a recursive struct, a
-//! generic struct, a brand and a plain enum, each a shape whose schema reads more than its draft
-//! describes.
+//! `f64`, an `i64`, an `Option`, an externally tagged enum and a holder of it, an internally tagged
+//! enum, a recursive struct, a generic struct, a brand and a plain enum, each a shape whose schema
+//! reads more than its draft describes.
 
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,15 @@ pub struct DecodedBill {
     pub payment: DecodedPayment,
 }
 
+/// An internally tagged enum, whose unit variant's constant is an object.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum DecodedShipping {
+    Courier { company: String },
+    Pickup,
+}
+
 /// A struct that holds a list of itself.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -109,6 +118,8 @@ pub fn decoded_texts() -> Vec<String> {
         DecodedPayment::zod_schema(),
         DecodedBill::ts_definition(),
         DecodedBill::zod_schema(),
+        DecodedShipping::ts_definition(),
+        DecodedShipping::zod_schema(),
         DecodedNode::ts_definition(),
         DecodedNode::zod_schema(),
         DecodedWrap::<String>::ts_definition(),

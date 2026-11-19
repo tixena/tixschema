@@ -88,7 +88,7 @@ const UserDraft$RawSchema = z.strictObject({
 
 export const UserDraft$Schema: ZodType<UserDraft> = UserDraft$RawSchema;
 
-export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.readonly().brand<"User">().meta({
+export const User$Schema: ZodType & { _zod: { output: User } } = UserDraft$Schema.brand<"User">().meta({
   ...(UserDraft$Schema.meta() ?? {}),
   id: "User",
   examples: []

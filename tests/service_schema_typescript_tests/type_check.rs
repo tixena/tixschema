@@ -94,7 +94,6 @@ declare interface ZodType<Parsed = unknown> {
   brand<Name extends string>(): ZodBuilder;
   meta(data?: object): ZodBuilder;
   parse(value: unknown): this[\"_zod\"][\"output\"];
-  readonly(): ZodBuilder;
   safeParse(value: unknown): ZodParsed<this[\"_zod\"][\"output\"]>;
 }
 
@@ -113,7 +112,6 @@ declare type ZodBuilder = ZodType<never> & {
   meta(data: { examples: ReadonlyArray<unknown> }): ZodBuilder;
   min(bound: number): ZodBuilder;
   prefault(value: unknown): ZodBuilder;
-  readonly(): ZodBuilder;
   superRefine(
     check: (read: never, ctx: { issues: Array<{ code: string; input?: unknown; message?: string; params?: unknown; path?: ReadonlyArray<PropertyKey> }> }) => void,
     params?: object,
