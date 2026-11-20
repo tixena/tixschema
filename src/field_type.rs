@@ -3,7 +3,6 @@
 
 #[cfg(feature = "zod")]
 use core::mem;
-#[cfg(feature = "serde")]
 use core::slice::from_ref;
 
 #[cfg(feature = "zod")]
@@ -13,7 +12,6 @@ use syn::{Fields, GenericArgument, Ident, ItemEnum, PathArguments, Type, Variant
 use proc_macro2::Span;
 use syn::spanned::Spanned as _;
 
-#[cfg(feature = "serde")]
 use syn::Attribute;
 
 use crate::features::model_schema_prop::LiteralValue;
@@ -47,9 +45,9 @@ use crate::utils::{
     zod_factory_argument,
 };
 
-#[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 use crate::utils::placeholders_filled;
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::{FlattenVariant, parameter_placeholder};
 
 #[cfg(feature = "chrono")]
@@ -57,13 +55,11 @@ use crate::features::chrono;
 #[cfg(feature = "mongodb")]
 use crate::features::object_id;
 
-#[cfg(feature = "serde")]
 use crate::features::serde::{
     parse_serde_field_attributes as parse_serde_field_attributes_impl,
     parse_serde_type_attributes as parse_serde_type_attributes_impl,
 };
 // Bring serde metadata types into scope (used by the serde parsing helpers below).
-#[cfg(feature = "serde")]
 use crate::features::serde::{SerdeFieldMeta, SerdeTypeMeta};
 
 /// The keys serde writes the two arms of a `Result` under, `Ok` first.
@@ -233,10 +229,7 @@ pub const NUMBER_OUT_OF_RANGE: &str = "number out of range";
 /// The refusals of a read every client and dispatcher answers `undeserializable-payload` for,
 /// naming no field, as the Rust dispatchers answer what `serde_json` classifies as text that is not
 /// the document.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "kotlin", feature = "swift")
-))]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 pub const NOT_A_DOCUMENT: [&str; 5] = [
     EXPECTED_VALUE,
     EXPECTED_NUMERIC_KEY,
@@ -248,10 +241,7 @@ pub const NOT_A_DOCUMENT: [&str; 5] = [
 /// The refusals of the text of a number map key that `serde_json` classifies as text that is not
 /// the document, whichever reader it reads the key with: the words an `mcp` server answers
 /// `undeserializable-payload` for, naming no field.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "kotlin", feature = "swift")
-))]
+#[cfg(any(feature = "dart", feature = "kotlin"))]
 pub const NOT_A_DOCUMENT_KEY: [&str; 4] = [
     EXPECTED_NUMERIC_KEY,
     NUMBER_OUT_OF_RANGE,
@@ -309,11 +299,7 @@ pub enum VariantKind {
     Unit,
 }
 
-#[cfg(any(
-    all(feature = "serde", feature = "zod"),
-    feature = "dart",
-    feature = "swift"
-))]
+#[cfg(any(feature = "zod", feature = "dart", feature = "swift"))]
 impl VariantKind {
     /// What serde says a variant of this kind is when a read hands it a string, the unit variant,
     /// instead of the value it carries; none for a unit variant, which a string names.
@@ -597,7 +583,6 @@ impl RangeKind {
 
 /// One member of a recovering decode's `Expected`: its name, the names it carries, and how many
 /// members follow under it.
-#[cfg(feature = "serde")]
 pub type ExpectedMember = (&'static str, Vec<String>, usize);
 
 /// What serde does with a member whose key the payload leaves out.
@@ -838,7 +823,7 @@ impl FieldDef {
                 || self.parameter_shape_name().is_some())
     }
 
-    #[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
+    #[cfg(any(feature = "zod", feature = "typescript"))]
     /// Checks if this field contains a reference to the given type name.
     pub fn contains_type_reference(&self, type_name: &str) -> bool {
         match &self.field_type {
@@ -912,7 +897,6 @@ impl FieldDef {
     /// The field's type as a recovering decode's `Expected` describes it, each member written
     /// before the members under it: `Optional` and `Array` per level, outermost first, then the
     /// category.
-    #[cfg(feature = "serde")]
     pub fn expected_members(&self) -> Vec<ExpectedMember> {
         let mut members: Vec<ExpectedMember> = Vec::new();
         for level in (0..=self.array_depth).rev() {
@@ -1053,7 +1037,7 @@ impl FieldDef {
     /// names, as that enum recorded them, and nothing for a field that names no such enum. Answered
     /// under the same bound [`Self::zod_union_members`] is, and for the same reason: what is
     /// spliced in the name's place has to be the whole of what the operand validates.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     pub fn flatten_variants(&self) -> Vec<FlattenVariant> {
         if self.is_written_around() {
             return Vec::new();
@@ -1064,7 +1048,7 @@ impl FieldDef {
     /// [`Self::flatten_variants`] of a field that names a function its schema is written around,
     /// which an operand writes around the variants in place of the name: the enum's own binding
     /// takes a unit variant as its bare name, which serde writes flattened as an entry over `null`.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     pub fn flatten_variants_written_around(&self) -> Vec<FlattenVariant> {
         if !self.is_written_around() {
             return Vec::new();
@@ -1145,13 +1129,6 @@ impl FieldDef {
 
     /// Whether the field is `()` itself, which serde writes as `null`, and which every surface
     /// describes as `null`.
-    #[cfg(any(
-        feature = "serde",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    ))]
     pub const fn is_unit(&self) -> bool {
         self.array_depth == 0
             && self.nullable_levels.is_empty()
@@ -1161,7 +1138,7 @@ impl FieldDef {
     /// Whether the field names a function its schema is written around, a `preprocess` or a
     /// `check`: what the type it names splices in its own place is then no longer the whole of
     /// what the field validates.
-    #[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
+    #[cfg(any(feature = "zod", feature = "typescript"))]
     pub(crate) fn is_written_around(&self) -> bool {
         self.model_schema_prop_meta
             .as_ref()
@@ -1579,7 +1556,7 @@ impl FieldDef {
 
     /// Rewrites each of the enclosing item's own type parameters, `parameters`, into the
     /// [`parameter_placeholder`] of its position, which a holder fills with its own argument.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     pub fn place_type_parameters(&mut self, parameters: &[String]) {
         if let FieldDefType::TypeParam(name) = &self.field_type
             && let Some(at) = parameters.iter().position(|parameter| parameter == name)
@@ -1802,7 +1779,7 @@ impl FieldDef {
     /// What the externally tagged enum this field names recorded for each of its variants, each of
     /// the enum's own type parameters filled with the argument written at its position as a
     /// reference to the enum writes it. Nothing where a position the variants name has no argument.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     fn recorded_flatten_variants(&self) -> Vec<FlattenVariant> {
         if self.array_depth > 0 {
             return Vec::new();
@@ -1932,7 +1909,7 @@ impl FieldDef {
     /// argument written at its position — and nothing for a field that names no such union, for
     /// one whose members carry no exclusion the union's own name does not already describe, and for
     /// one that writes no argument at a position a member names.
-    #[cfg(all(feature = "serde", feature = "typescript"))]
+    #[cfg(feature = "typescript")]
     pub fn ts_union_members(&self) -> Vec<String> {
         if self.array_depth > 0 || self.is_written_around() {
             return Vec::new();
@@ -2093,7 +2070,7 @@ impl FieldDef {
     /// name that type written so the alias declaring the union stays resolvable: `Partial<Record<K,
     /// V>>` would make the alias circular (TS2456). A `string` or `number` key is written as the
     /// index-signature object it is equal to, and an enumerated key as the mapped type.
-    #[cfg(all(feature = "serde", feature = "typescript"))]
+    #[cfg(feature = "typescript")]
     pub fn typescript_slot_typename_deferring_self(&self, self_type_name: &str) -> String {
         let FieldDefType::Map(key, value) = &self.field_type else {
             return self.typescript_slot_typename();
@@ -2575,7 +2552,7 @@ impl FieldDef {
 
     /// Whether the type this field names is an untagged enum whose Zod schema is a discriminated
     /// union, as [`Self::zod_union_members`] reads the members of one that is not.
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     pub fn zod_discriminated_union(&self) -> bool {
         if self.array_depth > 0 || self.is_written_around() {
             return false;
@@ -2733,7 +2710,7 @@ impl FieldDef {
     /// binding that publishes it and held to the union's checks: what an object joins in place of
     /// the union's own binding, which reads a payload whole and refuses one that two of its members
     /// accept beside the keys of the object. Nothing where the union publishes no such binding.
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     pub fn zod_member_references(&self) -> Vec<ZodUnionMember> {
         let Some(binding) = self.zod_members_binding() else {
             return Vec::new();
@@ -2747,7 +2724,7 @@ impl FieldDef {
     }
 
     /// The binding that publishes, one by one, the members of the untagged union this field names.
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     pub fn zod_members_binding(&self) -> Option<String> {
         if self.array_depth > 0 || self.is_written_around() {
             return None;
@@ -2767,7 +2744,6 @@ impl FieldDef {
     /// binding is not the one schema that calls a function of its own or replaces a default.
     #[cfg(feature = "zod")]
     pub fn zod_merged_schema(&self) -> String {
-        #[cfg(feature = "serde")]
         {
             let variants = self.flatten_variants_written_around();
             if !variants.is_empty()
@@ -2805,7 +2781,7 @@ impl FieldDef {
 
     /// [`Self::zod_type`] of a message, whose optional type is refused by the issues of the
     /// type it holds, as serde names a value inside an `Option` by the path of the value.
-    #[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+    #[cfg(all(feature = "typescript", feature = "zod"))]
     pub fn zod_message_type(&self) -> String {
         self.zod_type_with(true)
     }
@@ -2930,13 +2906,10 @@ impl FieldDef {
     /// member's text holds the default of a member, which only the binding's own text replaces.
     #[cfg(feature = "zod")]
     pub fn zod_read_whole(&self) -> bool {
-        #[cfg(feature = "serde")]
         let flattened = self
             .flatten_variants()
             .iter()
             .any(|variant| holds_a_placeholder(&variant.zod));
-        #[cfg(not(feature = "serde"))]
-        let flattened = false;
         flattened
             || self.zod_names_a_preprocess()
             || self
@@ -3190,7 +3163,7 @@ pub fn zod_buffered_issue() -> String {
 
 /// The check that reads the issues of a value serde reads from buffered content through
 /// [`zod_buffered_issue`], and leaves every other issue as it is.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 pub fn zod_buffered() -> String {
     format!(
         ".superRefine((_read, ctx) => {{ ctx.issues.splice(0, ctx.issues.length, \
@@ -4171,14 +4144,12 @@ pub fn is_undescribable_primitive(name: &str) -> bool {
 
 /// Delegates to [`crate::features::serde::parse_serde_type_attributes`] for the type-level serde
 /// metadata (`rename_all`, `tag`, …) `model_schema.rs` reads.
-#[cfg(feature = "serde")]
 pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
     parse_serde_type_attributes_impl(attrs)
 }
 
 /// Delegates to [`crate::features::serde::parse_serde_field_attributes`] for a field's rename and
 /// `flatten`.
-#[cfg(feature = "serde")]
 pub fn parse_serde_field_attributes(attrs: &[Attribute]) -> SerdeFieldMeta {
     parse_serde_field_attributes_impl(attrs)
 }

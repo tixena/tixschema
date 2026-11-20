@@ -170,11 +170,7 @@ impl LiteralValue {
 ///   It is a rule: `validate()` refuses any other value, on each item of a list, and so does the
 ///   type's read.
 /// - `ts_optional` — for an `Option<T>` field, emit `field?: T` instead of `field: T | undefined`
-///   (TypeScript only; a non-`Option` field is a compile error). It decides the key only on a field
-///   no serde key-omission attribute speaks for, since such an attribute already writes the
-///   optional key off the wire with the `serde` feature on. Under the `serde` feature that field
-///   does not compile — the `Option`-null guard refuses it — so the one shape the flag is live on
-///   is a build with the feature off.
+///   (TypeScript only; a non-`Option` field is a compile error).
 ///
 /// ## Preprocessing
 ///

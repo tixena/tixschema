@@ -3,20 +3,18 @@
 //! into the reply, and a client that mirrors both directions — encoding what it sends, decoding
 //! what comes back.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[macro_use]
 #[path = "service_schema_header_binding_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_header_binding_tests/amqp_transport.rs"]
 mod amqp_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_header_binding_tests/amqp_client.rs"]
 mod amqp_client;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{DocumentService, document_service_schema};

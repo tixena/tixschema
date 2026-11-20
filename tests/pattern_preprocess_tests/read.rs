@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
 
-#[cfg(not(feature = "serde"))]
-use super::models::LabelDraft;
 use super::models::{
     CarrierDraft, ClosedDockDraft, Consigned, ConsignedDraft, CrateDraft, Crated, CratedDraft,
     Delivery, DeliveryDraft, Either, EitherDraft, Grade, HandoverDraft, Label, Manifest,
@@ -19,7 +17,6 @@ use super::models::{
     TaggedDraft, TransferDraft, Unnamed, UnnamedDraft, Weighed, WeighedDraft, Wrapped,
     WrappedDraft, sample_report,
 };
-#[cfg(feature = "serde")]
 use super::models::{POSITIONS, positions};
 
 thread_local! {
@@ -204,14 +201,8 @@ fn a_type_that_reaches_itself_is_corrected_at_every_depth() {
     );
 }
 
-#[cfg(feature = "serde")]
 fn label(text: &str) -> Label {
     Label::new(text.to_owned()).unwrap()
-}
-
-#[cfg(not(feature = "serde"))]
-fn label(text: &str) -> Label {
-    LabelDraft::of(text).into()
 }
 
 #[test]
@@ -307,7 +298,6 @@ fn the_function_of_a_field_is_not_called_for_a_key_the_payload_does_not_hold() {
 
 /// Every position another type reads a preprocessed type in, and every shape the key is written
 /// on, prints the one text the Zod schemas print under node.
-#[cfg(feature = "serde")]
 #[test]
 fn every_position_and_every_shape_reads_the_corrected_payload() {
     let printed: String = positions()

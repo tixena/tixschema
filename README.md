@@ -17,7 +17,7 @@ serde = { version = "1.0", features = ["derive"] }
 A crate also lists `serde_json = "1.0"` where the generated code names it:
 
 - a type lists `enable = ["jsonschema"]`;
-- a type lists `enable = ["decode_with"]`, in a build with `serde` on;
+- a type lists `enable = ["decode_with"]`;
 - the crate invokes a service's dispatcher, client or server macro;
 - a type names a `preprocess`;
 - a type or a member writes `#[serde(default)]`, in a build with `serde` and any of `zod`, `dart`, `swift` and `kotlin` on;

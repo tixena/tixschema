@@ -4,7 +4,6 @@
 use syn::Item;
 
 use super::{property_read, swift_pattern};
-#[cfg(feature = "serde")]
 use crate::features::model_schema_prop::FunctionName;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
 use crate::features::swift::{SwiftTypeArgs, swift_schema_dispatch};
@@ -59,7 +58,6 @@ fn a_property_named_after_a_local_of_the_method_is_read_through_self() {
 
 /// A brand over a string answers its text with a member, and a brand over a brand through the
 /// brand it holds. A brand over a number has none.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_string_carries_the_member_that_answers_its_text() {
     let code: Item = syn::parse_quote! {
@@ -146,7 +144,6 @@ fn a_length_on_a_named_type_is_measured_through_the_member_or_as_the_string() {
 /// A map keyed by a brand with a check judges each key under the step of its entry, as Rust's
 /// `validate()` names it, and binds no value it does not walk. A map whose key has no rule walks
 /// nothing of it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_keyed_by_a_brand_with_a_check_judges_each_key_under_its_step() {
     let pitch: Item = syn::parse_quote! {

@@ -3,8 +3,6 @@
 //! a name nothing answers to, a handler that panicked, and a one-way operation that settles
 //! without publishing.
 
-#![cfg(feature = "serde")]
-
 /// A message annotated with `#[model_schema_prop]`, and where a violation of it is caught.
 #[macro_use]
 pub mod a_message_annotated_with_a_constraint {

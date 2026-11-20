@@ -1,7 +1,7 @@
 //! A `Vec<u8>` is the bytes of a payload: what each surface publishes for it and for each sequence
 //! that stays an array.
 
-#![cfg(all(feature = "serde", any(feature = "typescript", feature = "dart")))]
+#![cfg(any(feature = "typescript", feature = "dart"))]
 
 extern crate alloc;
 

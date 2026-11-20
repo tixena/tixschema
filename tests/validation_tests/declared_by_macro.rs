@@ -1,7 +1,7 @@
 //! A model type declared by `macro_rules!`, with a field type handed in from the call site,
 //! describes as the same declaration written by hand.
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 mod a_field_type_handed_in_from_the_call_site {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

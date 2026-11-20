@@ -3,7 +3,7 @@
 //! one: each call prints the request the transport was handed and what the client answered. The
 //! `ws_rpc` client and its dispatcher compile beside it.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
-#[cfg(feature = "serde")]
 use tixschema::service_schema;
 
 /// A named struct, and the request of `AccountService::sign_up`.
@@ -22,19 +21,16 @@ pub struct Pair(
 );
 
 /// A brand over a string.
-#[cfg(feature = "serde")]
 #[model_schema(minLength = 3)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Username(String);
 
 /// An alias of the brand.
-#[cfg(feature = "serde")]
 #[model_schema()]
 pub type Login = Username;
 
 /// Holds the brand through its alias, under a key serde renames.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +91,6 @@ pub struct Roster<Entry> {
 }
 
 /// A struct the recovering decode reads.
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["decode_with"])]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Handle {
@@ -104,14 +99,12 @@ pub struct Handle {
 }
 
 /// The reply to [`AccountService::sign_up`].
-#[cfg(feature = "serde")]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Done {
     pub welcomed: bool,
 }
 
 /// The error [`AccountService::sign_up`] declares.
-#[cfg(feature = "serde")]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "errorCode")]
 pub enum SignupError {
@@ -119,7 +112,6 @@ pub enum SignupError {
 }
 
 /// A service that names no transport, whose module publishes the request check a dispatcher runs.
-#[cfg(feature = "serde")]
 #[service_schema()]
 pub trait AccountService<Ctx> {
     async fn sign_up(&self, ctx: &Ctx, req: Signup) -> Result<Done, SignupError>;

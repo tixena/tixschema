@@ -4,39 +4,30 @@
 use syn::parse_quote;
 
 use super::SerdeDefaults;
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 use super::default_refusals;
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 use syn::ItemEnum;
 
 /// The message of each refusal `item` earns, in the order of its members.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn refused(item: &ItemEnum) -> Vec<String> {
     default_refusals(item)
@@ -75,15 +66,12 @@ fn one_index_runs_across_the_variants() {
 
 /// A member whose type names a parameter is refused, and has no default, unless it is a list, a
 /// set or a map under the bare `default`.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_member_that_names_a_parameter_is_refused_unless_it_is_an_empty_collection() {
@@ -116,15 +104,12 @@ fn a_member_that_names_a_parameter_is_refused_unless_it_is_an_empty_collection()
 }
 
 /// A const parameter, a lifetime and `Self` are each named in the refusal.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_const_parameter_a_lifetime_and_self_are_each_named() {
@@ -170,15 +155,12 @@ fn a_const_parameter_a_lifetime_and_self_are_each_named() {
 }
 
 /// The refusal of a member serde leaves out of what it writes names the attribute written.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_member_left_out_of_what_serde_writes_is_refused_under_the_key_written() {
@@ -206,15 +188,12 @@ fn a_member_left_out_of_what_serde_writes_is_refused_under_the_key_written() {
 
 /// An enum that writes itself through `into` or `remote` is refused each member under a default,
 /// as one that derives no `Serialize` is.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn an_enum_written_through_another_type_is_refused_each_default() {
@@ -246,15 +225,12 @@ fn an_enum_written_through_another_type_is_refused_each_default() {
 /// A member serde never reads the key of, an `Option`, a variant serde never reads or reads
 /// through a function, and an enum serde never reads or reads through another type are refused
 /// nothing, and hold no default.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn what_serde_reads_no_default_of_is_refused_nothing() {

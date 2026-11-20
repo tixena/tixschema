@@ -5,8 +5,6 @@
 //! variant of a strict enum under a tag alone, which `#[model_schema]` reads refusing the key
 //! that serde's own derive reads past.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]

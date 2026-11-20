@@ -21,7 +21,7 @@ struct Member {
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[serde(rename_all = "lowercase")]
 enum Plain {
     Active,
     Inactive,
@@ -29,7 +29,7 @@ enum Plain {
 
 #[model_schema()]
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(feature = "serde", serde(tag = "type", rename_all = "camelCase"))]
+#[serde(tag = "type", rename_all = "camelCase")]
 enum Tagged {
     Created { at: String },
     Deleted { at: String },
@@ -88,7 +88,6 @@ fn every_item_kind_puts_its_export_on_the_line_below_its_block() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn a_tagged_variants_first_member_opens_its_block_on_its_own_line() {
     let ts = Tagged::ts_definition();
 
@@ -103,7 +102,6 @@ fn a_tagged_variants_first_member_opens_its_block_on_its_own_line() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn an_externally_tagged_variants_block_sits_at_its_keys_indent() {
     let ts = External::ts_definition();
 

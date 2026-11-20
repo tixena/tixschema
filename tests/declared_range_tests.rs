@@ -2,7 +2,7 @@
 //! it, keeps its own description on every surface: a field written with the name is that type. A
 //! binary of its own: the name is read off a registry the whole crate shares.
 
-#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#![cfg(all(feature = "typescript", feature = "zod"))]
 
 #[cfg(test)]
 mod tests {

@@ -5,6 +5,5 @@
 //! writes on the wire, so the two can never drift apart silently.
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "rename_all_tests/tests.rs"]
 mod tests;

@@ -2,8 +2,6 @@
 //! push-on-write shapes. `LedgerEvents`: the one-way, browser-implemented service a server pushes
 //! to over a `FrameWriter` rather than calls.
 
-#![cfg(feature = "serde")]
-
 use crate::ledger_client_ws::{FrameSession, LedgerClient};
 use crate::ledger_events_ws::LedgerEventsClient;
 use crate::ledger_schema::{CallError, ServiceFaultKind};

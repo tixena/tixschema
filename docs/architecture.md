@@ -14,7 +14,7 @@ How the macros turn a declaration into each surface, the data structures they sh
 
 2. **Macro Execution** ([model_schema.rs](../src/model_schema.rs))
    - `exec_model_schema()` routes to `process_struct()`, `process_enum()`, `process_type_alias()`, or `process_branded_newtype()`
-   - Parses Serde attributes when `serde` feature enabled
+   - Parses Serde attributes
    - Extracts example code from doc comments (every ` ```rust example` fence)
    - Generates methods: `ts_definition()`, `json_schema()` for a type that lists `enable = ["jsonschema"]`, optionally `schema_examples()` with `schema_example()`, and optionally `validate()`
    - `process_branded_newtype()`: handles `#[serde(transparent)]` structs serde writes as the value of one field -- a single-slot tuple struct, or a struct with named fields -- generating Zod brand schemas or `unique symbol` branded TypeScript types

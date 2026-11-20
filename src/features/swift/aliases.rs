@@ -8,7 +8,6 @@ use syn::Attribute;
 
 use super::swift_quoted;
 use crate::bound_message::swift_literal_text;
-#[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_field_attributes;
 
 /// The container of every key of the object a struct's members are read from, which a member
@@ -17,15 +16,8 @@ pub(super) const CONTAINER: &str =
     "let aliased = try decoder.container(keyedBy: SwiftSchemaAnyKey.self); ";
 
 /// The names `#[serde(alias = "...")]` writes on a variant or a field, in the order written.
-#[cfg(feature = "serde")]
 pub(super) fn written_on(attrs: &[Attribute]) -> Vec<String> {
     parse_serde_field_attributes(attrs).aliases
-}
-
-/// Without `serde` no attribute is read, so nothing is read under an alias.
-#[cfg(not(feature = "serde"))]
-pub(super) const fn written_on(_attrs: &[Attribute]) -> Vec<String> {
-    Vec::new()
 }
 
 /// The names a `case` of a `switch` over a variant's name takes the variant under: `wire`, then

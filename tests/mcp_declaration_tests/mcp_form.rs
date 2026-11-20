@@ -1,7 +1,5 @@
 //! `mcp_form_value()` and `mcp_form_flat()` on every kind of model type.
 
-#![cfg(feature = "serde")]
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;

@@ -2,7 +2,6 @@
 //! member is reported under.
 
 /// A holder runs the `validate()` of what it holds, and with it that type's checks.
-#[cfg(feature = "serde")]
 mod held_by_another {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -162,7 +161,6 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::models::Ledger;
 
 /// A member under each wrapper a check is read through, and one that is a list.
@@ -256,7 +254,6 @@ pub struct Waybill {
 }
 
 /// A key with no `Display`, which serde writes as the variant's name.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Bay {
@@ -264,7 +261,6 @@ pub enum Bay {
 }
 
 /// Two maps of a model with a check: one keyed by text, one by a key with no `Display`.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Depot {
@@ -340,15 +336,9 @@ fn a_check_on_an_option_runs_only_where_it_holds_a_value() {
         spare_carrier: Some("unknown".to_owned()),
         ..consignment().into()
     };
-    #[cfg(feature = "serde")]
     let named = [
         "'itemCodes.2': c is one code too many",
         "'spareCarrier': a carrier is known",
-    ];
-    #[cfg(not(feature = "serde"))]
-    let named = [
-        "'item_codes.2': c is one code too many",
-        "'spare_carrier': a carrier is known",
     ];
     assert_eq!(held.validation_issues(), named);
 }
@@ -361,17 +351,10 @@ fn a_check_takes_a_list_whole_and_the_value_under_a_wrapper() {
         weight_by_code: HashMap::from([("a".to_owned(), 0)]),
         ..consignment().into()
     };
-    #[cfg(feature = "serde")]
     let named = [
         "'boxedCarrier': a carrier is known",
         "'codes.2': c is one code too many",
         "'weightByCode': a weight is not zero",
-    ];
-    #[cfg(not(feature = "serde"))]
-    let named = [
-        "'boxed_carrier': a carrier is known",
-        "'listed_codes.2': c is one code too many",
-        "'weight_by_code': a weight is not zero",
     ];
     assert_eq!(held.validation_issues(), named);
 }
@@ -398,17 +381,10 @@ fn several_checks_run_in_the_order_written_and_none_stops_another() {
 /// Without `serde` no attribute is read, and every variant is under its own name.
 #[test]
 fn a_member_of_a_variant_is_reported_as_a_bound_of_it_is() {
-    #[cfg(feature = "serde")]
     let (stops, held_stops, held) = (
         "'ByRoad.roadStops.2': c is one code too many",
         "'detail.roadStops.2': c is one code too many",
         "'detail': a carrier is known",
-    );
-    #[cfg(not(feature = "serde"))]
-    let (stops, held_stops, held) = (
-        "'ByRoad.road_stops.2': c is one code too many",
-        "'ByRoad.road_stops.2': c is one code too many",
-        "'Carried': a carrier is known",
     );
     let by_road = DispatchDraft::ByRoad {
         road_stops: texts(&["a", "b", "c"]),
@@ -464,7 +440,6 @@ fn the_one_slot_of_a_struct_is_reported_under_no_name() {
 }
 
 /// The lone slot of an untagged variant is the value serde writes, so it has no name.
-#[cfg(feature = "serde")]
 #[test]
 fn the_lone_slot_of_an_untagged_variant_is_reported_under_no_name() {
     assert_eq!(
@@ -482,23 +457,6 @@ fn the_lone_slot_of_an_untagged_variant_is_reported_under_no_name() {
     );
 }
 
-/// Without `serde` the attribute that leaves the tag out is not read, and the variant has a name.
-#[cfg(not(feature = "serde"))]
-#[test]
-fn a_variants_slot_is_reported_under_the_variants_name_without_serde() {
-    assert_eq!(
-        DispatchUntaggedDraft::Carried("unknown".to_owned()).validation_issues(),
-        ["'Carried': a carrier is known"]
-    );
-    let by_road = DispatchUntaggedDraft::ByRoad {
-        road_stops: texts(&["a", "b", "c"]),
-    };
-    assert_eq!(
-        by_road.validation_issues(),
-        ["'ByRoad.road_stops.2': c is one code too many"]
-    );
-}
-
 /// A flattened member writes no key of its own. Without `serde` the attribute is not read, and
 /// the member is a field like any other.
 #[test]
@@ -510,10 +468,7 @@ fn a_flattened_member_is_reported_under_no_name() {
         .into(),
         number: 7,
     };
-    #[cfg(feature = "serde")]
     let named = ["'carrier': a waybill names its carrier"];
-    #[cfg(not(feature = "serde"))]
-    let named = ["'carriage.carrier': a waybill names its carrier"];
     assert_eq!(held.validation_issues(), named);
     assert_eq!(held.number, 7);
 }
@@ -557,7 +512,6 @@ fn a_check_is_called_where_the_type_is_declared() {
 }
 
 /// A holder of a map of models names a broken entry by its key: the text serde writes for it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_models_names_a_broken_entry_by_its_key() {
     let read = serde_json::from_value::<Depot>(serde_json::json!({

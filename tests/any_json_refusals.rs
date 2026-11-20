@@ -7,7 +7,6 @@
 
 // The cases are built with every feature on, the build the gate runs.
 #![cfg(all(
-    feature = "serde",
     feature = "zod",
     feature = "typescript",
     feature = "dart",
@@ -29,7 +28,8 @@ mod tests {
     use serde_json::Value;
 
     /// The features the cases are built with: the ones this file is compiled under.
-    const FEATURES: &str = r#""serde", "zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    const FEATURES: &str =
+        r#""zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
 
     /// One error rustc reports: its code, its message, and the source text its first span holds,
     /// read where the macro that wrote it was called.

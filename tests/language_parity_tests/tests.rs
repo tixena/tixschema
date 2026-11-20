@@ -1,6 +1,6 @@
 //! One declaration, two validators, one sentence.
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 mod declarations {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -88,7 +88,7 @@ mod declarations {
 }
 
 /// The refusal path: one declaration, two dispatchers, one answer.
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[macro_use]
 pub mod refusals {
     use super::declarations::{Account, CustomerId};
@@ -256,7 +256,7 @@ pub mod refusals {
 
 /// The sentence one emitted Zod check reports for a value, read off the `{ error: … }` argument the
 /// macro wrote for it.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn zod_sentence(error_argument: &str, rendered: &str) -> String {
     if let Some(constant) = error_argument
         .strip_prefix("{ error: \"")
@@ -281,7 +281,7 @@ fn zod_sentence(error_argument: &str, rendered: &str) -> String {
 }
 
 /// A JavaScript quoted string read back to the text it stands for, which is what zod reports.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn unescape_js(quoted: &str) -> String {
     let mut read = String::with_capacity(quoted.len());
     let mut chars = quoted.chars();
@@ -306,7 +306,7 @@ fn unescape_js(quoted: &str) -> String {
 
 /// Every `{ error: … }` argument `schema` carries, in the order they are written — which is the
 /// order zod runs the checks and so the order it reports them in.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn error_arguments(schema: &str) -> Vec<String> {
     let chars: Vec<char> = schema.chars().collect();
     let opener: Vec<char> = "{ error: ".chars().collect();
@@ -328,7 +328,7 @@ fn error_arguments(schema: &str) -> Vec<String> {
 /// between them: a quoted string and a template literal hide their braces from the count, and a
 /// template's `${…}` hole is skipped whole — every hole this emitter writes holds one expression
 /// and no brace of its own. `None` where the literal is never closed.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn closing_brace(chars: &[char], from: usize) -> Option<usize> {
     let mut depth = 0_usize;
     let mut quoted: Option<char> = None;
@@ -365,7 +365,7 @@ fn closing_brace(chars: &[char], from: usize) -> Option<usize> {
 
 /// What the TypeScript dispatcher would report for `schema` under `path`, given the value each
 /// check was handed: one line per violation, in the order zod reports them.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn typescript_report(schema: &str, path: &str, rendered: &str) -> Vec<String> {
     error_arguments(schema)
         .iter()
@@ -373,7 +373,7 @@ fn typescript_report(schema: &str, path: &str, rendered: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_value_breaking_two_of_a_fields_bounds_reads_the_same_in_both_languages() {
     let broken = declarations::DirectDraft {
@@ -395,7 +395,7 @@ fn a_value_breaking_two_of_a_fields_bounds_reads_the_same_in_both_languages() {
 }
 
 /// The other pairing one value can break at once, so `maxLength` is compared beside `minLength`.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
     let broken = declarations::CappedDraft {
@@ -417,7 +417,7 @@ fn a_value_over_a_length_and_off_a_pattern_reads_the_same_in_both_languages() {
 }
 
 /// A character outside the Basic Multilingual Plane is one character in both languages.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_length_over_non_ascii_text_reads_the_same_in_both_languages() {
     let rendered = "\u{1f600}".repeat(6);
@@ -440,7 +440,7 @@ fn a_length_over_non_ascii_text_reads_the_same_in_both_languages() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_brands_two_bounds_read_the_same_in_both_languages() {
     let rust = declarations::CustomerId::new("A!".to_owned())
@@ -465,7 +465,7 @@ fn a_brands_two_bounds_read_the_same_in_both_languages() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
     let broken = declarations::HeldDraft {
@@ -491,7 +491,7 @@ fn a_brand_held_in_a_field_reads_the_same_in_both_languages() {
 }
 
 /// A bound two hops down, one of them flattened, named by the path the payload spells.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
     let broken = declarations::HeldDraft {
@@ -515,7 +515,7 @@ fn a_bound_reached_through_a_flattened_hop_reads_the_same_in_both_languages() {
 }
 
 /// A numeric bound quotes the value back rather than its length, and does so identically.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_numeric_bound_reads_the_same_in_both_languages() {
     let under_the_floor = declarations::FloorDraft { invoice_count: 2 }
@@ -544,7 +544,7 @@ fn a_numeric_bound_reads_the_same_in_both_languages() {
 }
 
 /// A literal quotes the value back, and does so identically.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_literal_reads_the_same_in_both_languages() {
     let channel = declarations::ChannelDraft {
@@ -578,7 +578,7 @@ fn a_literal_reads_the_same_in_both_languages() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn no_emitted_check_is_left_to_report_in_zods_own_words() {
     for schema in [
@@ -615,7 +615,7 @@ fn no_emitted_check_is_left_to_report_in_zods_own_words() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
     let answered = refusals::refused(r#"{"account":{"jti":"a"},"customerId":"A!"}"#);
@@ -649,7 +649,7 @@ fn a_brand_refused_on_the_read_answers_the_same_fault_in_both_languages() {
 }
 
 /// Each problem a fault lists, written as the validator words it: `'field': detail`.
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn lines(fault: &serde_json::Value) -> Vec<String> {
     fault["issues"]
         .as_array()
@@ -664,7 +664,7 @@ fn lines(fault: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_bound_below_a_flattened_hop_answers_the_same_fault_in_both_languages() {
     let answered = refusals::refused(r#"{"account":{"jti":""},"customerId":"acme"}"#);
@@ -676,7 +676,7 @@ fn a_bound_below_a_flattened_hop_answers_the_same_fault_in_both_languages() {
     assert_eq!(lines(&answered), reported);
 }
 
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_payload_that_parsed_and_is_not_the_message_answers_the_same_kind_in_both_languages() {
     let constructor = refusals::inbound_fault();

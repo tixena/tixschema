@@ -3,11 +3,8 @@
 //! This module provides compile-time feature detection and utilities for handling
 //! different feature combinations in the macro expansion process.
 
-// Not gated on the `serde` feature: every build asks it what serde writes, and without the feature
-// `serde_attributes` yields no attribute.
 pub mod serde;
 
-#[cfg(feature = "serde")]
 pub mod recovering_decode;
 
 #[cfg(feature = "zod")]
@@ -38,10 +35,7 @@ pub mod dart;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub mod refusals;
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub mod member_keys;
 
 #[cfg(feature = "swift")]
@@ -58,7 +52,6 @@ pub mod model_schema_prop;
 
 // Gated on `serde`, because `#[service_schema]` is: the emitters this module names live in
 // `crate::service_schema`.
-#[cfg(feature = "serde")]
 pub mod service_schema;
 
 /// Feature detection utilities.
@@ -71,9 +64,6 @@ impl Features {
     pub fn enabled_features() -> Vec<&'static str> {
         let mut features = Vec::new();
 
-        if Self::has_serde() {
-            features.push("serde");
-        }
         if Self::has_zod() {
             features.push("zod");
         }
@@ -145,11 +135,6 @@ impl Features {
         cfg!(feature = "mongodb")
     }
 
-    /// Check if serde feature is enabled.
-    pub const fn has_serde() -> bool {
-        cfg!(feature = "serde")
-    }
-
     pub const fn has_swift() -> bool {
         cfg!(feature = "swift")
     }
@@ -170,10 +155,7 @@ impl Features {
 
 /// The statements that write into `written` the keys of each member the client text names by a
 /// placeholder, as [`member_keys::filled`] writes them.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub fn unmet_keys_filled(
     written: &proc_macro2::Ident,
     module: &proc_macro2::Ident,
@@ -182,24 +164,6 @@ pub fn unmet_keys_filled(
     escaped: &[(char, &str)],
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     member_keys::filled(written, module, quoted, quote, escaped)
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
-pub fn unmet_keys_filled(
-    _written: &proc_macro2::Ident,
-    _module: &proc_macro2::Ident,
-    _quoted: fn(&str) -> String,
-    _quote: char,
-    _escaped: &[(char, &str)],
-) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    (
-        proc_macro2::TokenStream::new(),
-        proc_macro2::TokenStream::new(),
-    )
 }
 
 #[cfg(test)]

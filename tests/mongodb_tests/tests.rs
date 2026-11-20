@@ -58,8 +58,7 @@ struct User {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UserWithHashMapObjectId {
     id: ObjectId,
     name: String,
@@ -67,8 +66,7 @@ struct UserWithHashMapObjectId {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UserWithObjectIdArray {
     friend_ids: Vec<ObjectId>,
     id: ObjectId,
@@ -76,8 +74,7 @@ struct UserWithObjectIdArray {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UserWithObjectIdMap {
     id: ObjectId,
     name: String,
@@ -94,8 +91,7 @@ struct UserWithOptionalId {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UserWithOtherHashMapObjectId {
     id: ObjectId,
     metadata: HashMap<String, ObjectId>,

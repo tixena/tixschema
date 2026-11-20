@@ -6,16 +6,12 @@
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
-#[cfg(feature = "serde")]
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-#[cfg(feature = "serde")]
 use crate::model_schema::valid_type::draft_ident;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ItemEnum;
-#[cfg(feature = "serde")]
 use syn::ext::IdentExt as _;
-#[cfg(feature = "serde")]
 use {
     super::{
         CONVERSION_KEYS, consume_unread_value, derives_deserialize, derives_serialize,
@@ -29,26 +25,21 @@ use {
 };
 
 /// Why no target but Rust reads the default of a flattened member.
-#[cfg(feature = "serde")]
 const FLATTENED: &str = "`#[serde(default)]` on a flattened field is read only by Rust. Remove \
                          the default, or the flatten.";
 
 /// Why no target but Rust reads the default of a member of an enum whose defaults have no JSON.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 const UNWRITTEN: &str = "`#[serde(default)]` needs the enum to derive `Serialize`, with no `into` \
                          or `remote`, so the default can be written for the other targets.";
 
 /// What serde's read of an enum comes to for the members of its variants.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EnumRead {
     /// serde never reads the members: the enum derives no `Deserialize`, or reads itself through
@@ -62,7 +53,6 @@ enum EnumRead {
 }
 
 /// What a `default` attribute names: the type's own `Default`, or a function.
-#[cfg(feature = "serde")]
 enum Written {
     Bare,
     Function(ExprPath),
@@ -70,7 +60,6 @@ enum Written {
 
 /// The tokens that build a default: its `serde_json::Value`, and the text of it with a `u64` or an
 /// `i64` written as a bigint literal, which is empty without `zod`.
-#[cfg(feature = "serde")]
 type Built = (TokenStream, TokenStream);
 
 /// The members of one struct, or of the variants of one enum, serde reads as their default where
@@ -125,14 +114,7 @@ impl SerdeDefaults {
         }
     }
 
-    /// Without `serde` no attribute is read, and no member is read as its default.
-    #[cfg(not(feature = "serde"))]
-    pub const fn of(_item: &syn::ItemStruct) -> Self {
-        Self::none()
-    }
-
     /// The defaults serde reads for the members of `item`, read off its attributes as written.
-    #[cfg(feature = "serde")]
     pub fn of(item: &syn::ItemStruct) -> Self {
         let syn::Fields::Named(named) = &item.fields else {
             return Self::none();
@@ -193,16 +175,9 @@ impl SerdeDefaults {
         Self { container, members }
     }
 
-    /// Without `serde` no attribute is read, and no member is read as its default.
-    #[cfg(not(feature = "serde"))]
-    pub const fn of_enum(_item: &ItemEnum) -> Self {
-        Self::none()
-    }
-
     /// The defaults serde reads for the members of the variants of `item`, read off its
     /// attributes as written: each member [`default_refusals`] does not refuse whose own `default`
     /// has JSON. A variant takes no `default` of its own.
-    #[cfg(feature = "serde")]
     pub fn of_enum(item: &ItemEnum) -> Self {
         let mut members = Vec::new();
         if EnumRead::of(&item.attrs) == EnumRead::Written {
@@ -281,7 +256,6 @@ impl SerdeDefaults {
     }
 }
 
-#[cfg(feature = "serde")]
 impl EnumRead {
     /// What serde's derive reads and writes of an enum with the container attributes `attrs`.
     fn of(attrs: &[Attribute]) -> Self {
@@ -302,7 +276,6 @@ impl EnumRead {
 
 /// Every conversion of its author's a container reads or writes through, in the order written:
 /// `remote`, `from`, `try_from` and `into`.
-#[cfg(feature = "serde")]
 fn conversions(attrs: &[Attribute]) -> Vec<&'static str> {
     let mut found = Vec::new();
     for attr in serde_attributes(attrs) {
@@ -322,7 +295,6 @@ fn conversions(attrs: &[Attribute]) -> Vec<&'static str> {
 }
 
 /// The names of the parameters `generics` declares: each type, lifetime and const.
-#[cfg(feature = "serde")]
 fn declared(generics: &Generics) -> Vec<String> {
     generics
         .params
@@ -338,15 +310,12 @@ fn declared(generics: &Generics) -> Vec<String> {
 /// The `compile_error!` tokens of every member of a variant of `item` under a `default` of its own
 /// that no target but Rust reads as serde does, each spanned on the member. A member serde never
 /// reads the key of, an `Option` and a member of an enum serde never reads are refused nothing.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 pub fn default_refusals(item: &ItemEnum) -> Vec<TokenStream> {
     let read = EnumRead::of(&item.attrs);
@@ -376,7 +345,6 @@ pub fn default_refusals(item: &ItemEnum) -> Vec<TokenStream> {
 /// written as such: the same at every filling of the type's parameters. `None` for any other type,
 /// and for a field serde writes through a function of its own, whose JSON of the empty value only
 /// that function knows.
-#[cfg(feature = "serde")]
 fn empty_collection(ty: &syn::Type, attrs: &[Attribute]) -> Option<Built> {
     let hooks = parse_serde_field_hooks(attrs);
     if hooks.serialize_with.is_some() || hooks.with.is_some() {
@@ -402,19 +370,18 @@ fn empty_collection(ty: &syn::Type, attrs: &[Attribute]) -> Option<Built> {
 }
 
 /// The text of an empty collection, `written`, under `zod`.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn empty_text(written: &str) -> TokenStream {
     quote! { ::std::string::String::from(#written) }
 }
 
 /// The text of an empty collection: none without `zod`.
-#[cfg(all(feature = "serde", not(feature = "zod")))]
+#[cfg(not(feature = "zod"))]
 fn empty_text(_written: &str) -> TokenStream {
     TokenStream::new()
 }
 
 /// The name serde reads `field` under, before any renaming.
-#[cfg(feature = "serde")]
 fn field_name(field: &Field) -> String {
     field
         .ident
@@ -424,7 +391,6 @@ fn field_name(field: &Field) -> String {
 
 /// The first of `Self`, a lifetime other than `'static` and the parameters `declared` that `tokens`
 /// name, as written.
-#[cfg(feature = "serde")]
 fn first_named(tokens: TokenStream, declared: &[String]) -> Option<String> {
     let mut after_a_quote = false;
     tokens.into_iter().find_map(|token| {
@@ -450,7 +416,6 @@ fn first_named(tokens: TokenStream, declared: &[String]) -> Option<String> {
 }
 
 /// The expression that borrows the default `written` builds for a member of type `ty`.
-#[cfg(feature = "serde")]
 fn held_default(ty: &syn::Type, written: Written) -> TokenStream {
     match written {
         Written::Bare => quote! { &<#ty as ::core::default::Default>::default() },
@@ -463,7 +428,6 @@ fn held_default(ty: &syn::Type, written: Written) -> TokenStream {
 /// The statements that answer `Ok` of the value serde's derive builds for a braced struct none of
 /// whose members it reads: each member from its own `default`, else from the container's, held
 /// under `container`, else from `Default`.
-#[cfg(feature = "serde")]
 pub fn unread_members_built(item: &syn::ItemStruct, container: &syn::Ident) -> TokenStream {
     let whole = written_default(&item.attrs);
     let mut reads_the_whole = false;
@@ -501,7 +465,6 @@ pub fn unread_members_built(item: &syn::ItemStruct, container: &syn::Ident) -> T
 /// The value serde's derive builds for `field`, a member it does not read, where no container's
 /// default answers for it: from the function its `default` names, else from `Default`, and
 /// whether `Default` builds it.
-#[cfg(feature = "serde")]
 pub fn unread_member_built(field: &Field) -> (TokenStream, bool) {
     match written_default(&field.attrs) {
         Some(Written::Function(path)) => (quote! { #path() }, false),
@@ -517,7 +480,6 @@ pub fn holds_a_placeholder(text: &str) -> bool {
 
 /// The key that leaves a member out of what serde writes, `skip_serializing_if` or
 /// `skip_serializing`, the first one written.
-#[cfg(feature = "serde")]
 fn key_left_out_by(attrs: &[Attribute]) -> &'static str {
     let mut found = None;
     for attr in serde_attributes(attrs) {
@@ -538,7 +500,6 @@ fn key_left_out_by(attrs: &[Attribute]) -> &'static str {
 
 /// Why no target but Rust reads the default of a member whose type names `named`, of a type that
 /// declares `generics`.
-#[cfg(feature = "serde")]
 fn named_reason(named: &str, generics: &Generics) -> String {
     let said = if named == "Self" {
         "the type names `Self`, and the JSON of the default is built outside the enum, where \
@@ -575,7 +536,6 @@ pub fn placeholder(index: usize) -> String {
 /// `None` where it writes none, or the targets read the key as serde does with no default in hand:
 /// serde never reads it, or the member is an `Option`, flattened or not, whose absence every
 /// target reads as `None`.
-#[cfg(feature = "serde")]
 fn reach(field: &Field, generics: &Generics) -> Option<Result<Built, String>> {
     let written = written_default(&field.attrs)?;
     let omission = parse_serde_key_omission(&field.attrs);
@@ -609,7 +569,6 @@ fn reach(field: &Field, generics: &Generics) -> Option<Result<Built, String>> {
 
 /// Each named member of a variant of `item` that serde reads member by member, with its variant:
 /// a variant serde never reads, or reads through a function of its author's, is left out.
-#[cfg(feature = "serde")]
 fn read_members(item: &ItemEnum) -> impl Iterator<Item = (&Variant, &Field)> {
     item.variants
         .iter()
@@ -632,7 +591,6 @@ fn read_members(item: &ItemEnum) -> impl Iterator<Item = (&Variant, &Field)> {
 /// with: `serialize_with`, the module `with` names, the one `as_number` hangs on a date, or the
 /// value's own `Serialize`; and under `zod` the text of it, where a `u64` or an `i64` is a bigint
 /// literal.
-#[cfg(feature = "serde")]
 fn serialized(attrs: &[Attribute], held: &TokenStream) -> Built {
     let hooks = parse_serde_field_hooks(attrs);
     let through: Option<Path> = if let Some(written) = hooks.serialize_with {
@@ -696,7 +654,6 @@ pub fn zod_substituted(holder: &TokenStream, written: &proc_macro2::Ident) -> To
 }
 
 /// The `default` written in `attrs`, the last one read, as serde's derive reads it.
-#[cfg(feature = "serde")]
 fn written_default(attrs: &[Attribute]) -> Option<Written> {
     let mut found = None;
     for attr in serde_attributes(attrs) {
@@ -719,5 +676,4 @@ fn written_default(attrs: &[Attribute]) -> Option<Written> {
 }
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 mod tests;

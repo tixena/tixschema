@@ -4,8 +4,6 @@
 //! needs to work: the envelope a remote wrote, the error the operation declared, and the fault a
 //! transport that could not carry the call reports.
 
-#![cfg(feature = "serde")]
-
 use crate::amqp_client;
 use crate::http_rest_client;
 use core::future::{Future, ready};

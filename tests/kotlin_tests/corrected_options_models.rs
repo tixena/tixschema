@@ -405,7 +405,6 @@ fn as_zod_prints(serde: &str) -> String {
 /// serde reads each payload from what its holder's function answers, as [`CORRECTED`] and
 /// [`OPEN_CORRECTED`] state, Zod reads each as serde reads it, and TypeScript takes each payload
 /// serde reads back as it was written.
-#[cfg(feature = "serde")]
 #[test]
 fn serde_reads_an_optional_flattened_type_from_what_its_function_answers() {
     for row in CORRECTED.iter().chain(&OPEN_CORRECTED) {

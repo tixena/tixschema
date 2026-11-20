@@ -149,7 +149,6 @@ pub const CLAPPING_READ_BACK: [&str; 4] = [
 
 /// What [`Grommeting`] is read from: the struct held with its rule broken, held with its rule kept,
 /// no key of it, and a key of it that does not read.
-#[cfg(feature = "serde")]
 pub const GROMMETING: [&str; 4] = [
     r#"{"label":"north","note":"n"}"#,
     r#"{"label":"north","note":"nn"}"#,
@@ -159,7 +158,6 @@ pub const GROMMETING: [&str; 4] = [
 
 /// What serde answers of each of [`GROMMETING`], read as [`Grommeting`]: the rule's message where
 /// the struct reads and breaks it, and what it writes back of every other.
-#[cfg(feature = "serde")]
 pub const GROMMETING_READ_BACK: [&str; 4] = [
     "'note': too short: minimum length is 2, got 1",
     r#"{"label":"north","note":"nn"}"#,
@@ -276,7 +274,6 @@ pub struct Clapping {
 }
 
 /// The struct [`Gromet`] flattens.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Earing {
@@ -284,7 +281,6 @@ pub struct Earing {
 }
 
 /// [`Gromet`] optional, the one member, declared above it: `nonstrict`, as [`Fiddling`] is.
-#[cfg(feature = "serde")]
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Grommeting {
@@ -293,7 +289,6 @@ pub struct Grommeting {
 }
 
 /// A struct with a rule and a flattened member of its own, declared below its holder.
-#[cfg(feature = "serde")]
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Gromet {
@@ -341,7 +336,6 @@ fn serde_drops_a_key_of_the_type_held_from_exactly_the_payloads_zod_refuses() {
 
 /// serde refuses a payload whose [`Gromet`] reads and breaks its rule, reads one that keeps it,
 /// and reads `None` where no key of it is there and where a key of it does not read.
-#[cfg(feature = "serde")]
 #[test]
 fn serde_refuses_a_flattened_option_that_reads_and_breaks_its_rule() {
     let told = GROMMETING.map(|json| {

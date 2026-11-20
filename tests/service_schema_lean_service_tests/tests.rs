@@ -1,8 +1,6 @@
 //! The two lean services, the backends that answer them, and the reply handle and transport the
 //! calls below are driven through.
 
-#![cfg(feature = "serde")]
-
 use crate::{bare_amqp_client, bare_amqp_transport, note_amqp_client, note_amqp_transport};
 use core::future::{Future, ready};
 use core::pin::pin;

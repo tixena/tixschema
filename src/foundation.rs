@@ -3,11 +3,9 @@
 
 use proc_macro2::TokenStream;
 
-#[cfg(feature = "serde")]
 use crate::features::recovering_decode::{decode_with_foundation, mongodb_foundation};
 
-/// What `decode_with_foundation!()` writes: the `decode_with` library and its marker, and nothing
-/// in a build without `serde`, where no type has a recovering decode.
+/// What `decode_with_foundation!()` writes: the `decode_with` library and its marker.
 pub fn exec_decode_with_foundation(input: &TokenStream) -> TokenStream {
     refused_arguments(input, "decode_with_foundation").unwrap_or_else(decode_with_library)
 }
@@ -33,22 +31,10 @@ fn refused_arguments(input: &TokenStream, macro_name: &str) -> Option<TokenStrea
     })
 }
 
-#[cfg(feature = "serde")]
 fn decode_with_library() -> TokenStream {
     decode_with_foundation()
 }
 
-#[cfg(not(feature = "serde"))]
-fn decode_with_library() -> TokenStream {
-    TokenStream::new()
-}
-
-#[cfg(feature = "serde")]
 fn mongodb_library() -> TokenStream {
     mongodb_foundation()
-}
-
-#[cfg(not(feature = "serde"))]
-fn mongodb_library() -> TokenStream {
-    TokenStream::new()
 }

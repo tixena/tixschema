@@ -1,7 +1,6 @@
 //! `minLength` and `maxLength` on a string count Unicode characters, the unit Zod and a JSON
 //! Schema validator count, in a field, in a brand, in a read and in a unit variant's name.
 
-#[cfg(feature = "serde")]
 mod a_length_counts_characters {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

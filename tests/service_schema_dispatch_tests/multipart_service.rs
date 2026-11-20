@@ -2,8 +2,6 @@
 //! — round-tripping scalar fields decoded into the generated message and a file part handed
 //! through as a `BodySource` handle, undecoded, before `validate()` runs.
 
-#![cfg(feature = "serde")]
-
 use crate::multipart_http_rest_transport;
 use core::future::{Future, ready};
 use core::pin::pin;

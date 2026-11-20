@@ -22,7 +22,6 @@ row 5: read {\"parcel\":{\"fragileItemCodes\":[\"x\"],\"itemCodeList\":[\"x\"],\
 /// What every side prints for the positions another type reads a preprocessed type in, and for
 /// each shape the key is written on: the Rust read and the Zod schema alike. A unit struct is
 /// read from `{}` under the `serde` feature alone, so the table is that build's.
-#[cfg(feature = "serde")]
 pub const POSITIONS: &str = "\
 a field: read {\"parcel\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}}
 a list, a map and an Option: read {\"by_dock\":{\"north\":{\"fragileItemCodes\":[],\"itemCodeList\":[\"x\"],\"label\":\"A\"}},\"list\":[{\"fragileItemCodes\":[],\"itemCodeList\":[],\"label\":\"B\"}],\"spare\":{\"fragileItemCodes\":[],\"itemCodeList\":[],\"label\":\"C\"}}
@@ -168,13 +167,6 @@ pub enum Handover {
 #[serde(transparent)]
 pub struct Label(String);
 
-#[cfg(not(feature = "serde"))]
-impl LabelDraft {
-    pub fn of(text: &str) -> Self {
-        Self(text.to_owned())
-    }
-}
-
 /// The type that holds the parcel of the documents under a key.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -284,11 +276,9 @@ pub struct Wrapped {
 
 /// One payload a type reads: the name of the case, the schema that reads it under node, the
 /// payload, and what a serde read of it as a `T` prints.
-#[cfg(feature = "serde")]
 pub type Position = (&'static str, &'static str, &'static str, String);
 
 /// The position `name`: `payload` read as a `T`, which the schema `schema` reads under node.
-#[cfg(feature = "serde")]
 pub fn position<T>(name: &'static str, schema: &'static str, payload: &'static str) -> Position
 where
     T: DeserializeOwned + Serialize,
@@ -298,7 +288,6 @@ where
 
 /// Every position another type reads a preprocessed type in, then every shape the key is written
 /// on. A shape's payload is in an envelope, which the type's function takes it out of.
-#[cfg(feature = "serde")]
 pub fn positions() -> Vec<Position> {
     let parcel = r#"{"label":"  A  ","itemCodeList":["x"]}"#;
     let held: [&'static str; 7] = [

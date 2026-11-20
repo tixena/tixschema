@@ -9,34 +9,26 @@ pub mod read_bounds;
 
 pub mod defaults;
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use core::iter::once;
 
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::features::model_schema_prop::FunctionName;
-#[cfg(feature = "serde")]
 use crate::field_type::is_plain_enum;
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::field_type::{FieldDef, FieldDefType, MissingKey, Scope, Zone, get_field_def};
 #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::rename_rule::RenameRule;
-#[cfg(feature = "serde")]
 use crate::rename_rule::resolve_rename_rule;
 use crate::utils::written_type;
-#[cfg(feature = "serde")]
 use proc_macro2::{Delimiter, TokenTree};
 use proc_macro2::{Group, Span};
 use syn::ext::IdentExt as _;
 use syn::meta::ParseNestedMeta;
 use syn::token::Paren;
 use syn::{Attribute, Field, Fields, Ident, ItemEnum, ItemStruct, LitStr, Token, Type, Variant};
-#[cfg(feature = "serde")]
 use syn::{Error, Meta};
 
-#[cfg(feature = "serde")]
 const CFG_ATTR_SERDE_REJECTION: &str = "cfg_attr-wrapped serde attribute is invisible to \
      model_schema and will be silently ignored by the generator; write #[serde(...)] \
      unconditionally (serde attrs are inert without the serde derive)";
@@ -75,7 +67,6 @@ impl SerdeKeyOmission {
 }
 
 /// What a list-form renaming names in each of serde's two directions.
-#[cfg(feature = "serde")]
 #[derive(Default)]
 struct RenameDirections {
     deserialize: Option<String>,
@@ -83,7 +74,6 @@ struct RenameDirections {
 }
 
 /// Metadata for serde attributes applied to a struct or enum.
-#[cfg(feature = "serde")]
 #[derive(Clone, Debug, Default)]
 pub struct SerdeTypeMeta {
     pub cfg_attr_rejection: Option<Error>,
@@ -97,7 +87,6 @@ pub struct SerdeTypeMeta {
 }
 
 /// The paths a field's serde attributes read and write it through, each as its author wrote it.
-#[cfg(feature = "serde")]
 #[derive(Default)]
 pub struct SerdeFieldHooks {
     pub deserialize_with: Option<LitStr>,
@@ -107,7 +96,6 @@ pub struct SerdeFieldHooks {
 
 /// Metadata for serde attributes applied to a field. Whether the field's key is omitted is not
 /// here: [`parse_serde_key_omission`] answers that for every surface of a build alike.
-#[cfg(feature = "serde")]
 #[derive(Clone, Debug, Default)]
 pub struct SerdeFieldMeta {
     pub aliases: Vec<String>,
@@ -119,7 +107,6 @@ pub struct SerdeFieldMeta {
 
 /// What the renaming keys of a container, a variant or a field name in one of serde's two
 /// directions.
-#[cfg(feature = "serde")]
 #[derive(Default)]
 pub struct DirectedRenames {
     pub rename: Option<String>,
@@ -159,7 +146,6 @@ struct Placed {
 }
 
 /// The form serde writes an enum in, read off its attributes as the schema surfaces read them.
-#[cfg(feature = "serde")]
 pub enum Tagging {
     Adjacent {
         content: String,
@@ -174,7 +160,6 @@ pub enum Tagging {
     Untagged,
 }
 
-#[cfg(feature = "serde")]
 impl Tagging {
     pub fn of(item_enum: &ItemEnum) -> Self {
         let container = parse_serde_type_attributes(&item_enum.attrs);
@@ -193,12 +178,9 @@ impl Tagging {
     }
 }
 
-/// The `#[serde(...)]` attributes among `attrs` tixschema reads: all of them with the `serde`
-/// feature, none without it.
+/// The `#[serde(...)]` attributes among `attrs`.
 pub fn serde_attributes(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
-    attrs
-        .iter()
-        .filter(|attr| cfg!(feature = "serde") && attr.path().is_ident("serde"))
+    attrs.iter().filter(|attr| attr.path().is_ident("serde"))
 }
 
 /// Every `#[serde(...)]` attribute among `attrs`, whatever tixschema's features: what serde's derive
@@ -518,7 +500,6 @@ pub fn read_hook(attrs: &[Attribute]) -> Option<(&'static str, LitStr)> {
 ///
 /// A field that does is left alone: serde admits one reader per field, so hanging a generated one
 /// beside it would replace the author's rather than wrap it.
-#[cfg(feature = "serde")]
 pub fn has_serde_read_hook(attrs: &[Attribute]) -> bool {
     let mut found = false;
     for attr in serde_attributes(attrs) {
@@ -558,22 +539,12 @@ pub fn has_serde_skip_serializing(attrs: &[Attribute]) -> bool {
 /// The key a struct writes its own serde name under, with that name: what `#[serde(tag = "...")]`
 /// means on a struct. serde writes the pair ahead of the fields and reads the struct with or
 /// without it.
-#[cfg(feature = "serde")]
 pub fn struct_tag(item_struct: &ItemStruct) -> Option<(String, String)> {
     let key = parse_serde_type_attributes(&item_struct.attrs).tag?;
     let named = parse_serde_field_attributes(&item_struct.attrs)
         .rename
         .unwrap_or_else(|| item_struct.ident.unraw().to_string());
     Some((key, named))
-}
-
-/// Without the `serde` feature nothing reads the attribute, so no struct has a tag.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
-pub const fn struct_tag(_item_struct: &ItemStruct) -> Option<(String, String)> {
-    None
 }
 
 /// The field a brand is written and read as the value of, or `None` for a struct that is no
@@ -619,7 +590,6 @@ pub fn transparent_fields_apart(item_struct: &ItemStruct) -> Option<[(usize, &Fi
 
 /// Where serde's attributes put `field`, whose name `rename_all` cases where it has no `rename` of
 /// its own.
-#[cfg(feature = "serde")]
 fn placed(field: &Field, rename_all: Option<&str>) -> Placed {
     let key = field.ident.as_ref().map(|ident| {
         parse_written_renames(&field.attrs)
@@ -635,19 +605,8 @@ fn placed(field: &Field, rename_all: Option<&str>) -> Placed {
     }
 }
 
-/// Without `serde` no attribute is read: a member is written as it is declared.
-#[cfg(not(feature = "serde"))]
-fn placed(field: &Field, _rename_all: Option<&str>) -> Placed {
-    Placed {
-        flattened: false,
-        key: field.ident.as_ref().map(|ident| ident.unraw().to_string()),
-        read: true,
-    }
-}
-
 /// Each named member of `item_struct` serde reads under a key of its own, as its name in Rust,
 /// that key and its type. A flattened member is read from the keys of the type it holds.
-#[cfg(feature = "serde")]
 pub fn read_member_keys(item_struct: &ItemStruct) -> Vec<(String, String, &Type)> {
     let rule = resolve_rename_rule(parse_read_renames(&item_struct.attrs).rename_all.as_deref());
     item_struct
@@ -704,7 +663,6 @@ pub fn member_steps<'item>(
 /// What serde writes ahead of the members of `variant`: the variant's written name with no tag
 /// attribute, the content key under a tag and a content key, and nothing under a tag alone and
 /// for an untagged enum.
-#[cfg(feature = "serde")]
 pub fn variant_steps(item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
     let tagging = Tagging::of(item_enum);
     if matches!(tagging, Tagging::External) {
@@ -725,20 +683,11 @@ pub fn variant_steps(item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
     }
 }
 
-/// Without `serde` no attribute is read: a variant is written under its own name.
-#[cfg(not(feature = "serde"))]
-pub fn variant_steps(_item_enum: &ItemEnum, variant: &Variant) -> Vec<String> {
-    vec![variant.ident.unraw().to_string()]
-}
-
 /// The keys serde takes off a holder's object for a struct of `fields`, cased by `rule`, flattened
 /// into it: the name each member it reads is read under, and each alias. A struct with a flattened
 /// member of its own is read as a map, and one that names a function on itself (`preprocess`) as a
 /// value: neither takes a key.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub fn keys_taken_when_flattened(
     fields: &Fields,
     rule: RenameRule,
@@ -763,26 +712,10 @@ pub fn keys_taken_when_flattened(
         .collect()
 }
 
-/// Without `serde` no member is flattened, so none takes a key.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
-pub const fn keys_taken_when_flattened(
-    _fields: &Fields,
-    _rule: RenameRule,
-    _preprocess: &[FunctionName],
-) -> Vec<String> {
-    Vec::new()
-}
-
 /// The keys serde takes off a holder's object for an enum under a tag and a content key flattened
 /// into it, which it reads as a struct of the two: the tag, then the content key. An enum under
 /// any other tagging, and one that names a function on itself (`preprocess`), answer none.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub fn tag_and_content_when_flattened(
     item_enum: &ItemEnum,
     preprocess: &[FunctionName],
@@ -796,27 +729,12 @@ pub fn tag_and_content_when_flattened(
     }
 }
 
-/// Without `serde` no member is flattened, so no enum takes a key.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
-pub const fn tag_and_content_when_flattened(
-    _item_enum: &ItemEnum,
-    _preprocess: &[FunctionName],
-) -> Vec<String> {
-    Vec::new()
-}
-
 /// The names serde reads the variant of an externally tagged enum flattened into a holder under,
 /// one list per variant it reads: the name the variant is read under, then each alias, which
 /// together are its `VARIANTS`. serde takes the first entry of the holder's object, in its order,
 /// under one of them. An enum under a tag key, an untagged one and one that names a function on
 /// itself (`preprocess`) answer none.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub fn variant_names_when_flattened(
     item_enum: &ItemEnum,
     preprocess: &[FunctionName],
@@ -842,22 +760,9 @@ pub fn variant_names_when_flattened(
         .collect()
 }
 
-/// Without `serde` no member is flattened, so no enum takes an entry.
-#[cfg(all(
-    not(feature = "serde"),
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
-pub const fn variant_names_when_flattened(
-    _item_enum: &ItemEnum,
-    _preprocess: &[FunctionName],
-) -> Vec<Vec<String>> {
-    Vec::new()
-}
-
 /// The field serde's derive in `direction` takes a `#[serde(transparent)]` struct as the value of,
 /// named or a slot: the one that derive does not skip, that is not written `PhantomData` and, read,
 /// that has no `default`. `None` for any other count, which that derive refuses.
-#[cfg(feature = "serde")]
 pub fn transparent_field(fields: &Fields, direction: Direction) -> Option<&Field> {
     transparent_slot(fields, direction).map(|(_, field)| field)
 }
@@ -907,7 +812,6 @@ pub fn has_serde_transparent(attrs: &[Attribute]) -> bool {
 
 /// Reads the `with`, `deserialize_with` and `serialize_with` a field carries, tixschema's own
 /// included: the attributes are read as serde's derive will read them.
-#[cfg(feature = "serde")]
 pub fn parse_serde_field_hooks(attrs: &[Attribute]) -> SerdeFieldHooks {
     let mut hooks = SerdeFieldHooks::default();
     for attr in serde_attributes(attrs) {
@@ -933,7 +837,6 @@ pub fn parse_serde_field_hooks(attrs: &[Attribute]) -> SerdeFieldHooks {
 
 /// Reads the `serialize` and `deserialize` sub-keys out of a list-form renaming, stepping past any
 /// other sub-key the same way the outer walk does.
-#[cfg(feature = "serde")]
 fn parse_rename_directions(nested: &ParseNestedMeta<'_>) -> syn::Result<RenameDirections> {
     let mut directions = RenameDirections::default();
     nested.parse_nested_meta(|inner| {
@@ -952,7 +855,6 @@ fn parse_rename_directions(nested: &ParseNestedMeta<'_>) -> syn::Result<RenameDi
 /// The one name both of serde's directions agree on, or the refusal a pair naming two earns. A
 /// direction the list leaves out keeps the name it would otherwise have had, so writing one
 /// direction alone splits the two apart as writing two different values does.
-#[cfg(feature = "serde")]
 fn agreed_rename(
     key: &str,
     path: &syn::Path,
@@ -981,7 +883,6 @@ fn agreed_rename(
 }
 
 /// The refusal a list form writing one of serde's two directions and not the other earns.
-#[cfg(feature = "serde")]
 fn one_direction_only(key: &str, path: &syn::Path, written: &str, direction: &str) -> Error {
     Error::new_spanned(
         path,
@@ -998,7 +899,6 @@ fn one_direction_only(key: &str, path: &syn::Path, written: &str, direction: &st
 /// The name a renaming key carries, in either spelling: the value of `key = "..."`, or the one name
 /// a list form's two directions agree on. A list form the directions disagree over names nothing a
 /// surface could render, and is answered by [`rename_direction_rejection`].
-#[cfg(feature = "serde")]
 fn read_renaming(nested: &ParseNestedMeta<'_>, key: &str) -> syn::Result<Option<String>> {
     if nested.input.peek(Token![=]) {
         let lit: LitStr = nested.value()?.parse()?;
@@ -1013,7 +913,6 @@ fn read_renaming(nested: &ParseNestedMeta<'_>, key: &str) -> syn::Result<Option<
 
 /// Reads each renaming key for what it names in the direction `side` takes out of a list form. A
 /// key written `key = "..."` names that in both.
-#[cfg(feature = "serde")]
 fn parse_directed_renames(
     attrs: &[Attribute],
     side: fn(RenameDirections) -> Option<String>,
@@ -1052,29 +951,24 @@ fn parse_directed_renames(
 
 /// Reads each renaming key for what it names when serde reads, which is the key a value is read
 /// from whatever the same key names for writing. A list form counts by its `deserialize` side.
-#[cfg(feature = "serde")]
 pub fn parse_read_renames(attrs: &[Attribute]) -> DirectedRenames {
     parse_directed_renames(attrs, |directions| directions.deserialize)
 }
 
 /// Reads each renaming key for what it names when serde writes, which is the key a stored value
 /// is under whatever the same key names for reading. A list form counts by its `serialize` side.
-#[cfg(feature = "serde")]
 pub fn parse_written_renames(attrs: &[Attribute]) -> DirectedRenames {
     parse_directed_renames(attrs, |directions| directions.serialize)
 }
 
 /// The refusal the item's own list-form renaming earns when its two directions do not name one key,
 /// or `None` when every renaming written here names exactly one.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 pub fn rename_direction_rejection(attrs: &[Attribute]) -> Option<Error> {
     let mut rejection: Option<Error> = None;
@@ -1114,7 +1008,6 @@ pub fn rename_direction_rejection(attrs: &[Attribute]) -> Option<Error> {
 
 /// The rejection for a `cfg_attr` carrying a `serde(...)` attribute, or `None` for every other
 /// `cfg_attr` — gated derives and gated docs stay legal.
-#[cfg(feature = "serde")]
 fn cfg_attr_serde_rejection(attr: &Attribute) -> Option<Error> {
     let Meta::List(list) = &attr.meta else {
         return None;
@@ -1134,7 +1027,6 @@ fn cfg_attr_serde_rejection(attr: &Attribute) -> Option<Error> {
 }
 
 /// The rejection of the first `cfg_attr` among `attrs` that carries a `serde(...)` attribute.
-#[cfg(feature = "serde")]
 fn cfg_attr_rejection(attrs: &[Attribute]) -> Option<Error> {
     attrs
         .iter()
@@ -1143,7 +1035,6 @@ fn cfg_attr_rejection(attrs: &[Attribute]) -> Option<Error> {
 }
 
 /// Parses serde attributes from a struct or enum.
-#[cfg(feature = "serde")]
 pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
     let mut meta = SerdeTypeMeta {
         cfg_attr_rejection: cfg_attr_rejection(attrs),
@@ -1184,7 +1075,6 @@ pub fn parse_serde_type_attributes(attrs: &[Attribute]) -> SerdeTypeMeta {
 }
 
 /// Parses serde attributes from a field.
-#[cfg(feature = "serde")]
 pub fn parse_serde_field_attributes(attrs: &[Attribute]) -> SerdeFieldMeta {
     let mut meta = SerdeFieldMeta {
         cfg_attr_rejection: cfg_attr_rejection(attrs),
@@ -1225,13 +1115,13 @@ pub fn parse_serde_field_attributes(attrs: &[Attribute]) -> SerdeFieldMeta {
 }
 
 /// Applies serde `rename_all` transformation to a field name.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 pub fn apply_rename_all(field_name: &str, rename_all: Option<&str>) -> String {
     resolve_rename_rule(rename_all).apply_to_field(field_name)
 }
 
 /// Get the final field name after applying serde transformations.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 pub fn get_final_field_name(
     original_name: &str,
     field_meta: &SerdeFieldMeta,
@@ -1252,5 +1142,4 @@ mod key_omission_tests;
 mod steps_tests;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 mod tests;

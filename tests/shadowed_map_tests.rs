@@ -6,8 +6,6 @@
 //! A test binary of its own: a model type's name is known to every expansion that follows it in
 //! the crate, where a field written `Map` or `Value` would then be read as this type.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 // With `bson` on, what a flagged type expands to names the `bson` library.

@@ -9,7 +9,6 @@
 extern crate bson2 as bson;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "support_library_tests/tests.rs"]
 mod tests;
 

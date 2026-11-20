@@ -1,7 +1,5 @@
 //! The transports the generated client is driven over, and everything read off it.
 
-#![cfg(feature = "serde")]
-
 /// A service whose message carries no bound of its own, only one its field's *type* declares.
 #[macro_use]
 pub mod a_bound_the_fields_own_type_declares {

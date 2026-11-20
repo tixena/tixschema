@@ -7,7 +7,6 @@
 use core::cell::RefCell;
 
 use proc_macro2::{Ident, TokenStream};
-#[cfg(feature = "serde")]
 use quote::quote;
 use quote::quote_spanned;
 use syn::ext::IdentExt as _;
@@ -19,7 +18,6 @@ use crate::features::model_schema_prop::{FunctionName, parse_model_schema_prop_a
 use crate::features::serde::read_bounds::borrows;
 use crate::features::serde::{derived_key_omission, derives_deserialize, read_hook};
 use crate::utils::to_snake_case;
-#[cfg(feature = "serde")]
 use crate::utils::unclaimed_parameter;
 
 /// What the item being expanded names: on the type, and on each member serde reads.
@@ -190,7 +188,6 @@ pub fn corrected(functions: &[FunctionName], payload: TokenStream) -> TokenStrea
 /// The function a walker reads a member that names `functions` with: it reads the payload, calls
 /// each function on it, and reads the member through `read` from what they answer. Neither name
 /// it declares is one of the functions.
-#[cfg(feature = "serde")]
 pub fn corrected_reader(functions: &[FunctionName], read: &TokenStream) -> TokenStream {
     let called: Vec<String> = functions
         .iter()

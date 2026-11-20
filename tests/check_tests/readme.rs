@@ -46,7 +46,7 @@ where
 }";
 
 /// The wrap one check adds to a Zod schema, as the README shows it for the parcel's own.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 const WRAP: &str = "\
 .check((ctx) => {
   const own = { value: ctx.value, issues: ctx.issues.slice(0, 0) };
@@ -141,7 +141,7 @@ fn the_documents_state_the_signatures_of_the_functions_that_compile() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn the_readme_shows_the_wrap_the_schema_carries() {
     let schema = super::models::Parcel::zod_schema();

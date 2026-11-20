@@ -39,7 +39,6 @@ use syn::{
 use self::preprocess::Plugin;
 use self::read::PATHED;
 use self::validate::{Member, Rules};
-#[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::refusals;
@@ -55,7 +54,6 @@ use crate::field_type::{
     EXPECTED_VALUE, FieldDef, FieldDefType, RESULT_ARMS, RangeKind, VariantKind, get_field_def,
     is_plain_enum, is_sequence_wrapper,
 };
-#[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::{
     flattened_keys, reads_past_the_keys_left, refuses_the_keys_left,
 };
@@ -67,7 +65,6 @@ use crate::utils::{
     to_snake_case, type_parameters_in_scope, within_variant,
 };
 
-#[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 /// The words Kotlin reserves everywhere, which name a member only between backticks. A soft keyword
@@ -113,7 +110,6 @@ pub enum TupleNaming {
     Counted,
     /// A name derived from the shape, declared by the item: the accessor that declares a
     /// service's result types.
-    #[cfg(feature = "serde")]
     Declared,
     /// The name derived from the shape, declared by no one here: an accessor that is only
     /// compiled beside the one that declares it.
@@ -164,9 +160,7 @@ struct KotlinField {
     wire_name: String,
 }
 
-/// The container attributes read off any enum, in the shape `process_enum` itself dispatches on —
-/// `tag`/`content`/`untagged` default to "written none of them" without the `serde` feature, which
-/// is what leaves an all-unit enum publishing the plain enum-class shape regardless.
+/// The container attributes read off any enum, in the shape `process_enum` itself dispatches on.
 struct EnumTagAttrs {
     content: Option<String>,
     rename_all: Option<String>,
@@ -665,38 +659,13 @@ fn taken_tag_keys(def: &FieldDef) -> Option<Vec<String>> {
     KOTLIN_TAKEN_TAG_KEYS.with(|noted| noted.borrow().get(name).cloned())
 }
 
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn refuses_the_keys_left(_def: &FieldDef) -> bool {
-    false
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
-    None
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn reads_past_the_keys_left(_def: &FieldDef) -> bool {
-    false
-}
-
 /// The keys of a flattened member whose type is declared below its holder or in another crate, as
 /// the placeholder `kotlin_definition()` fills.
-#[cfg(feature = "serde")]
 fn unmet_keys(def: &FieldDef) -> Option<Vec<String>> {
     recorded_keys(&flatten_base_field(def))
         .is_none()
         .then(|| member_keys::of(def))
         .flatten()
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn unmet_keys(_def: &FieldDef) -> Option<Vec<String>> {
-    None
 }
 
 /// The keys the macro's classifier answers for a flattened member typed `def` the emitter noted
@@ -784,53 +753,31 @@ pub fn kotlin_field_def(name: &str, ty: &Type) -> FieldDef {
     get_field_def(name, ty, "").with_parameterized_option_aliases_in_place()
 }
 
-/// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde` feature
-/// reads serde attributes at all.
-#[cfg(feature = "serde")]
+/// The `#[serde(rename = "...")]` a field or variant earns.
 fn rename_override(attrs: &[syn::Attribute]) -> Option<String> {
     parse_serde_field_attributes(attrs).rename
 }
 
-#[cfg(not(feature = "serde"))]
-const fn rename_override(_attrs: &[syn::Attribute]) -> Option<String> {
-    None
-}
-
-/// Whether `attrs` carries `#[serde(flatten)]` — always `false` without the `serde` feature, since
-/// no field can carry an attribute the container itself never reads.
-#[cfg(feature = "serde")]
+/// Whether `attrs` carries `#[serde(flatten)]`.
 fn field_is_flatten(attrs: &[syn::Attribute]) -> bool {
     parse_serde_field_attributes(attrs).flatten
 }
 
-#[cfg(not(feature = "serde"))]
-const fn field_is_flatten(_attrs: &[syn::Attribute]) -> bool {
-    false
-}
-
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once
-/// `rule` — the container's own `rename_all`, [`RenameRule::None`] without the `serde` feature —
+/// `rule` — the container's own `rename_all` —
 /// has had its say. An explicit rename always wins over the container's rule, matching serde.
 fn wire_field_name(rust_name: &str, rename: Option<&str>, rule: RenameRule) -> String {
     rename.map_or_else(|| rule.apply_to_field(rust_name), ToOwned::to_owned)
 }
 
-/// A container's own `rename_all`, or [`RenameRule::None`] without the `serde` feature to read it
-/// with — shared by a struct and an enum, whose variant names read the very same attribute.
-#[cfg(feature = "serde")]
+/// A container's own `rename_all`, shared by a struct and an enum, whose variant names read the
+/// very same attribute.
 fn container_rename_rule(attrs: &[syn::Attribute]) -> RenameRule {
     let meta = parse_serde_type_attributes(attrs);
     resolve_rename_rule(meta.rename_all.as_deref())
 }
 
-#[cfg(not(feature = "serde"))]
-fn container_rename_rule(_attrs: &[syn::Attribute]) -> RenameRule {
-    resolve_rename_rule(None)
-}
-
-/// The container attributes an enum's own dispatch reads, or every field left at its default
-/// without the `serde` feature to read one with.
-#[cfg(feature = "serde")]
+/// The container attributes an enum's own dispatch reads.
 fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
     let meta = parse_serde_type_attributes(attrs);
     EnumTagAttrs {
@@ -839,17 +786,6 @@ fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
         rename_all_fields: meta.rename_all_fields,
         tag: meta.tag,
         untagged: meta.untagged,
-    }
-}
-
-#[cfg(not(feature = "serde"))]
-const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
-    EnumTagAttrs {
-        content: None,
-        rename_all: None,
-        rename_all_fields: None,
-        tag: None,
-        untagged: false,
     }
 }
 
@@ -1565,7 +1501,6 @@ fn tuple_wrapper_serializer(elements: &[FieldDef], walked: bool) -> String {
 
 /// Names the tuple wrappers the item being expanded writes as `naming` says, until
 /// [`kotlin_declarations`] closes the item.
-#[cfg(feature = "serde")]
 pub fn kotlin_tuple_naming(naming: TupleNaming) {
     KOTLIN_TUPLE_NAMING.with(|held| held.set(naming));
 }
@@ -2051,7 +1986,6 @@ fn result_serializer(
 /// The declarations the types named since the last item was written need, a tuple's wrapper, a
 /// range's class, a `Result`'s interface and the serializer of a text of one form and of an array
 /// of one length among them, each once: the next item numbers its own.
-#[cfg(feature = "serde")]
 pub fn kotlin_declarations() -> Vec<String> {
     let asked = kotlin_declarations_asking();
     read::held_resolved(asked)
@@ -2074,14 +2008,12 @@ fn kotlin_declarations_asking() -> Vec<String> {
 /// read with: `serializer<T>()` of its Kotlin type, or one composed over the serializer of each
 /// text of one form and the class of each array of one length it holds, which
 /// [`kotlin_declarations`] declares.
-#[cfg(feature = "serde")]
 pub fn kotlin_read_serializer(field: &FieldDef) -> String {
     kotlin_serializer_expr(field, &[])
 }
 
 /// The `KSerializer` that reads a value typed `field` with no judgement: [`kotlin_read_serializer`]
 /// with each model it holds replaced by its `{Type}Unjudged`.
-#[cfg(feature = "serde")]
 pub fn kotlin_unjudged_read_serializer(field: &FieldDef) -> String {
     read::unjudged_serializer(field, &[])
 }

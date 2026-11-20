@@ -7,7 +7,7 @@ use std::process::{Command, Output};
 
 const MANIFEST: &str = "[package]\nname = \"example_rules\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\
                         publish = false\n\n[dependencies]\n\
-                        tixschema = { path = \"TIXSCHEMA\", default-features = false, features = [\"serde\", \"SURFACE\"] }\n\
+                        tixschema = { path = \"TIXSCHEMA\", default-features = false, features = [\"SURFACE\"] }\n\
                         serde = { version = \"1\", features = [\"derive\"] }\n\
                         serde_json = \"1\"\n";
 

@@ -7,23 +7,23 @@
 #[path = "service_schema_dispatch_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/amqp_transport.rs"]
 mod amqp_transport;
 
 /// The same macro again, in a second module of its own: two dispatchers for one service in one
 /// crate, which is what the macro emitting bare items rather than a module of its own is for.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/second_amqp_transport.rs"]
 mod second_amqp_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/gate_amqp_transport.rs"]
 mod gate_amqp_transport;
 
 /// The `http_rest` dispatcher, in a module of its own — the same placement rules apply to this
 /// transport's macro as to `amqp_rpc`'s.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/http_rest_transport.rs"]
 mod http_rest_transport;
 
@@ -36,7 +36,7 @@ mod http_rest_transport;
 mod stream_service;
 
 /// The `http_rest` dispatcher for `ContentService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/stream_http_rest_transport.rs"]
 mod stream_http_rest_transport;
 
@@ -49,7 +49,7 @@ mod stream_http_rest_transport;
 mod multipart_service;
 
 /// The `http_rest` dispatcher for `UploadService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/multipart_http_rest_transport.rs"]
 mod multipart_http_rest_transport;
 
@@ -62,7 +62,7 @@ mod multipart_http_rest_transport;
 mod solo_path_bound_service;
 
 /// The `http_rest` dispatcher for `SoloPathBoundService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/solo_path_bound_http_rest_transport.rs"]
 mod solo_path_bound_http_rest_transport;
 
@@ -74,12 +74,12 @@ mod solo_path_bound_http_rest_transport;
 mod renamed_path_bound_service;
 
 /// The `http_rest` dispatcher for `RenamedPathBoundService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/renamed_path_bound_http_rest_transport.rs"]
 mod renamed_path_bound_http_rest_transport;
 
 /// The `http_rest` client for `RenamedPathBoundService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/renamed_path_bound_http_rest_client.rs"]
 mod renamed_path_bound_http_rest_client;
 
@@ -93,7 +93,7 @@ mod renamed_path_bound_http_rest_client;
 mod path_bound_beside_query_service;
 
 /// The `http_rest` dispatcher for `PathBoundBesideQueryService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/path_bound_beside_query_http_rest_transport.rs"]
 mod path_bound_beside_query_http_rest_transport;
 
@@ -107,7 +107,7 @@ mod path_bound_beside_query_http_rest_transport;
 mod scalar_path_bound_service;
 
 /// The `http_rest` dispatcher for `ScalarPathBoundService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/scalar_path_bound_http_rest_transport.rs"]
 mod scalar_path_bound_http_rest_transport;
 
@@ -118,7 +118,7 @@ mod scalar_path_bound_http_rest_transport;
 mod corrected_request_service;
 
 /// The `http_rest` dispatcher for `CorrectedRequestService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/corrected_request_http_rest_transport.rs"]
 mod corrected_request_http_rest_transport;
 
@@ -130,31 +130,31 @@ mod corrected_request_http_rest_transport;
 mod bodied_fields_service;
 
 /// The `http_rest` dispatcher for `BodiedFieldsService`, in a module of its own.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_dispatch_tests/bodied_fields_http_rest_transport.rs"]
 mod bodied_fields_http_rest_transport;
 
 // A transport's dispatcher reaches what the service declared through `$crate`, which is this
 // binary's root: a service written in a submodule is named here for the expansion to resolve.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use bodied_fields_service::{BodiedFieldsService, bodied_fields_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use corrected_request_service::{CorrectedRequestService, corrected_request_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use multipart_service::{UploadService, upload_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use path_bound_beside_query_service::{
     PathBoundBesideQueryService, path_bound_beside_query_service_schema,
 };
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use renamed_path_bound_service::{RenamedPathBoundService, renamed_path_bound_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use scalar_path_bound_service::{ScalarPathBoundService, scalar_path_bound_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use solo_path_bound_service::{SoloPathBoundService, solo_path_bound_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use stream_service::{ContentService, content_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::a_message_annotated_with_a_constraint::{GateService, gate_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{DocumentService, ProbeService, document_service_schema, probe_service_schema};

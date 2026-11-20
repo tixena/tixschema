@@ -10,23 +10,20 @@ mod tests;
 
 /// What a JSON Schema document admits.
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "std_range_tests/documents.rs"]
 mod documents;
 
 /// Aliases of an `Option` held outside a field, and the payloads serde writes for them.
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "semantic_types_tests/option_alias_models.rs"]
 mod option_alias_models;
 
 /// What serde, TypeScript, Zod and the JSON Schema answer of those aliases.
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "semantic_types_tests/option_aliases.rs"]
 mod option_aliases;
 
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_numbers.rs"]
 mod kotlin_numbers;

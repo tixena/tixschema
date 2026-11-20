@@ -3,8 +3,6 @@
 //! header beside it, the reply, its declared error and a header beside the reply. The `http_rest`
 //! dispatcher reads a `u64` beyond `i64::MAX` exactly from a path, a header and a body.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[macro_use]
 #[path = "service_wide_integer_tests/service.rs"]

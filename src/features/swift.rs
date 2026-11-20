@@ -20,7 +20,6 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Variant};
 
 use crate::bound_message::swift_literal_text;
-#[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{FunctionName, ModelSchemaPropMeta};
 use crate::features::refusals;
@@ -38,19 +37,16 @@ use crate::field_type::{
     MissingKey, NUMBER_OUT_OF_RANGE, RESULT_ARMS, RangeKind, Scope, VariantKind, Zone,
     get_field_def, is_plain_enum, is_sequence_wrapper,
 };
-#[cfg(feature = "serde")]
 use crate::model_schema::flatten_order::flattened_keys;
 use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
-#[cfg(feature = "serde")]
 use crate::utils::is_unconsumed;
 use crate::utils::{
     MapKeyWire, NumberKey, compute_alias_export_name, compute_item_export_name, is_nonstrict,
     to_snake_case, type_parameters_in_scope, within_variant,
 };
 
-#[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 /// The private function a map's wrapper writes a float key's text with, as serde does: the
@@ -876,7 +872,6 @@ fn refusal() -> String {
 
 /// The refusal structs a judged read of `def` throws where the value it reads, or one it holds,
 /// breaks a rule: the struct of each type it names, declared wherever the type is.
-#[cfg(feature = "serde")]
 pub fn swift_refusals_of(def: &FieldDef, written: &[String]) -> Vec<String> {
     refusals::reached(def, written, &refusal_of)
 }
@@ -1122,7 +1117,6 @@ fn swift_property(name: &str) -> String {
 
 /// The property an emitted struct declares for the field with Rust name `rust_name`: what a
 /// client reading that field off the message writes.
-#[cfg(feature = "serde")]
 pub fn swift_field_member(rust_name: &str) -> String {
     swift_property(&RenameRule::CamelCase.apply_to_field(rust_name))
 }
@@ -1168,25 +1162,13 @@ fn parameters_reached(defs: &[&FieldDef]) -> Vec<String> {
 
 /// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde`
 /// feature reads serde attributes at all.
-#[cfg(feature = "serde")]
 fn rename_override(attrs: &[syn::Attribute]) -> Option<String> {
     parse_serde_field_attributes(attrs).rename
 }
 
-#[cfg(not(feature = "serde"))]
-const fn rename_override(_attrs: &[syn::Attribute]) -> Option<String> {
-    None
-}
-
 /// Whether `attrs` carries `#[serde(flatten)]`.
-#[cfg(feature = "serde")]
 fn field_is_flatten(attrs: &[syn::Attribute]) -> bool {
     parse_serde_field_attributes(attrs).flatten
-}
-
-#[cfg(not(feature = "serde"))]
-const fn field_is_flatten(_attrs: &[syn::Attribute]) -> bool {
-    false
 }
 
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once
@@ -1195,20 +1177,13 @@ fn wire_field_name(rust_name: &str, rename: Option<&str>, rule: RenameRule) -> S
     rename.map_or_else(|| rule.apply_to_field(rust_name), ToOwned::to_owned)
 }
 
-/// A container's own `rename_all`, or [`RenameRule::None`] without the `serde` feature.
-#[cfg(feature = "serde")]
+/// A container's own `rename_all`.
 fn container_rename_rule(attrs: &[syn::Attribute]) -> RenameRule {
     let meta = parse_serde_type_attributes(attrs);
     resolve_rename_rule(meta.rename_all.as_deref())
 }
 
-#[cfg(not(feature = "serde"))]
-fn container_rename_rule(_attrs: &[syn::Attribute]) -> RenameRule {
-    resolve_rename_rule(None)
-}
-
 /// The container attributes an enum's own dispatch reads.
-#[cfg(feature = "serde")]
 fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
     let meta = parse_serde_type_attributes(attrs);
     EnumTagAttrs {
@@ -1217,17 +1192,6 @@ fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
         rename_all_fields: meta.rename_all_fields,
         tag: meta.tag,
         untagged: meta.untagged,
-    }
-}
-
-#[cfg(not(feature = "serde"))]
-const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
-    EnumTagAttrs {
-        content: None,
-        rename_all: None,
-        rename_all_fields: None,
-        tag: None,
-        untagged: false,
     }
 }
 
@@ -2528,7 +2492,7 @@ fn swift_full_real_type(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>
 /// The Swift type name a field earns, together with any auxiliary declarations it needs (a
 /// tuple-slot struct, a non-string map-key wrapper) — exposed for a `#[service_schema]` client to
 /// name a message, success or error type by the same spelling its own declaration publishes.
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 pub fn swift_reference_type(field: &FieldDef, name_hint: &str) -> (String, Vec<String>) {
     let refused = refusals::refusal_name(name_hint);
     let held = SWIFT_REFUSAL.with(|current| current.replace(refused.clone()));
@@ -2881,7 +2845,6 @@ fn present_statement(
 /// The placeholders of the names each variant, and each unit variant, of the flattened member
 /// `field` holds are read under, where its type is declared below its holder or in another crate
 /// and it names no function.
-#[cfg(feature = "serde")]
 fn late_enum(field: &SwiftField) -> Option<(String, String)> {
     if !field.flatten
         || !preprocess::functions(&field.field_def).is_empty()
@@ -2892,12 +2855,6 @@ fn late_enum(field: &SwiftField) -> Option<(String, String)> {
     let entries = member_keys::entries_of(&field.field_def)?;
     let units = member_keys::units_of(&field.field_def)?.concat();
     Some((entries, units))
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn late_enum(_field: &SwiftField) -> Option<(String, String)> {
-    None
 }
 
 /// The name of the type a member `def` holds, or none.
@@ -4180,14 +4137,12 @@ fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
 
 /// The keys of a flattened member whose type is declared below its holder or in another crate, as
 /// the placeholder `swift_definition()` fills.
-#[cfg(feature = "serde")]
 fn unmet_keys(def: &FieldDef) -> Option<Vec<String>> {
     member_keys::of(def)
 }
 
 /// The placeholder of the keys the flattened member typed `def` takes off the object its holder
 /// hands it, where its type is declared below its holder or in another crate.
-#[cfg(feature = "serde")]
 fn late_taken(def: &FieldDef) -> Vec<String> {
     if lookup_swift_name(named_type(def)).is_some() {
         return Vec::new();
@@ -4195,36 +4150,10 @@ fn late_taken(def: &FieldDef) -> Vec<String> {
     member_keys::taken_of(def).unwrap_or_default()
 }
 
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn late_taken(_def: &FieldDef) -> Vec<String> {
-    Vec::new()
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn unmet_keys(_def: &FieldDef) -> Option<Vec<String>> {
-    None
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn flattened_keys(_def: &FieldDef) -> Option<Vec<String>> {
-    None
-}
-
 /// Whether serde leaves the keys of the type `def` holds in the object it reads them from, which
 /// its holder then cannot name.
-#[cfg(feature = "serde")]
 fn leaves_its_keys(def: &FieldDef) -> bool {
     matches!(&def.field_type, FieldDefType::SiblingType(name, _) if is_unconsumed(name))
-}
-
-/// Whether serde leaves the keys of the type `def` holds in the object it reads them from, which
-/// its holder then cannot name.
-#[cfg(not(feature = "serde"))]
-const fn leaves_its_keys(_def: &FieldDef) -> bool {
-    false
 }
 
 /// The `public struct {export_name}{generics}: Codable, Sendable { ... }` a named-field struct or

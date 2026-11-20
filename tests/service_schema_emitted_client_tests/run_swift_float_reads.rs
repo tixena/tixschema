@@ -2,7 +2,7 @@
 //! an infinity of its sign, as serde reads it: under an `Option`, as a map's value, in a list and
 //! behind a type parameter filled with it. Foundation refuses such a `Float`.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use std::collections::HashMap;
 

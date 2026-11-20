@@ -3,7 +3,7 @@
 //! writes them, and a value outside the range refused in serde's sentence, at the path of the
 //! member.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

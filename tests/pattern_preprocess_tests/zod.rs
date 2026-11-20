@@ -37,28 +37,18 @@ fn the_wrap_opens_the_expression_of_every_shape() {
             Handover::zod_schema(),
             "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.discriminatedUnion(",
         ),
-        (
-            Transfer::zod_schema(),
-            if cfg!(feature = "serde") {
-                "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, \
+        (Transfer::zod_schema(), {
+            "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, \
                  z.unknown().check((ctx) => { if (ctx.value !== undefined && typeof ctx.value !== \
                  \"string\" && (typeof ctx.value !== \"object\" || ctx.value === null || \
                  Array.isArray(ctx.value) || Object.keys(ctx.value).length !== 1)) ctx.issues.push({ \
                  code: \"custom\", message: \"expected value\", input: ctx.value, params: { \
                  undeserializable: true } }); }).pipe(z.union([z.literal(\"Held\"), "
-            } else {
-                "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.discriminatedUnion("
-            },
-        ),
-        (
-            Reference::zod_schema(),
-            if cfg!(feature = "serde") {
-                "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.union([z.strictObject({ name: z.string(), }), \
+        }),
+        (Reference::zod_schema(), {
+            "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.union([z.strictObject({ name: z.string(), }), \
                  z.number().int().min(0).max(4294967295)]).superRefine((_read, ctx) => { if (ctx.issues.length > 0 && !ctx.issues.some((issue) => issue.code !== \"unrecognized_keys\")) ctx.issues.splice(0, ctx.issues.length, ...ctx.issues.map((issue) => ({ ...issue, params: { union: issue.path?.length ?? 0 } }))); }, { when: () => true })))"
-            } else {
-                "z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(unwrapped, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z.discriminatedUnion("
-            },
-        ),
+        }),
     ] {
         assert!(
             bound(&schema).starts_with(opens),
@@ -179,31 +169,27 @@ fn a_holder_reads_the_binding_that_calls_the_function() {
     // branch each, never by text copied from the choice, and each member is handed the keys the
     // holder's own members do not take.
     let routed = Routed::zod_schema();
-    if cfg!(feature = "serde") {
-        for member in ["Carrier$Members[0]", "Carrier$Members[1]"] {
-            assert!(
-                routed.contains("Routed$OwnSchema.and(z.lazy(() => z.preprocess((held) => ")
-                    && routed
-                        .contains(&format!(".includes(key))) : held, {member})).superRefine(")),
-                "got: {routed}"
-            );
-        }
+    for member in ["Carrier$Members[0]", "Carrier$Members[1]"] {
         assert!(
-            routed.contains("![\"dock\"].includes(key)"),
+            routed.contains("Routed$OwnSchema.and(z.lazy(() => z.preprocess((held) => ")
+                && routed.contains(&format!(".includes(key))) : held, {member})).superRefine(")),
             "got: {routed}"
         );
-        let carrier = Carrier::zod_schema();
-        assert!(
+    }
+    assert!(
+        routed.contains("![\"dock\"].includes(key)"),
+        "got: {routed}"
+    );
+    let carrier = Carrier::zod_schema();
+    assert!(
             carrier.contains(&[if cfg!(feature = "typescript") { "export const Carrier$Members: readonly [ZodType<CarrierDraft>, ZodType<CarrierDraft>] = [" } else { "export const Carrier$Members = [" }, "\n  z.preprocess(function paired(held) { if (held instanceof Number) return [held, held.valueOf()]; if (typeof held !== \"object\" || held === null || (!Array.isArray(held) && Object.getPrototypeOf(held) !== Object.prototype)) return [held, held]; const copied = Array.isArray(held) ? [...held] : { ...held }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, paired(item)[1]); return [held, copied]; }, z.preprocess(function (pair, ctx) { if (!Array.isArray(pair)) return pair; const answered = Reflect.apply(trimmedPlate, undefined, [pair[1], ctx]); return answered instanceof Promise ? answered.then((plain) => [pair[0], plain]) : [pair[0], answered]; }, z.preprocess(function reboxed(pair) { if (!Array.isArray(pair)) return pair; const original = pair[0]; const out = pair[1]; if (original instanceof Number) return Object.is(out, original.valueOf()) ? original : out; if (typeof out !== \"object\" || out === null || typeof original !== \"object\" || original === null || Array.isArray(out) !== Array.isArray(original) || (!Array.isArray(out) && Object.getPrototypeOf(out) !== Object.prototype)) return out; const copied = Array.isArray(out) ? [...out] : { ...out }; for (const [key, item] of Object.entries(copied)) Reflect.set(copied, key, reboxed([Reflect.get(original, key), item])); return copied; }, z."].concat()),
             "got: {carrier}"
         );
-    }
     assert!(!routed.contains("plate"), "got: {routed}");
 }
 
 /// Each flattened type that names a function is handed the payload without the keys its holder's
 /// own members take, and the holder's own members alone are left out of it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_type_is_handed_the_payload_without_its_holders_keys() {
     let pinned = Pinned::zod_schema();

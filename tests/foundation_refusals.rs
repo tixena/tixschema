@@ -21,11 +21,9 @@
 //! the alias no `#[model_schema]` recorded, in `foundation_refusals/rearranging_alias_unrecorded/`,
 //! to the text tixschema writes into each error, beside notes rustc words differently.
 
-// Every `.stderr` but the ones in `foundation_refusals/const_argument_without_a_feature/` and
-// `foundation_refusals/brand_without_serde/`, whose crates turn no feature on, was written with
-// every feature on, the build the gate runs.
+// Every `.stderr` but the one in `foundation_refusals/const_argument_without_a_feature/`, whose
+// crate turns no feature on, was written with every feature on, the build the gate runs.
 #![cfg(all(
-    feature = "serde",
     feature = "zod",
     feature = "typescript",
     feature = "dart",
@@ -48,7 +46,8 @@ mod tests {
     use trybuild::TestCases;
 
     /// The features the cases are built with: the ones this file is compiled under.
-    const FEATURES: &str = r#""serde", "zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    const FEATURES: &str =
+        r#""zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
 
     #[test]
     fn each_case_fails_with_the_errors_written_beside_it() {
@@ -88,19 +87,6 @@ mod tests {
             "const_argument_without_a_feature",
             &format!(
                 "tixschema = {{ path = {:?}, default-features = false }}\nserde_json = \"1\"\n",
-                env!("CARGO_MANIFEST_DIR")
-            ),
-        );
-    }
-
-    #[test]
-    fn a_string_check_on_a_transparent_struct_is_refused_in_a_build_with_no_feature() {
-        assert_rendered_with_no_feature(
-            "brand_without_serde",
-            &format!(
-                "tixschema = {{ path = {:?}, default-features = false }}\n\
-                 serde = {{ version = \"1\", features = [\"derive\"] }}\n\
-                 serde_json = \"1\"\n",
                 env!("CARGO_MANIFEST_DIR")
             ),
         );

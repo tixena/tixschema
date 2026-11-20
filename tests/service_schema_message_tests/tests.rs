@@ -2,8 +2,6 @@
 //! declares for two of them: their TypeScript, their Zod schema, their JSON Schema, the keys they
 //! write on the wire, and the author's own message left exactly as they wrote it.
 
-#![cfg(feature = "serde")]
-
 mod the_generated_message_on_json_schema {
     use super::{CUSTOMER_ID_KEY, INVOICE_ID_KEY};
     use super::{SweepRequest, VoidInvoiceRequest};
@@ -238,17 +236,9 @@ use core::task::{Context as PollContext, Poll, Waker};
 use tixschema::{model_schema, service_schema};
 
 /// The key an argument becomes on the wire.
-const INVOICE_ID_KEY: &str = if cfg!(feature = "serde") {
-    "invoiceId"
-} else {
-    "invoice_id"
-};
+const INVOICE_ID_KEY: &str = "invoiceId";
 
-const CUSTOMER_ID_KEY: &str = if cfg!(feature = "serde") {
-    "customerId"
-} else {
-    "customer_id"
-};
+const CUSTOMER_ID_KEY: &str = "customerId";
 
 /// The message the author declared, carrying their own annotations and no `rename_all` of any
 /// kind, so a key the macro moved would show up here as plainly as anywhere.

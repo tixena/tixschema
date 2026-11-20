@@ -1,6 +1,6 @@
 //! The README's `Option` examples, expanded here as the README declares them.
 
-#![cfg(all(feature = "serde", feature = "typescript"))]
+#![cfg(feature = "typescript")]
 
 mod services;
 use serde::{Deserialize, Serialize};

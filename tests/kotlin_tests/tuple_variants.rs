@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 
-#[cfg(feature = "serde")]
 use super::tuple_variants_models::binning_kotlin;
 use super::tuple_variants_models::{
     BandingDraft, BundlingDraft, CratingDraft, GradingDraft, LabellingDraft, LashingDraft,
@@ -18,7 +17,6 @@ use super::tuple_variants_models::{
     BinningDraft, CoilingDraft, HeapingDraft, TallyingDraft, coiling_kotlin, heaping_kotlin,
     tallying_kotlin,
 };
-#[cfg(feature = "serde")]
 use super::tuple_variants_models::{
     banding_kotlin, bundling_kotlin, lashing_kotlin, piling_kotlin, racking_kotlin,
     spooling_kotlin, strapping_kotlin, wrapping_kotlin,
@@ -208,7 +206,6 @@ fn the_one_wrapper(definition: &str, subclass: &str) -> String {
 
 /// Under a tag and a content key, the slots are written and read under the content key by the
 /// wrapper the subclass declares.
-#[cfg(feature = "serde")]
 #[test]
 fn the_slots_under_a_content_key_are_written_and_read_by_the_wrapper_declared() {
     let racking = super::tests::renumbered(&racking_kotlin::kotlin_definition());
@@ -267,7 +264,6 @@ fn the_slots_under_the_variants_name_are_written_and_read_by_the_wrapper_declare
 
 /// Untagged, the subclass declares the tuple of its one slot with the one wrapper, and the enum's
 /// serializer reads and writes the subclass by the subclass's own.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_slot_holding_the_slots_declares_one_wrapper() {
     let piling = super::tests::renumbered(&piling_kotlin::kotlin_definition());
@@ -330,7 +326,6 @@ fn a_result_holding_a_tuple_in_a_variant_is_declared_and_read_by_one_wrapper() {
 }
 
 /// A tuple read as its default: the property is declared, and its default read, by one wrapper.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_read_as_its_default_is_declared_and_read_by_one_wrapper() {
     let strapping = super::tests::renumbered(&strapping_kotlin::kotlin_definition());
@@ -346,7 +341,6 @@ fn a_tuple_read_as_its_default_is_declared_and_read_by_one_wrapper() {
 
 /// A tuple beside a flattened member: the property is declared, and the holder's serializer
 /// writes and reads it, by one wrapper.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
     let bundling = super::tests::renumbered(&bundling_kotlin::kotlin_definition());
@@ -421,7 +415,6 @@ fn the_walked_wrapper(definition: &str) -> String {
 
 /// A tuple holding a model, read as its default: the property is declared, and its default read,
 /// by the one wrapper that reads the model unjudged.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_holding_a_model_read_as_its_default_is_declared_and_read_by_one_wrapper() {
     let wrapping = super::tests::renumbered(&wrapping_kotlin::kotlin_definition());
@@ -438,7 +431,6 @@ fn a_tuple_holding_a_model_read_as_its_default_is_declared_and_read_by_one_wrapp
 
 /// A tuple holding a model beside a flattened member: the property is declared, and the holder's
 /// serializer writes and reads it, by the one wrapper that reads the model unjudged.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one_wrapper() {
     let banding = super::tests::renumbered(&banding_kotlin::kotlin_definition());
@@ -459,7 +451,6 @@ fn a_tuple_holding_a_model_beside_a_flattened_member_is_declared_and_read_by_one
 
 /// A map of tuples holding a model in a variant's one slot: the subclass declares it, and the
 /// enum's serializer writes and reads it, by the one wrapper that reads the model unjudged.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_tuples_holding_a_model_in_a_variant_is_declared_and_read_by_one_wrapper() {
     let binning = super::tests::renumbered(&binning_kotlin::kotlin_definition());
@@ -534,7 +525,6 @@ fn a_tuple_holding_a_model_in_a_result_in_a_tuple_is_declared_and_read_by_one_wr
 /// Tuples holding a model in an `Option` and in a list, beside a flattened member: both
 /// properties are declared, and the holder's serializer writes and reads both, by the one wrapper
 /// that reads the model unjudged.
-#[cfg(feature = "serde")]
 #[test]
 fn tuples_holding_a_model_in_an_option_and_a_list_are_declared_and_read_by_one_wrapper() {
     let spooling = super::tests::renumbered(&spooling_kotlin::kotlin_definition());
@@ -593,7 +583,6 @@ fn a_map_of_tuples_holding_a_model_in_a_tuple_is_declared_and_read_by_one_wrappe
 
 /// A map of tuples holding a model, under a key of its own beside a member of the holder's own:
 /// the property is declared by the one wrapper that reads the model unjudged.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_tuples_holding_a_model_under_its_own_key_is_declared_by_one_wrapper() {
     let lashing = super::tests::renumbered(&lashing_kotlin::kotlin_definition());

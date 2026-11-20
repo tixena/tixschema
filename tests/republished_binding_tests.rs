@@ -6,6 +6,5 @@
 //! the surface it reads.
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "republished_binding_tests/tests.rs"]
 mod tests;

@@ -2,7 +2,7 @@
 //! against serde, in each place a member holds one, and each payload serde refuses refused. The
 //! analyzer passes every type.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

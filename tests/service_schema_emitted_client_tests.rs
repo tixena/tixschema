@@ -1,6 +1,6 @@
 //! The emitted clients put through a real runtime, with a real message object.
 
-#![cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#![cfg(all(feature = "zod", feature = "typescript"))]
 
 extern crate alloc;
 
@@ -544,7 +544,7 @@ mod run_swift_integral_floats;
 
 /// The models a number written as a float is read on through the payload of a `preprocess` and a
 /// flattened member.
-#[cfg(all(test, feature = "swift", feature = "serde"))]
+#[cfg(all(test, feature = "swift"))]
 #[path = "service_schema_emitted_client_tests/payload_float_models.rs"]
 mod payload_float_models;
 
@@ -1164,10 +1164,7 @@ mod run_kotlin_service_forms;
 
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "kotlin", feature = "swift")
-))]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 #[path = "kotlin_tests/aliased_models.rs"]
 mod aliased_models;
 
@@ -1192,7 +1189,7 @@ mod run_dart_flattened;
 /// The enums of the models a name serde reads beside the one it writes is read under, flattened,
 /// each beside a member of its holder's own. Declared after the module that declares the enums.
 #[cfg(test)]
-#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+#[cfg(any(feature = "dart", feature = "swift"))]
 #[path = "dart_tests/flattened_aliased_models.rs"]
 mod dart_flattened_aliased_models;
 
@@ -1204,7 +1201,7 @@ mod run_dart_aliased;
 
 /// A member under an alias in each way the Swift read reads a member under its key.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/aliased_members_models.rs"]
 mod aliased_members_models;
 
@@ -1237,7 +1234,7 @@ mod run_dart_own_tags;
 mod run_dart_refusals;
 
 /// Models whose names on the wire hold a `$`, a quote, a double quote and a backslash.
-#[cfg(all(test, feature = "serde", feature = "dart"))]
+#[cfg(all(test, feature = "dart"))]
 #[path = "dart_tests/quoted_models.rs"]
 mod quoted_models;
 
@@ -1345,7 +1342,7 @@ mod usize_models;
 
 /// Each integer width below 64 bits as a member.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/narrow_integer_models.rs"]
 mod narrow_integer_models;
 
@@ -1712,14 +1709,11 @@ mod run_untagged_millis;
 
 /// Untagged enums with a newtype variant over an `Option`.
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(
-        all(feature = "zod", feature = "typescript"),
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    all(feature = "zod", feature = "typescript"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[path = "untagged_tests/null_models.rs"]
 mod null_models;
@@ -1731,10 +1725,7 @@ mod run_untagged_nulls;
 
 /// An alias of an `Option` held outside a field.
 #[cfg(test)]
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[path = "semantic_types_tests/option_alias_models.rs"]
 mod option_alias_models;
 

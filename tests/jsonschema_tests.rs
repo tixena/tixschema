@@ -3,16 +3,13 @@
 //! enums, numeric types, serde rename attributes, and `ObjectId` support.
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "jsonschema_tests/tests.rs"]
 mod tests;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "jsonschema_tests/shared_definitions.rs"]
 mod shared_definitions;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "jsonschema_tests/function_read_members.rs"]
 mod function_read_members;

@@ -4,7 +4,7 @@
 //! with a `FormatException`, an absent key among them. A tuple struct of no slot keeps `[]`. The
 //! analyzer passes every type.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

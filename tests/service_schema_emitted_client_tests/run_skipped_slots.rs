@@ -3,10 +3,7 @@
 //! schema answer of the same payload: each client declares, reads and writes the slots that
 //! remain, and nothing of the slot dropped.
 
-#![cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#![cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 
 use core::fmt::Write as _;
 

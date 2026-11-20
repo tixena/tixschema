@@ -1,7 +1,7 @@
 //! A field written as a raw identifier publishes the key serde writes for it, with no `r#`.
 
 /// Named after Rust keywords, the reason a field is written raw.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 mod on_a_schema_surface {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -159,10 +159,7 @@ mod on_a_schema_surface {
 
 /// `type` and `match` are reserved in none of the three languages, so each names the member as
 /// serde names the key.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 mod on_a_mobile_surface {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

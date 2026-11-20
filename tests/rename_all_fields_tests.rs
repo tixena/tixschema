@@ -5,6 +5,5 @@
 //! pinned here, under each of the four taggings, against what serde itself puts on the wire.
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "rename_all_fields_tests/tests.rs"]
 mod tests;

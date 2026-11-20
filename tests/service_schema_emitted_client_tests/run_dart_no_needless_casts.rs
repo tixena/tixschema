@@ -2,7 +2,7 @@
 //! tag alone whose newtype variants hold structs, passed by the analyzer with no warning and run
 //! under the Dart VM against serde.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

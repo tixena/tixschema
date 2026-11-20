@@ -136,7 +136,7 @@ void main() async {
     null,
     ConversationClientServiceHandlers<void>(
       purgeConversation: (ctx, req) async {},
-      window: (ctx, req) async => WindowPage(items: <String>['a', 'b']),
+      window: (ctx, req) async => WindowPageDraft(items: <String>['a', 'b']).validate(),
     ),
     onFault: (fault) {},
   );

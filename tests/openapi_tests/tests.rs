@@ -1,7 +1,5 @@
 //! Services that ask for `openapi`, one per operation shape, and the document each answers.
 
-#![cfg(feature = "serde")]
-
 use crate::{
     content_http_rest_transport, folder_http_rest_transport, plain_http_rest_transport,
     search_http_rest_transport,

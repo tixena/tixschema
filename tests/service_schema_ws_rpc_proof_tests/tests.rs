@@ -5,8 +5,6 @@
 //! `SessionEvents` client to the generated `SessionEvents` dispatcher, through one in-memory
 //! [`Wire`], so every frame either side sends is actually read by the other.
 
-#![cfg(feature = "serde")]
-
 use crate::document_session_schema::{CallError, ServiceFaultKind};
 use crate::events_client;
 use crate::events_transport;

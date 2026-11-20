@@ -14,7 +14,6 @@ use syn::ext::IdentExt as _;
 use syn::{Field, Fields, Ident, Item, ItemEnum, ItemStruct, ItemType, Lit, Variant};
 
 use crate::bound_message::{Bound, dart_repeated, dart_violation};
-#[cfg(feature = "serde")]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::{
     FunctionName, LiteralValue, ModelSchemaPropMeta, limit_text,
@@ -38,14 +37,12 @@ use crate::model_schema::parameter_walk;
 use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
 use crate::rename_rule::{RenameRule, resolve_rename_rule};
-#[cfg(feature = "serde")]
 use crate::utils::is_unconsumed;
 use crate::utils::{
     MapKeyWire, compute_alias_export_name, compute_item_export_name, crate_tag, is_nonstrict,
     to_snake_case, type_parameters_in_scope, within_variant,
 };
 
-#[cfg(feature = "serde")]
 use crate::features::serde::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 /// The helper a type's `validationIssues()` reads the text of a named type with: a string as it is, and a
@@ -176,9 +173,7 @@ impl DartField {
     }
 }
 
-/// The container attributes read off any enum, in the shape `process_enum` itself dispatches on —
-/// `tag`/`content`/`untagged` default to "written none of them" without the `serde` feature, which
-/// is what leaves an all-unit enum publishing the plain string-union shape regardless.
+/// The container attributes read off any enum, in the shape `process_enum` itself dispatches on.
 struct EnumTagAttrs {
     content: Option<String>,
     rename_all: Option<String>,
@@ -703,7 +698,6 @@ fn refusal() -> String {
 
 /// The refusal classes a judged read of `def` throws where the value it reads, or one it holds,
 /// breaks a rule: the class of each type it names, declared wherever the type is.
-#[cfg(feature = "serde")]
 pub fn dart_refusals_of(def: &FieldDef, written: &[String]) -> Vec<String> {
     refusals::reached(def, written, &|name| {
         refusals::refusal_name(&lookup_dart_name(name).unwrap_or_else(|| name.to_owned()))
@@ -1292,31 +1286,18 @@ fn field_def_with_prop_meta(name: &str, member: &Field, args: &DartTypeArgs<'_>)
     field_def
 }
 
-/// The `#[serde(rename = "...")]` a field or variant earns, honored only where the `serde` feature
-/// reads serde attributes at all.
-#[cfg(feature = "serde")]
+/// The `#[serde(rename = "...")]` a field or variant earns.
 fn rename_override(attrs: &[syn::Attribute]) -> Option<String> {
     parse_serde_field_attributes(attrs).rename
 }
 
-#[cfg(not(feature = "serde"))]
-const fn rename_override(_attrs: &[syn::Attribute]) -> Option<String> {
-    None
-}
-
 /// The names serde reads a field or a variant under beside its own, each `alias` written on it:
 /// none where serde does not read it.
-#[cfg(feature = "serde")]
 fn read_aliases(attrs: &[syn::Attribute]) -> Vec<String> {
     if parse_serde_key_omission(attrs).skips_deserializing {
         return Vec::new();
     }
     parse_serde_field_attributes(attrs).aliases
-}
-
-#[cfg(not(feature = "serde"))]
-const fn read_aliases(_attrs: &[syn::Attribute]) -> Vec<String> {
-    Vec::new()
 }
 
 /// `name` and then each of `aliases`: every name serde reads a variant under.
@@ -1339,16 +1320,9 @@ pub fn quoted(name: &str) -> String {
     format!("'{}'", dart_escaped(name, '\''))
 }
 
-/// Whether `attrs` carries `#[serde(flatten)]` — always `false` without the `serde` feature, since
-/// nothing else reads what a serde attribute means in that build either.
-#[cfg(feature = "serde")]
+/// Whether `attrs` carries `#[serde(flatten)]`.
 fn field_is_flatten(attrs: &[syn::Attribute]) -> bool {
     parse_serde_field_attributes(attrs).flatten
-}
-
-#[cfg(not(feature = "serde"))]
-const fn field_is_flatten(_attrs: &[syn::Attribute]) -> bool {
-    false
 }
 
 /// `name` as a Dart member: itself, or with a trailing underscore where Dart reserves it or the
@@ -1368,13 +1342,11 @@ fn dart_member(name: &str, taken: &[&str], written: &[String]) -> String {
 
 /// The member an emitted class declares for its field `name`, beside its fields `fields`: what a
 /// client reading that field off the message writes.
-#[cfg(feature = "serde")]
 pub fn dart_field_member(name: &str, fields: &[String]) -> String {
     dart_member(name, &DART_FIELD_NAMES_TAKEN, fields)
 }
 
 /// The fields of the struct `rust_ident`, where its class was emitted above; none otherwise.
-#[cfg(feature = "serde")]
 pub fn dart_fields_of(rust_ident: &str) -> Vec<String> {
     DART_FIELDS.with(|fields| fields.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
@@ -1429,7 +1401,6 @@ fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
     if !member_functions(def).is_empty() {
         return None;
     }
-    #[cfg(feature = "serde")]
     if let Some(keys) = member_keys::of(def) {
         return Some(keys);
     }
@@ -1450,16 +1421,8 @@ fn flattened_contribution(def: &FieldDef) -> Option<Vec<String>> {
 
 /// Whether serde leaves the keys of the type a flattened member `def` holds in the object it
 /// reads them from, which its holder then cannot name.
-#[cfg(feature = "serde")]
 fn leaves_its_keys(def: &FieldDef) -> bool {
     matches!(&def.field_type, FieldDefType::SiblingType(name, _) if is_unconsumed(name))
-}
-
-/// Whether serde leaves the keys of the type a flattened member `def` holds in the object it
-/// reads them from, which its holder then cannot name.
-#[cfg(not(feature = "serde"))]
-const fn leaves_its_keys(_def: &FieldDef) -> bool {
-    false
 }
 
 /// The keys a class over `fields` refuses a key beside, `beside` among them: the keys of its own
@@ -1757,35 +1720,27 @@ fn hands_to_none(def: &FieldDef) -> bool {
 
 /// `name` as a method or a parameter of an emitted client, moved off a reserved word and off
 /// `taken`, the names written around it.
-#[cfg(feature = "serde")]
 pub fn dart_local(name: &str, taken: &[&str]) -> String {
     dart_member(name, taken, &[])
 }
 
 /// The wire name a field with Rust name `rust_name` and its own `rename` writes under, once
-/// `rule` — the container's own `rename_all`, [`RenameRule::None`] without the `serde` feature —
+/// `rule` — the container's own `rename_all` —
 /// has had its say. An explicit rename always wins over the container's rule, matching serde
 /// itself.
 fn wire_field_name(rust_name: &str, rename: Option<&str>, rule: RenameRule) -> String {
     rename.map_or_else(|| rule.apply_to_field(rust_name), ToOwned::to_owned)
 }
 
-/// A container's own `rename_all`, or [`RenameRule::None`] without the `serde` feature to read it
-/// with — shared by a struct and an enum, whose variant names read the very same attribute.
-#[cfg(feature = "serde")]
+/// A container's own `rename_all`, shared by a struct and an enum, whose variant names read the
+/// very same attribute.
 fn container_rename_rule(attrs: &[syn::Attribute]) -> RenameRule {
     let meta = parse_serde_type_attributes(attrs);
     resolve_rename_rule(meta.rename_all.as_deref())
 }
 
-#[cfg(not(feature = "serde"))]
-fn container_rename_rule(_attrs: &[syn::Attribute]) -> RenameRule {
-    resolve_rename_rule(None)
-}
-
 /// The container attributes an enum's own dispatch reads, or every field left at its default
 /// without the `serde` feature to read one with.
-#[cfg(feature = "serde")]
 fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
     let meta = parse_serde_type_attributes(attrs);
     EnumTagAttrs {
@@ -1794,17 +1749,6 @@ fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
         rename_all_fields: meta.rename_all_fields,
         tag: meta.tag,
         untagged: meta.untagged,
-    }
-}
-
-#[cfg(not(feature = "serde"))]
-const fn enum_tag_attrs(_attrs: &[syn::Attribute]) -> EnumTagAttrs {
-    EnumTagAttrs {
-        content: None,
-        rename_all: None,
-        rename_all_fields: None,
-        tag: None,
-        untagged: false,
     }
 }
 
@@ -2444,7 +2388,6 @@ pub fn dart_typename(field: &FieldDef) -> String {
 /// The class and the type arguments `ty` is written with, where `ty` is a bare named type. Every
 /// class and enum written for a model answers `$thrown`, so a dispatcher calls it with no
 /// knowledge of the type's kind or of where it is declared.
-#[cfg(feature = "serde")]
 pub fn dart_named_class_of(ty: &syn::Type) -> Option<(String, String)> {
     let field = get_field_def("value", ty, "");
     if field.is_optional() || field.array_depth != 0 {
@@ -2472,14 +2415,12 @@ pub fn dart_named_class_of(ty: &syn::Type) -> Option<(String, String)> {
 
 /// Decodes a value of `ty` out of the dynamically typed JSON `expr`, as a model field of that type
 /// is decoded, a declared type by its judged read.
-#[cfg(feature = "serde")]
 pub fn dart_json_decode(ty: &syn::Type, expr: &str) -> String {
     dart_decode_expr(&get_field_def("value", ty, ""), expr, Read::Judged)
 }
 
 /// Encodes the Dart value `expr` of `ty` into a `jsonEncode`-safe value, as a model field of that
 /// type is encoded. `promoted`: Dart narrows `expr`, being a parameter or a local.
-#[cfg(feature = "serde")]
 pub fn dart_json_encode(ty: &syn::Type, expr: &str, promoted: bool) -> String {
     dart_encode_expr(&get_field_def("value", ty, ""), expr, promoted)
 }
@@ -3058,23 +2999,15 @@ fn late_names(entries: &str) -> String {
 
 /// Whether the flattened member typed `def` has a type declared below its holder or in another
 /// crate, which the holder is written without seeing.
-#[cfg(feature = "serde")]
 fn late_flattened(def: &FieldDef) -> bool {
     def.array_depth == 0
         && member_keys::is_unmet(def)
         && lookup_dart_name(named_type(def)).is_none()
 }
 
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn late_flattened(_def: &FieldDef) -> bool {
-    false
-}
-
 /// The placeholder of the names each variant of the flattened member typed `def` is read under,
 /// where its type is declared below its holder or in another crate: filled when the holder's
 /// `dart_definition()` runs, with no name for a type that is no externally tagged enum.
-#[cfg(feature = "serde")]
 fn late_entries(def: &FieldDef) -> Option<String> {
     (member_functions(def).is_empty()
         && object_id_keys(def).is_empty()
@@ -3085,24 +3018,11 @@ fn late_entries(def: &FieldDef) -> Option<String> {
 
 /// The placeholder of the keys the flattened member typed `def` takes off the object its holder
 /// hands it, where its type is declared below its holder or in another crate.
-#[cfg(feature = "serde")]
 fn late_taken(def: &FieldDef) -> Vec<String> {
     if lookup_dart_name(named_type(def)).is_some() {
         return Vec::new();
     }
     member_keys::taken_of(def).unwrap_or_default()
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn late_taken(_def: &FieldDef) -> Vec<String> {
-    Vec::new()
-}
-
-/// With no `serde`, nothing is flattened.
-#[cfg(not(feature = "serde"))]
-const fn late_entries(_def: &FieldDef) -> Option<String> {
-    None
 }
 
 /// The read of an externally tagged enum typed `def` flattened into its holder from `first`, the

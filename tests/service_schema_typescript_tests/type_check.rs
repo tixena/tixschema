@@ -33,7 +33,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, id};
 use std::sync::Once;
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 use tixschema::model_schema;
 
 /// Names the compiler to run, for a machine that has one somewhere other than `PATH`.
@@ -729,13 +729,13 @@ const UNIT_SUCCESS_MEMBER_OK_WITH_ARRAY: &str = "  async ping(ctx, req): \
 #[cfg(feature = "zod")]
 static ZOD_STOOD_DOWN: Once = Once::new();
 
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema(minLength = 1)]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(transparent)]
 pub struct ParcelLabel(String);
 
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -746,7 +746,7 @@ pub struct Parcel {
 }
 
 /// A plain enum that declares no rule.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
 pub enum ParcelLane {
@@ -755,7 +755,7 @@ pub enum ParcelLane {
 }
 
 /// An internally tagged enum with a unit variant and a variant that holds a value.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind")]
@@ -765,7 +765,7 @@ pub enum ParcelMove {
 }
 
 /// An adjacently tagged enum, and an externally tagged one, of the same variants.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "t", content = "c")]
@@ -774,7 +774,7 @@ pub enum ParcelAdjacent {
     Idle,
 }
 
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub enum ParcelExternal {
@@ -783,12 +783,12 @@ pub enum ParcelExternal {
 }
 
 /// A unit struct, and a struct that holds a model of no rule.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct ParcelStamp;
 
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct ParcelRecord {
@@ -797,7 +797,7 @@ pub struct ParcelRecord {
 }
 
 /// A struct that declares no rule.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct ParcelNote {
@@ -1846,7 +1846,7 @@ fn no_service_surface_declares_a_helper_nothing_calls() {
 }
 
 /// The models of a draft and a valid type, beside the real `zod`.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn valid_type_bundle() -> String {
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -1860,7 +1860,7 @@ fn valid_type_bundle() -> String {
 
 /// Compiles `caller` beside [`valid_type_bundle`] and answers what the compiler said, or `None`
 /// where there is no compiler or no `zod` to compile against.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn valid_type_caller(named: &str, caller: &str) -> Option<(bool, String)> {
     let head = "import { Parcel$Schema, ParcelDraft$Schema, type Parcel, type ParcelDraft } from \
                 \"./bundle.js\";\n";
@@ -1873,7 +1873,7 @@ fn valid_type_caller(named: &str, caller: &str) -> Option<(bool, String)> {
 
 /// A parse returns the valid type, the draft's parse returns the draft, and a valid value goes where
 /// a draft is taken with no cast.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_parse_returns_the_valid_type_and_a_valid_value_widens_to_its_draft() {
     let caller = "declare const json: unknown;\n\
@@ -1889,7 +1889,7 @@ fn a_parse_returns_the_valid_type_and_a_valid_value_widens_to_its_draft() {
 }
 
 /// A value built by hand is not the valid type: only a parse returns one.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_value_built_by_hand_is_not_the_valid_type() {
     let caller = "declare const label: ParcelDraft[\"label\"];\n\
@@ -1911,7 +1911,7 @@ fn a_value_built_by_hand_is_not_the_valid_type() {
 }
 
 /// A member of the valid type is read-only.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_member_of_the_valid_type_cannot_be_assigned() {
     let caller = "declare const parcel: Parcel;\nparcel.parcelCount = 1;\n";
@@ -1928,7 +1928,7 @@ fn a_member_of_the_valid_type_cannot_be_assigned() {
 }
 
 /// The models of a rule-less draft and a draft under a rule, beside the real `zod`.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn valid_constants_bundle() -> String {
     [
         "import { z, type ZodType, type $brand } from \"zod\";".to_owned(),
@@ -1955,7 +1955,7 @@ fn valid_constants_bundle() -> String {
 }
 
 /// Compiles `caller` beside [`valid_constants_bundle`].
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
     // Only what `caller` reads, as a module under `noUnusedLocals` imports.
     let reads = |name: &str| {
@@ -2004,7 +2004,7 @@ fn valid_constants_caller(named: &str, caller: &str) -> Option<(bool, String)> {
 }
 
 /// A unit variant is a constant of the valid type, and a draft is made valid by its schema.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
     let caller = "export const lane: Lane = ParcelLane.Express;\n\
@@ -2025,7 +2025,7 @@ fn a_plain_enum_has_a_constant_of_the_valid_type_for_each_variant() {
 
 /// A plain enum with no check is the bare string union: it indexes a record and narrows in a
 /// `switch` with no `default`.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_plain_enum_with_no_check_keys_a_record_and_narrows_a_switch() {
     let caller = "declare const reads: Record<Lane, number>;\n\
@@ -2044,7 +2044,7 @@ fn a_plain_enum_with_no_check_keys_a_record_and_narrows_a_switch() {
 }
 
 /// No draft, under a rule or not, has a conversion that skips its schema.
-#[cfg(all(feature = "zod", feature = "serde", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn no_draft_has_a_conversion_that_skips_its_schema() {
     let caller = "import { ParcelDraft$valid, ParcelNoteDraft$valid } from \"./bundle.js\";\n\

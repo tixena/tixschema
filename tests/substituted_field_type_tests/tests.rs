@@ -6,7 +6,6 @@
 
 mod jsonschema {
     use super::{Substituted, Written};
-    #[cfg(feature = "serde")]
     use super::{SubstitutedSlug, WrittenSlug};
 
     #[test]
@@ -27,7 +26,6 @@ mod jsonschema {
         }
     }
 
-    #[cfg(feature = "serde")]
     #[test]
     fn a_substituted_brand_inner_documents_as_the_written_one() {
         assert_eq!(SubstitutedSlug::json_schema(), WrittenSlug::json_schema());
@@ -37,7 +35,6 @@ mod jsonschema {
 #[cfg(feature = "typescript")]
 mod typescript {
     use super::{Substituted, Written, as_written};
-    #[cfg(feature = "serde")]
     use super::{SubstitutedSlug, WrittenSlug};
 
     #[test]
@@ -55,7 +52,6 @@ mod typescript {
         assert!(!declared.contains("unknown"), "Got: {ts}");
     }
 
-    #[cfg(feature = "serde")]
     #[test]
     fn a_substituted_brand_inner_reads_as_the_written_one() {
         assert_eq!(
@@ -67,7 +63,7 @@ mod typescript {
 
 /// The brand's own validator reads the inner type to decide how the checked value reaches it, so
 /// the substituted brand has to accept and refuse exactly what the written one does.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 mod wire {
     use super::{SubstitutedSlug, WrittenSlug};
 
@@ -85,7 +81,6 @@ mod wire {
 #[cfg(feature = "zod")]
 mod zod {
     use super::{Substituted, Written, as_written};
-    #[cfg(feature = "serde")]
     use super::{SubstitutedSlug, WrittenSlug};
 
     #[test]
@@ -102,7 +97,6 @@ mod zod {
         assert!(!zod.contains("z.unknown()"), "Got: {zod}");
     }
 
-    #[cfg(feature = "serde")]
     #[test]
     fn a_substituted_brand_inner_validates_as_the_written_one() {
         assert_eq!(
@@ -134,7 +128,6 @@ macro_rules! declare_holder {
 
 /// A brand narrows the value its inner type describes, so a constrained brand has to read that
 /// inner as the type it names — through the substitution as much as beside it.
-#[cfg(feature = "serde")]
 macro_rules! declare_slug {
     ($name:ident, $inner:ty) => {
         #[model_schema(minLength = 1, maxLength = 8, enable = ["jsonschema"])]
@@ -154,7 +147,6 @@ declare_holder!(
     (String, u32)
 );
 
-#[cfg(feature = "serde")]
 declare_slug!(SubstitutedSlug, String);
 
 #[model_schema(enable = ["jsonschema"])]
@@ -169,7 +161,6 @@ pub struct Written {
     pub text: String,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(minLength = 1, maxLength = 8, enable = ["jsonschema"])]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

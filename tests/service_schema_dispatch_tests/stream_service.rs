@@ -3,8 +3,6 @@
 //! a `206` range answer expressing `content-range` alongside the streamed body, both answers
 //! naming their `content-type`.
 
-#![cfg(feature = "serde")]
-
 use crate::stream_http_rest_transport;
 use core::future::{Future, ready};
 use core::pin::pin;

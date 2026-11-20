@@ -16,7 +16,7 @@ mod needs_wrapper;
 mod mcp_form;
 
 // What a service generates reaches the trait and its module through `$crate`, this binary's root.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{
     AnnotatedService, AnnotatedServiceSchema, DocumentService, DocumentServiceSchema, RouteService,
     TwoTransportService, TwoTransportServiceSchema, annotated_service_schema,

@@ -297,16 +297,16 @@ fun connectedPair(scope: CoroutineScope): Pair<FakeSocket, FakeSocket> {
 object Handlers : ConversationClientServiceHandlers {
     override suspend fun window(req: WindowRequest): ConversationClientServiceWindowResult =
         if (req.conversationId == "archived") {
-            ConversationClientServiceWindowResult.Declared(WindowErrorNotFound)
+            ConversationClientServiceWindowResult.Declared(WindowError.NotFound)
         } else {
-            ConversationClientServiceWindowResult.Ok(WindowPage(items = listOf("a", "b")))
+            ConversationClientServiceWindowResult.Ok(WindowPageDraft(items = listOf("a", "b")).validate())
         }
     override suspend fun purgeConversation(req: ConversationId) {}
 }
 
 object PulseHandlers : PulseClientServiceHandlers {
     override suspend fun pulse(req: PulseRequest): PulseClientServicePulseResult =
-        PulseClientServicePulseResult.Ok(PulseResponse(alive = true))
+        PulseClientServicePulseResult.Ok(PulseResponseDraft(alive = true).validate())
 }
 
 suspend fun until(timeoutMs: Long = 2000, predicate: () -> Boolean): Boolean {
@@ -417,7 +417,7 @@ fun main() = runBlocking {
 
     val declared = client.window(WindowRequest("archived"))
     val declaredOk = declared is ConversationClientServiceWindowResult.Declared &&
-        declared.error == WindowErrorNotFound
+        declared.error == WindowError.NotFound
 
     val faultsBeforeNotify = faults.size
     clientTransport.notify("window", JsonPrimitive(7))

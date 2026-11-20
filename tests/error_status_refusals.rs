@@ -3,7 +3,6 @@
 
 // Every `.stderr` was written with every feature on, the build the gate runs.
 #![cfg(all(
-    feature = "serde",
     feature = "zod",
     feature = "typescript",
     feature = "dart",

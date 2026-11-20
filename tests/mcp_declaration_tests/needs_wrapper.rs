@@ -1,7 +1,5 @@
 //! `needs_wrapper()` on every kind of model type, held to what serde writes for a value of it.
 
-#![cfg(feature = "serde")]
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;

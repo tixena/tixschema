@@ -1,9 +1,9 @@
 //! Tests of type aliases: a scalar, a collection and a tuple alias on every surface.
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 use std::collections::HashMap;
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 use serde::{Deserialize, Serialize};
 #[cfg(all(test, feature = "typescript"))]
 use tixschema::model_schema;
@@ -74,7 +74,7 @@ pub type Tags = Vec<String>;
 #[model_schema(name = "Wrapper", default_types(T = String), enable = ["jsonschema"])]
 pub type Wrapper<T> = Option<T>;
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CollectionAlias {
@@ -82,7 +82,7 @@ struct CollectionAlias {
     tags: Tags,
 }
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ComplexAliasStruct {
@@ -92,14 +92,14 @@ struct ComplexAliasStruct {
     optional_id: Option<DocumentId>,
 }
 
-#[cfg(all(test, feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "zod", feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CompactRowHolder {
     rows: Vec<CompactLinkRow>,
 }
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct DocumentRecord {
@@ -111,14 +111,14 @@ struct DocumentRecord {
     score: Score,
 }
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct MapAlias {
     metadata: HashMap<String, DocumentId>,
 }
 
-#[cfg(all(test, feature = "typescript", feature = "serde"))]
+#[cfg(all(test, feature = "typescript"))]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct NestedAliasStruct {
@@ -280,7 +280,7 @@ fn test_nested_alias_typescript() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_struct_with_alias_fields_typescript() {
     let ts = DocumentRecord::ts_definition();
 
@@ -307,7 +307,7 @@ fn test_struct_with_alias_fields_typescript() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_struct_with_nested_alias_fields() {
     let ts = NestedAliasStruct::ts_definition();
 
@@ -326,7 +326,7 @@ fn test_struct_with_nested_alias_fields() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_alias_in_vec() {
     let ts = CollectionAlias::ts_definition();
 
@@ -341,7 +341,7 @@ fn test_alias_in_vec() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_alias_in_hashmap() {
     let ts = MapAlias::ts_definition();
 
@@ -394,7 +394,7 @@ fn test_tuple_alias_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn test_vec_of_alias_references_schema() {
     let zod = CompactRowHolder::zod_schema();
     assert!(
@@ -410,7 +410,7 @@ fn test_vec_of_alias_references_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn test_struct_with_alias_zod_schema() {
     let zod = DocumentRecord::zod_schema();
 
@@ -521,7 +521,7 @@ fn test_generic_alias_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_struct_with_alias_json_schema() {
     let schema = DocumentRecord::json_schema();
 
@@ -574,7 +574,7 @@ fn test_multiple_aliases_generate_separate_modules() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_complex_alias_usage() {
     let ts = ComplexAliasStruct::ts_definition();
 

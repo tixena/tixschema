@@ -3,7 +3,7 @@
 //! serde drops in one direction alone is described as every variant is. A member of a variant
 //! serde never reads is read by no hook.
 
-#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#![cfg(all(feature = "typescript", feature = "zod"))]
 
 #[cfg(test)]
 #[path = "skipped_variant_tests/models.rs"]

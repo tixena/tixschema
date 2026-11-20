@@ -4,7 +4,7 @@
 //! A test binary of its own: a model type's name is known to every expansion that follows it in
 //! the crate, where a field written `String` would then be read as this type.
 
-#![cfg(all(feature = "serde", feature = "typescript"))]
+#![cfg(feature = "typescript")]
 
 extern crate alloc;
 

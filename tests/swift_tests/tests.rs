@@ -236,7 +236,6 @@ fn every_width_maps_to_its_own_swift_type() {
     assert!(swift.contains("optional: Int32?"), "got: {swift}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_plain_enum_earns_a_string_raw_value_enum() {
     let swift = status_swift::swift_definition();
@@ -271,7 +270,6 @@ fn an_externally_tagged_enum_writes_the_payload_under_its_own_tag_key() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
     let swift = internal_tagged_swift::swift_definition();
@@ -296,7 +294,6 @@ fn an_internally_tagged_enum_merges_the_tag_into_the_payloads_own_object() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
     let swift = adjacent_tagged_swift::swift_definition();
@@ -326,7 +323,6 @@ fn an_adjacently_tagged_enum_writes_the_payload_under_its_own_content_key() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_tries_each_member_in_turn() {
     let swift = untagged_swift::swift_definition();
@@ -468,7 +464,6 @@ fn a_nullable_field_always_writes_its_key_even_when_nil() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_field_decodes_from_its_holders_whole_object_and_encodes_through_the_same_encoder() {
     let swift = with_flatten_swift::swift_definition();
@@ -684,12 +679,6 @@ fn a_member_named_after_a_reserved_word_is_written_between_backticks() {
     );
 }
 
-#[cfg(feature = "serde")]
 fn correlation_id(text: &str) -> CorrelationId {
     CorrelationId::new(text.to_owned()).unwrap()
-}
-
-#[cfg(not(feature = "serde"))]
-fn correlation_id(text: &str) -> CorrelationId {
-    CorrelationIdDraft(text.to_owned()).into()
 }

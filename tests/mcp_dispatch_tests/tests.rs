@@ -1,8 +1,6 @@
 //! `DocumentService` and `BillingService`, both asking for `mcp`, and the stand-in that answers
 //! them.
 
-#![cfg(feature = "serde")]
-
 use alloc::sync::Arc;
 use core::future::{Future, poll_fn, ready};
 use core::task::Poll;

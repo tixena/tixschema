@@ -2,7 +2,7 @@
 //! `-Werror`, against serde, in each place a member holds one, and each payload serde refuses
 //! refused, the string of an `i64`'s digits included.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

@@ -4,7 +4,7 @@
 //! refused with `SerializationException`, an absent key among them. A tuple struct of no slot,
 //! which kotlinc refused as a data class of no property, keeps `[]`.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

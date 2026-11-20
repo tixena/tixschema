@@ -6,7 +6,7 @@ extern crate bson2 as bson;
 tixschema::decode_with_foundation!();
 
 #[cfg(test)]
-#[cfg(all(feature = "bson", feature = "serde"))]
+#[cfg(feature = "bson")]
 mod tests {
     use bson::{Bson, Document, doc};
     use serde::{Deserialize, Serialize};

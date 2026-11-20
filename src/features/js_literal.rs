@@ -385,7 +385,6 @@ pub fn text(held: &TokenStream) -> TokenStream {
 
 /// The text of the value the function `through` writes into the serializer it is handed, a
 /// `serialize_with`, a `with` module's or the date's `as_number`.
-#[cfg(feature = "serde")]
 pub fn text_through(through: &TokenStream, held: &TokenStream) -> TokenStream {
     let module = module();
     quote! { #module::rendered(&#through(#held, #module::top()).unwrap()) }

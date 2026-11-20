@@ -6,7 +6,7 @@
 //! the integer's range, are refused at the member's or the item's coding path in serde's words, as
 //! serde refuses each, and every integer serde reads there is read.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use std::collections::HashMap;
 

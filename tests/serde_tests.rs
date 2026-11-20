@@ -12,16 +12,15 @@ mod tagged_struct;
 
 /// The private functions the Kotlin emitter writes into a serializer that refuses a value it read.
 #[cfg(test)]
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_pathed.rs"]
 mod kotlin_pathed;
 
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_thrown.rs"]
 mod kotlin_thrown;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "serde_tests/tests.rs"]
 mod tests;

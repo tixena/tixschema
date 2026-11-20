@@ -3,7 +3,6 @@
 //! that writes a variant's named members.
 
 use super::unwritten_models::furling_kotlin;
-#[cfg(feature = "serde")]
 use super::unwritten_models::{
     dousing_kotlin, flemishing_kotlin, ranging_kotlin, ratcheting_kotlin, reefing_kotlin,
     shackling_kotlin, splaying_kotlin, wearing_kotlin,
@@ -42,7 +41,6 @@ fn a_member_serde_never_writes_is_read_and_has_no_put() {
 }
 
 /// Beside a flattened member, the member is read and no key is written for it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
     let reefing = super::tests::renumbered(&reefing_kotlin::kotlin_definition());
@@ -68,7 +66,6 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_put() {
 /// named members: the member is read, and no key is written for it, and a key no member reads is
 /// refused, as the plugin refuses it. The variant beside it, with no such member, keeps the
 /// plugin's serializer.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_writes() {
     for (kotlin, name) in [
@@ -142,7 +139,6 @@ fn a_variant_with_a_member_serde_never_writes_names_the_serializer_the_emitter_w
 /// A flattened struct and a flattened map serde never writes are read, and merge nothing into
 /// what their holder writes. One that is no `Option` is read as a flattened member is, its key
 /// being none to leave out.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_member_serde_never_writes_merges_nothing() {
     let flemishing = super::tests::renumbered(&flemishing_kotlin::kotlin_definition());

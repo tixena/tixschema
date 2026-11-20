@@ -2,7 +2,7 @@
 //! payload of the literal table is read and refused as serde reads and refuses it, each violation
 //! in the sentence Rust's `validate()` reports.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

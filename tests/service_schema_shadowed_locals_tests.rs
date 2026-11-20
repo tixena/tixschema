@@ -3,8 +3,6 @@
 //! `captured`, `sending`. Each transport holds such an argument in a local of its own, so the argument is
 //! never read as the transport's.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[macro_use]
 #[path = "service_schema_shadowed_locals_tests/tests.rs"]

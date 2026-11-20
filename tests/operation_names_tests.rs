@@ -1,7 +1,5 @@
 //! `Operation` and `OPERATIONS` in the module of every service, whatever its `transports` holds.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[path = "operation_names_tests/tests.rs"]
 mod tests;

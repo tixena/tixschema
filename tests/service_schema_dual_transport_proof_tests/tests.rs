@@ -1,7 +1,5 @@
 //! One service, one implementation, both transports.
 
-#![cfg(feature = "serde")]
-
 use crate::{amqp_client, amqp_transport, http_rest_client, http_rest_transport};
 use core::future::{Future, ready};
 use core::pin::pin;

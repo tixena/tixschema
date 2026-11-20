@@ -30,7 +30,6 @@ fn choice(item: &ItemEnum) -> String {
 }
 
 /// The value of a brand over a `char` names the serializer of its form, which the brand declares.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_char_names_the_serializer_of_its_form_on_its_value() {
     let item: ItemStruct = syn::parse_quote! {

@@ -21,10 +21,7 @@ use syn::ext::IdentExt as _;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Field, GenericParam, Generics, Lit, LitStr, Meta, Type, Variant};
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 use crate::features::member_keys;
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(any(feature = "dart", feature = "kotlin"))]
@@ -203,17 +200,14 @@ pub enum TrivialPattern {
 #[cfg(feature = "zod")]
 #[derive(Clone)]
 pub struct ZodUnionMember {
-    #[cfg(feature = "serde")]
     pub branch: Vec<usize>,
-    #[cfg(feature = "serde")]
     pub non_object: Option<&'static str>,
     pub spelling: String,
     /// What [`WireLeaf::written_as`] says of the member.
-    #[cfg(feature = "serde")]
     pub written_as: Option<WrittenAs>,
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 impl ZodUnionMember {
     /// The member's position, spelled the way the JSON-schema merge spells the same one.
     pub fn branch_path(&self) -> String {
@@ -227,7 +221,6 @@ impl ZodUnionMember {
 
 /// One leaf of the value surface a `#[model_schema()]` item published, in the vocabulary the
 /// flatten-member refusal names a wire by.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct WireLeaf {
     pub branch: Vec<usize>,
@@ -237,7 +230,6 @@ pub struct WireLeaf {
 }
 
 /// What serde writes a [`WireLeaf`] as, where it is flattened or held beside a tag.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WrittenAs {
     /// A plain enum's variant name, as a key holding null.
@@ -248,7 +240,6 @@ pub enum WrittenAs {
     UnitVariantName,
 }
 
-#[cfg(feature = "serde")]
 impl WireLeaf {
     /// The leaf's position, spelled the way the JSON-schema merge spells the same one.
     pub fn branch_path(&self) -> String {
@@ -270,7 +261,7 @@ impl WireLeaf {
 /// each surface that writes a merge of its own. The two spellings are recorded together, from one
 /// reading of the rendered variant, since they answer one question — what serde writes for this
 /// variant into the object being merged — and answering it twice would let the two drift apart.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Clone)]
 pub struct FlattenVariant {
     #[cfg(feature = "typescript")]
@@ -322,7 +313,7 @@ pub struct AliasInfo {
     pub export_name: String,
     /// What an externally tagged enum's variants are spelled as where an object flattens the enum
     /// itself, one per variant in the order the union writes them, and empty for every other item.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     pub flatten_variants: Vec<FlattenVariant>,
     /// Whether this name is an alias of an `IndexSet`, which a bound counts through the consumer's
     /// own `indexmap`.
@@ -343,22 +334,22 @@ pub struct AliasInfo {
     pub number_key: Option<NumberKey>,
     /// What an untagged enum's members are spelled as where an object flattens the enum, in the
     /// order the union writes them; empty for every other item.
-    #[cfg(all(feature = "serde", feature = "typescript"))]
+    #[cfg(feature = "typescript")]
     pub ts_union_members: Vec<String>,
     /// What the value surface written under this name is; `PublishedShape::Flat(None)` both where
     /// string checks land on it and where nothing was recorded.
     pub value_shape: PublishedShape,
     /// What the value surface written under this name puts on the wire, one entry per leaf of it,
     /// and empty when nothing has been recorded at all.
-    #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+    #[cfg(any(feature = "zod", feature = "typescript"))]
     pub wire: Vec<WireLeaf>,
     /// Whether an untagged enum's Zod schema is a `z.discriminatedUnion`, which an object that
     /// flattens it joins as one operand.
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     pub zod_discriminated: bool,
     /// The binding that publishes an untagged enum's members one by one, in the order of
     /// [`Self::zod_union_members`], where the enum's own binding cannot be joined member by member.
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     pub zod_members_binding: Option<String>,
     /// The checks an untagged enum names, which each member is held to wherever the enum is
     /// flattened.
@@ -735,14 +726,13 @@ enum ForwardedKey {
     Value(usize),
 }
 
-#[cfg(feature = "serde")]
 thread_local! {
     /// The names of unit structs `process_struct` has rewritten to write and read `{}`. Read by
     /// `is_unit_type` (`service_schema::parse`) to answer a unit struct's success like `()`'s own.
     static UNIT_STRUCTS: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
 }
 
-#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 thread_local! {
     /// The names of the types declared so far that publish a draft beside the valid type.
     static DRAFTED_TYPES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
@@ -805,7 +795,6 @@ pub enum Declared {
     /// A struct or an enum serde writes as one value: a struct written as the value of one slot,
     /// a unit struct, an enum no variant of which holds a value and no attribute tags. Holds how
     /// many lifetime parameters it declares.
-    #[cfg(feature = "serde")]
     OneValue(usize),
 }
 
@@ -814,9 +803,7 @@ impl Declared {
     /// where it declares no parameter.
     pub const fn lifetimes(&self) -> usize {
         match *self {
-            Self::Model(lifetimes) => lifetimes,
-            #[cfg(feature = "serde")]
-            Self::OneValue(lifetimes) => lifetimes,
+            Self::Model(lifetimes) | Self::OneValue(lifetimes) => lifetimes,
             Self::Alias(_) => 0,
         }
     }
@@ -827,7 +814,6 @@ impl Declared {
     }
 
     /// A type serde writes as one value, declaring `lifetimes` lifetime parameters.
-    #[cfg(feature = "serde")]
     pub const fn one_value(lifetimes: usize) -> Self {
         Self::OneValue(lifetimes)
     }
@@ -838,7 +824,6 @@ thread_local! {
     static DECLARED: RefCell<HashMap<String, Declared>> = RefCell::new(HashMap::new());
 }
 
-#[cfg(feature = "serde")]
 thread_local! {
     /// The names `#[model_schema]` has been written on so far whose value serde writes, flattened,
     /// as the entries of a map. Kept in every build that reads `#[serde(flatten)]`.
@@ -886,7 +871,6 @@ thread_local! {
 
 /// A leaf of the members of the untagged union a name stands for that serde writes as what fills
 /// one of the name's type parameters, as [`UNION_PARAMETERS`] holds it.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct UnionParameter {
     /// The parameter's position among the name's type parameters.
@@ -897,7 +881,6 @@ pub struct UnionParameter {
 
 /// What serde writes a value of a name as, in the leaves the flatten refusal reads, as
 /// [`NON_OBJECT_WIRES`] holds it.
-#[cfg(feature = "serde")]
 #[derive(Clone, Default)]
 pub struct NonObjectWire {
     /// The leaves of the value itself.
@@ -915,7 +898,6 @@ pub struct NonObjectWire {
 /// with a map, serde writes the map's entries at one level with the key beside it, where it is
 /// filled with an enum, a unit variant as an entry of its name over `null`, and where it is filled
 /// with a value serde writes as no object, nothing it can join the object with.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct FlattenedParameter {
     /// The parameter's position among the type parameters of the item that holds it.
@@ -932,7 +914,6 @@ pub struct FlattenedParameter {
 }
 
 /// The lone slot of a variant under a tag alone, which serde writes beside the tag.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct SlotBesideTag {
     /// The tag serde writes beside it.
@@ -944,7 +925,6 @@ pub struct SlotBesideTag {
 /// A type parameter an item reads, in a value of its own, where serde reads every key as text, as
 /// [`TEXT_KEY_PARAMETERS`] holds it: where a number or a `bool` keys a map there, serde reads no
 /// entry of it back.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub struct TextKeyParameter {
     /// The parameter's position among the type parameters of the item that holds it.
@@ -960,7 +940,6 @@ pub struct TextKeyParameter {
 }
 
 /// Where serde reads every key of a member as text.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TextKeysRead {
     /// Below a member under `#[serde(flatten)]`.
@@ -972,7 +951,6 @@ pub enum TextKeysRead {
 }
 
 /// How a type reads a type parameter where serde reads every key as text.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FlattenedRead {
     /// Anywhere, so a map its filling holds is read there.
@@ -982,7 +960,6 @@ pub enum FlattenedRead {
 }
 
 /// The key serde writes at one level with a flattened member.
-#[cfg(feature = "serde")]
 #[derive(Clone)]
 pub enum FlattenedBeside {
     /// Another member, under its name.
@@ -992,7 +969,6 @@ pub enum FlattenedBeside {
 }
 
 /// What is recorded of one validator a field's bound published.
-#[cfg(feature = "serde")]
 struct RecordedValidator {
     /// The validator judges each item of the field's list, and none of the list itself.
     items: bool,
@@ -1000,7 +976,6 @@ struct RecordedValidator {
     named: Option<String>,
 }
 
-#[cfg(feature = "serde")]
 thread_local! {
     /// The fields a validator was published for, by schema module and helper stem, each with the
     /// name its validator writes in front of a violation, where it writes one, and whether it
@@ -1017,10 +992,8 @@ struct NamedChecks {
     /// Whether the item names a check, on itself or on a member.
     named: bool,
     /// The checks each member names, by schema module and helper stem.
-    #[cfg(feature = "serde")]
     of_members: HashMap<(String, String), Vec<FunctionName>>,
     /// The checks written on the type, by schema module.
-    #[cfg(feature = "serde")]
     own: HashMap<String, Vec<FunctionName>>,
 }
 
@@ -1042,12 +1015,10 @@ thread_local! {
 }
 
 /// Forgets every check recorded: an expansion reads only the checks of its own item.
-#[cfg(feature = "serde")]
 pub fn forget_checks() {
     NAMED_CHECKS.with(|held| *held.borrow_mut() = NamedChecks::default());
 }
 
-#[cfg(feature = "serde")]
 thread_local! {
     /// Each name `#[model_schema]` has been written on whose keys serde leaves on the object when it
     /// is flattened, so that a holder that refuses an unknown key refuses them too.
@@ -1060,13 +1031,12 @@ thread_local! {
 
 /// Whether serde leaves the keys of `rust_ident` in the object it reads a holder from when the type is
 /// flattened, where `#[model_schema]` has been written on it above.
-#[cfg(all(feature = "serde", any(feature = "dart", feature = "swift")))]
+#[cfg(any(feature = "dart", feature = "swift"))]
 pub fn is_unconsumed(rust_ident: &str) -> bool {
     UNCONSUMED.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records whether serde leaves the keys of `rust_ident` in the object it is flattened from.
-#[cfg(feature = "serde")]
 pub fn record_unconsumed(rust_ident: &str, unconsumed: bool) {
     UNCONSUMED.with(|names| {
         if unconsumed {
@@ -1125,10 +1095,7 @@ pub fn record_nonstrict(nonstrict: bool, refusing: Vec<String>) {
             within: None,
         };
     });
-    #[cfg(all(
-        feature = "serde",
-        any(feature = "dart", feature = "swift", feature = "kotlin")
-    ))]
+    #[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
     member_keys::reset();
 }
 
@@ -1153,7 +1120,6 @@ pub fn record_names_a_check(named: bool) {
 }
 
 /// Records the checks written on the type whose schema module is `module`.
-#[cfg(feature = "serde")]
 pub fn record_own_checks(module: &str, checks: &[FunctionName]) {
     NAMED_CHECKS.with(|held| {
         held.borrow_mut()
@@ -1163,7 +1129,6 @@ pub fn record_own_checks(module: &str, checks: &[FunctionName]) {
 }
 
 /// Records the checks the member whose helpers are named from `stem` names.
-#[cfg(feature = "serde")]
 pub fn record_member_checks(module: &str, stem: &str, checks: &[FunctionName]) {
     if checks.is_empty() {
         return;
@@ -1175,18 +1140,12 @@ pub fn record_member_checks(module: &str, stem: &str, checks: &[FunctionName]) {
     });
 }
 
-/// Nothing, where no recovering decode reads a member's checks.
-#[cfg(not(feature = "serde"))]
-pub const fn record_member_checks(_module: &str, _stem: &str, _checks: &[FunctionName]) {}
-
 /// The checks written on the type whose schema module is `module`.
-#[cfg(feature = "serde")]
 pub fn own_checks(module: &str) -> Vec<FunctionName> {
     NAMED_CHECKS.with(|held| held.borrow().own.get(module).cloned().unwrap_or_default())
 }
 
 /// The checks the member whose helpers are named from `stem` names, in `module`.
-#[cfg(feature = "serde")]
 pub fn member_checks(module: &str, stem: &str) -> Vec<FunctionName> {
     NAMED_CHECKS.with(|held| {
         held.borrow()
@@ -1200,7 +1159,6 @@ pub fn member_checks(module: &str, stem: &str) -> Vec<FunctionName> {
 /// The name `validate_{stem}_value` of `module` reports its field under: the steps serde writes
 /// on the way to it. `None` for a field serde writes as the value of what holds it, whose
 /// validator writes no name.
-#[cfg(feature = "serde")]
 pub fn field_validator_name(module: &str, stem: &str) -> Option<String> {
     FIELD_VALIDATORS.with(|held| {
         held.borrow()
@@ -1211,7 +1169,6 @@ pub fn field_validator_name(module: &str, stem: &str) -> Option<String> {
 
 /// Whether `validate_{stem}_value` of `module` judges each item of its field's list, and none of
 /// the list itself: the validator of a `literal`, which each item holds.
-#[cfg(feature = "serde")]
 pub fn field_validator_judges_items(module: &str, stem: &str) -> bool {
     FIELD_VALIDATORS.with(|held| {
         held.borrow()
@@ -1221,7 +1178,6 @@ pub fn field_validator_judges_items(module: &str, stem: &str) -> bool {
 }
 
 /// Whether `module` holds `validate_{stem}_value`.
-#[cfg(feature = "serde")]
 pub fn holds_field_validator(module: &str, stem: &str) -> bool {
     FIELD_VALIDATORS.with(|held| {
         held.borrow()
@@ -1231,7 +1187,6 @@ pub fn holds_field_validator(module: &str, stem: &str) -> bool {
 
 /// Records that `module` holds `validate_{stem}_value`, which reports its field under `named`,
 /// or under no name, and judges each item of the field's list where `items` holds.
-#[cfg(feature = "serde")]
 pub fn record_field_validator(module: &str, stem: &str, named: Option<&str>, items: bool) {
     FIELD_VALIDATORS.with(|held| {
         held.borrow_mut().insert(
@@ -1244,18 +1199,7 @@ pub fn record_field_validator(module: &str, stem: &str, named: Option<&str>, ite
     });
 }
 
-/// Nothing, where no recovering decode reads a validator.
-#[cfg(not(feature = "serde"))]
-pub const fn record_field_validator(
-    _module: &str,
-    _stem: &str,
-    _named: Option<&str>,
-    _items: bool,
-) {
-}
-
 /// Forgets every validator recorded: the walker of an item reads only that item's own.
-#[cfg(feature = "serde")]
 pub fn forget_field_validators() {
     FIELD_VALIDATORS.with(|held| held.borrow_mut().clear());
 }
@@ -1293,13 +1237,11 @@ pub fn record_declared(rust_ident: &str, declares: Declared) {
 
 /// Whether serde writes a value of `rust_ident`, flattened, as the entries of a map, where
 /// `#[model_schema]` has been written on it above.
-#[cfg(feature = "serde")]
 pub fn is_open_map(rust_ident: &str) -> bool {
     OPEN_MAPS.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records whether serde writes a value of `rust_ident`, flattened, as the entries of a map.
-#[cfg(feature = "serde")]
 pub fn record_open_map(rust_ident: &str, open: bool) {
     OPEN_MAPS.with(|names| {
         if open {
@@ -1312,14 +1254,12 @@ pub fn record_open_map(rust_ident: &str, open: bool) {
 
 /// Whether serde writes a value of `rust_ident` as the bare name of a plain enum's variant, or as
 /// an `Option` of one, where `#[model_schema]` has been written on it above.
-#[cfg(feature = "serde")]
 pub fn is_recorded_plain_enum(rust_ident: &str) -> bool {
     PLAIN_ENUMS.with(|names| names.borrow().contains(rust_ident))
 }
 
 /// Records whether serde writes a value of `rust_ident` as the bare name of a plain enum's
 /// variant, or as an `Option` of one.
-#[cfg(feature = "serde")]
 pub fn record_plain_enum(rust_ident: &str, plain: bool) {
     PLAIN_ENUMS.with(|names| {
         if plain {
@@ -1332,13 +1272,11 @@ pub fn record_plain_enum(rust_ident: &str, plain: bool) {
 
 /// Whether serde writes a value of `rust_ident` as something other than a JSON object, where
 /// `#[model_schema]` has been written on it above.
-#[cfg(feature = "serde")]
 pub fn recorded_needs_wrapper(rust_ident: &str) -> Option<bool> {
     NEEDS_WRAPPER.with(|names| names.borrow().get(rust_ident).copied())
 }
 
 /// Records whether serde writes a value of `rust_ident` as something other than a JSON object.
-#[cfg(feature = "serde")]
 pub fn record_needs_wrapper(rust_ident: &str, wrapped: bool) {
     NEEDS_WRAPPER.with(|names| {
         names.borrow_mut().insert(rust_ident.to_owned(), wrapped);
@@ -1347,13 +1285,11 @@ pub fn record_needs_wrapper(rust_ident: &str, wrapped: bool) {
 
 /// Whether `rust_ident` is a choice among plain names, where `#[model_schema]` has been written
 /// on it above.
-#[cfg(feature = "serde")]
 pub fn recorded_mcp_form_value(rust_ident: &str) -> Option<bool> {
     MCP_FORM_VALUES.with(|names| names.borrow().get(rust_ident).copied())
 }
 
 /// Records whether `rust_ident` is a choice among plain names.
-#[cfg(feature = "serde")]
 pub fn record_mcp_form_value(rust_ident: &str, value: bool) {
     MCP_FORM_VALUES.with(|names| {
         names.borrow_mut().insert(rust_ident.to_owned(), value);
@@ -1362,13 +1298,11 @@ pub fn record_mcp_form_value(rust_ident: &str, value: bool) {
 
 /// What serde writes a value of `rust_ident` as, where `#[model_schema]` has been written on it
 /// above and some leaf of it is no object.
-#[cfg(feature = "serde")]
 pub fn recorded_non_object_wire(rust_ident: &str) -> Option<NonObjectWire> {
     NON_OBJECT_WIRES.with(|names| names.borrow().get(rust_ident).cloned())
 }
 
 /// Records what serde writes a value of `rust_ident` as, kept only where some leaf is no object.
-#[cfg(feature = "serde")]
 pub fn record_non_object_wire(rust_ident: &str, wire: NonObjectWire) {
     let non_object = wire
         .leaves
@@ -1386,13 +1320,11 @@ pub fn record_non_object_wire(rust_ident: &str, wire: NonObjectWire) {
 
 /// The positions of the type parameters of `rust_ident` whose filling serde writes, flattened, as
 /// the entries of a value of `rust_ident`. Empty for a name declared below the item asking.
-#[cfg(feature = "serde")]
 pub fn open_map_parameters(rust_ident: &str) -> Vec<usize> {
     OPEN_MAP_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
 
 /// Records the positions [`open_map_parameters`] answers for `rust_ident`.
-#[cfg(feature = "serde")]
 pub fn record_open_map_parameters(rust_ident: &str, positions: Vec<usize>) {
     OPEN_MAP_PARAMETERS.with(|names| {
         if positions.is_empty() {
@@ -1405,13 +1337,11 @@ pub fn record_open_map_parameters(rust_ident: &str, positions: Vec<usize>) {
 
 /// The position of the type parameter of `rust_ident` whose filling serde writes as a value of
 /// `rust_ident` itself. `None` for a name declared below the item asking.
-#[cfg(feature = "serde")]
 pub fn value_parameter(rust_ident: &str) -> Option<usize> {
     VALUE_PARAMETERS.with(|names| names.borrow().get(rust_ident).copied())
 }
 
 /// Records the position [`value_parameter`] answers for `rust_ident`.
-#[cfg(feature = "serde")]
 pub fn record_value_parameter(rust_ident: &str, position: Option<usize>) {
     VALUE_PARAMETERS.with(|names| {
         if let Some(at) = position {
@@ -1424,13 +1354,11 @@ pub fn record_value_parameter(rust_ident: &str, position: Option<usize>) {
 
 /// The leaves of the members of the untagged union `rust_ident` stands for that serde writes as
 /// what fills one of its type parameters. Empty for a name declared below the item asking.
-#[cfg(feature = "serde")]
 pub fn union_parameters(rust_ident: &str) -> Vec<UnionParameter> {
     UNION_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
 
 /// Records the leaves [`union_parameters`] answers for `rust_ident`.
-#[cfg(feature = "serde")]
 pub fn record_union_parameters(rust_ident: &str, parameters: Vec<UnionParameter>) {
     UNION_PARAMETERS.with(|names| {
         if parameters.is_empty() {
@@ -1442,20 +1370,17 @@ pub fn record_union_parameters(rust_ident: &str, parameters: Vec<UnionParameter>
 }
 
 /// The type parameters `rust_ident` flattens. Empty for a name declared below the item asking.
-#[cfg(feature = "serde")]
 pub fn flattened_parameters(rust_ident: &str) -> Vec<FlattenedParameter> {
     FLATTENED_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
 
 /// The type parameters of `rust_ident` it reads where serde reads every key as text. Empty for a
 /// name declared below the item asking.
-#[cfg(feature = "serde")]
 pub fn text_key_parameters(rust_ident: &str) -> Vec<TextKeyParameter> {
     TEXT_KEY_PARAMETERS.with(|names| names.borrow().get(rust_ident).cloned().unwrap_or_default())
 }
 
 /// Records the parameters [`text_key_parameters`] answers for `rust_ident`.
-#[cfg(feature = "serde")]
 pub fn record_text_key_parameters(rust_ident: &str, parameters: Vec<TextKeyParameter>) {
     TEXT_KEY_PARAMETERS.with(|names| {
         if parameters.is_empty() {
@@ -1467,7 +1392,6 @@ pub fn record_text_key_parameters(rust_ident: &str, parameters: Vec<TextKeyParam
 }
 
 /// Records the parameters [`flattened_parameters`] answers for `rust_ident`.
-#[cfg(feature = "serde")]
 pub fn record_flattened_parameters(rust_ident: &str, parameters: Vec<FlattenedParameter>) {
     FLATTENED_PARAMETERS.with(|names| {
         if parameters.is_empty() {
@@ -1616,7 +1540,7 @@ pub fn register_alias_info(
             rust_ident.to_owned(),
             AliasInfo {
                 export_name: export_name.to_owned(),
-                #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+                #[cfg(any(feature = "typescript", feature = "zod"))]
                 flatten_variants: Vec::new(),
                 #[cfg(feature = "indexmap")]
                 indexed_set: false,
@@ -1632,16 +1556,16 @@ pub fn register_alias_info(
                 ))]
                 #[cfg(feature = "zod")]
                 number_key: None,
-                #[cfg(all(feature = "serde", feature = "typescript"))]
+                #[cfg(feature = "typescript")]
                 ts_union_members: Vec::new(),
                 value_shape: PublishedShape::Flat(None),
-                #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+                #[cfg(any(feature = "zod", feature = "typescript"))]
                 wire: Vec::new(),
                 #[cfg(feature = "zod")]
                 zod_union_members: Vec::new(),
-                #[cfg(all(feature = "serde", feature = "zod"))]
+                #[cfg(feature = "zod")]
                 zod_discriminated: false,
-                #[cfg(all(feature = "serde", feature = "zod"))]
+                #[cfg(feature = "zod")]
                 zod_members_binding: None,
                 #[cfg(feature = "zod")]
                 zod_union_checks: Vec::new(),
@@ -1744,7 +1668,7 @@ pub fn record_value_shape(rust_ident: &str, shape: PublishedShape) {
 
 /// Records what the value surface written under a name puts on the wire, on the entry that name has
 /// just registered.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 pub fn record_wire_leaves(rust_ident: &str, leaves: &[WireLeaf]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1766,7 +1690,7 @@ pub fn record_zod_union_members(rust_ident: &str, members: &[ZodUnionMember]) {
 
 /// Records the checks an untagged enum names and the binding that publishes its members, on the
 /// entry that enum has already registered.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 pub fn record_zod_union_publication(
     rust_ident: &str,
     checks: &[FunctionName],
@@ -1782,7 +1706,7 @@ pub fn record_zod_union_publication(
 
 /// Records whether an untagged enum's Zod schema is a discriminated union, on the entry that enum
 /// has already registered.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 pub fn record_zod_discriminated(rust_ident: &str, discriminated: bool) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1793,7 +1717,7 @@ pub fn record_zod_discriminated(rust_ident: &str, discriminated: bool) {
 
 /// Records what an untagged enum's members are spelled as where an object flattens the enum itself,
 /// on the entry that enum has already registered.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 pub fn record_ts_union_members(rust_ident: &str, members: &[String]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -1804,7 +1728,7 @@ pub fn record_ts_union_members(rust_ident: &str, members: &[String]) {
 
 /// Records what an externally tagged enum's variants are spelled as where an object flattens the
 /// enum itself, on the entry that enum has already registered.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_flatten_variants(rust_ident: &str, variants: &[FlattenVariant]) {
     ALIAS_INFO.with(|map| {
         if let Some(info) = map.borrow_mut().get_mut(rust_ident) {
@@ -2087,7 +2011,6 @@ pub fn is_recorded_untagged_enum(ty: &Type) -> bool {
 }
 
 /// Records that `rust_ident` names a unit struct.
-#[cfg(feature = "serde")]
 pub fn record_unit_struct(rust_ident: &str, drafted: bool) {
     UNIT_STRUCTS.with(|names| {
         names.borrow_mut().insert(rust_ident.to_owned(), drafted);
@@ -2096,7 +2019,6 @@ pub fn record_unit_struct(rust_ident: &str, drafted: bool) {
 
 /// Whether `ty` names a recorded unit struct that has a draft, whose value is made through the
 /// draft.
-#[cfg(feature = "serde")]
 pub fn is_recorded_drafted_unit_struct_type(ty: &Type) -> bool {
     let Type::Path(named) = ty else {
         return false;
@@ -2109,7 +2031,6 @@ pub fn is_recorded_drafted_unit_struct_type(ty: &Type) -> bool {
 
 /// Whether `ty`'s own name is one [`record_unit_struct`] has seen. `false` for a type declared
 /// below the item asking — the same limit [`is_recorded_untagged_enum`] answers under.
-#[cfg(feature = "serde")]
 pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
     let Type::Path(named) = ty else {
         return false;
@@ -2121,7 +2042,7 @@ pub fn is_recorded_unit_struct_type(ty: &Type) -> bool {
 }
 
 /// Records whether `rust_ident` publishes a draft beside the valid type it is named by.
-#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn record_drafted_type(rust_ident: &str, drafted: bool) {
     DRAFTED_TYPES.with(|names| {
         if drafted {
@@ -2147,7 +2068,7 @@ pub fn was_assumed_drafted(rust_ident: &str) -> bool {
 }
 
 /// Whether `rust_ident` names a type declared above that publishes a draft beside it.
-#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 pub fn is_drafted_type(rust_ident: &str) -> bool {
     DRAFTED_TYPES.with(|names| names.borrow().contains(rust_ident))
 }
@@ -2304,7 +2225,7 @@ pub fn parameter_placeholder(at: usize) -> String {
 
 /// `described` with each [`parameter_placeholder`] in it replaced by what `filling` answers for its
 /// position, or `None` where `filling` answers nothing for one.
-#[cfg(any(feature = "zod", all(feature = "serde", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 pub fn placeholders_filled<F>(described: &str, filling: F) -> Option<String>
 where
     F: Fn(usize) -> Option<String>,

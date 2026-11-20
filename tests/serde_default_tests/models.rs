@@ -390,7 +390,6 @@ pub enum UntaggedBerthing {
 }
 
 /// A struct that holds the untagged enum under a key of its own.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Quay {
@@ -714,7 +713,6 @@ pub fn filled_report() -> String {
 }
 
 /// What a serde read prints for each payload of [`CASES`].
-#[cfg(feature = "serde")]
 pub fn report() -> String {
     CASES
         .iter()
@@ -727,7 +725,6 @@ pub fn report() -> String {
 }
 
 /// What a serde read prints for each payload of [`VARIANT_CASES`].
-#[cfg(feature = "serde")]
 pub fn variant_report() -> String {
     VARIANT_CASES
         .iter()

@@ -28,7 +28,7 @@ regex = "1.10"
 # on purpose: the AST is matched exhaustively, so a new construct has to be classified.
 regex-syntax = "0.8"
 # Hashes the files of a skills folder at expansion; nothing of it reaches a consumer at run time.
-sha2 = { version = "0.11.0", optional = true }
+sha2 = "0.11.0"
 
 [dev-dependencies]
 mongodb = ">=3.7"
@@ -76,11 +76,11 @@ jsonschema = { version = "=0.47.0", default-features = false }
 stored_customers = { path = "tests/crates_apart/stored_customers" }
 invoice_lookups = { path = "tests/crates_apart/invoice_lookups" }
 # A crate apart that places the transports of a `non_exhaustive` service, so a test binary builds
-# what they seal from another crate. The `serde` feature below turns its `service` on.
-sealed_parcel_desk = { path = "tests/crates_apart/sealed_parcel_desk" }
+# what they seal from another crate.
+sealed_parcel_desk = { path = "tests/crates_apart/sealed_parcel_desk", features = ["service"] }
 # A crate apart that declares the types a Kotlin holder names in a member, which the holder's
 # expansion has never seen.
-kotlin_members_apart = { path = "tests/crates_apart/kotlin_members_apart" }
+kotlin_members_apart = { path = "tests/crates_apart/kotlin_members_apart", features = ["bounded_brand"] }
 # A crate apart that declares the types a Dart and a Swift holder flattens.
 flattened_members_apart = { path = "tests/crates_apart/flattened_members_apart" }
 # A crate apart that declares the generic types a Swift holder fills with models.
@@ -95,7 +95,7 @@ refusal_order_apart = { path = "tests/crates_apart/refusal_order_apart" }
 # never seen.
 untagged_members_apart = { path = "tests/crates_apart/untagged_members_apart" }
 # A crate apart that lists no `serde_json`, whose model types read over any deserializer.
-no_serde_json_apart = { path = "tests/crates_apart/no_serde_json_apart" }
+no_serde_json_apart = { path = "tests/crates_apart/no_serde_json_apart", features = ["reads"] }
 # The crate whose frontmatter `Value` the `arky` entry converts to and from; the tests convert
 # models through it.
 arky = "0.2"
@@ -126,23 +126,14 @@ default = ["web"]
 
 # Feature sets: the four surfaces a consumer picks from. Every plain feature below belongs to
 # one of them, and CI tests the powerset of the sets rather than of the plain features.
-web = ["serde", "zod", "typescript"]
-# `serde` is here because a service's mobile clients need it; the type definitions alone do not.
-mobile = ["serde", "dart", "swift", "kotlin"]
+web = ["zod", "typescript"]
+mobile = ["dart", "swift", "kotlin"]
 mongo = ["mongodb", "chrono", "indexmap", "arky"]
 
 # Core features
-# Serde integration for attribute parsing and field renaming. The dev-dependency's feature it turns
-# on is stripped from the published manifest.
-serde = [
-    "dep:sha2",
-    "sealed_parcel_desk/service",
-    "kotlin_members_apart/bounded_brand",
-    "no_serde_json_apart/reads",
-]
 zod = [] # Zod schema generation alongside TypeScript types
 mongodb = ["bson"] # MongoDB support: the ObjectId type, and bson
-bson = ["serde"] # BSON support: from_bson_with on types that opt in
+bson = [] # BSON support: from_bson_with on types that opt in
 typescript = [] # TypeScript type generation and TypeScript-style Zod schemas
 chrono = [
 ] # Chrono date/time type support (NaiveDate, NaiveTime, NaiveDateTime, DateTime)
@@ -150,7 +141,7 @@ indexmap = [] # indexmap type support: IndexMap as a map, IndexSet as a list
 dart = [] # Dart type generation and a JSON fromJson/toJson codec, beside the TypeScript output
 swift = [] # Swift type generation with a Codable codec
 kotlin = [] # Kotlin type generation with kotlinx.serialization annotations
-arky = ["serde"] # Conversions to and from arky's frontmatter Value on types that opt in
+arky = [] # Conversions to and from arky's frontmatter Value on types that opt in
 
 [lints.rust]
 # `slow_tests` gates the tests that wait on a real clock; `just test-slow` sets it.

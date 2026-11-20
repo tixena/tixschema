@@ -5,7 +5,7 @@
 //! as the plugin's reads past it. A flattened map takes every key it is handed, and a flattened
 //! struct that flattens a member of its own refuses one it does not declare, as serde reads it.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

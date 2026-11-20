@@ -2,7 +2,7 @@
 //! the literal table is read and refused as serde reads and refuses it, each violation in the
 //! sentence Rust's `validate()` reports, and the analyzer passes every type.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

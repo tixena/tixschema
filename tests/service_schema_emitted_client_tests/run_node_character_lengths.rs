@@ -1,7 +1,7 @@
 //! `minLength` and `maxLength` on a string, read by the generated Zod schema under node: the
 //! verdict and the count its sentence reports are the code points Rust's `validate()` counts.
 
-#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#![cfg(all(feature = "typescript", feature = "zod"))]
 
 use core::fmt::Write as _;
 

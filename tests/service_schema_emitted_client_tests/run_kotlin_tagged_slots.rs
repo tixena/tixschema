@@ -5,7 +5,7 @@
 //! members beside the tag, as serde does, an `ObjectId`'s `$oid` key among them, and refuses the
 //! slot under a `value` key, as serde and Zod refuse it.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

@@ -5,7 +5,6 @@ use proc_macro2::TokenTree;
 
 use super::*;
 use crate::features::model_schema_prop::parse_model_schema_prop_attributes;
-#[cfg(feature = "serde")]
 use crate::utils::{AliasKind, register_alias_info};
 
 /// The class of a struct whose one field is named after the unjudged read, which
@@ -48,7 +47,6 @@ fn plain_args() -> DartTypeArgs<'static> {
 /// serde reads it. One under a tag alone takes no key off the object the members after it are handed, and one
 /// under a tag and a content key takes both, as serde reads it. One that names a function on itself
 /// has no key to be looked for by, and is `null` wherever its read throws.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     let cleat: ItemEnum = syn::parse_quote! {
@@ -114,7 +112,6 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
 /// A `u64` and an `i64` are each held as an `int` and read and written as the JSON number serde
 /// writes, the `u64` held to be no less than zero. A build with Swift or Kotlin refuses a `u64` in
 /// a member, so no integration test declares one beside the Dart client's runs.
-#[cfg(feature = "serde")]
 #[test]
 fn a_u64_and_an_i64_are_ints_read_and_written_as_numbers() {
     let item: ItemStruct = syn::parse_quote! {
@@ -181,7 +178,6 @@ fn a_field_named_after_a_member_of_the_pair_moves_and_keeps_its_key() {
 /// step of its own, and a `Result`'s arm is read under its key, so a brand's check that refuses a
 /// key names the key, a key that does not read names its map, and a value an arm refuses names
 /// the arm, as the Rust dispatcher names each.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_key_and_a_result_arm_are_judged_under_their_own_step() {
     let pitch: ItemStruct = syn::parse_quote! {
@@ -242,7 +238,6 @@ fn a_brand_key_and_a_result_arm_are_judged_under_their_own_step() {
 /// A struct under its own tag refuses an object without the tag, or with another value under it,
 /// ahead of its members: the object its functions answer where it names one, and the copy its
 /// aliases are read from where a member has one.
-#[cfg(feature = "serde")]
 #[test]
 fn a_struct_under_its_own_tag_checks_the_object_its_members_are_read_from() {
     let item: ItemStruct = syn::parse_quote! {

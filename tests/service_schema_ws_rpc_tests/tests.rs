@@ -4,8 +4,6 @@
 //! `SessionEvents`: the one-way, browser-implemented service a server pushes to over a
 //! `FrameWriter` rather than calls.
 
-#![cfg(feature = "serde")]
-
 use crate::document_session_schema::{CallError, ServiceFaultKind};
 use crate::events_client::{self, SessionEventsClient};
 use crate::ws_client::{self, DocumentSessionClient, FrameSession, Transport as _};

@@ -1,8 +1,6 @@
 //! `DocumentService` on `amqp_rpc`, `http_rest` and `ws_rpc`: one operation taking a list of
 //! drafts, and one operation for each shape serde writes a member under.
 
-#![cfg(feature = "serde")]
-
 use crate::amqp_transport;
 use crate::http_rest_transport;
 use crate::ws_transport;

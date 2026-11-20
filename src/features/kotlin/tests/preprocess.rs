@@ -90,7 +90,6 @@ fn keyed(payload: &str, arms: &str) -> String {
 
 /// The README shows the parcel of its `preprocess` section as the emitter writes it, each line
 /// break of the block standing for one space.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_shows_what_the_parcel_of_its_preprocess_emits() {
     let parcel: ItemStruct = syn::parse_quote! {
@@ -242,7 +241,6 @@ fn a_type_that_names_no_function_keeps_the_plugins_serializer_under_its_name() {
 /// A brand's functions are handed the payload of the value it is written over. A brand with a
 /// parameter delegates to the plugin's serializer and reads through it, so its own serializer
 /// writes a value as it writes one without the key.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brands_functions_are_handed_the_payload_of_its_value() {
     let code: ItemStruct = syn::parse_quote! {
@@ -330,7 +328,6 @@ fn a_plain_enum_is_read_by_its_unjudged_serializer() {
 /// A serializer the emitter writes calls the type's functions on the payload it decodes, ahead
 /// of everything it reads from it: a struct with a flattened member, a tuple struct, and an enum
 /// under each tagging, an untagged one ahead of the choice of a variant.
-#[cfg(feature = "serde")]
 #[test]
 fn a_serializer_the_emitter_writes_corrects_the_payload_it_decodes() {
     let decoded = "val input = decoder as JsonDecoder; ";
@@ -589,7 +586,6 @@ fn a_member_that_reaches_a_parameter_is_corrected_at_its_key() {
 /// Where the emitter writes the read, a member's functions are called in place, on the payload
 /// under the member's key: a member of a struct with a flattened one, a nullable one only where
 /// the payload holds its key, and a slot of a tuple struct.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_the_emitter_reads_is_corrected_in_place() {
     let written = [labelled_parcel()];
@@ -636,7 +632,6 @@ fn a_member_the_emitter_reads_is_corrected_in_place() {
 /// emitter has not written. A struct the emitter wrote that names no function is read from the
 /// whole object, as TypeScript and Zod read it. A type that names a function, and one the emitter
 /// has not written, take none of the keys they read.
-#[cfg(feature = "serde")]
 #[test]
 fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
     let base: ItemStruct = syn::parse_quote! {
@@ -733,7 +728,6 @@ fn every_flattened_member_is_handed_what_no_member_ahead_of_it_takes() {
 /// the variant's class. A slot is corrected in place by the enum's serializer, which reads it
 /// itself, from the object without the tag under a tag alone. A slot of several is corrected by
 /// the wrapper that reads the array.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
     let written = [labelled_parcel()];
@@ -800,7 +794,6 @@ fn a_member_and_a_slot_of_a_variant_are_corrected_where_each_is_read() {
 
 /// An untagged enum corrects a slot as it tries the variant, and a member of a variant through
 /// the member's own serializer, so each variant is tried on what its own functions answer.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_corrects_each_variant_as_it_tries_it() {
     let untagged: ItemEnum = syn::parse_quote! {
@@ -833,7 +826,6 @@ fn an_untagged_enum_corrects_each_variant_as_it_tries_it() {
 /// A member and a slot of a variant that reach a parameter of their enum are corrected by the
 /// enum's serializer: the member at its key in the object the plugin is handed, the slot in
 /// place.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_member_that_reaches_a_parameter_is_corrected_by_the_enums_serializer() {
     let generic: ItemEnum = syn::parse_quote! {

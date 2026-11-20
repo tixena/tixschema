@@ -4,8 +4,6 @@
 //! without a connection. The loop `serve_until` runs is driven through `serve_deliveries`, which
 //! takes everything the broker would supply as plain streams and futures.
 
-#![cfg(feature = "serde")]
-
 use crate::amqp_server;
 use core::future::{Future, Ready, pending, ready};
 use core::mem::size_of_val;

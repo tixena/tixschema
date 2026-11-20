@@ -1,7 +1,7 @@
 //! Generic types that reach themselves, read from another package: through the declaration files
 //! a real TypeScript compiler emits for the bundle, which is all a second package ever sees.
 
-#![cfg(all(unix, feature = "serde", feature = "typescript", feature = "zod"))]
+#![cfg(all(unix, feature = "typescript", feature = "zod"))]
 
 /// The models a check is written on, which the `check` tests run through `validate()`.
 #[path = "../check_tests/models.rs"]

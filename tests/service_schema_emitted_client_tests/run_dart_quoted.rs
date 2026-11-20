@@ -6,7 +6,7 @@
 //! tag of another value, or none, is refused in words that name the key and the tag as serde
 //! writes them. The analyzer passes every type.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

@@ -1,7 +1,7 @@
 //! The std `Result` serde writes as the object whose one key names its arm: `{"Ok": T}` or
 //! `{"Err": E}`, and `null` under an arm of `()`.
 
-#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#![cfg(all(feature = "typescript", feature = "zod"))]
 
 extern crate alloc;
 // With `bson` on, the library `decode_with_foundation!()` writes names the `bson` library.

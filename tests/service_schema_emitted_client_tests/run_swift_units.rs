@@ -4,7 +4,7 @@
 //! place refused with `DecodingError.dataCorrupted`, an absent key with the `keyNotFound` Swift's
 //! own read throws. A tuple struct of no slot keeps `[]`.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

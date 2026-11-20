@@ -2,8 +2,6 @@
 //! request header and a declared response header — the shape every other harness in this crate
 //! deliberately declares none of.
 
-#![cfg(feature = "serde")]
-
 use crate::{amqp_client, amqp_transport};
 use core::future::{Future, ready};
 use core::pin::pin;

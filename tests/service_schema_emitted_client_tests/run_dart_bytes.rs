@@ -2,7 +2,7 @@
 //! writes is read into a `Uint8List`, an item outside a byte is refused in the words of today, and
 //! what the types write is the JSON serde writes. The analyzer passes the emitted types.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use std::collections::HashMap;
 

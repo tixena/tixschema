@@ -1,7 +1,6 @@
 //! A length or a pattern written on a field typed with a brand over a string holds that field's
 //! value alone: the validator, the Zod schema and the JSON Schema read it, and the brand keeps none.
 
-#[cfg(feature = "serde")]
 mod bounded_at_the_field {
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
@@ -182,7 +181,6 @@ mod bounded_at_the_field {
 
 /// A field typed with a brand that declares a bound is held to that bound and to the one the
 /// field writes beside it.
-#[cfg(feature = "serde")]
 mod bounded_at_the_type_and_the_field {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -320,7 +318,6 @@ mod bounded_at_the_type_and_the_field {
 }
 
 /// The Crane of two codes, one with a bound of its own beside its brand's.
-#[cfg(feature = "serde")]
 mod bounded_crane {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

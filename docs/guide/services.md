@@ -2,15 +2,6 @@
 
 `#[service_schema()]` declares a service as a trait: one trait, one context, and one message in and one message out per operation. Failing to implement an operation is a compile error, which is the whole reason the construct is a trait rather than a table of handlers.
 
-**Services need the `serde` feature.** A service's messages derive `Serialize` and `Deserialize`, a dispatcher reads payloads through `serde_json`, and the camelCase and kebab-case keys it puts on the wire come from serde attributes the macro writes. A build without the feature is refused at the declaration rather than left to publish TypeScript that names Rust fields the wire never carries:
-
-```text
-service_schema: a service needs tixschema's `serde` feature, and this build does not have it
-       without it the TypeScript a service publishes names Rust fields rather than the camelCase
-       and kebab-case keys its own dispatcher writes, so the two halves disagree about the wire
-       add `features = ["serde"]` to the tixschema dependency in Cargo.toml
-```
-
 **Only the `typescript` feature publishes TypeScript at all.** `<Service>Schema::ts_definition()`
 and every other `ts_*` accessor live behind it, independently of `dart`, `swift` and `kotlin`. A
 build with `serde` and `dart` alone publishes `dart_definition()`, `dart_http_client()` and

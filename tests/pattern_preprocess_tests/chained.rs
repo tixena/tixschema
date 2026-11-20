@@ -3,10 +3,9 @@
 //! a model, a member of an untagged variant held to a bound, a date stored as a number, and a
 //! member whose type declares the bound.
 
-#[cfg(feature = "serde")]
 use alloc::sync::Arc;
 
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -23,14 +22,12 @@ pub struct Bay {
 }
 
 /// A brand held to a bound of its own.
-#[cfg(feature = "serde")]
 #[model_schema(minLength = 2)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Bounded(String);
 
 /// A brand held to a bound of its own, whose function trims what the bound measures.
-#[cfg(feature = "serde")]
 #[model_schema(minLength = 2, preprocess = ["trimmed"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -88,7 +85,6 @@ pub struct Noted<CodeType> {
 }
 
 /// A member of an untagged variant held to a bound, a slot of one, and a list held to a count.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
@@ -107,7 +103,6 @@ pub enum Picked {
 
 /// A member whose own type declares the bound, held where its holder reads it as it judges
 /// itself.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Shelved {
@@ -116,7 +111,7 @@ pub struct Shelved {
 }
 
 /// A date stored as the milliseconds since the epoch.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Stamped {
@@ -133,7 +128,7 @@ pub struct Tagged(
 );
 
 /// A text of digits as the number it writes.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn as_millis(payload: Value) -> Value {
     if let Value::String(text) = &payload
         && let Ok(millis) = text.parse::<i64>()
@@ -202,7 +197,6 @@ fn a_member_that_holds_a_model_is_read_from_the_corrected_payload() {
 }
 
 /// The holder judges the parcel it read with nothing judged, and names it by its place.
-#[cfg(feature = "serde")]
 #[test]
 fn a_model_read_from_a_corrected_payload_is_judged_once_by_its_holder() {
     let refused =
@@ -262,7 +256,6 @@ fn a_key_the_payload_leaves_out_is_read_as_it_is_with_no_function() {
 /// The bound of each variant's member chooses no variant: the first variant whose shape reads what
 /// the member's function answered takes the payload, and the enum's read then holds the member to
 /// its bound, on the corrected payload.
-#[cfg(feature = "serde")]
 #[test]
 fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
     let picked = |payload: Value| serde_json::from_value::<Picked>(payload).unwrap();
@@ -311,7 +304,6 @@ fn the_bound_of_an_untagged_member_is_held_to_the_corrected_payload() {
 
 /// The brand's bound refuses the text its holder's function took out of the envelope, under the
 /// field that holds it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
     assert_eq!(
@@ -331,7 +323,6 @@ fn a_member_whose_type_declares_the_bound_is_read_from_the_corrected_payload() {
 
 /// The bound of a brand measures what the brand's own function answered, and refuses it once,
 /// in the words `validate()` says of the same value built in code.
-#[cfg(feature = "serde")]
 #[test]
 fn the_bound_of_a_brand_measures_what_its_function_answered() {
     assert_eq!(
@@ -349,7 +340,7 @@ fn the_bound_of_a_brand_measures_what_its_function_answered() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_date_stored_as_a_number_is_read_from_the_corrected_payload() {
     let at = DateTime::from_timestamp_millis(1_700_000_000_000).unwrap();

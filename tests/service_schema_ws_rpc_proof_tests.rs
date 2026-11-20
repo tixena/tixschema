@@ -4,8 +4,6 @@
 //! dispatcher, a header round trip, and a server's own client pushing an event a dispatcher on the
 //! other side delivers.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]
@@ -17,21 +15,21 @@ mod shadowing;
 #[path = "service_schema_ws_rpc_proof_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_proof_tests/ws_transport.rs"]
 mod ws_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_proof_tests/ws_client.rs"]
 mod ws_client;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_proof_tests/events_client.rs"]
 mod events_client;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_proof_tests/events_transport.rs"]
 mod events_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{DocumentSession, SessionEvents, document_session_schema, session_events_schema};

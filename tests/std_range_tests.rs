@@ -1,7 +1,7 @@
 //! The four std ranges serde writes as an object: `Range` and `RangeInclusive` as the object of
 //! their `start` and their `end`, `RangeFrom` as `start` alone, `RangeTo` as `end` alone.
 
-#![cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#![cfg(all(feature = "typescript", feature = "zod"))]
 
 extern crate alloc;
 // With `bson` on, the library `decode_with_foundation!()` writes names the `bson` library.

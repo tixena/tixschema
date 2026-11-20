@@ -2,8 +2,6 @@
 //! below it or in another crate, with a draft or without one, answers the same status over
 //! `http_rest` and the same arm over `mcp`.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]

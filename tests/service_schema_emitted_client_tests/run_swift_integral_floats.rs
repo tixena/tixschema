@@ -6,7 +6,7 @@
 //! an optional integer reads what it read. A type parameter filled with an optional integer is
 //! refused in words that name the integer, as serde names it.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use alloc::collections::BTreeMap;
 

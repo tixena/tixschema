@@ -1,8 +1,6 @@
 //! A `literal` is a rule: `validate()` refuses every other value, and so does the read that runs
 //! it, in each place a member is.
 
-#![cfg(feature = "serde")]
-
 use alloc::borrow::Cow;
 use core::fmt::Write as _;
 use std::path::PathBuf;
