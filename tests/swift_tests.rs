@@ -38,6 +38,12 @@ mod swift_key_number;
 #[path = "support/swift_valid.rs"]
 mod swift_valid;
 
+/// The `validate()` a draft declares.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "serde"))]
+#[path = "support/swift_validating.rs"]
+mod swift_validating;
+
 #[cfg(test)]
 #[cfg(feature = "swift")]
 #[path = "swift_tests/valid_types.rs"]

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use crate::swift_plain_enum::PLACED;
 use crate::swift_valid;
+use crate::swift_validating;
 use crate::tests::{
     adjacent_tagged_swift, all_widths_swift, by_bool_swift, by_enum_swift, by_u32_swift,
     correlation_id_swift, envelope_swift, external_tagged_swift, flattened_extra_swift,
@@ -216,7 +217,7 @@ fn a_struct_runs_its_bounds_its_fields_checks_then_its_own() {
                 r#"return "'\(place)': \(violation)" }; "#,
             )
             .replace("@PLACED@", PLACED),
-            swift_valid::validating("Parcel")
+            swift_validating::validating("Parcel")
         )
     );
 }

@@ -18,17 +18,20 @@ use super::corrected_options_models::{
 };
 #[cfg(feature = "zod")]
 use super::flattened_models::Ensign;
+#[cfg(feature = "serde")]
 use super::flattened_models::{
-    BELTING, BOWLINING, BROACHING, Belting, BeltingDraft, Bending, Bowlining, Brailing, Broaching,
-    CHAFING, CHOCKED, CLEATING, Cathead, Chafing, Cleating, CorrectedLocker, DRESSING,
-    DRESSING_TAGS, Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, FRAYING, Flag,
-    Fraying, GAFFING, GONFALON, Gaffing, Gammoning, Gonfalon, HEAVING, HITCHING, Heaving, Hitching,
-    JibingDraft, KnottingDraft, LOCKER, Lanyarding, Luffing, MARLINE, NettingDraft, PAYLOAD,
-    PENNANT_TAGS, Pennant, QuayingDraft, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED, STOWING,
-    STROPPING, STRUCK, SWAYING, Scarfing, Scudding, SeizingDraft, Semaphore, SheetingDraft,
-    Snubbing, SplicingDraft, Stowing, StowingDraft, Striking, Stropping, Swaying, Tacking,
-    TackingDraft, UNDER_AN_ALIAS, UNDER_TWO_NAMES, UNWRITTEN, WHELPING, Whelping, Whipping,
-    YawingDraft, read_of,
+    BELTING, BOWLINING, BROACHING, Belting, Bowlining, Broaching, CHAFING, CLEATING, Chafing,
+    Cleating, FRAYING, Fraying, GAFFING, Gaffing, HEAVING, JibingDraft, SWAYING, Swaying,
+    UNDER_TWO_NAMES, WHELPING, Whelping,
+};
+use super::flattened_models::{
+    BeltingDraft, Bending, Brailing, CHOCKED, Cathead, CorrectedLocker, DRESSING, DRESSING_TAGS,
+    Dipping, Dressing, ENSIGN, EmptiedLocker, FLAG, FLAG_TAGS, Flag, GONFALON, Gammoning, Gonfalon,
+    HITCHING, Heaving, Hitching, KnottingDraft, LOCKER, Lanyarding, Luffing, MARLINE, NettingDraft,
+    PAYLOAD, PENNANT_TAGS, Pennant, QuayingDraft, Rousing, SCARFING, SCUDDING, SEMAPHORE, SNUBBED,
+    STOWING, STROPPING, STRUCK, Scarfing, Scudding, SeizingDraft, Semaphore, SheetingDraft,
+    Snubbing, SplicingDraft, Stowing, StowingDraft, Striking, Stropping, Tacking, TackingDraft,
+    UNDER_AN_ALIAS, UNWRITTEN, Whipping, YawingDraft, read_of,
 };
 #[cfg(feature = "serde")]
 use super::flattened_models::{
@@ -1583,6 +1586,7 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
 }
 
 /// Asserts that serde refused each payload of `read` at the place held beside the key it names.
+#[cfg(feature = "serde")]
 fn assert_refused_keys<T>(read: &[Result<T, serde_json::Error>], refused: &[(usize, &str)])
 where
     T: Debug,
@@ -1598,6 +1602,7 @@ where
 
 /// What serde reads of each payload of [`Belting`]: the enum's entry, a refusal of a key no member
 /// reads, and no value where no entry is under a variant's name.
+#[cfg(feature = "serde")]
 fn assert_belted(bay: &Tacking) {
     let belted = BELTING.map(|payload| {
         serde_json::from_str::<Belting>(payload)
@@ -1619,6 +1624,7 @@ fn assert_belted(bay: &Tacking) {
 /// every other entry is left to the members after it. A holder with no such entry is refused, and
 /// so is one of no member that reads every key with a key none of its members reads, a second
 /// variant's entry among them; an optional enum reads no value.
+#[cfg(feature = "serde")]
 #[test]
 fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
     let stowed: Vec<_> = STOWING
@@ -1722,6 +1728,7 @@ fn serde_hands_a_flattened_enum_under_an_alias_and_a_holder_its_entry() {
 /// of the two keys: a function after it is handed every other key, and a struct after it reads its
 /// own. A holder of only members that take their own keys refuses a key none of them reads, and
 /// so refuses entries under two names of a flattened externally tagged enum.
+#[cfg(feature = "serde")]
 #[test]
 fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_of_two_entries() {
     let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
@@ -1971,6 +1978,7 @@ fn a_flattened_enum_merges_a_unit_variant_as_its_name_over_null() {
 /// entries and a struct's keys at the variant's own level, under every tagging that builds one,
 /// each written back where serde writes the variant's own members. A variant whose flattened
 /// members all take their own keys refuses a key none of its members reads.
+#[cfg(feature = "serde")]
 #[test]
 fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
     let read = [

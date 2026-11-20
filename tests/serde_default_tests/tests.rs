@@ -20,7 +20,7 @@ use super::omitted::{
 use crate::dart_integer_read::integer_read;
 #[cfg(feature = "kotlin")]
 use crate::kotlin_numbers::without_number_readers;
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 use crate::kotlin_thrown::{THROWN, held_refusal};
 #[cfg(all(feature = "serde", feature = "typescript"))]
 use crate::typescript_brand::brand_after;

@@ -470,7 +470,7 @@ fn serde_still_reads_its_own_attributes() {
     assert_eq!(note.draft, "plan");
     assert_eq!(serde_json::to_string(&note).unwrap(), r#"{"title":"Trip"}"#);
     assert_eq!(
-        serde_json::to_string(&VisibilityDraft::Hidden)
+        serde_json::to_string(&Visibility::Hidden)
             .unwrap_err()
             .to_string(),
         "the enum variant Visibility::Hidden cannot be serialized"

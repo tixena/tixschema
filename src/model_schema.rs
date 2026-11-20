@@ -2658,7 +2658,27 @@ fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     quote! { #wrapper #form #flattened #units #braced }
 }
 
-#[cfg(not(feature = "serde"))]
+/// What a build with no serde writes of those items: the hidden constant a Kotlin holder asks
+/// whether `#[model_schema]` expanded a type it holds.
+#[cfg(all(not(feature = "serde"), feature = "kotlin"))]
+fn needs_wrapper_tokens(item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
+    let (name, generics) = if let Item::Struct(item_struct) = item {
+        (&item_struct.ident, &item_struct.generics)
+    } else if let Item::Enum(item_enum) = item {
+        (&item_enum.ident, &item_enum.generics)
+    } else {
+        return TokenStream::new();
+    };
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    quote! {
+        impl #impl_generics #name #type_generics #where_clause {
+            #[doc = " Whether `#[model_schema]` expanded this type, which a holder that cannot name it asks."]
+            pub const __TIXSCHEMA_MODELLED: bool = true;
+        }
+    }
+}
+
+#[cfg(all(not(feature = "serde"), not(feature = "kotlin")))]
 fn needs_wrapper_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
