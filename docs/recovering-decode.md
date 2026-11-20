@@ -67,8 +67,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   `use crate::__tixschema_decode_with::*;`, so it is written beside it. `MONGODB_LIBRARY`,
   `MONGODB_LIBRARY_NAMES`, `mongodb_reexport`, `mongodb_foundation_probe` and the
   `mongodb_foundation` that writes the module are under `#[cfg(feature = "mongodb")]`, and the
-  empty `mongodb_foundation` answers every build without it. The first writes nothing without
-  `serde`, so each call stays in a crate whatever it builds with, and no consumer writes a line
+  empty `mongodb_foundation` answers every build without it. Each call stays in a crate whatever it builds with, and no consumer writes a line
   for the BSON pieces. Each writes beside its module a private marker trait implemented for `()`,
   `__TixschemaDecodeWithFoundation` and `__TixschemaMongodbFoundation`, whose one method the probes
   look for. The first also writes the
@@ -103,7 +102,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
 - **The flag is judged at `exec_model_schema`.** `decode_with_guard_errors` runs there, ungated, so
   the refusals -- a type alias, a type that declares a lifetime, a field that borrows -- are the
   same in every feature combination and are raised before any shape is split off. The emitter
-  itself runs under `serde`, from `struct_decode_with` and `enum_decode_with`, and reads the item
+  itself runs from `struct_decode_with` and `enum_decode_with`, and reads the item
   as it is emitted, so a read hook tixschema hangs on a field is one the walker reads through.
 - **Every read the flag makes is the type's read alone.** A plain read of a type ends on its
   `validate()` (section 7, "A read refuses what `validate()` refuses"), and a refusal there would
@@ -132,7 +131,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
   holding a type of another builds and lists the held type's issues at their full path, as two
   types of one crate do.
 - **A field's type is walked by what tixschema has seen of it.** `record_declaration` notes at
-  `exec_model_schema`, in every build with `serde`, whether a name is a struct or an enum or an
+  `exec_model_schema`, in every build, whether a name is a struct or an enum or an
   alias, and what a parameterless alias names. A model type seen above is called as it stands, so
   one with no flag fails the build (E0599), as before. Any other type goes through
   `Walker::asked`: the call is written in a block with `{type}_schema::ReadWhole` in scope, so a
@@ -349,7 +348,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
     the variant's ident, with no serde attribute. Nothing emitted reads it.
   - `tag_arm_refusals` refuses what would let two functions of the struct take one name: `__`
     in a variant's Rust name, two values with one snake case, and an arm function that meets an
-    `is_{variant}`. `decode_with_guard_errors` raises them under `serde` for every enum that
+    `is_{variant}`. `decode_with_guard_errors` raises them for every enum that
     lists `"decode_with"`, so the verdict is the same with the `mongodb` feature on and off and
     with the entry `"mongodb"` listed or not, and an enum without `"decode_with"` is refused
     nothing.
@@ -431,7 +430,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
 - **A path is under the name serde writes.** `parse_written_renames` reads `rename`, `rename_all`
   and `rename_all_fields` for their `serialize` side in every build. A list whose two sides differ
   is refused by every build that describes the type, a mobile client included:
-  `rename_direction_guard_errors` runs under `serde` with any of `typescript`, `zod`, `dart`,
+  `rename_direction_guard_errors` runs with any of `typescript`, `zod`, `dart`,
   `swift` and `kotlin`, and a build with none of the five takes the list.
   `the_rename_guard_is_compiled_in_every_build_that_describes_a_type` reads those gates off the
   sources, no local build being of the clients alone.

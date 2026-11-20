@@ -4,10 +4,10 @@
 
 **Only the `typescript` feature publishes TypeScript at all.** `<Service>Schema::ts_definition()`
 and every other `ts_*` accessor live behind it, independently of `dart`, `swift` and `kotlin`. A
-build with `serde` and `dart` alone publishes `dart_definition()`, `dart_http_client()` and
-`dart_ws_client()` with no TypeScript in sight, and the reverse holds too — `serde` and `typescript`
+build with `dart` alone publishes `dart_definition()`, `dart_http_client()` and
+`dart_ws_client()` with no TypeScript in sight, and the reverse holds too — `typescript`
 with none of the mobile features publishes TypeScript alone. Each language earns its own accessors
-under `serde` plus that language's own feature; none of the four needs any of the others.
+under that language's own feature; none of the four needs any of the others.
 
 **A service that publishes TypeScript needs the `zod` feature too.** A message validates when it is
 constructed, in both directions: the generated client parses what it is about to send before it

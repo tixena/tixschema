@@ -24,4 +24,4 @@ let note = Note::try_from(&value)?;
 - **A type with parameters** converts at any filling. Each impl is bounded on the type itself: the write on `Tagged<Id>: Serialize`, the read on `Tagged<Id>: DeserializeOwned`.
 - **The recovering decode needs no entry of its own.** arky's `Value` turns into a `serde_json::Value`, and `from_value_with` reads it: `Note::from_value_with((&value).into(), decide)`, for a type that also lists `"decode_with"`.
 - **A type alias is refused**, in every build: `` `enable = ["arky"]` cannot be written on a type alias: `Short` is another name for `String`, and the conversions would have to be written for that type. List it on the model types the alias reaches.``
-- **What your crate lists:** `arky` and `serde`. Without the `arky` feature, the entry adds nothing.
+- **What your crate lists:** `arky`. Without the `arky` feature, the entry adds nothing.

@@ -58,18 +58,18 @@
 //! | Dart classes with `fromJson`, `toJson` and `validate()` | `{type}_dart::dart_definition()` | `dart` |
 //! | Swift `Codable` types with `validate()` | `{type}_swift::swift_definition()` | `swift` |
 //! | Kotlin `kotlinx.serialization` classes with `validate()` | `{type}_kotlin::kotlin_definition()` | `kotlin` |
-//! | Serde renames, tags, flattening and defaults, read on every surface | the `#[serde(...)]` attributes already on the type | `serde` |
+//! | Serde renames, tags, flattening and defaults, read on every surface | the `#[serde(...)]` attributes already on the type | none |
 //! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | any |
-//! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | `serde`; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
+//! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | none; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
 //! | `MongoDB` typed paths, filters, updates and operations | `enable = ["decode_with", "mongodb"]` and `tixschema::mongodb_foundation!()`, giving `T::MONGO_FIELDS`, `T::find_one`, `T::find`, `T::count`, `value.insert_one`, `T::update_one`, `T::delete_one` and their siblings | `mongodb` |
 //! | `ObjectId` fields, chrono dates and times, `IndexMap` and `IndexSet` | a field of that type | `mongodb`, `chrono`, `indexmap` |
 //! | Conversions to and from arky's frontmatter `Value` | `enable = ["arky"]`, giving `TryFrom` in both directions | `arky` |
-//! | A service: the trait, its messages and its fault type | [`#[service_schema]`](attr.service_schema.html) and [`#[service_schema_op]`](attr.service_schema_op.html) on a trait | `serde` |
-//! | Rust dispatchers and clients for `amqp_rpc`, `http_rest` and `ws_rpc` | `#[service_schema(transports = [...])]`, then the `{service}_{transport}_dispatcher!()` and `{service}_{transport}_client!()` macros it writes, and `{service}_amqp_rpc_server!()` | `serde` |
-//! | TypeScript service clients and dispatchers | `{Service}Schema::ts_client()`, `ts_service()`, `ts_http_client()`, `ts_http_service()`, `ts_ws_client()`, `ts_ws_service()` and `ts_ws_server()` | `serde`, `typescript` and `zod` |
-//! | Dart service messages, clients and a WebSocket dispatcher | `{Service}Schema::dart_definition()`, `dart_http_client()` and `dart_ws_client()` | `serde` and `dart` |
-//! | Swift service clients | `{Service}Schema::swift_http_client()` and `swift_ws_client()` | `serde` and `swift` |
-//! | Kotlin service clients and a WebSocket dispatcher | `{Service}Schema::kotlin_http_client()` and `kotlin_ws_client()` | `serde` and `kotlin` |
+//! | A service: the trait, its messages and its fault type | [`#[service_schema]`](attr.service_schema.html) and [`#[service_schema_op]`](attr.service_schema_op.html) on a trait | none |
+//! | Rust dispatchers and clients for `amqp_rpc`, `http_rest` and `ws_rpc` | `#[service_schema(transports = [...])]`, then the `{service}_{transport}_dispatcher!()` and `{service}_{transport}_client!()` macros it writes, and `{service}_amqp_rpc_server!()` | none |
+//! | TypeScript service clients and dispatchers | `{Service}Schema::ts_client()`, `ts_service()`, `ts_http_client()`, `ts_http_service()`, `ts_ws_client()`, `ts_ws_service()` and `ts_ws_server()` | `typescript` and `zod` |
+//! | Dart service messages, clients and a WebSocket dispatcher | `{Service}Schema::dart_definition()`, `dart_http_client()` and `dart_ws_client()` | `dart` |
+//! | Swift service clients | `{Service}Schema::swift_http_client()` and `swift_ws_client()` | `swift` |
+//! | Kotlin service clients and a WebSocket dispatcher | `{Service}Schema::kotlin_http_client()` and `kotlin_ws_client()` | `kotlin` |
 //!
 //! The functions that write a surface's text return it as a `String`: `ts_definition()`,
 //! `zod_schema()`, `dart_definition()`, `swift_definition()`, `kotlin_definition()` and every
@@ -733,10 +733,9 @@ fn main() {
 //!
 //! # Features
 //!
-//! The default is `web`. Three sets group the plain features: `web` is `serde`, `zod` and
-//! `typescript`; `mobile` is `serde`, `dart`, `swift` and `kotlin`; `mongo` is
-//! `mongodb`, `chrono`, `indexmap` and `arky`. `mongodb` turns on `bson`, and `bson` and `arky`
-//! turn on `serde`. A feature says what tixschema can generate, and a type's `enable` list says
+//! The default is `web`. Three sets group the plain features: `web` is `zod` and `typescript`;
+//! `mobile` is `dart`, `swift` and `kotlin`; `mongo` is `mongodb`, `chrono`, `indexmap` and
+//! `arky`. `mongodb` turns on `bson`. A feature says what tixschema can generate, and a type's `enable` list says
 //! what it generates for that type. JSON Schema is no feature: a type that lists
 //! `enable = ["jsonschema"]` gets `T::json_schema()`, and the crate that declares it lists
 //! `serde_json`.
@@ -788,7 +787,7 @@ fn main() {
 //!   a bare `Value` or `Map` in a member lists `serde_json`. A member serde neither writes nor
 //!   reads is not refused for the JSON value it holds. See the guide's
 //!   [A JSON value is no member](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#a-json-value-is-no-member).
-//! - **A named `Option<T>` field needs a key-dropping serde attribute** under `serde`:
+//! - **A named `Option<T>` field needs a key-dropping serde attribute**:
 //!   `skip_serializing_if`, `skip_serializing` or `skip`, or else `#[model_schema_prop(nullable)]`.
 //!   `ts_optional` alone does not satisfy the rule. A field under `#[serde(flatten)]` is not held
 //!   to it.
@@ -992,7 +991,7 @@ use service_schema::exec_service_schema;
 /// - `T::enum_members() -> Vec<String>`, on an enum whose variants carry no data, in every build:
 ///   the names serde writes.
 /// - `T::wire_name(&self) -> &'static str`, a `const fn` on the draft of an enum whose variants are
-///   all unit variants serde writes as a string (with `serde`): the text serde writes for the value.
+///   all unit variants serde writes as a string: the text serde writes for the value.
 ///   An enum under `tag`, with a variant that holds data or one serde skips has none.
 /// - `{type}_dart::dart_definition()`, `{type}_swift::swift_definition()` and
 ///   `{type}_kotlin::kotlin_definition()` (`dart`, `swift`, `kotlin`): functions in modules beside
@@ -1308,9 +1307,9 @@ export function safeDecodeEvent(
 /// - **A generic type**: TypeScript keeps the parameters (`export type Page<T>`). Zod publishes a
 ///   memoized factory, `Page$SchemaFactory(itemSchema)`, and `Page$SchemaDefault` at the declared
 ///   filling. JSON Schema is built at `default_types`.
-/// - **A branded newtype**, a `#[serde(transparent)]` struct of one field, with the `serde`
-///   feature: TypeScript `string & $brand<"UserId">` and Zod `.brand<"UserId">()`, so two ids over
-///   one inner type cannot be swapped. Without the feature no struct is a brand. Its inner type
+/// - **A branded newtype**, a `#[serde(transparent)]` struct of one field: TypeScript
+///   `string & $brand<"UserId">` and Zod `.brand<"UserId">()`, so two ids over one inner type
+///   cannot be swapped. Its inner type
 ///   implements `Display`, or the brand writes `no_display`; a brand over a parameter asks it of
 ///   the declared default alone, and of a path default not at all.
 ///
@@ -1326,8 +1325,8 @@ export function safeDecodeEvent(
 ///   `serde_json::Map` member is refused at expansion when written by its path, and as error
 ///   `E0080`, by a check the compiler evaluates, when written by its bare name after a `use`.
 /// - `Option<T>` is `field: T | undefined` in TypeScript, a key Zod reads as absent when it is
-///   `null` or missing, and in JSON Schema a key left out of `required`. Under `serde` a named
-///   `Option` field carries `skip_serializing_if`, `skip_serializing` or `skip`, or
+///   `null` or missing, and in JSON Schema a key left out of `required`. A named `Option`
+///   field carries `skip_serializing_if`, `skip_serializing` or `skip`, or
 ///   `#[model_schema_prop(nullable)]`.
 /// - Under `chrono`, `NaiveDate`, `NaiveTime` and `NaiveDateTime` are strings, and `DateTime<Tz>`
 ///   is a TypeScript `Date` that Zod coerces from a `Date`, a string or a number.
@@ -1522,7 +1521,7 @@ export function safeDecodeDocument(
 ///
 /// # Errors met most
 ///
-/// - **A named `Option` field with no key-dropping attribute**, under `serde`: refused, naming the
+/// - **A named `Option` field with no key-dropping attribute**: refused, naming the
 ///   field. Add `#[serde(skip_serializing_if = "Option::is_none")]`, with `default` where the type
 ///   derives `Deserialize`, or `skip_serializing` or `skip`; or declare
 ///   `#[model_schema_prop(nullable)]` where the wire carries `null`.
@@ -1824,15 +1823,15 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 ///   wrappers (`as = String` on a `Vec<String>`). Any other type, and `as` beside `preprocess`, is
 ///   refused.
 /// - `ts_optional`: on an `Option<T>` field, the TypeScript key `field?: T` in place of
-///   `field: T | undefined`. Zod and JSON Schema are unchanged, and under `serde` the field still
+///   `field: T | undefined`. Zod and JSON Schema are unchanged, and the field still
 ///   carries `skip_serializing_if` or `skip_serializing`. On a field serde takes off the wire in
 ///   both directions, with `skip` or with `skip_serializing` and `skip_deserializing` together,
-///   `ts_optional` is refused under `serde`: no key is written for it to make optional.
+///   `ts_optional` is refused: no key is written for it to make optional.
 /// - `nullable`: on an `Option<T>` field, `T | null` with the key always written, on TypeScript,
-///   Zod and JSON Schema. Under `serde` the field carries no key-dropping attribute, and
+///   Zod and JSON Schema. The field carries no key-dropping attribute, and
 ///   `ts_optional` beside it is refused.
 /// - `as_number`: on a `DateTime<Tz>` field under the `chrono` feature, epoch milliseconds as a
-///   `number` in place of a `Date`. Under `serde` the macro hangs `chrono::serde::ts_milliseconds`
+///   `number` in place of a `Date`. The macro hangs `chrono::serde::ts_milliseconds`
 ///   on a `DateTime<Utc>` field and `chrono::serde::ts_milliseconds_option` on an `Option` of one,
 ///   unless the field carries its own `#[serde(with = ...)]`.
 ///
@@ -2115,7 +2114,7 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///
 /// # What it generates
 ///
-/// Beside the trait, in every build with `serde`:
+/// Beside the trait, in every build:
 ///
 /// - The `<Operation>Request` messages above, each a `#[model_schema]` type that publishes on every
 ///   surface.

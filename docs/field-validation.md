@@ -293,7 +293,7 @@ what a change has to keep.
   `validate()`" below. The JSON Schema and the TypeScript type write what they wrote, and no
   expected output of a type without the key changes.
 - **The documents' example is a doctest.** `src/check_example.md` is included in
-  `model_schema_prop`'s rustdoc under `serde`, and
+  `model_schema_prop`'s rustdoc, and
   `tests/check_tests/readme.rs` holds the guide to it. `tests/check_tests/models.rs` is compiled
   by `tests/check_tests.rs` and by `tests/generic_types_tests/declarations.rs`, which parses each
   case under node and compares the two sides as one text. This crate's lints order a struct's
@@ -386,7 +386,7 @@ feature enabled for that module to exist. What a change has to keep:
   `src/features/serde/defaults.rs` writes a default through `ts_milliseconds::serialize` wherever
   the author wrote no writer.
 - **`as_number_hook_refusal` refuses the key on a date chrono's hook reads no value of**, in every
-  build with `serde` and `chrono`, from `model_schema_prop_guard_errors`: anything but a
+  build with `chrono`, from `model_schema_prop_guard_errors`: anything but a
   `DateTime<Utc>` or an `Option` of one (`names_a_utc_date`, `names_an_optional_utc_date`), unless
   the author writes and reads the member through functions of their own. The refusal names the type
   as written.
@@ -395,7 +395,7 @@ feature enabled for that module to exist. What a change has to keep:
   `written_non_object_wire` answers `integer` and `tagged_content` `an integer` for a `DateTime`
   that `has_as_number()` answers for. The def is handed it by `flatten_edge_guard_error`,
   `internally_tagged_guard_errors`, `non_object_wire` (the slot of a struct of one slot and an
-  untagged member, the record every build with `serde` writes) and `tuple_struct_surface` (the
+  untagged member, the record every build writes) and `tuple_struct_surface` (the
   record a Zod surface writes), so a flattened date, the lone slot under a tag alone, and a type
   declared above over one are refused as serde refuses the integer. A bound on such a date is
   refused by `check_fixed_shape_constraints` in the words of the milliseconds.

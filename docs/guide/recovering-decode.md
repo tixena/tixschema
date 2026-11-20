@@ -41,7 +41,7 @@ What each entry generates on a type, by the features tixschema is built with:
 
 | Entry | tixschema built with | Generates, per type |
 |-------|----------------------|---------------------|
-| `"decode_with"` | `serde` | An `impl` of `DecodeWith` with `from_value_with` and `from_value_piped`, their walkers, the type's own items in its `{type}_schema` module, and the re-export of the `decode_with` library there |
+| `"decode_with"` | none | An `impl` of `DecodeWith` with `from_value_with` and `from_value_piped`, their walkers, the type's own items in its `{type}_schema` module, and the re-export of the `decode_with` library there |
 | `"decode_with"` | `bson`, which `mongodb` turns on | The row above, and `from_bson_with` and `from_bson_piped` in the same `impl`, the BSON walkers, and the BSON pieces of the `decode_with` library among the names the module re-exports. No operation, no `MONGO_FIELDS` and no typed path |
 | `"mongodb"` | `mongodb` | The operations `find_one`, `find_one_with`, `find`, `find_with`, `count`, `insert_one`, `update_one`, `update_many`, `delete_one` and `delete_many`, `MONGO_FIELDS`, `MongoFields`, the typed paths, and the re-export of the MongoDB library: the query types and what the operations answer |
 
