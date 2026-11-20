@@ -517,7 +517,7 @@ consumer's view; this is what a change has to keep.
   `tests/dart_tests/flattened.rs` pins the read of a flattened member at each place, over the
   models of `tests/dart_tests/flattened_models.rs`, which also pin what serde reads of each, and
   `run_dart_flattened.rs` reads and writes each back under the Dart SDK, against serde. A map of
-  models with a rule (`Limber`) is held to serde in every build with `serde`, and the Dart read
+  models with a rule (`Limber`) is held to serde in every build, and the Dart read
   refuses what it breaks in every build.
   `tests/dart_tests/aliased.rs` pins the read of a variant and a member under an alias, over the
   models of `tests/kotlin_tests/aliased_models.rs` and of

@@ -125,9 +125,9 @@ on every client.
 to the same validation. `models.rs` declares one constrained model of each shape: a named struct,
 a tuple struct, a brand, an alias of the brand held by a field, an enum of each tagging (external,
 internal, adjacent, untagged), a generic struct read at a filling other than its declared default,
-and, with `serde`, a type that lists `enable = ["decode_with"]` and a `#[service_schema()]` trait
+and a type that lists `enable = ["decode_with"]` and a `#[service_schema()]` trait
 with no transport. `validate.rs` asserts each model's `validate()` in every build. `read.rs`
-asserts, with `serde`, the read that refuses a broken rule, `from_value_with` handing its callback
+asserts the read that refuses a broken rule, `from_value_with` handing its callback
 the `Invalid` issue, and `{service}_schema::validated_{operation}` refusing a broken request. Each
 expected text is what a `web` build answers.
 

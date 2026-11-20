@@ -1,19 +1,18 @@
 ## Feature Flags
 
-The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with three exceptions: `mongodb` turns on `bson`, and `bson` and `arky` turn on `serde`.
+The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with one exception: `mongodb` turns on `bson`.
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `serde` | Yes | Serde attribute parsing (`rename`, `rename_all`, `tag`, etc.) |
 | `zod` | Yes | Zod v4 schema generation alongside TypeScript types |
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
 | `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types whose [`enable` list](recovering-decode.md#opting-in) holds `"mongodb"` the [typed field paths, filters, updates and operations](mongodb-operations.md#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
-| `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on every type whose [`enable` list](recovering-decode.md#opting-in) holds `"decode_with"`; turns on `serde` |
+| `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on every type whose [`enable` list](recovering-decode.md#opting-in) holds `"decode_with"` |
 | `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](models.md#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](preprocess.md#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](dart.md#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](dart.md#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](swift.md#validate-in-the-swift-client) on every type, which [the read of each calls](swift.md#a-swift-read-refuses-what-validate-refuses) |
-| `arky` | No | `TryFrom` conversions to and from arky's frontmatter `Value` on types whose [`enable` list](recovering-decode.md#opting-in) holds `"arky"`. See [arky Frontmatter Conversions](arky.md#arky-frontmatter-conversions-arky); turns on `serde` |
+| `arky` | No | `TryFrom` conversions to and from arky's frontmatter `Value` on types whose [`enable` list](recovering-decode.md#opting-in) holds `"arky"`. See [arky Frontmatter Conversions](arky.md#arky-frontmatter-conversions-arky) |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations, a [`validate()`](kotlin.md#validate-in-the-kotlin-client) on every type and [a read that refuses what it refuses](kotlin.md#the-read-in-the-kotlin-client). A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")`, on Kotlin 2.0.20 or later (a model's valid class is `@ConsistentCopyVisibility`) |
 
 Common configurations:
