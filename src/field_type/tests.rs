@@ -887,20 +887,17 @@ fn test_number_literal_zod_has_no_trailing_zero() {
 }
 
 /// The members a written type is expected as, each as `(name, names, members under it)`.
-#[cfg(feature = "serde")]
 fn expected_of(spelling: &str) -> Vec<(&'static str, Vec<String>, usize)> {
     let ty: syn::Type = syn::parse_str(spelling).unwrap();
     super::get_field_def("", &ty, "").expected_members()
 }
 
 /// One member carrying no name, with `under` members after it.
-#[cfg(feature = "serde")]
 const fn member(name: &'static str, under: usize) -> (&'static str, Vec<String>, usize) {
     (name, Vec::new(), under)
 }
 
 /// Every category that carries nothing is the member of its own name.
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_plain_category_is_expected_as_the_member_of_its_name() {
     for (field_type, name) in [
@@ -925,7 +922,7 @@ fn test_a_plain_category_is_expected_as_the_member_of_its_name() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn test_a_chrono_category_is_expected_as_the_member_of_its_name() {
     for (field_type, name) in [
@@ -939,7 +936,7 @@ fn test_a_chrono_category_is_expected_as_the_member_of_its_name() {
     assert_eq!(expected_of("DateTime<Utc>"), [member("DateTime", 0)]);
 }
 
-#[cfg(all(feature = "serde", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn test_an_object_id_is_expected_as_object_id() {
     assert_eq!(
@@ -949,7 +946,6 @@ fn test_an_object_id_is_expected_as_object_id() {
 }
 
 /// A literal carries its value as the one name it holds, a number without a trailing `.0`.
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_literal_category_is_expected_with_its_value() {
     for (field_type, name, value) in [
@@ -975,7 +971,6 @@ fn test_a_literal_category_is_expected_with_its_value() {
 }
 
 /// A name the classifier does not know is another model type, by the name its field writes.
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_named_type_is_expected_as_a_model_by_the_name_written() {
     for (spelling, name) in [
@@ -995,7 +990,6 @@ fn test_a_named_type_is_expected_as_a_model_by_the_name_written() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_composite_category_is_expected_before_the_members_under_it() {
     assert_eq!(
@@ -1015,7 +1009,6 @@ fn test_a_composite_category_is_expected_before_the_members_under_it() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_optional_and_array_wrap_the_category_in_the_order_written() {
     assert_eq!(

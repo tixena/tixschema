@@ -3,7 +3,6 @@
 //! payload serde writes for it and what `validate()` answers of it.
 
 /// The places serde writes a member at, where a bound is held and a holder runs what it holds.
-#[cfg(feature = "serde")]
 #[path = "places.rs"]
 pub mod places;
 
@@ -80,7 +79,6 @@ Archive<u32>: passes
 /// The 13 lines of the shared table, in a build that holds `label` to its bound and runs a held
 /// type's `validate()`. A member's lines are in the order the parcel declares its members, which
 /// is the order of its names.
-#[cfg(feature = "serde")]
 pub const TABLE: &str = "\
 case 1: passes
 case 2: refused
@@ -351,14 +349,8 @@ fn rated(value: &GradeDraft) -> Result<(), Vec<String>> {
     Ok(())
 }
 
-#[cfg(feature = "serde")]
 fn upper_case(value: &Code) -> Result<(), Vec<String>> {
     upper_case_text(value.as_inner())
-}
-
-#[cfg(not(feature = "serde"))]
-fn upper_case(value: &CodeDraft) -> Result<(), Vec<String>> {
-    upper_case_text(&value.0)
 }
 
 fn upper_case_text(text: &str) -> Result<(), Vec<String>> {
@@ -375,14 +367,8 @@ fn with_a_code<CodeType>(value: &CrateDraft<CodeType>) -> Result<(), Vec<String>
     Ok(())
 }
 
-#[cfg(feature = "serde")]
 fn holding_a_code<CodeType>(value: &Batch<CodeType>) -> Result<(), Vec<String>> {
     holding_codes(value.as_inner())
-}
-
-#[cfg(not(feature = "serde"))]
-fn holding_a_code<CodeType>(value: &BatchDraft<CodeType>) -> Result<(), Vec<String>> {
-    holding_codes(&value.0)
 }
 
 fn holding_codes<CodeType>(codes: &[CodeType]) -> Result<(), Vec<String>> {
@@ -458,7 +444,6 @@ pub fn parcel_cases() -> Vec<Case> {
 }
 
 /// Case 6 of the shared table, where a holder runs what it holds.
-#[cfg(feature = "serde")]
 pub fn manifest_case() -> Case {
     let held = manifest();
     case(
@@ -614,32 +599,7 @@ fn enum_cases() -> Vec<Case> {
     ]
 }
 
-#[cfg(not(feature = "serde"))]
-fn batch_cases() -> Vec<Case> {
-    let empty_strings = BatchDraft::<String>(Vec::new());
-    let empty_numbers = BatchDraft::<u32>(Vec::new());
-    let sevens = BatchDraft(vec![7_u32]);
-    vec![
-        case(
-            "Batch<String>, empty",
-            &empty_strings,
-            crate::judged_issues(empty_strings.validation_issues()),
-        ),
-        case(
-            "Batch<u32>, empty",
-            &empty_numbers,
-            crate::judged_issues(empty_numbers.validation_issues()),
-        ),
-        case(
-            "Batch<u32>",
-            &sevens,
-            crate::judged_issues(sevens.validation_issues()),
-        ),
-    ]
-}
-
 /// A brand over a list, over a string and over a number.
-#[cfg(feature = "serde")]
 fn batch_cases() -> Vec<Case> {
     vec![
         case(
@@ -702,7 +662,6 @@ fn brand_and_crate_cases() -> Vec<Case> {
     cases
 }
 
-#[cfg(feature = "serde")]
 fn code_cases() -> Vec<Case> {
     vec![
         case(
@@ -715,24 +674,6 @@ fn code_cases() -> Vec<Case> {
             "Code",
             &Code::new("AB".to_owned()).unwrap(),
             Code::new("AB".to_owned()).map(|_| ()),
-        ),
-    ]
-}
-
-#[cfg(not(feature = "serde"))]
-fn code_cases() -> Vec<Case> {
-    let lower = CodeDraft("ab".to_owned());
-    let upper = CodeDraft("AB".to_owned());
-    vec![
-        case(
-            "Code, in lower case",
-            &lower,
-            crate::judged_issues(lower.validation_issues()),
-        ),
-        case(
-            "Code",
-            &upper,
-            crate::judged_issues(upper.validation_issues()),
         ),
     ]
 }

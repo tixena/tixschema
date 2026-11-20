@@ -4,7 +4,7 @@
 
 /// serde's `rename_all` is what turns the declared members into the keys every surface here spells,
 /// so these read the emitted declaration only where the attribute is parsed at all.
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 mod typescript {
     use super::{
         ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveNode, ArchiveTrunk, ArchiveWire,
@@ -107,7 +107,7 @@ mod typescript {
 /// The factory's parameter list, its cache interfaces and its argument annotations are TypeScript,
 /// so a build without that surface writes the same schemas with none of them — and the member keys
 /// are serde's. Read where all three compile.
-#[cfg(all(feature = "zod", feature = "typescript", feature = "serde"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 mod zod {
     use super::{
         ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveId, ArchiveNode, ArchiveStamp,
@@ -249,7 +249,6 @@ mod zod {
 }
 
 /// The documents are pinned byte for byte, and every key in them is the one serde writes.
-#[cfg(feature = "serde")]
 mod json_schema {
     use super::{
         ArchiveBranch, ArchiveEntry, ArchiveEvent, ArchiveId, ArchiveNode, ArchiveStamp,
@@ -431,7 +430,7 @@ mod json_schema {
 /// The README's recursive-generic example, held to the two things a pasted example has to be: the
 /// README still declares it exactly as declared here, and the emission shown beside it is what the
 /// generator answers with. Drift on either side fails here rather than in someone's editor.
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 mod readme {
     use super::Node;
 
@@ -494,7 +493,6 @@ mod readme {
 
 /// The wire the surfaces above describe, read off the value itself. A schema that agrees with the
 /// other two and disagrees with serde describes nothing anyone sends.
-#[cfg(feature = "serde")]
 mod wire {
     use super::{
         ArchiveEntryDraft, ArchiveEventDraft, ArchiveId, ArchiveNodeDraft, ArchiveStampDraft,
@@ -669,7 +667,6 @@ pub struct ArchiveTrunk<IdType> {
 /// than nested, so neither reference is in flight while the other runs. Read by the JSON surface
 /// alone, the one that hoists a recursive type into a `$defs` entry a bare name could collide
 /// under.
-#[cfg(feature = "serde")]
 #[model_schema(default_types(ValueType = String), enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Looped<ValueType> {
@@ -677,7 +674,6 @@ pub struct Looped<ValueType> {
     pub value: ValueType,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwoLoopedFillings {
@@ -731,12 +727,6 @@ fn every_fixture_expands_in_this_build() {
     assert_eq!(branch.label, "root");
 }
 
-#[cfg(feature = "serde")]
 fn archive_id(value: String) -> ArchiveId<String> {
     ArchiveId::new(value).unwrap()
-}
-
-#[cfg(not(feature = "serde"))]
-fn archive_id(value: String) -> ArchiveId<String> {
-    ArchiveIdDraft(value).into()
 }

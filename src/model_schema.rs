@@ -6,19 +6,15 @@ extern crate alloc;
 
 pub mod checks;
 pub mod doctest_examples;
-#[cfg(feature = "serde")]
 pub mod flatten_order;
 pub mod judged_read;
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 pub mod literal_union;
-#[cfg(feature = "serde")]
 pub mod mcp_form;
-#[cfg(feature = "serde")]
 pub mod needs_wrapper;
 pub mod parameter_walk;
 pub mod preprocess;
 pub mod ranges;
-#[cfg(feature = "serde")]
 pub mod strict;
 pub mod valid_type;
 
@@ -27,7 +23,6 @@ use alloc::borrow::ToOwned;
 #[cfg(all(feature = "typescript", feature = "zod"))]
 use core::cell::RefCell;
 use core::fmt::Write as _;
-#[cfg(feature = "serde")]
 use core::iter;
 use core::mem;
 #[cfg(all(feature = "zod", feature = "typescript"))]
@@ -35,7 +30,7 @@ use core::ops::Range;
 use core::ptr;
 #[cfg(any(
     all(feature = "zod", feature = "typescript"),
-    all(feature = "serde", any(feature = "typescript", feature = "zod"))
+    any(feature = "typescript", feature = "zod")
 ))]
 use core::slice;
 
@@ -54,10 +49,10 @@ use syn::Ident;
 
 #[cfg(all(feature = "zod", feature = "typescript"))]
 use crate::field_type::ZOD_SCHEMA_BOUND;
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 use crate::field_type::zod_check_wrap_handing;
 use crate::field_type::{RESULT_ARMS, RangeKind};
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 use crate::field_type::{zod_buffered, zod_one_key_union};
 #[cfg(feature = "zod")]
 use crate::field_type::{zod_buffered_issue, zod_check_wrap, zod_plain_enum, zod_preprocess_wrap};
@@ -133,7 +128,6 @@ use crate::utils::record_indexed_set;
 #[cfg(feature = "zod")]
 use crate::utils::record_number_key;
 
-#[cfg(feature = "serde")]
 use crate::utils::{
     NonObjectWire, SlotBesideTag, UnionParameter, WireLeaf, WrittenAs, forget_field_validators,
     is_recorded_plain_enum, record_flattened_parameters, record_non_object_wire, record_open_map,
@@ -147,20 +141,16 @@ use crate::utils::{
 };
 
 use crate::features::serde::brand_slot;
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 use crate::features::serde::parse_serde_field_hooks;
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 use crate::features::serde::rename_direction_rejection;
-#[cfg(feature = "serde")]
 use crate::features::serde::{
     SerdeFieldMeta, SerdeTypeMeta, Tagging, derives_deserialize, derives_serialize,
     parse_read_renames, parse_written_renames, read_member_keys, struct_tag,
@@ -170,14 +160,11 @@ use crate::features::serde::{
     tag_written_alone, transparent_fields_apart, variant_members_read, variant_on_the_wire,
     variant_steps, written_and_read_by_the_author,
 };
-#[cfg(feature = "serde")]
 use crate::service_schema::parse::path_text_form;
 
 #[cfg(feature = "zod")]
 use crate::features::js_literal;
-#[cfg(feature = "serde")]
 use crate::features::recovering_decode::reading_the_authors_scope;
-#[cfg(feature = "serde")]
 use crate::features::recovering_decode::{
     brand_recovering_decode,
     enums::{enum_recovering_decode, tag_arm_refusals},
@@ -185,26 +172,20 @@ use crate::features::recovering_decode::{
 };
 use crate::features::serde::SerdeKeyOmission;
 use crate::features::serde::defaults::SerdeDefaults;
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 use crate::features::serde::defaults::default_refusals;
-#[cfg(feature = "serde")]
 use crate::features::serde::defaults::unread_members_built;
 #[cfg(feature = "zod")]
 use crate::features::serde::defaults::{holds_a_placeholder, zod_substituted};
-#[cfg(feature = "serde")]
 use crate::features::serde::read_bounds;
 use crate::utils::{unclaimed_parameter, written_names};
 
-#[cfg(feature = "serde")]
 use crate::field_type::{parse_serde_field_attributes, parse_serde_type_attributes};
 
 use crate::field_type::is_a_standard_type_name;
@@ -260,15 +241,15 @@ use crate::utils::ident_reexport_zod;
 
 #[cfg(feature = "zod")]
 use crate::utils::record_zod_union_members;
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 use crate::utils::{
     ZodUnionMember, placeholders_filled, record_zod_discriminated, record_zod_union_publication,
 };
 
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 use crate::utils::{FlattenVariant, record_flatten_variants, record_wire_leaves};
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 use crate::utils::record_ts_union_members;
 
 use crate::utils::register_alias_info;
@@ -281,19 +262,12 @@ use crate::utils::{
     record_untagged_enum, record_wire_scalar_of, wire_scalar_kind,
 };
 
-#[cfg(feature = "serde")]
 use crate::utils::record_unit_struct;
 
-#[cfg(feature = "serde")]
 use crate::utils::{forget_checks, record_own_checks};
 use crate::utils::{names_a_check, record_member_checks, record_names_a_check};
 
-#[cfg(any(
-    feature = "dart",
-    feature = "kotlin",
-    feature = "swift",
-    not(feature = "serde")
-))]
+#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
 use crate::rename_rule::RenameRule;
 use crate::rename_rule::resolve_rename_rule;
 
@@ -391,7 +365,6 @@ const BOOLEAN_KEY_PATTERN: &str = "^(true|false)$";
 
 /// What every plain-enum flatten diagnostic says about its own reach, so an author who fixes the
 /// one declaration named there knows what was and was not checked around it.
-#[cfg(feature = "serde")]
 const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with serde, and only a \
      plain enum declared above reaches it: one declared below, or in another crate, is refused by \
      the `const` beside the type that holds it, and one no `#[model_schema]` expanded is not \
@@ -400,13 +373,11 @@ const FLATTENED_PLAIN_ENUM_SCOPE: &str = "This refusal holds in every build with
 
 /// What the refusal of a flattened value written in place, which no name stands for, says about
 /// its own reach.
-#[cfg(feature = "serde")]
 const FLATTENED_IN_PLACE_SCOPE: &str = "This refusal holds in every build with serde.";
 
 /// What the refusal of a flattened union with a member over `()` says about its own reach: the
 /// JSON Schema merge refuses a union declared below by the record the union publishes, which no
 /// member its expansion does not see as `()` sets.
-#[cfg(feature = "serde")]
 const FLATTENED_UNIT_MEMBER_SCOPE: &str = "This refusal holds in every build with serde, and only \
      a type declared above reaches it: one declared below, or in another crate, is not refused \
      here, and where a schema surface is on it keeps its TypeScript and Zod intersection, and is \
@@ -415,7 +386,6 @@ const FLATTENED_UNIT_MEMBER_SCOPE: &str = "This refusal holds in every build wit
      which the JSON surface reads as no key.";
 
 /// What the refusal of a flattened type serde writes as no object says about its own reach.
-#[cfg(feature = "serde")]
 const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with serde, and only a \
      type declared above reaches it: one declared below, or in another crate, is refused by the \
      `const` beside the type that holds it, and one no `#[model_schema]` expanded is not refused, \
@@ -424,14 +394,12 @@ const FLATTENED_NON_OBJECT_SCOPE: &str = "This refusal holds in every build with
 
 /// What a refusal of a newtype variant under a tag alone over a value serde writes as `()` says
 /// serde and the surfaces make of it.
-#[cfg(feature = "serde")]
 const TAGGED_UNIT_WRITTEN: &str = "beside the tag serde writes the variant as the tag alone, and \
      reads it back, while the TypeScript type and the Zod schema of the variant intersect the \
      tag's object with `null`, which admits no value.";
 
 /// What the refusal of a tagged newtype variant over a type serde writes as an `Option` says
 /// about its own reach, which is the reach of the refusal of a value written as no object.
-#[cfg(feature = "serde")]
 const TAGGED_OPTIONAL_SCOPE: &str = "This refusal holds in every build with serde, and only a type \
      declared above reaches it: one declared below, or in another crate, is not refused here, and \
      where a schema surface is on it keeps its TypeScript and Zod intersection, and is refused by \
@@ -562,16 +530,15 @@ type RenderedVariants = (Vec<String>, Vec<String>, Vec<proc_macro2::TokenStream>
 /// What an untagged enum's members contribute to an object that merges it, which only the Zod
 /// surface multiplies out and so only it has a member type for. The other tables carry the same
 /// slot spelled as what they never read.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 type ZodMergeParts = Vec<ZodUnionMember>;
-#[cfg(all(feature = "serde", not(feature = "zod")))]
+#[cfg(not(feature = "zod"))]
 type ZodMergeParts = Vec<String>;
 
 /// Per-member data from an untagged enum's member walk: TypeScript member types, their merged
 /// spelling, Zod member schemas, their merged contribution, JSON-schema value tokens,
 /// `compile_error!` tokens for guard violations, per-member serde validators, the
 /// `validate()` match arms those validators run from, and the Zod union options.
-#[cfg(feature = "serde")]
 type UntaggedMemberData = (
     Vec<String>,
     Vec<String>,
@@ -586,9 +553,9 @@ type UntaggedMemberData = (
 );
 
 /// What each variant is as an option of a Zod union, which decides how the union is joined.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 type UnionCandidates = Vec<literal_union::Candidate>;
-#[cfg(all(feature = "serde", not(feature = "zod")))]
+#[cfg(not(feature = "zod"))]
 type UnionCandidates = Vec<()>;
 
 /// Per-field data collected from a struct: the regular field defs, the `#[serde(flatten)]` field
@@ -726,14 +693,12 @@ enum BasePattern {
 struct ConstrainedShape {
     leaf: ConstraintLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
-    #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
 
 /// What the serde hook of a list held to a count is declared with: the type it reads, the type
 /// parameters that type is written from, and the bounds it holds them to.
-#[cfg(feature = "serde")]
 struct ListHookHeader {
     /// What holds `L` to being a list whose items are counted.
     counted: proc_macro2::TokenStream,
@@ -775,7 +740,6 @@ enum LiteralLeaf {
 struct LiteralShape {
     leaf: LiteralLeaf,
     /// Every non-`'static` lifetime the field's type spells, deduplicated.
-    #[cfg(feature = "serde")]
     lifetimes: Vec<syn::Lifetime>,
     wraps: Vec<ConstraintWrap>,
 }
@@ -785,7 +749,6 @@ struct LiteralShape {
 #[derive(Clone, Copy)]
 enum CheckSink {
     Collect,
-    #[cfg(feature = "serde")]
     Fail,
 }
 
@@ -855,7 +818,6 @@ enum HeldEnd {
 struct HeldShape {
     end: HeldEnd,
     /// The key type of each map in `wraps`, outermost first.
-    #[cfg(feature = "serde")]
     keys: Vec<syn::Type>,
     /// The wrappers the walk reads through to its end, outermost first.
     wraps: Vec<ConstraintWrap>,
@@ -886,7 +848,6 @@ impl HeldShape {
     const fn begun() -> Self {
         Self {
             end: HeldEnd::Declared(Vec::new()),
-            #[cfg(feature = "serde")]
             keys: Vec::new(),
             wraps: Vec::new(),
         }
@@ -1055,7 +1016,6 @@ enum KeyAsked {
 
 /// What a newtype variant's inner value is when the tag is written beside it rather than around
 /// it.
-#[cfg(feature = "serde")]
 enum TaggedContent {
     /// A named type, or an `ObjectId`, which joins its `$oid` key as a flattened one does: what it
     /// writes are members, and they are the ones that join the tag, unless it writes a map, which
@@ -1075,14 +1035,12 @@ enum TaggedContent {
 
 /// The lone slot of a newtype variant under a tag alone: its type as written, and the def it is
 /// read as.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 struct TaggedSlot<'slot> {
     inner: &'slot FieldDef,
     written: &'slot syn::Type,
 }
 
-#[cfg(feature = "serde")]
 impl<'slot> TaggedSlot<'slot> {
     /// The name a refusal quotes the slot's type by, with the arguments written for it, where
     /// serde writes its value as the bare name of a plain enum's variant with no `Option` on the
@@ -1204,7 +1162,6 @@ struct ModelSchemaArgs {
 
 /// How a unit struct's own `Deserialize` reads: whether it judges the value with `validate()`, and
 /// whether it refuses a key, which no member declares.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 struct UnitRead {
     publishes_validate: bool,
@@ -1273,13 +1230,13 @@ impl SourceAbsence {
 /// from one reading of the declaration so the two cannot come apart.
 struct Surface {
     shape: PublishedShape,
-    #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+    #[cfg(any(feature = "zod", feature = "typescript"))]
     wire: RecordedWire,
 }
 
 /// What a [`Surface`] carries for the merge: the leaves a written type published, or the one
 /// keyword a surface read off no written type names.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 enum RecordedWire {
     Leaves(Vec<WireLeaf>),
     Named(Option<&'static str>),
@@ -1287,7 +1244,6 @@ enum RecordedWire {
 
 /// What a flattened field's type writes as no object, in the words the flatten refusal names it
 /// by: the JSON type keyword of the whole value, or of the union member at a branch.
-#[cfg(feature = "serde")]
 #[derive(Debug, PartialEq, Eq)]
 enum NonObject {
     Branch(String, &'static str),
@@ -1298,7 +1254,6 @@ enum NonObject {
 
 /// What serde makes of a value filling a type parameter a type flattens, where the type's
 /// TypeScript type and Zod schema, written once for every filling, describe no value serde writes.
-#[cfg(feature = "serde")]
 enum RefusedFilling {
     /// An `Option` held by the lone slot of a variant under a tag alone, of which serde refuses
     /// every write.
@@ -1310,7 +1265,6 @@ enum RefusedFilling {
 /// What a refusal says of a union member serde writes as one [`WrittenAs`], flattened or held
 /// beside a tag: the member, the keyword its branch describes, what serde writes for it there,
 /// and the scope sentence the refusal closes with.
-#[cfg(feature = "serde")]
 struct WrittenWords {
     keyword: &'static str,
     member: &'static str,
@@ -1318,7 +1272,6 @@ struct WrittenWords {
     serde_writes: &'static str,
 }
 
-#[cfg(feature = "serde")]
 impl WrittenWords {
     const fn of(written: WrittenAs, beside_tag: bool) -> Self {
         let named = if beside_tag {
@@ -1361,7 +1314,6 @@ impl WrittenWords {
     }
 }
 
-#[cfg(feature = "serde")]
 impl NonObject {
     /// The union member at `branch` that is no object, where `non_object` names its JSON type
     /// keyword, and `None` for a member that is an object.
@@ -1380,7 +1332,6 @@ impl NonObject {
 
 /// Where the leaves a name publishes are read from: the record a schema surface writes, or the one
 /// every build with serde writes.
-#[cfg(feature = "serde")]
 type LeavesOf = fn(&str) -> Option<Vec<WireLeaf>>;
 
 /// What a tuple struct publishes, which is not always the tuple of its declared slots.
@@ -1422,7 +1373,6 @@ pub struct BoundMember {
 /// What one untagged variant's member walk produces: the members its surfaces are rendered from,
 /// the bindings its constrained members are checked under, and the three enum-wide lists the walk
 /// adds to, which the caller joins onto its own in declaration order.
-#[cfg(feature = "serde")]
 #[derive(Default)]
 struct UntaggedVariantMembers {
     bound: Vec<BoundMember>,
@@ -1441,7 +1391,6 @@ struct UntaggedVariantMembers {
 type VariantDefaultAt = dyn Fn(&str, &str) -> Option<usize>;
 
 /// What an untagged enum hands the walk of each of its variants' members.
-#[cfg(feature = "serde")]
 struct UntaggedEnum<'walk> {
     args: &'walk ModelSchemaArgs,
     name: &'walk str,
@@ -1456,7 +1405,7 @@ struct UntaggedEnum<'walk> {
 
 /// One variant of an untagged enum as its walk left it: what its wire is, the variant, its walked
 /// members, and its branch in the union.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 struct UntaggedMember<'walk> {
     #[cfg(feature = "zod")]
     branch: usize,
@@ -1466,7 +1415,7 @@ struct UntaggedMember<'walk> {
 }
 
 /// What an untagged enum records for an object that flattens it, gathered variant by variant.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[derive(Default)]
 struct UntaggedFlattenRecord {
     /// The keys each member names, where it names them.
@@ -1483,7 +1432,7 @@ struct UntaggedFlattenRecord {
     zod: ZodMergeParts,
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 impl UntaggedFlattenRecord {
     /// Adds what `member` contributes, rendered as `spelled` in the enum `self_type_name` of the
     /// type parameters `parameters`: a generic enum's members with each parameter written as its
@@ -1541,7 +1490,6 @@ struct EnumCasing<'ctx> {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ContainerWire {
     OneWay,
-    #[cfg(feature = "serde")]
     RoundTrip,
 }
 
@@ -1673,7 +1621,7 @@ struct SchemaConstants {
 
 /// What an untagged enum publishes beside its own binding so an object that flattens it can join
 /// its members one by one: the binding's name and the text that declares it.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 struct PublishedMembers {
     binding: String,
     block: String,
@@ -2040,7 +1988,7 @@ impl Surface {
     }
 
     /// The bare string a plain unit enum writes its member name as.
-    #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+    #[cfg(any(feature = "zod", feature = "typescript"))]
     fn enumerated() -> Self {
         Self {
             shape: PublishedShape::Flat(Some("enumerated")),
@@ -2053,13 +2001,13 @@ impl Surface {
     }
 
     /// The same string where no merge reads its leaves.
-    #[cfg(not(all(feature = "serde", any(feature = "zod", feature = "typescript"))))]
+    #[cfg(not(any(feature = "zod", feature = "typescript")))]
     const fn enumerated() -> Self {
         Self::named(Some("enumerated"), Some("string"))
     }
 
     /// The union an externally tagged enum writes, as the leaves a merge descending it reaches.
-    #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+    #[cfg(any(feature = "zod", feature = "typescript"))]
     fn externally_tagged(variants: &Punctuated<syn::Variant, Token![,]>) -> Self {
         Self {
             shape: Self::union().shape,
@@ -2070,18 +2018,18 @@ impl Surface {
     /// The same union where no merge reads its leaves. `serde` beside a surface that merges is the
     /// pair that flattens one over the other; without both, nothing asks what the variants write and
     /// the union is the union every other enum shape registers.
-    #[cfg(all(feature = "serde", not(any(feature = "zod", feature = "typescript"))))]
+    #[cfg(not(any(feature = "zod", feature = "typescript")))]
     const fn externally_tagged(_variants: &Punctuated<syn::Variant, Token![,]>) -> Self {
         Self::union()
     }
 
     /// A surface neither answer is read off a written type for.
     const fn named(shape: Option<&'static str>, wire: Option<&'static str>) -> Self {
-        #[cfg(not(all(feature = "serde", any(feature = "zod", feature = "typescript"))))]
+        #[cfg(not(any(feature = "zod", feature = "typescript")))]
         let _: Option<&'static str> = wire;
         Self {
             shape: PublishedShape::Flat(shape),
-            #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+            #[cfg(any(feature = "zod", feature = "typescript"))]
             wire: RecordedWire::Named(wire),
         }
     }
@@ -2095,7 +2043,7 @@ impl Surface {
     /// surface is built for one registration and spent on it.
     fn record(self, rust_ident: &str) {
         record_value_shape(rust_ident, self.shape);
-        #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+        #[cfg(any(feature = "zod", feature = "typescript"))]
         match self.wire {
             RecordedWire::Leaves(leaves) => record_wire_leaves(rust_ident, &leaves),
             RecordedWire::Named(non_object) => record_wire_leaves(
@@ -2120,7 +2068,7 @@ impl Surface {
     fn written(written: &FieldDef, parameters: &[String]) -> Self {
         Self {
             shape: published_value_shape(written, parameters),
-            #[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+            #[cfg(any(feature = "zod", feature = "typescript"))]
             wire: RecordedWire::Leaves(published_wire_leaves(written, surfaced_leaves)),
         }
     }
@@ -2483,7 +2431,6 @@ fn note_what_it_declares(item: &Item, args: &ModelSchemaArgs) {
 /// Starts the expansion of `item`: its read holds the hooks of its own members alone, and its walks
 /// read its own type parameters.
 fn entered(item: &Item) {
-    #[cfg(feature = "serde")]
     judged_read::forget_member_hooks();
     parameter_walk::enter(item);
 }
@@ -2540,8 +2487,7 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     // A map flattened beside a member that writes a key, or filling a type parameter flattened
     // beside one, shares one level of the object with it, which no TypeScript type describes, and
     // serde reads no entry of a map keyed by a number or a `bool` below a flattened member or in an
-    // enum it buffers, so both are refused here, in every build with serde.
-    #[cfg(feature = "serde")]
+    // enum it buffers, so both are refused here.
     if let Some(output) = refused(&flattened_map_errors(&item, &parsed_args)) {
         return output;
     }
@@ -2580,13 +2526,11 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
         return output;
     }
     // `nonstrict` reads past the key `deny_unknown_fields` refuses, so both on one type is refused.
-    #[cfg(feature = "serde")]
     if let Some(output) = refused(&strict::conflict_errors(&item, &parsed_args)) {
         return output;
     }
     // A flattened member serde would not read back where it is declared, or as strict as it is, is
     // refused with the fix: the order, the strictness or the shape.
-    #[cfg(feature = "serde")]
     if let Some(output) = refused(&flatten_order::errors(&item, &parsed_args)) {
         return output;
     }
@@ -2612,13 +2556,9 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     record_item(&item);
     record_item_functions(&item, &parsed_args);
     record_strictness(&item, &parsed_args);
-    #[cfg(feature = "serde")]
     strict::record(&item, &parsed_args);
-    #[cfg(feature = "serde")]
     flatten_order::record(&item, &parsed_args);
-    #[cfg(feature = "serde")]
     needs_wrapper::record(&item);
-    #[cfg(feature = "serde")]
     mcp_form::record(&item);
     // Whether a filling satisfies the bounds its parameter declares, and whether a range written by
     // its bare name is the std one, are asked of the compiler: no proc macro can answer either.
@@ -2648,7 +2588,6 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// The items `item` earns that holders and services read, which every build with serde writes:
 /// `needs_wrapper()`, `mcp_form_value()`, and the hidden constant of what a holder reads of it
 /// flattened, with the checks of its own flattened members that constant answers for.
-#[cfg(feature = "serde")]
 fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let wrapper = needs_wrapper::items(item);
     let form = mcp_form::items(item);
@@ -2656,31 +2595,6 @@ fn needs_wrapper_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
     let units = strict::unit_reads(item, args);
     let braced = strict::braced_reads(item, args);
     quote! { #wrapper #form #flattened #units #braced }
-}
-
-/// What a build with no serde writes of those items: the hidden constant a Kotlin holder asks
-/// whether `#[model_schema]` expanded a type it holds.
-#[cfg(all(not(feature = "serde"), feature = "kotlin"))]
-fn needs_wrapper_tokens(item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
-    let (name, generics) = if let Item::Struct(item_struct) = item {
-        (&item_struct.ident, &item_struct.generics)
-    } else if let Item::Enum(item_enum) = item {
-        (&item_enum.ident, &item_enum.generics)
-    } else {
-        return TokenStream::new();
-    };
-    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    quote! {
-        impl #impl_generics #name #type_generics #where_clause {
-            #[doc = " Whether `#[model_schema]` expanded this type, which a holder that cannot name it asks."]
-            pub const __TIXSCHEMA_MODELLED: bool = true;
-        }
-    }
-}
-
-#[cfg(all(not(feature = "serde"), not(feature = "kotlin")))]
-fn needs_wrapper_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
-    TokenStream::new()
 }
 
 /// The expansion of `item` by its shape, or the refusal of a string check its shape cannot carry.
@@ -2885,7 +2799,6 @@ fn alias_undescribable_std_error(
 /// Whether serde writes a value of `def` as the bare name of a plain enum's variant, or as an
 /// `Option` of one: `def` names a type the registry records as one, itself, under an `Option`, or
 /// at what fills a generic type declared above.
-#[cfg(feature = "serde")]
 fn written_as_a_plain_enum(def: &FieldDef) -> bool {
     let bare = without_its_option(def);
     if let Some(filling) = value_filling(&bare) {
@@ -2901,7 +2814,7 @@ fn written_as_a_plain_enum(def: &FieldDef) -> bool {
 /// parameters written as its [`parameter_placeholder`]: what the enum it names records for an
 /// object that flattens it is read through it, filled with what the alias writes, and the
 /// alias's own parameters are left for its holder to fill.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn alias_target_placed(target: &FieldDef, generics: &syn::Generics) -> FieldDef {
     let parameters = type_parameters_in_scope(generics);
     let mut placed = target.clone();
@@ -2912,7 +2825,7 @@ fn alias_target_placed(target: &FieldDef, generics: &syn::Generics) -> FieldDef 
 
 /// Records the entries a brand or a struct of one slot is flattened by where its value is an
 /// externally tagged enum, as an alias of the enum records them: serde flattens it as that value.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn record_newtype_flatten_variants(rust_ident: &str, value: &FieldDef, generics: &syn::Generics) {
     record_flatten_variants(
         rust_ident,
@@ -2983,32 +2896,27 @@ fn process_type_alias(item_type: ItemType, args: &ModelSchemaArgs) -> TokenStrea
     // An alias *is* the type it names, so a merge that flattens it multiplies over exactly the
     // members, or takes exactly the entries, the target's own name would have given it, in
     // TypeScript as in Zod.
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     let placed = alias_target_placed(&alias_field_def, &alias.generics);
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     record_zod_union_members(&rust_ident_str, &placed.zod_unchecked_union_members());
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     record_zod_union_publication(
         &rust_ident_str,
         &placed.zod_union_checks(),
         placed.zod_members_binding(),
     );
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     record_zod_discriminated(&rust_ident_str, placed.zod_discriminated_union());
-    #[cfg(all(feature = "zod", not(feature = "serde")))]
-    record_zod_union_members(
-        &rust_ident_str,
-        &alias_field_def.zod_unchecked_union_members(),
-    );
-    #[cfg(all(feature = "serde", feature = "typescript"))]
+    #[cfg(feature = "typescript")]
     let mut ts_members = placed.ts_union_members();
-    #[cfg(all(feature = "serde", feature = "typescript"))]
+    #[cfg(feature = "typescript")]
     if ts_members.is_empty() {
         ts_members.extend(placed.merged_draft_typename());
     }
-    #[cfg(all(feature = "serde", feature = "typescript"))]
+    #[cfg(feature = "typescript")]
     record_ts_union_members(&rust_ident_str, &ts_members);
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     record_flatten_variants(&rust_ident_str, &placed.flatten_variants());
 
     // Registered above whatever the outcome, so a type naming a refused alias still resolves to the
@@ -3661,7 +3569,6 @@ fn schema_struct(schema_impl_items: &[proc_macro2::TokenStream]) -> TokenStream 
 
 /// What a schema module holds: `held`, and beside it the items `decode_with` adds. Those items
 /// are named `Issue`, `Path` and so on, which `held` then reads from the author's scope outright.
-#[cfg(feature = "serde")]
 fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> TokenStream {
     if decode_with_items.is_empty() {
         return held;
@@ -3671,12 +3578,6 @@ fn schema_module_items(held: TokenStream, decode_with_items: &TokenStream) -> To
         #scoped
         #decode_with_items
     }
-}
-
-/// Without `serde` no item carries anything of `decode_with`'s.
-#[cfg(not(feature = "serde"))]
-const fn schema_module_items(held: TokenStream, _decode_with_items: &TokenStream) -> TokenStream {
-    held
 }
 
 /// The type-level `validate()` a struct publishes: the aggregate of its per-field validators and
@@ -3842,21 +3743,11 @@ fn valid_items(
 
 /// `from_deserializer` of a type that is its own valid type, where this build reads serde's
 /// attributes.
-#[cfg(feature = "serde")]
 fn from_deserializer_of(
     valid: &valid_type::ValidType<'_>,
     publishes_validate: bool,
 ) -> Option<proc_macro2::TokenStream> {
     valid_type::own_from_deserializer(valid.generics, publishes_validate, &valid.deserializes)
-}
-
-/// Nothing, where no `serde` feature reads the attributes a read is written from.
-#[cfg(not(feature = "serde"))]
-const fn from_deserializer_of(
-    _valid: &valid_type::ValidType<'_>,
-    _publishes_validate: bool,
-) -> Option<proc_macro2::TokenStream> {
-    None
 }
 
 /// `method`, or the `validation_issues()` of a type with no rule to run.
@@ -4078,7 +3969,7 @@ fn zod_absent_where_answered_null(fld: &FieldDef) -> Option<String> {
 
 /// Whether the registration a flattened source names offers its own absence, which is the second
 /// key set the merge owes it.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn flattened_name_offers_absence(fld: &FieldDef) -> bool {
     if fld.is_array() {
         return false;
@@ -4089,30 +3980,16 @@ fn flattened_name_offers_absence(fld: &FieldDef) -> bool {
     lookup_alias_info(name).is_some_and(|info| info.wire.iter().any(WireLeaf::is_published_absence))
 }
 
-/// No source offers one where nothing reads `#[serde(flatten)]`: without `serde` no field reaches
-/// the merge to begin with, and the registry records no wire for a name to publish an absence in.
-#[cfg(all(any(feature = "zod", feature = "typescript"), not(feature = "serde")))]
-const fn flattened_name_offers_absence(_fld: &FieldDef) -> bool {
-    false
-}
-
 /// Whether serde reads a flattened source as the entries of a map, as the refusal of a map beside
 /// a member reads it. serde reads an `Option` of it as `None` wherever one entry does not read as
 /// the map, and leaves every entry in the object.
-#[cfg(feature = "serde")]
 fn flattened_as_entries(fld: &FieldDef) -> bool {
     ranges::def_writes_a_map(fld)
 }
 
-/// No source is read as entries where nothing reads `#[serde(flatten)]`.
-#[cfg(not(feature = "serde"))]
-const fn flattened_as_entries(_fld: &FieldDef) -> bool {
-    false
-}
-
 /// The operands an object joins one per branch for a flattened source, and none for a source that
 /// contributes one key set and is joined as the one operand it is.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
     // The binding of a type that names a `preprocess` is the one schema that calls it, and the
     // one text that replaces the placeholder of a member's default.
@@ -4139,23 +4016,10 @@ fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
         .collect()
 }
 
-/// No source names branches where nothing reads `#[serde(flatten)]`, for the reason no source offers
-/// an absence there.
-#[cfg(all(feature = "zod", not(feature = "serde")))]
-fn flattened_zod_branches(fld: &FieldDef) -> Vec<String> {
-    if fld.zod_read_whole() {
-        return Vec::new();
-    }
-    fld.zod_union_members()
-        .into_iter()
-        .map(|member| member.spelling)
-        .collect()
-}
-
 /// What one flattened source is written as where the TypeScript merge names it: the parenthesised
 /// union of the key sets the choice it names recorded for this position, and the name itself
 /// everywhere else.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn flattened_ts_spelling(fld: &FieldDef) -> String {
     let named = fld.typescript_merged_typename();
     // A function the field names changes no type: its enum's variants are spliced in either way.
@@ -4178,13 +4042,6 @@ fn flattened_ts_spelling(fld: &FieldDef) -> String {
     } else {
         format!("({})", members.join(" | "))
     }
-}
-
-/// No name proves a branch where nothing reads `#[serde(flatten)]`: the registry records no wire for
-/// one to prove it in, and no field reaches the merge to begin with.
-#[cfg(all(feature = "typescript", not(feature = "serde")))]
-fn flattened_ts_spelling(fld: &FieldDef) -> String {
-    fld.typescript_merged_typename()
 }
 
 /// The schema methods a struct's module publishes — the JSON-schema document, the TypeScript
@@ -4327,7 +4184,7 @@ const fn checked_in_variants(_: &mut [DiscriminatedVariant], _: &str, _: &[Strin
 }
 
 /// [`checked_members`] over the members of the variant `index` of a generic untagged enum.
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 fn checked_in_untagged_variant(
     members: &mut [FieldDef],
     (item_name, index): (&str, usize),
@@ -4337,7 +4194,7 @@ fn checked_in_untagged_variant(
 }
 
 /// Without a TypeScript type to state what a check is handed, no function is written ahead.
-#[cfg(all(feature = "serde", not(all(feature = "zod", feature = "typescript"))))]
+#[cfg(not(all(feature = "zod", feature = "typescript")))]
 const fn checked_in_untagged_variant(_: &mut [FieldDef], _: (&str, usize), _: &[String]) -> String {
     String::new()
 }
@@ -4483,7 +4340,6 @@ where
 
 /// Turns a `cfg_attr` rejection into `compile_error!` tokens naming the item it was found on,
 /// keeping the attribute's span so the diagnostic still points at the offending line.
-#[cfg(feature = "serde")]
 fn cfg_attr_guard_error(rejection: &syn::Error, item: &str) -> proc_macro2::TokenStream {
     reworded(
         rejection,
@@ -4653,19 +4509,12 @@ const fn generated_class_errors(
 }
 
 /// What keeps two functions of the typed paths of an enum under a tag from taking one name.
-#[cfg(feature = "serde")]
 fn decode_with_arm_refusals(item: &Item) -> Vec<syn::Error> {
     if let Item::Enum(item_enum) = item {
         tag_arm_refusals(item_enum)
     } else {
         Vec::new()
     }
-}
-
-/// Without `serde` nothing reads the tag an arm is named by.
-#[cfg(not(feature = "serde"))]
-const fn decode_with_arm_refusals(_item: &Item) -> Vec<syn::Error> {
-    Vec::new()
 }
 
 /// The conversions `enable = ["arky"]` writes beside a type, under the `arky` feature.
@@ -5181,7 +5030,6 @@ where
 fn record_item(item: &Item) {
     record_own_zod_binding(item);
     record_declaration(item);
-    #[cfg(feature = "serde")]
     if let Some(ident) = item_schema_ident(item) {
         let name = ident.to_string();
         record_open_map(&name, ranges::writes_an_open_map(item));
@@ -5203,7 +5051,6 @@ fn record_item(item: &Item) {
 /// with the members of the untagged enum it names. A brand's, a struct of one slot's, an alias's
 /// value and an untagged member that names a generic type declared above is read at what fills
 /// its type parameter.
-#[cfg(feature = "serde")]
 fn non_object_wire(item: &Item) -> NonObjectWire {
     let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
     let written = |ty: &syn::Type| {
@@ -5278,7 +5125,6 @@ fn non_object_wire(item: &Item) -> NonObjectWire {
 
 /// The field serde writes a value of `item_struct` as: a brand's, or the one slot of a tuple
 /// struct.
-#[cfg(feature = "serde")]
 fn written_as_its_slot(item_struct: &syn::ItemStruct) -> Option<&syn::Field> {
     brand_field(item_struct).or_else(|| match &item_struct.fields {
         syn::Fields::Unnamed(slots) if slots.unnamed.len() == 1 => slots.unnamed.first(),
@@ -5289,7 +5135,6 @@ fn written_as_its_slot(item_struct: &syn::ItemStruct) -> Option<&syn::Field> {
 /// The position among `item`'s type parameters of the one serde writes a value of `item` as: a
 /// brand's, a struct of one slot's or an alias's value that is that parameter under the
 /// transparent wrappers, or a type declared above filled with it where [`value_parameter`] holds.
-#[cfg(feature = "serde")]
 fn value_parameter_position(item: &Item) -> Option<usize> {
     let value = if let Item::Struct(item_struct) = item {
         &written_as_its_slot(item_struct)?.ty
@@ -5314,7 +5159,6 @@ fn value_parameter_position(item: &Item) -> Option<usize> {
 /// What fills the type parameter of the type declared above that `def` names, where serde writes
 /// a value of that type as the parameter's filling, read on through each such type the filling
 /// names in turn, and `None` for a `def` that names no such type.
-#[cfg(feature = "serde")]
 fn value_filling(def: &FieldDef) -> Option<&FieldDef> {
     let mut filling = filled_argument(def)?;
     while let Some(deeper) = filled_argument(filling) {
@@ -5324,7 +5168,6 @@ fn value_filling(def: &FieldDef) -> Option<&FieldDef> {
 }
 
 /// The argument `def` fills the type it names with, at the position [`value_parameter`] records.
-#[cfg(feature = "serde")]
 fn filled_argument(def: &FieldDef) -> Option<&FieldDef> {
     if def.is_optional() || def.array_depth > 0 {
         return None;
@@ -5336,7 +5179,6 @@ fn filled_argument(def: &FieldDef) -> Option<&FieldDef> {
 }
 
 /// `def` with its outermost `Option` taken off: what serde writes a `Some` of it as.
-#[cfg(feature = "serde")]
 fn without_its_option(def: &FieldDef) -> FieldDef {
     let mut bare = def.clone();
     bare.nullable_levels
@@ -5346,7 +5188,6 @@ fn without_its_option(def: &FieldDef) -> FieldDef {
 
 /// The leaves of an `Option` of a value whose own leaves are `leaves`: the value's choice at
 /// branch 1, and the absence at branch 2.
-#[cfg(feature = "serde")]
 fn under_an_option(mut leaves: Vec<WireLeaf>) -> Vec<WireLeaf> {
     for leaf in &mut leaves {
         leaf.branch.insert(0, 1);
@@ -5361,7 +5202,6 @@ fn under_an_option(mut leaves: Vec<WireLeaf>) -> Vec<WireLeaf> {
 
 /// [`published_wire_leaves`] of `written` off the record every build with serde writes, a generic
 /// type declared above that it names, itself or under an `Option`, read at its [`value_filling`].
-#[cfg(feature = "serde")]
 fn filled_wire_leaves(written: &FieldDef) -> Vec<WireLeaf> {
     if written.is_optional() {
         return under_an_option(filled_wire_leaves(&without_its_option(written)));
@@ -5378,7 +5218,6 @@ fn filled_wire_leaves(written: &FieldDef) -> Vec<WireLeaf> {
 /// flattened or beside a tag, and, where it does, whether that variant is a unit variant of an
 /// externally tagged enum `def` names itself: a plain enum's variant, or a unit variant of the
 /// value's own or of an untagged member's, under an `Option` or not.
-#[cfg(feature = "serde")]
 fn written_as_an_entry(def: &FieldDef) -> Option<bool> {
     let entry = |leaf: &WireLeaf| {
         matches!(
@@ -5401,7 +5240,6 @@ fn written_as_an_entry(def: &FieldDef) -> Option<bool> {
 /// as no object, read as a member of the same type flattened is read, from the record every build
 /// with serde writes. `None` for a value serde writes a variant of as an entry of its name over
 /// `null`, which `filled_entry_errors` refuses, and for every value serde writes as an object.
-#[cfg(feature = "serde")]
 fn refused_filling(def: &FieldDef, slot: Option<&SlotBesideTag>) -> Option<RefusedFilling> {
     if let Some(held) = slot
         && (writes_an_optional(def) || value_filling(def).is_some_and(writes_an_optional))
@@ -5424,7 +5262,6 @@ fn refused_filling(def: &FieldDef, slot: Option<&SlotBesideTag>) -> Option<Refus
 
 /// [`written_union_members`] of `def`, a generic type declared above that it names, itself or
 /// under an `Option`, read at its [`value_filling`].
-#[cfg(feature = "serde")]
 fn filled_union_members(def: &FieldDef) -> Vec<WireLeaf> {
     value_filling(&without_its_option(def))
         .map_or_else(|| written_union_members(def), filled_union_members)
@@ -5432,7 +5269,6 @@ fn filled_union_members(def: &FieldDef) -> Vec<WireLeaf> {
 
 /// Whether serde writes a value of `def` as an `Option`: `def` is one, or names a type declared
 /// above that `NON_OBJECT_WIRES` records as one.
-#[cfg(feature = "serde")]
 fn writes_an_optional(def: &FieldDef) -> bool {
     if def.is_optional() {
         return true;
@@ -5450,7 +5286,6 @@ fn writes_an_optional(def: &FieldDef) -> bool {
 /// surface's leaves of a member are read: the members of the union it names, the leaves of the
 /// name, or the member itself, and under an `Option` both the value's choice and the absence's. A
 /// generic type declared above that it names is read at its [`value_filling`].
-#[cfg(feature = "serde")]
 fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
     if fld.is_optional() {
         return under_an_option(member_written_leaves(&without_its_option(fld)));
@@ -5475,7 +5310,6 @@ fn member_written_leaves(fld: &FieldDef) -> Vec<WireLeaf> {
 /// fills one of its type parameters, placed as [`non_object_wire`] places each member's leaves:
 /// an untagged enum's, and those a brand's, a struct of one slot's or an alias's value hands its
 /// own parameters on to. Empty for any other item.
-#[cfg(feature = "serde")]
 fn union_parameters_of(item: &Item) -> Vec<UnionParameter> {
     let parameters = item_generics(item).map_or_else(Vec::new, type_parameters_in_scope);
     let written = |ty: &syn::Type| {
@@ -5519,7 +5353,6 @@ fn union_parameters_of(item: &Item) -> Vec<UnionParameter> {
 
 /// The leaves of the members [`filled_union_members`] reads of `def` that serde writes as what
 /// fills one of `parameters`, placed as it places them.
-#[cfg(feature = "serde")]
 fn filled_union_parameters(def: &FieldDef, parameters: &[String]) -> Vec<UnionParameter> {
     value_filling(&without_its_option(def)).map_or_else(
         || {
@@ -5538,7 +5371,6 @@ fn filled_union_parameters(def: &FieldDef, parameters: &[String]) -> Vec<UnionPa
 /// The leaves of the members of the untagged union `name` stands for, named with `arguments`, that
 /// serde writes as what fills one of `parameters`: each leaf [`union_parameters`] records, read at
 /// the argument that fills it.
-#[cfg(feature = "serde")]
 fn named_union_parameters(
     name: &str,
     arguments: &[FieldDef],
@@ -5562,7 +5394,6 @@ fn named_union_parameters(
 /// `parameters`, read as [`member_written_leaves`] reads the member: under an `Option`, at a
 /// generic type's [`value_filling`], and through an untagged union declared above that `fld`
 /// fills with a parameter.
-#[cfg(feature = "serde")]
 fn member_parameter_leaves(fld: &FieldDef, parameters: &[String]) -> Vec<UnionParameter> {
     if fld.is_optional() {
         let mut leaves = member_parameter_leaves(&without_its_option(fld), parameters);
@@ -5597,7 +5428,6 @@ fn member_parameter_leaves(fld: &FieldDef, parameters: &[String]) -> Vec<UnionPa
 /// Whether serde writes `item` as the bare name of a plain enum's variant, or as an `Option` of
 /// one: a plain enum, and a brand, a struct of one slot or an alias whose value
 /// [`written_as_a_plain_enum`] answers for.
-#[cfg(feature = "serde")]
 fn written_as_a_variant_name(item: &Item) -> bool {
     let value = if let Item::Enum(item_enum) = item {
         return matches!(Tagging::of(item_enum), Tagging::Plain);
@@ -5623,7 +5453,6 @@ fn written_as_a_variant_name(item: &Item) -> bool {
 /// keyed by a number or a `bool` where serde reads every key as text, below a flattened member and
 /// in a variant of an untagged enum or of an enum under a tag alone, written there or filling a
 /// type parameter read there.
-#[cfg(feature = "serde")]
 fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2::TokenStream> {
     let Some(generics) = item_generics(item) else {
         return Vec::new();
@@ -5645,7 +5474,6 @@ fn flattened_map_errors(item: &Item, args: &ModelSchemaArgs) -> Vec<proc_macro2:
 /// there opens with, the tag serde writes at that level and the variant it is: a struct, with its
 /// own tag, and each variant of an enum serde writes or reads, with the enum's tag where it writes
 /// no content key.
-#[cfg(feature = "serde")]
 fn flattening_levels(
     item: &Item,
 ) -> Vec<(String, &syn::Fields, Option<String>, Option<&syn::Ident>)> {
@@ -5698,7 +5526,6 @@ fn record_item_checks(item: &Item, args: &ModelSchemaArgs) {
         item_schema_ident(item).is_some()
             && checks::ItemChecks::of(&args.check, members.into_iter()).named,
     );
-    #[cfg(feature = "serde")]
     if let Some(ident) = item_schema_ident(item) {
         record_own_checks(&ident_schema_module_name(&ident.to_string()), &args.check);
     }
@@ -5766,15 +5593,12 @@ const fn item_generics(item: &Item) -> Option<&syn::Generics> {
 
 /// The attribute lists an item's own serde renames can be written on, each beside the name a guard
 /// message calls it by.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn renamable_attribute_lists(item: &Item) -> Vec<(String, &[syn::Attribute])> {
     let mut lists: Vec<(String, &[syn::Attribute])> = vec![(item_label(item), item_attrs(item))];
@@ -5792,15 +5616,12 @@ fn renamable_attribute_lists(item: &Item) -> Vec<(String, &[syn::Attribute])> {
 }
 
 /// The attributes each of `fields` carries, beside the name a guard message calls the field by.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn field_attribute_lists(fields: &syn::Fields) -> Vec<(String, &[syn::Attribute])> {
     fields
@@ -5817,15 +5638,12 @@ fn field_attribute_lists(fields: &syn::Fields) -> Vec<(String, &[syn::Attribute]
 
 /// The attributes written on the item itself; a shape this macro does not expand carries none it
 /// reads.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn item_attrs(item: &Item) -> &[syn::Attribute] {
     if let Item::Struct(item_struct) = item {
@@ -5962,15 +5780,12 @@ fn untagged_variant_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
 
 /// The `compile_error!` tokens every list-form `rename(...)` / `rename_all(...)` the item carries
 /// earns whose two directions do not name one key.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn rename_direction_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     renamable_attribute_lists(item)
@@ -5982,17 +5797,13 @@ fn rename_direction_guard_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
         .collect()
 }
 
-/// Nothing, where no rename is read at all: without the `serde` feature every surface writes the
-/// Rust ident, and with no schema feature and no client feature nothing describes the type.
-#[cfg(not(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+/// Nothing, where with no schema feature and no client feature nothing describes the type.
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 )))]
 const fn rename_direction_guard_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
@@ -6037,15 +5848,12 @@ fn transparent_direction_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
 
 /// The `compile_error!` tokens of every member of a variant of `item` under a `default` of its own
 /// that no target but Rust reads as serde does.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn variant_default_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
     if let Item::Enum(item_enum) = item {
@@ -6055,17 +5863,13 @@ fn variant_default_refusals(item: &Item) -> Vec<proc_macro2::TokenStream> {
     }
 }
 
-/// Nothing, where no target but Rust reads a default: without the `serde` feature no attribute is
-/// read, and with no schema feature and no client feature nothing describes the type.
-#[cfg(not(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+/// Nothing, where with no schema feature and no client feature nothing describes the type.
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 )))]
 const fn variant_default_refusals(_item: &Item) -> Vec<proc_macro2::TokenStream> {
     Vec::new()
@@ -6109,7 +5913,6 @@ fn default_types_guard_errors(
 /// The refusal each map `validate()` walks earns when its key names a type parameter the item
 /// declares no `Serialize` for: `validate()` is written under the item's own bounds and could not
 /// write the key into a message. Spanned on the key's type.
-#[cfg(feature = "serde")]
 fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     let Some(generics) = item_generics(item) else {
         return Vec::new();
@@ -6155,14 +5958,7 @@ fn unwritable_map_key_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
     errors
 }
 
-/// Without `serde` a key is named by its `Display` text, and none is refused.
-#[cfg(not(feature = "serde"))]
-const fn unwritable_map_key_errors(_item: &Item) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
-}
-
 /// Every key type of the maps a walk reads, at any depth.
-#[cfg(feature = "serde")]
 fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
     let mut keys: Vec<&syn::Type> = shape.keys.iter().collect();
     match &shape.end {
@@ -6177,7 +5973,6 @@ fn map_keys_of(shape: &HeldShape) -> Vec<&syn::Type> {
 
 /// The members `validate()` walks, each beside the label a refusal names it by: those serde writes
 /// or reads.
-#[cfg(feature = "serde")]
 fn walked_members(item: &Item) -> Vec<(String, &Field)> {
     let label = |field: &Field| {
         field_label(
@@ -6219,7 +6014,6 @@ fn walked_members(item: &Item) -> Vec<(String, &Field)> {
 
 /// Whether a bound whose last path segment is `Serialize` is written for `parameter`, in the
 /// generics or in a `where` clause.
-#[cfg(feature = "serde")]
 fn declares_serialize(generics: &syn::Generics, parameter: &str) -> bool {
     generics.params.iter().any(|param| {
         matches!(param, syn::GenericParam::Type(declared)
@@ -6236,7 +6030,6 @@ fn declares_serialize(generics: &syn::Generics, parameter: &str) -> bool {
 }
 
 /// Whether one of `bounds` is a trait whose last path segment is `Serialize`.
-#[cfg(feature = "serde")]
 fn names_serialize<'bound>(mut bounds: impl Iterator<Item = &'bound syn::TypeParamBound>) -> bool {
     bounds.any(|bound| {
         matches!(bound, syn::TypeParamBound::Trait(held)
@@ -6670,10 +6463,7 @@ fn const_parameter_argument_errors(
     let described = cfg!(any(
         feature = "typescript",
         feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
+        any(feature = "dart", feature = "swift", feature = "kotlin")
     )) || args.enable.jsonschema;
     if !described {
         return Vec::new();
@@ -6803,18 +6593,11 @@ fn bare_ident(written: &syn::Type) -> Option<syn::Ident> {
 
 /// Records whether serde reads past a key no member of `item` declares, and the variants of a
 /// `nonstrict` enum that refuse one all the same.
-#[cfg(feature = "serde")]
 fn record_strictness(item: &Item, args: &ModelSchemaArgs) {
     record_nonstrict(
         strict::reads_past_a_stray(item, args),
         strict::refusing_variants(item, args),
     );
-}
-
-/// Without serde nothing flattens, and `nonstrict` alone says it.
-#[cfg(not(feature = "serde"))]
-fn record_strictness(_item: &Item, args: &ModelSchemaArgs) {
-    record_nonstrict(args.nonstrict, Vec::new());
 }
 
 /// Why a const handed to a written type as an argument is refused: where the const does render,
@@ -7134,7 +6917,6 @@ fn branded_slot_prop_errors(item: &Item) -> Vec<proc_macro2::TokenStream> {
 /// The `compile_error!` tokens for every `cfg_attr`-wrapped serde attribute an enum carries: on the
 /// type (tagging, variant casing) and on each variant (`rename`). Collected before the enum is
 /// dispatched, since all three shapes read those same attributes.
-#[cfg(feature = "serde")]
 fn enum_cfg_attr_guard_errors(
     item_enum: &syn::ItemEnum,
     type_meta: &SerdeTypeMeta,
@@ -7596,7 +7378,6 @@ fn instantiated_value_shape(rust_ident: &str, arguments: &[FieldDef]) -> Option<
 
 /// The JSON type keyword a recorded name's wire describes as, when the leaves `leaves_of` reads
 /// prove that wire is no object, and `None` for every name they cannot prove one way or the other.
-#[cfg(feature = "serde")]
 fn registered_non_object_wire(rust_ident: &str, leaves_of: LeavesOf) -> Option<&'static str> {
     match leaves_of(rust_ident)?.as_slice() {
         [only] => only.non_object,
@@ -7605,13 +7386,12 @@ fn registered_non_object_wire(rust_ident: &str, leaves_of: LeavesOf) -> Option<&
 }
 
 /// The leaves a schema surface recorded for `rust_ident`.
-#[cfg(all(feature = "serde", any(feature = "zod", feature = "typescript")))]
+#[cfg(any(feature = "zod", feature = "typescript"))]
 fn surfaced_leaves(rust_ident: &str) -> Option<Vec<WireLeaf>> {
     lookup_alias_info(rust_ident).map(|info| info.wire)
 }
 
 /// The leaves every build with serde recorded for `rust_ident`.
-#[cfg(feature = "serde")]
 fn written_leaves(rust_ident: &str) -> Option<Vec<WireLeaf>> {
     recorded_non_object_wire(rust_ident).map(|wire| wire.leaves)
 }
@@ -7740,7 +7520,6 @@ fn branded_foreign_derive_errors(item_struct: &syn::ItemStruct) -> Vec<proc_macr
 
 /// The `compile_error!` tokens for every `cfg_attr`-wrapped serde attribute a branded newtype
 /// carries: on the type and on its inner slot, which is positional and so has no name to print.
-#[cfg(feature = "serde")]
 fn branded_cfg_attr_guard_errors(
     item_struct: &syn::ItemStruct,
     inner_field: &Field,
@@ -7758,14 +7537,6 @@ fn branded_cfg_attr_guard_errors(
                 .map(|rejection| cfg_attr_guard_error(rejection, &field_label(""))),
         )
         .collect()
-}
-
-#[cfg(not(feature = "serde"))]
-const fn branded_cfg_attr_guard_errors(
-    _item_struct: &syn::ItemStruct,
-    _inner_field: &Field,
-) -> Vec<proc_macro2::TokenStream> {
-    Vec::new()
 }
 
 /// The `compile_error!` tokens for a brand whose `pattern` argument a guard refuses, or `None`
@@ -8145,7 +7916,6 @@ fn branded_unproven_default_errors(
 /// a plain enum's variant name, [`written_as_a_plain_enum`], or `None` for every other field. Read
 /// from the declaration, not the collected field, so the diagnostic keeps the span of the type it
 /// rejects, and names that type with the arguments written for it.
-#[cfg(feature = "serde")]
 fn flattened_field_guard_error(
     field: &syn::Field,
     type_name: &str,
@@ -8245,7 +8015,6 @@ fn apply_deferred_field_attrs<'field>(
 /// [`flattened_field_guard_error`] refuses. A generic type declared above that serde writes as what
 /// fills its type parameter is read at that filling, and named with the arguments written for it;
 /// any other type is read by its name, and quoted by its [`union_spelling`].
-#[cfg(feature = "serde")]
 fn flatten_edge_guard_error(
     field: &syn::Field,
     type_name: &str,
@@ -8328,7 +8097,6 @@ fn with_as_number(mut def: FieldDef, attrs: &[syn::Attribute]) -> FieldDef {
 
 /// Whether a flattened field's type, under its `Option`, is written in place rather than named: a
 /// list, a sequence or anything but a name, which [`written_non_object_wire`] answers for.
-#[cfg(feature = "serde")]
 fn written_in_place(inner: &FieldDef) -> bool {
     let bare = without_its_option(inner);
     if bare.array_depth > 0 {
@@ -8343,7 +8111,6 @@ fn written_in_place(inner: &FieldDef) -> bool {
 /// What a flattened field's type writes as no object, read by its name: what every build with serde
 /// records, which reads an untagged member at its generic filling, ahead of what a Zod surface
 /// recorded, so the branch named is the same in every build.
-#[cfg(feature = "serde")]
 fn flattened_name_non_object(inner: &FieldDef) -> Option<NonObject> {
     #[cfg(feature = "zod")]
     let surfaced = || surfaced_non_object(inner);
@@ -8354,7 +8121,7 @@ fn flattened_name_non_object(inner: &FieldDef) -> Option<NonObject> {
 
 /// What a flattened field's type writes as no object, as the registry a Zod surface writes proves
 /// it.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn surfaced_non_object(inner: &FieldDef) -> Option<NonObject> {
     inner
         .zod_union_members()
@@ -8368,7 +8135,6 @@ fn surfaced_non_object(inner: &FieldDef) -> Option<NonObject> {
 
 /// What a flattened field's type writes as no object, as the record every build with serde writes
 /// proves it.
-#[cfg(feature = "serde")]
 fn written_non_object(inner: &FieldDef) -> Option<NonObject> {
     written_union_members(inner)
         .into_iter()
@@ -8382,7 +8148,6 @@ fn written_non_object(inner: &FieldDef) -> Option<NonObject> {
 /// The members of the untagged union `def` names, as every build with serde records them, each
 /// leaf the union writes as what fills a type parameter read at the argument `def` fills it with,
 /// and nothing for a def that names no such union.
-#[cfg(feature = "serde")]
 fn written_union_members(def: &FieldDef) -> Vec<WireLeaf> {
     if def.array_depth > 0 {
         return Vec::new();
@@ -8411,7 +8176,6 @@ fn written_union_members(def: &FieldDef) -> Vec<WireLeaf> {
 /// The JSON type keyword the item a flattened field names publishes, where the name is the whole of
 /// what the field writes and the leaves `leaves_of` reads prove that wire is no object — and `None`
 /// everywhere the declaration is left as it stands.
-#[cfg(feature = "serde")]
 fn flattened_name_non_object_wire(inner: &FieldDef, leaves_of: LeavesOf) -> Option<&'static str> {
     if inner.array_depth > 0 || written_as_a_plain_enum(inner) {
         return None;
@@ -8424,7 +8188,6 @@ fn flattened_name_non_object_wire(inner: &FieldDef, leaves_of: LeavesOf) -> Opti
 
 /// The branch a flattened field's own name proves is no object, beside the JSON type keyword that
 /// branch describes as — and `None` for every name whose leaves prove no such branch.
-#[cfg(feature = "serde")]
 fn flattened_name_refused_branch(inner: &FieldDef, leaves_of: LeavesOf) -> Option<NonObject> {
     if inner.array_depth > 0 || written_as_a_plain_enum(inner) {
         return None;
@@ -8437,7 +8200,6 @@ fn flattened_name_refused_branch(inner: &FieldDef, leaves_of: LeavesOf) -> Optio
 
 /// The branch `leaves` prove is no object, beside the JSON type keyword that branch describes as,
 /// where they offer one absence and every other leaf is no object — and `None` everywhere else.
-#[cfg(feature = "serde")]
 fn refused_branch(leaves: &[WireLeaf]) -> Option<NonObject> {
     let (absences, values): (Vec<&WireLeaf>, Vec<&WireLeaf>) =
         leaves.iter().partition(|leaf| leaf.is_published_absence());
@@ -8454,7 +8216,6 @@ fn refused_branch(leaves: &[WireLeaf]) -> Option<NonObject> {
 /// What a flattened generic type declared above writes as no object, read at `filling`, the
 /// argument it writes as its own value: what [`filled_non_object`] answers, and for an `Option`
 /// the branch its leaves refuse, as a flattened struct of one slot over that `Option` is refused.
-#[cfg(feature = "serde")]
 fn flattened_filling_non_object(filling: &FieldDef) -> Option<NonObject> {
     if filling.is_optional() {
         refused_branch(&filled_wire_leaves(filling))
@@ -8465,29 +8226,17 @@ fn flattened_filling_non_object(filling: &FieldDef) -> Option<NonObject> {
 
 /// The [`FieldContext::container_read_back`] every walk hands its fields: whether the item they
 /// belong to derives `Deserialize`.
-#[cfg(feature = "serde")]
 fn container_is_read_back(attrs: &[syn::Attribute]) -> bool {
     derives_deserialize(attrs)
 }
 
-#[cfg(not(feature = "serde"))]
-const fn container_is_read_back(_attrs: &[syn::Attribute]) -> bool {
-    false
-}
-
 /// The [`FieldContext::container_wire`] every walk hands its fields.
-#[cfg(feature = "serde")]
 fn container_round_trips(attrs: &[syn::Attribute]) -> ContainerWire {
     if derives_serialize(attrs) && derives_deserialize(attrs) {
         ContainerWire::RoundTrip
     } else {
         ContainerWire::OneWay
     }
-}
-
-#[cfg(not(feature = "serde"))]
-const fn container_round_trips(_attrs: &[syn::Attribute]) -> ContainerWire {
-    ContainerWire::OneWay
 }
 
 /// Whether the enum derives `Deserialize` and serde reads `variant`'s members.
@@ -8519,7 +8268,6 @@ fn collect_struct_fields(
         // Read before the field is processed, which strips the attributes the declaration carried.
         let is_flatten = is_flattened_field(field);
 
-        #[cfg(feature = "serde")]
         if is_flatten {
             guard_errors.extend(flattened_field_guard_error(field, type_name));
             guard_errors.extend(flatten_edge_guard_error(field, type_name));
@@ -8601,17 +8349,11 @@ fn string_check_refusal_output(
     refused_item_output(&Item::Struct(item_struct.clone()), &[error], args)
 }
 
-/// What a type-level string check is told on a declared type that is no brand. A build without
-/// `serde` has no brand, and the refusal names the feature.
+/// What a type-level string check is told on a declared type that is no brand.
 fn no_brand_string_check_refusal(check: &str) -> String {
-    let feature = if cfg!(feature = "serde") {
-        ""
-    } else {
-        " A branded newtype is read with tixschema's `serde` feature, which this build has off."
-    };
     format!(
         "`{check}` is supported only on a branded newtype: a `#[serde(transparent)]` struct \
-         serde writes as the value of one field.{feature} On a field, write it in \
+         serde writes as the value of one field. On a field, write it in \
          `#[model_schema_prop(...)]`."
     )
 }
@@ -8674,7 +8416,6 @@ fn written_with_no_data(variant: &syn::Variant) -> bool {
 
 /// Each name serde writes or reads for `variant`, the written one first, beside the direction it
 /// is named in. An untagged enum writes a variant with no data as `null`, under no name.
-#[cfg(feature = "serde")]
 fn variant_wire_names(
     item_enum: &syn::ItemEnum,
     variant: &syn::Variant,
@@ -8704,15 +8445,6 @@ fn variant_wire_names(
         }
     }
     names
-}
-
-/// Without `serde` no attribute is read, and every surface writes the variant's ident.
-#[cfg(not(feature = "serde"))]
-fn variant_wire_names(
-    _item_enum: &syn::ItemEnum,
-    variant: &syn::Variant,
-) -> Vec<(&'static str, String)> {
-    vec![("written", variant.ident.to_string())]
 }
 
 /// The checks of `args` that `name` breaks, each as it is written, measured as a field's validator
@@ -9023,17 +8755,9 @@ pub fn writes_a_string_union(item_enum: &syn::ItemEnum) -> bool {
 
 /// A tag names a key serde writes whether or not a variant carries a field, so only a declaration
 /// serde writes as the bare variant name is the string union the plain-enum path publishes.
-#[cfg(feature = "serde")]
 fn writes_bare_variant_names(item_enum: &syn::ItemEnum) -> bool {
     let meta = parse_serde_type_attributes(&item_enum.attrs);
     meta.tag.is_none() && meta.content.is_none() && !meta.untagged
-}
-
-/// No attribute is read without the `serde` feature, so no declaration can be told from the
-/// untagged default and the bare-name form stands.
-#[cfg(not(feature = "serde"))]
-const fn writes_bare_variant_names(_item_enum: &syn::ItemEnum) -> bool {
-    true
 }
 
 /// Whether a struct is a branded newtype: one serde writes as the value of a single field.
@@ -9085,7 +8809,6 @@ fn register_enum(name: &syn::Ident, item_name: &str, kind: AliasKind) {
 /// The output a struct carrying a `cfg_attr`-wrapped serde attribute on the type is refused with,
 /// or `None` when it carries none. A hidden `rename_all` reshapes every field name, so the item is
 /// refused before a single field is processed.
-#[cfg(feature = "serde")]
 fn struct_cfg_attr_guard_output(
     item_struct: &syn::ItemStruct,
     rejection: Option<&syn::Error>,
@@ -9096,7 +8819,6 @@ fn struct_cfg_attr_guard_output(
     refused_item_output(&Item::Struct(item_struct.clone()), &[error], args)
 }
 /// The struct's own `rename_all`, or the `cfg_attr` refusal that pre-empts reading anything.
-#[cfg(feature = "serde")]
 fn struct_rename_all(
     item_struct: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -9126,7 +8848,6 @@ const fn struct_docs_body(_doc_comment: Option<&[String]>, _item_name: &str) -> 
 /// Puts the key a struct's own `#[serde(tag = "...")]` writes ahead of the struct's members, as
 /// one whose only value is the struct's serde name, or refuses a field that writes the same key:
 /// serde would write it twice.
-#[cfg(feature = "serde")]
 fn with_struct_tag(
     item_struct: &syn::ItemStruct,
     mut collected: StructFieldData,
@@ -9178,14 +8899,7 @@ fn struct_members(
             serde_default: &serde_default,
         },
     );
-    #[cfg(feature = "serde")]
-    {
-        with_struct_tag(item_struct, from_fields)
-    }
-    #[cfg(not(feature = "serde"))]
-    {
-        from_fields
-    }
+    with_struct_tag(item_struct, from_fields)
 }
 
 /// The expansion of a brand, or `None` for a struct that is no brand.
@@ -9201,13 +8915,10 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
     let name = item_struct.ident.clone();
     let rust_ident = name.to_string();
 
-    #[cfg(feature = "serde")]
     let rename_all = match struct_rename_all(&item_struct, args) {
         Ok(rename_all) => rename_all,
         Err(output) => return output,
     };
-    #[cfg(not(feature = "serde"))]
-    let rename_all: Option<String> = None;
 
     // A `default` on the container answers a missing key for every field under it, which is one of
     // the things that makes a dropped key readable.
@@ -9219,7 +8930,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return process_tuple_struct(item_struct, rename_all.as_deref(), args);
     }
 
-    #[cfg(feature = "serde")]
     strict::close_struct(&mut item_struct, args);
 
     let (item_name, module_name, module_ident) =
@@ -9247,12 +8957,11 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         return output;
     }
 
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     record_object_model(&rust_ident, &item_struct, &collected, args);
 
     let validate_method = struct_validate_method(&collected.3, &module_ident, &item_checks);
 
-    #[cfg(feature = "serde")]
     let unit_struct_impls = unit_struct_impls_for(
         &mut item_struct,
         UnitRead {
@@ -9261,8 +8970,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
         },
         args,
     );
-    #[cfg(not(feature = "serde"))]
-    let unit_struct_impls = unit_struct_impls_for(&item_struct);
 
     // Read after the fields carry every serde attribute generation hangs on them, so the walker
     // reads each one through the function serde's derive will call for it.
@@ -9305,7 +9012,6 @@ fn process_struct(mut item_struct: syn::ItemStruct, args: &ModelSchemaArgs) -> T
 
 /// The constant a `#[service_schema]` path placeholder, which names a member as Rust spells it,
 /// reads the member's key on the wire from, and the form its text is read in.
-#[cfg(feature = "serde")]
 fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
     wire_keys_const(
         read_member_keys(item_struct)
@@ -9317,12 +9023,10 @@ fn wire_keys_item(item_struct: &syn::ItemStruct) -> TokenStream {
 
 /// The constant [`wire_keys_item`] writes, listing no member: an enum and a struct of slots hold
 /// none a path placeholder binds.
-#[cfg(feature = "serde")]
 fn no_wire_keys_item() -> TokenStream {
     wire_keys_const(Vec::new())
 }
 
-#[cfg(feature = "serde")]
 fn wire_keys_const(members: Vec<(String, String, String)>) -> TokenStream {
     let listed = members
         .into_iter()
@@ -9336,20 +9040,9 @@ fn wire_keys_const(members: Vec<(String, String, String)>) -> TokenStream {
     }
 }
 
-/// Nothing, where no `serde` feature reads the attributes a key is written from.
-#[cfg(not(feature = "serde"))]
-fn wire_keys_item(_item_struct: &syn::ItemStruct) -> TokenStream {
-    TokenStream::new()
-}
-
-#[cfg(not(feature = "serde"))]
-fn no_wire_keys_item() -> TokenStream {
-    TokenStream::new()
-}
-
 /// Records the members of the struct where its `$RawSchema` is one strict object of its named
 /// members and nothing else, and that it is not where it is anything else.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn record_object_model(
     rust_ident: &str,
     item_struct: &syn::ItemStruct,
@@ -9429,9 +9122,7 @@ fn struct_output_with_unit_impls(
 fn record_declaration(item: &Item) {
     // An item's walker reads the validators and the checks of its own fields, recorded as they
     // are expanded.
-    #[cfg(feature = "serde")]
     forget_field_validators();
-    #[cfg(feature = "serde")]
     forget_checks();
     if let Item::Type(alias) = item {
         if alias.generics.params.is_empty() {
@@ -9442,14 +9133,11 @@ fn record_declaration(item: &Item) {
         }
     } else if let Some(ident) = item_schema_ident(item) {
         let lifetimes = item_lifetime_count(item);
-        #[cfg(feature = "serde")]
         let declares = if written_as_one_value(item) {
             Declared::one_value(lifetimes)
         } else {
             Declared::model(lifetimes)
         };
-        #[cfg(not(feature = "serde"))]
-        let declares = Declared::model(lifetimes);
         record_declared(&ident.to_string(), declares);
     } else {
         // `#[model_schema]` is written on nothing else.
@@ -9470,7 +9158,6 @@ fn item_lifetime_count(item: &Item) -> usize {
 
 /// What `decode_with` adds to a struct, read off the struct as it is emitted. Empty without the
 /// flag.
-#[cfg(feature = "serde")]
 fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> DecodeWithParts {
     if !args.enable.decode_with() {
         return DecodeWithParts::default();
@@ -9483,14 +9170,7 @@ fn struct_decode_with(item_struct: &syn::ItemStruct, args: &ModelSchemaArgs) -> 
     }
 }
 
-/// Nothing, where no `serde` feature reads the attributes a walker is written from.
-#[cfg(not(feature = "serde"))]
-fn struct_decode_with(_item_struct: &syn::ItemStruct, _args: &ModelSchemaArgs) -> DecodeWithParts {
-    DecodeWithParts::default()
-}
-
 /// What `decode_with` adds to an enum, read off the enum as it is emitted. Empty without the flag.
-#[cfg(feature = "serde")]
 fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> DecodeWithParts {
     if !args.enable.decode_with() {
         return DecodeWithParts::default();
@@ -9503,19 +9183,12 @@ fn enum_decode_with(item_enum: &syn::ItemEnum, args: &ModelSchemaArgs) -> Decode
     }
 }
 
-/// Nothing, where no `serde` feature reads the attributes a walker is written from.
-#[cfg(not(feature = "serde"))]
-fn enum_decode_with(_item_enum: &syn::ItemEnum, _args: &ModelSchemaArgs) -> DecodeWithParts {
-    DecodeWithParts::default()
-}
-
 /// An enum's assembled schema module, with the `impl` `decode_with` adds appended after it.
 fn enum_output_with_decode(
     parts: &SchemaOutputParts<syn::ItemEnum>,
     decode_with: &DecodeWithParts,
 ) -> TokenStream {
     let mut read = parts.item.clone();
-    #[cfg(feature = "serde")]
     strict::unskip_braced_members(&mut read);
     read.ident = valid_type::draft_ident(parts.name);
     valid_type::self_names_the_valid_type(
@@ -9564,7 +9237,6 @@ fn enum_output_with_decode(
 }
 
 /// Records a unit struct in the registry `is_unit_type` reads, then rewrites its derive.
-#[cfg(feature = "serde")]
 fn unit_struct_impls_for(
     item_struct: &mut syn::ItemStruct,
     read: UnitRead,
@@ -9600,7 +9272,6 @@ fn unit_struct_impls_for(
 /// a read that refuses every key and builds each member as serde's derive builds it, under the
 /// bounds that derive asks: under `deny_unknown_fields` it would declare an enum of no variant for
 /// the keys, which `clippy::empty_enums` refuses in the consumer's crate.
-#[cfg(feature = "serde")]
 fn empty_struct_read(
     item_struct: &mut syn::ItemStruct,
     read: UnitRead,
@@ -9655,19 +9326,11 @@ fn empty_struct_read(
     )
 }
 
-/// [`unit_struct_impls_for`] without the `serde` feature: nothing rewrites a derive that cannot be
-/// there, and nothing reads the registry it would have recorded into.
-#[cfg(not(feature = "serde"))]
-fn unit_struct_impls_for(_item_struct: &syn::ItemStruct) -> proc_macro2::TokenStream {
-    quote! {}
-}
-
 /// Strips `Serialize`/`Deserialize` from a unit struct's own `#[derive(...)]` and answers with
 /// impls that write and read `{}` in their place — only the impl whose derive was present. Where
 /// the struct publishes `validate()`, its read is `model_schema_read_unjudged` and then
 /// `validate()`, as that of every other type that publishes one. Where it names a `preprocess`,
 /// `model_schema_read_unjudged` calls each function on the payload first.
-#[cfg(feature = "serde")]
 fn unit_struct_serde_impls(
     item_struct: &mut syn::ItemStruct,
     read: UnitRead,
@@ -9740,7 +9403,6 @@ fn unit_struct_serde_impls(
 /// reads `{}` and answers with `built`, the statements that answer `Ok` of the value: alone, or
 /// after `model_schema_read_unjudged` where the struct publishes `validate()` or names a
 /// `preprocess`.
-#[cfg(feature = "serde")]
 fn unit_struct_read(
     name: &syn::Ident,
     declared: &syn::Ident,
@@ -9820,7 +9482,6 @@ fn unit_struct_read(
 
 /// The body of the read of the struct `name` of no member serde reads: `{}` read, a key refused
 /// where `strict` and read past where not, and then `built`.
-#[cfg(feature = "serde")]
 fn unit_struct_body(
     name: &syn::Ident,
     strict: bool,
@@ -10320,7 +9981,7 @@ fn tuple_struct_null(shape: &TupleStructShape) -> NullAdmitted {
 
 /// Whether the draft of an untagged enum admits `null`: it does where a variant that serde writes
 /// as its one slot's value alone does, and it may where such a slot names a type nothing decided.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn untagged_enum_null(item_enum: &syn::ItemEnum) -> NullAdmitted {
     item_enum
         .variants
@@ -10515,7 +10176,7 @@ fn process_tuple_struct(
     ) {
         return output;
     }
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     if let TupleStructShape::BareValue(slot) = &slots.shape {
         record_newtype_flatten_variants(&name.to_string(), slot, &item_struct.generics);
     }
@@ -12231,14 +11892,11 @@ fn assemble_branded_output(parts: &BrandedNewtypeOutput) -> TokenStream {
     let bound_alone = parts.bound_alone;
     let bound_text_method = parts.bound_text_method;
     let issues_with = parts.issues_with;
-    #[cfg(feature = "serde")]
     let from_deserializer = valid_type::own_from_deserializer(
         &item_struct.generics,
         !validate_method.is_empty(),
         &valid_type::declared().deserializes,
     );
-    #[cfg(not(feature = "serde"))]
-    let from_deserializer = proc_macro2::TokenStream::new();
 
     let schema = schema_struct(schema_impl_items);
     let module_items = schema_module_items(
@@ -12350,7 +12008,7 @@ fn register_branded_newtype(
         &type_parameters_in_scope(&item_struct.generics),
     )
     .record(rust_ident);
-    #[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     record_newtype_flatten_variants(
         rust_ident,
         &get_field_def("value", &inner_field.ty, ""),
@@ -12514,7 +12172,6 @@ fn branded_read(
 
 /// [`struct_decode_with`] for a brand. Where the brand is `bounded`, the read its issues are
 /// listed from holds the value to the brand's own bound, which no walk lists.
-#[cfg(feature = "serde")]
 fn brand_decode_with(
     brand: &syn::ItemStruct,
     args: &ModelSchemaArgs,
@@ -12531,22 +12188,12 @@ fn brand_decode_with(
     }
 }
 
-/// Nothing, where no `serde` feature reads the attributes a walker is written from.
-#[cfg(not(feature = "serde"))]
-fn brand_decode_with(
-    _brand: &syn::ItemStruct,
-    _args: &ModelSchemaArgs,
-    _bounded: bool,
-) -> DecodeWithParts {
-    DecodeWithParts::default()
-}
-
 /// `model_schema_bound_text`: the text a bound written on a field of this brand's type is measured
 /// on. Published where the brand's inner is itself a string or a path, or a brand declared above
 /// that publishes it, so a brand over anything else has none and such a bound is refused where it
 /// was written.
 ///
-#[cfg_attr(feature = "serde", doc = include_str!("branded_bound_text_example.md"))]
+#[cfg_attr(any(doc, doctest), doc = include_str!("branded_bound_text_example.md"))]
 ///
 /// The run below types the field with a struct instead, and nothing else changed:
 ///
@@ -12717,20 +12364,15 @@ fn counted_by(ty: &syn::Type) -> Option<Counted> {
 
 /// Processes an enum item and generates TypeScript and Zod schema definitions for it.
 fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
-    #[cfg(feature = "serde")]
     let item_enum = {
         let mut closed = written;
         strict::close_enum(&mut closed, args);
         closed
     };
-    #[cfg(not(feature = "serde"))]
-    let item_enum = written;
     let name = item_enum.ident.clone();
 
-    #[cfg(feature = "serde")]
     let serde_type_meta = parse_serde_type_attributes(&item_enum.attrs);
 
-    #[cfg(feature = "serde")]
     if let Some(output) = refused_item_output(
         &Item::Enum(item_enum.clone()),
         &enum_cfg_attr_guard_errors(&item_enum, &serde_type_meta),
@@ -12744,41 +12386,27 @@ fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
     let item_name = compute_item_export_name(&name.to_string(), args.name_override.as_deref());
 
     if writes_a_string_union(&item_enum) {
-        #[cfg(feature = "serde")]
         let rename_all = serde_type_meta.rename_all.as_deref();
-
-        #[cfg(not(feature = "serde"))]
-        let rename_all = None;
 
         process_plain_enum(item_enum, &name, rename_all, &item_name, args)
     } else {
-        #[cfg(feature = "serde")]
         if serde_type_meta.untagged {
             return process_untagged_enum(item_enum, &name, &item_name, args);
         }
 
-        #[cfg(feature = "serde")]
         let casing = EnumCasing {
             variant_fields: serde_type_meta.rename_all_fields.as_deref(),
             variants: serde_type_meta.rename_all.as_deref(),
         };
 
-        #[cfg(not(feature = "serde"))]
-        let casing = EnumCasing {
-            variant_fields: None,
-            variants: None,
-        };
-
         // Neither tagging key named, so serde writes the externally tagged form and that is what
         // the surfaces describe.
-        #[cfg(feature = "serde")]
         if serde_type_meta.tag.is_none() && serde_type_meta.content.is_none() {
             return process_externally_tagged_enum(item_enum, &name, casing, &item_name, args);
         }
 
         // A tag with no content is serde's internally tagged form: what a variant writes joins the
         // tag in one object rather than sitting under a key of its own.
-        #[cfg(feature = "serde")]
         if let (Some(tag), None) = (
             serde_type_meta.tag.as_ref(),
             serde_type_meta.content.as_ref(),
@@ -12786,7 +12414,6 @@ fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
             return process_internally_tagged_enum(item_enum, &name, tag, casing, &item_name, args);
         }
 
-        #[cfg(feature = "serde")]
         let (tag_name, content_name) = (
             serde_type_meta
                 .tag
@@ -12797,9 +12424,6 @@ fn process_enum(written: syn::ItemEnum, args: &ModelSchemaArgs) -> TokenStream {
                 .as_ref()
                 .map_or_else(|| "value".to_owned(), Clone::clone),
         );
-
-        #[cfg(not(feature = "serde"))]
-        let (tag_name, content_name): (String, String) = ("type".to_owned(), "value".to_owned());
 
         process_discriminated_enum(
             item_enum,
@@ -12922,14 +12546,9 @@ fn ts_member_key(key: &str) -> String {
     ts_quoted(key)
 }
 
-/// The name a member is written under in TypeScript and Zod: serde's name with `serde` on, and
-/// the Rust name in camelCase without it.
+/// The name a member is written under in TypeScript and Zod: serde's name.
 fn ts_member_name(name: &str) -> String {
-    #[cfg(feature = "serde")]
-    let written = name.to_owned();
-    #[cfg(not(feature = "serde"))]
-    let written = RenameRule::CamelCase.apply_to_field(name);
-    written
+    name.to_owned()
 }
 
 /// The one-line description a set of lines is published as, escaped for the `description: "…"` it
@@ -12990,10 +12609,7 @@ fn collect_plain_enum_options(
         .iter_mut()
         .filter(|item| variant_on_the_wire(item))
     {
-        #[cfg(feature = "serde")]
         let field_rename = parse_serde_field_attributes(&item.attrs).rename;
-        #[cfg(not(feature = "serde"))]
-        let field_rename: Option<String> = None;
 
         let final_name =
             get_final_variant_name(&item.ident.to_string(), field_rename.as_deref(), rename_all);
@@ -13079,10 +12695,7 @@ fn plain_enum_reader_pairs(
         .iter()
         .filter(|variant| variant_on_the_wire(variant))
         .map(|variant| {
-            #[cfg(feature = "serde")]
             let field_rename = parse_serde_field_attributes(&variant.attrs).rename;
-            #[cfg(not(feature = "serde"))]
-            let field_rename: Option<String> = None;
             let rust_ident = variant.ident.to_string();
             let wire_name =
                 get_final_variant_name(&rust_ident, field_rename.as_deref(), rename_all);
@@ -13116,7 +12729,7 @@ fn tagged_enum_variant_reader(
 
 /// The `{Enum}$Variant` reader for an externally tagged enum: a payload variant writes the wire
 /// name as the object's sole key, a unit variant as a bare string.
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn externally_tagged_enum_variant_reader(item_name: &str, pairs: &[(String, String)]) -> String {
     format!(
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */\n\
@@ -13127,7 +12740,7 @@ fn externally_tagged_enum_variant_reader(item_name: &str, pairs: &[(String, Stri
 
 /// The `{Enum}$Variant` reader for an untagged enum: no serde form carries the variant's own name,
 /// so there is nothing to read.
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn untagged_enum_variant_reader(item_name: &str) -> String {
     format!(
         "/** The Rust variant name `value` carries, or \"\" where it carries none. */\n\
@@ -13249,7 +12862,7 @@ fn tagged_ts_definition_method(
 
 /// The externally-tagged `ts_definition()` method, its reader computed and appended in one call —
 /// kept off `process_externally_tagged_enum` so that function stays under the line lint.
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn externally_tagged_ts_definition_method(
     docs: &str,
     item_name: &str,
@@ -13454,7 +13067,6 @@ fn plain_enum_output(
 
 /// `wire_name()` on an enum whose every variant is a unit variant that serde writes as a string:
 /// what `serde_json` writes for the value. An enum serde writes any other way gets none.
-#[cfg(feature = "serde")]
 fn enum_wire_name(item_enum: &syn::ItemEnum) -> proc_macro2::TokenStream {
     let meta = parse_serde_type_attributes(&item_enum.attrs);
     let written_as_text = meta.tag.is_none()
@@ -13487,11 +13099,6 @@ fn enum_wire_name(item_enum: &syn::ItemEnum) -> proc_macro2::TokenStream {
             }
         }
     }
-}
-
-#[cfg(not(feature = "serde"))]
-fn enum_wire_name(_item_enum: &syn::ItemEnum) -> proc_macro2::TokenStream {
-    proc_macro2::TokenStream::new()
 }
 
 /// The kind a variant publishes, which is not always the kind it declares.
@@ -13547,7 +13154,6 @@ fn check_variant_slot_wire_is_readable(
 /// fields are read against — its own `rename_all` where it writes one, the container's
 /// `rename_all_fields` otherwise. serde treats a struct variant as the container for its fields, so
 /// the enum's container-level `rename_all` never reaches them — that one renames variant names only.
-#[cfg(feature = "serde")]
 fn variant_serde_names(
     attrs: &[syn::Attribute],
     rename_all_fields: Option<&str>,
@@ -13571,26 +13177,10 @@ pub fn variant_field_rule(variant: &syn::Variant, rename_all_fields: Option<&str
     )
 }
 
-/// No declaration is read where nothing parses serde's attributes.
-#[cfg(not(feature = "serde"))]
-const fn variant_serde_names(
-    _attrs: &[syn::Attribute],
-    _rename_all_fields: Option<&str>,
-) -> (Option<String>, Option<String>) {
-    (None, None)
-}
-
 /// Whether a field's members join the object being written rather than sitting under a key of their
 /// own.
-#[cfg(feature = "serde")]
 fn is_flattened_field(field: &syn::Field) -> bool {
     parse_serde_field_attributes(&field.attrs).flatten
-}
-
-/// No field flattens where nothing parses serde's attributes.
-#[cfg(not(feature = "serde"))]
-const fn is_flattened_field(_field: &syn::Field) -> bool {
-    false
 }
 
 /// The refusals of what serde writes or reads that a variant's member earns: a slot dropped in one
@@ -13626,16 +13216,10 @@ fn variant_flatten_guard_errors(
     field: &syn::Field,
     enum_type_name: &str,
 ) -> Vec<proc_macro2::TokenStream> {
-    #[cfg(feature = "serde")]
     let refused = [
         flattened_field_guard_error(field, enum_type_name),
         flatten_edge_guard_error(field, enum_type_name),
     ];
-    #[cfg(not(feature = "serde"))]
-    let refused: [Option<proc_macro2::TokenStream>; 0] = {
-        let _: (&_, &_) = (&field, &enum_type_name);
-        []
-    };
 
     refused.into_iter().flatten().collect()
 }
@@ -13827,7 +13411,6 @@ fn discriminated_main_schema_code(
 /// Refuses every variant serde writes or reads of an adjacently tagged enum whose declared lone
 /// slot is off the wire in both directions, one error per offender so the expansion names them
 /// all.
-#[cfg(feature = "serde")]
 fn adjacent_collapsed_slot_guard_errors(
     item_enum: &syn::ItemEnum,
     tag_name: &str,
@@ -13898,7 +13481,6 @@ fn process_discriminated_enum(
 
     // Read before the walk, which rewrites the very attributes the collapse is read off, and
     // returned before it so no held-back attribute is written onto an item the guard refuses.
-    #[cfg(feature = "serde")]
     if let Some(output) = refused_item_output(
         &Item::Enum(item_enum.clone()),
         &adjacent_collapsed_slot_guard_errors(&item_enum, tag_name, content_name),
@@ -14034,7 +13616,6 @@ fn variant_merged_json_value(
 
 /// The diagnostic a variant whose content has no rendering produces, in the value position the
 /// content itself would have occupied.
-#[cfg(feature = "serde")]
 fn external_content_rejection_value(
     discriminator_value: &str,
     rejection: &MapMemberRejection,
@@ -14047,7 +13628,6 @@ fn external_content_rejection_value(
 }
 
 /// Renders what one variant of an externally tagged enum writes under its key.
-#[cfg(feature = "serde")]
 fn render_external_content(
     variant: &DiscriminatedVariant,
     self_type_name: &str,
@@ -14141,7 +13721,6 @@ fn render_external_content(
 }
 
 /// Renders one variant of an externally tagged enum as a union member.
-#[cfg(feature = "serde")]
 fn render_external_variant(
     variant: &DiscriminatedVariant,
     self_type_name: &str,
@@ -14232,7 +13811,7 @@ fn render_external_variant(
 /// the order the union writes them. Each Zod operand carries the enum's own `checks`, handed the
 /// enum's value: a unit variant's bare name. An enum with type parameters, `parameters`, records
 /// its members with each written as its [`parameter_placeholder`], which a holder fills.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn record_external_flatten_operands(
     rust_ident: &str,
     variants: &[DiscriminatedVariant],
@@ -14316,7 +13895,7 @@ fn record_external_flatten_operands(
 
 /// Which of a flattened choice's keys each member has to say it does not carry, one list per member
 /// and in the order the union writes them.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn sibling_key_exclusions(member_keys: &[Option<Vec<String>>]) -> Vec<Vec<String>> {
     member_keys
         .iter()
@@ -14339,7 +13918,7 @@ fn sibling_key_exclusions(member_keys: &[Option<Vec<String>>]) -> Vec<Vec<String
 /// absent, written in the key-per-line shape [`render_external_variant`] already wrote the variant
 /// in. A member that is no object literal keeps its spelling — there is no key list to add a line
 /// to.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn close_tagged_flatten_member(member: &str, excluded: &[String]) -> String {
     if excluded.is_empty() {
         return member.to_owned();
@@ -14359,7 +13938,6 @@ fn close_tagged_flatten_member(member: &str, excluded: &[String]) -> String {
 /// JSON-schema body, the TypeScript union, and the Zod union. Member order is the enum's
 /// declaration order, as for the other two enum forms. Each TypeScript object member says it
 /// carries no other object member's key, which serde and Zod refuse beside it.
-#[cfg(feature = "serde")]
 fn join_external_union(
     variants: &[DiscriminatedVariant],
     members: &[(String, String, proc_macro2::TokenStream)],
@@ -14437,7 +14015,6 @@ fn join_external_union(
 /// What each variant of the externally tagged enum `ident`, of the type parameters `parameters`,
 /// renders as, recorded as well for an object that flattens the enum: the flatten-edge spelling of
 /// a variant that holds a value is the member's own, which only this expansion holds.
-#[cfg(feature = "serde")]
 fn external_members(
     ident: &syn::Ident,
     variants: &[DiscriminatedVariant],
@@ -14457,7 +14034,6 @@ fn external_members(
 }
 
 /// Processes an enum that carries no serde tagging attributes and generates its definitions.
-#[cfg(feature = "serde")]
 fn process_externally_tagged_enum(
     mut item_enum: syn::ItemEnum,
     name: &syn::Ident,
@@ -14554,7 +14130,6 @@ fn process_externally_tagged_enum(
 /// type as written: a fixed-size array, whose length the def holds only where it is a literal, is
 /// a tuple to serde, a numeric literal is the number its type is, and a date under `as_number` is
 /// the integer the hook it is read through writes.
-#[cfg(feature = "serde")]
 fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
     let held = held_through_wrappers(written);
     if inner.is_optional() {
@@ -14610,13 +14185,11 @@ fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
 }
 
 /// A value serde refuses beside the tag, named as serde's refusal names it.
-#[cfg(feature = "serde")]
 const fn refused_as(shape: &'static str) -> TaggedContent {
     TaggedContent::Refused(shape, shape)
 }
 
 /// `written` read through references and the wrappers serde writes as the value they hold.
-#[cfg(feature = "serde")]
 fn held_through_wrappers(written: &syn::Type) -> &syn::Type {
     let mut current = written_type(written);
     loop {
@@ -14638,7 +14211,6 @@ fn held_through_wrappers(written: &syn::Type) -> &syn::Type {
 /// from the declaration, not the collected variants, so each diagnostic keeps the span of the
 /// thing it rejects. A variant serde neither writes nor reads holds nothing beside the tag; a tuple
 /// variant is refused all the same, as serde's derive refuses it.
-#[cfg(feature = "serde")]
 fn internally_tagged_guard_errors(
     item_enum: &syn::ItemEnum,
     tag_name: &str,
@@ -14747,7 +14319,6 @@ fn internally_tagged_guard_errors(
 
 /// The type `written` names under `Option`, its transparent wrappers and references, spelled with
 /// the arguments its author fills it with, and `named` where no path is written there.
-#[cfg(feature = "serde")]
 fn filled_spelling(written: &syn::Type, named: &str) -> String {
     let mut current = written_type(written);
     loop {
@@ -14772,7 +14343,6 @@ fn filled_spelling(written: &syn::Type, named: &str) -> String {
 /// The name a refusal quotes the type `written` names, `named`, by: with the arguments its author
 /// fills it with where it is an untagged enum whose members those arguments fill, and by its name
 /// alone everywhere else.
-#[cfg(feature = "serde")]
 fn union_spelling(written: &syn::Type, named: &str) -> String {
     if union_parameters(named).is_empty() {
         named.to_owned()
@@ -14785,7 +14355,6 @@ fn union_spelling(written: &syn::Type, named: &str) -> String {
 /// writes it as no object: a name as [`written_non_object`] reads it, and a string, a number, a
 /// `bool`, a list or a tuple by its JSON type keyword. `None` for an `Option`, which
 /// [`tagged_optional_message`] answers.
-#[cfg(feature = "serde")]
 fn filled_non_object(filling: &FieldDef) -> Option<NonObject> {
     if filling.is_optional() {
         return None;
@@ -14798,7 +14367,6 @@ fn filled_non_object(filling: &FieldDef) -> Option<NonObject> {
 /// `NON_OBJECT_WIRES` proves serde writes as no object, read as [`flatten_edge_guard_error`] reads
 /// it, or a generic type declared above that serde writes as what fills its type parameter,
 /// filled there with a value serde writes as no object. `None` for every other slot.
-#[cfg(feature = "serde")]
 fn tagged_non_object_message(
     variant_name: &syn::Ident,
     enum_name: &syn::Ident,
@@ -14849,7 +14417,6 @@ fn tagged_non_object_message(
 /// serde writes as an `Option`, or a generic type declared above that serde writes as what fills
 /// its type parameter, filled there with an `Option` or such a type, which the tag refuses for
 /// `Some` and `None` alike. `None` for every other slot.
-#[cfg(feature = "serde")]
 fn tagged_optional_message(
     variant_name: &syn::Ident,
     enum_name: &syn::Ident,
@@ -14873,7 +14440,6 @@ fn tagged_optional_message(
 
 /// Renders each variant of an internally tagged enum as a union member, beside the variant it was
 /// collected from: every variant serde writes or reads is collected, in the order declared.
-#[cfg(feature = "serde")]
 fn render_internal_variants(
     variants: &[DiscriminatedVariant],
     item_enum: &syn::ItemEnum,
@@ -14897,7 +14463,6 @@ fn render_internal_variants(
 }
 
 /// Renders one variant of an internally tagged enum as a union member.
-#[cfg(feature = "serde")]
 fn render_internal_variant(
     variant: &DiscriminatedVariant,
     variant_ident: &syn::Ident,
@@ -15025,7 +14590,7 @@ fn render_internal_variant(
 /// The TypeScript and the Zod member of a variant under the tag `tag_name` alone whose lone slot
 /// `inner` names an externally tagged enum declared above: the object `parts` closes, joined with
 /// each variant's entry as a flattened enum is. `None` for any other slot.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn entries_beside_the_tag(
     parts: &VariantParts,
     inner: &FieldDef,
@@ -15057,7 +14622,7 @@ fn entries_beside_the_tag(
 }
 
 /// No surface joins entries where neither the TypeScript nor the Zod surface is written.
-#[cfg(all(feature = "serde", not(any(feature = "typescript", feature = "zod"))))]
+#[cfg(not(any(feature = "typescript", feature = "zod")))]
 const fn entries_beside_the_tag(
     _parts: &VariantParts,
     _inner: &FieldDef,
@@ -15069,7 +14634,6 @@ const fn entries_beside_the_tag(
 /// Joins an internally tagged enum's rendered members into its three union surfaces. The Zod
 /// union is a `discriminatedUnion` only while every member is an object carrying the tag in its
 /// own shape; a flattened member (an intersection) forces a plain `z.union` instead.
-#[cfg(feature = "serde")]
 fn join_internal_union(
     members: &[(String, String, proc_macro2::TokenStream, bool)],
     tag_name: &str,
@@ -15119,7 +14683,7 @@ fn join_internal_union(
 /// check that places a refusal inside a braced variant at the enum ends the union rather than each
 /// member: a method call on a member that names its own enum would be typed while that enum's
 /// type is still being inferred.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn internal_discriminated_union(
     tag_name: &str,
     members: &[(String, String, proc_macro2::TokenStream, bool)],
@@ -15146,7 +14710,6 @@ fn internal_discriminated_union(
 
 /// Processes an internally tagged enum (`#[serde(tag = "...")]` with no `content`) and generates
 /// its definitions.
-#[cfg(feature = "serde")]
 fn process_internally_tagged_enum(
     mut item_enum: syn::ItemEnum,
     name: &syn::Ident,
@@ -15238,7 +14801,6 @@ fn process_internally_tagged_enum(
 }
 
 /// Renders one variant of an untagged enum as a union member.
-#[cfg(feature = "serde")]
 fn render_untagged_variant(
     kind: &VariantKind,
     variant: &syn::Variant,
@@ -15270,7 +14832,7 @@ fn render_untagged_variant(
 /// renders: its members with each of the enum's type parameters, `parameters`, written as its
 /// [`parameter_placeholder`], which a holder fills, and their TypeScript and Zod spellings. `None`
 /// for an enum that declares none, which records the members as it renders them.
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn placed_untagged_member(
     member: &UntaggedMember<'_>,
     parameters: &[String],
@@ -15301,7 +14863,6 @@ fn placed_untagged_member(
 
 /// Refuses an untagged variant that reached the unit wire by taking its lone slot off it, spanned on
 /// the variant.
-#[cfg(feature = "serde")]
 fn collapsed_untagged_variant_error(variant: &syn::Variant) -> syn::Error {
     let variant_name = &variant.ident;
     syn::Error::new_spanned(
@@ -15319,7 +14880,6 @@ fn collapsed_untagged_variant_error(variant: &syn::Variant) -> syn::Error {
 }
 
 /// Refuses a variant shape the untagged union has no member spelling for, spanned on the variant.
-#[cfg(feature = "serde")]
 fn unsupported_untagged_variant_error(variant: &syn::Variant, shape: &str) -> syn::Error {
     let variant_name = &variant.ident;
     syn::Error::new_spanned(
@@ -15340,7 +14900,6 @@ fn unsupported_untagged_variant_error(variant: &syn::Variant, shape: &str) -> sy
 /// key is why a member naming the union itself is deferred with [`deferred_zod_operand`] rather
 /// than the getter [`render_untagged_named`] hangs off a key: read eagerly, the name lands in its
 /// own `const`'s initializer and throws on import.
-#[cfg(feature = "serde")]
 fn render_untagged_tuple_single(
     fld: &FieldDef,
     self_type_name: &str,
@@ -15373,7 +14932,6 @@ fn render_untagged_tuple_single(
 /// Renders a `Named` (`{ a: A }`) untagged variant as a union member (object type / strictObject /
 /// object schema), with the members of every `#[serde(flatten)]` source it carries joined onto that
 /// object.
-#[cfg(feature = "serde")]
 fn render_untagged_named(
     members: &UntaggedVariantMembers,
     self_type_name: &str,
@@ -15433,7 +14991,7 @@ fn render_untagged_named(
 /// variant's keys are the ones it already spells; every other member is written as the type it
 /// names, and its key list is not something a registry lookup can answer — nor is a `Named`
 /// variant's once it flattens, since the source's keys belong to a type this expansion cannot read.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn untagged_member_keys(
     kind: &VariantKind,
     field_defs: &[FieldDef],
@@ -15446,7 +15004,7 @@ fn untagged_member_keys(
 /// One untagged member's flatten operand with its siblings' keys marked absent, written in the
 /// one-line shape [`render_untagged_named`] already wrote the member in. A member that is no
 /// object literal keeps its spelling.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn close_untagged_flatten_member(member: &str, excluded: &[String]) -> String {
     if excluded.is_empty() {
         return member.to_owned();
@@ -15468,7 +15026,6 @@ fn close_untagged_flatten_member(member: &str, excluded: &[String]) -> String {
 /// Builds the `{ type: object, properties, required, additionalProperties: false }` JSON-schema
 /// value token for a `Named` untagged variant, with the members of every `#[serde(flatten)]` source
 /// the variant carries merged beside its own.
-#[cfg(feature = "serde")]
 fn untagged_named_json_value(
     field_defs: &[FieldDef],
     flattened_fields: &[FieldDef],
@@ -15585,7 +15142,6 @@ fn string_field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
 /// Builds a standalone `serde_json::Value` token expression for a single field, with `Vec<T>`
 /// array wrapping; used by untagged enum members where the JSON value is consumed directly (not
 /// inserted under a property name).
-#[cfg(feature = "serde")]
 fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
     // A covered sequence wrapper writes the JSON array of its element, so the member is dispatched
     // as the arrayed element it stands for.
@@ -15670,7 +15226,6 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
 /// [`map_member_rejection_error`] for a position that holds a value rather than writing a
 /// statement — an untagged variant's member, whose value is consumed straight into the union's
 /// `anyOf`.
-#[cfg(feature = "serde")]
 fn member_rejection_value(
     field_name: &str,
     rejection: &MapMemberRejection,
@@ -15685,7 +15240,6 @@ fn member_rejection_value(
 /// One untagged member's field def in the two readings the guards need: as the surfaces will
 /// render it, every reference to one of the enclosing item's own parameters already the opaque
 /// value, and as the author spelled it. [`process_field`] reads the same pair off the same erase.
-#[cfg(feature = "serde")]
 fn untagged_member_field_defs(
     field: &Field,
     field_name: &str,
@@ -15699,7 +15253,6 @@ fn untagged_member_field_defs(
 /// The [`FieldContext`] one untagged variant hands each of its members. `rename_all` is the
 /// variant's own, not the enum's — the enum's container-level `rename_all` reaches variant names
 /// only, never the fields inside one.
-#[cfg(feature = "serde")]
 const fn untagged_variant_context<'ctx>(
     walk: &UntaggedEnum<'ctx>,
     variant_defaulted: bool,
@@ -15729,7 +15282,6 @@ const fn untagged_variant_context<'ctx>(
 /// variant is then chosen by shape alone, as serde's derive chooses it, and the enum's own read
 /// judges what the member holds, a brand included. A member whose own reader the macro hangs, the
 /// last one `walked` holds attributes for, is read by that hook alone.
-#[cfg(feature = "serde")]
 fn read_untagged_member_unjudged(
     ctx: &FieldContext<'_>,
     field: &Field,
@@ -15759,7 +15311,6 @@ fn read_untagged_member_unjudged(
 /// the collector's loop needs back for the field. `container_defaulted` is the variant's own
 /// `#[serde(default)]`, the container this member's omission is read against. `final_field_name`
 /// is the key serde writes the member under.
-#[cfg(feature = "serde")]
 fn untagged_member_field_def(
     ctx: &FieldContext<'_>,
     field: &Field,
@@ -15807,7 +15358,6 @@ fn untagged_member_field_def(
 /// member schema, the JSON-schema value token, and the `compile_error!` tokens for any
 /// field-level guard violations. The first three are always returned regardless of features.
 /// `steps` holds the steps serde writes on the way to each member of the variant.
-#[cfg(feature = "serde")]
 fn collect_untagged_variant_members(
     variant: &mut syn::Variant,
     walk: &UntaggedEnum<'_>,
@@ -15917,7 +15467,6 @@ fn collect_untagged_variant_members(
     walked
 }
 
-#[cfg(feature = "serde")]
 fn collect_untagged_members(
     item_enum: &mut syn::ItemEnum,
     schema_module_name: Option<&str>,
@@ -16033,7 +15582,7 @@ fn collect_untagged_members(
 }
 
 /// The variant `walked` as an option of the enum's Zod union, `zod` being its member of a plain one.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn union_candidate(
     kind: &VariantKind,
     walked: &UntaggedVariantMembers,
@@ -16054,7 +15603,7 @@ fn union_candidate(
 /// What a flattened untagged enum contributes for `member`, spelled `spelled`: a variant that
 /// holds a model whole contributes its keys, so it is the model's draft, which is what the Zod
 /// members of the enum read.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn untagged_member_ts(member: &UntaggedMember<'_>, spelled: &str) -> String {
     match (member.kind, member.walked.field_defs.as_slice()) {
         (VariantKind::TupleSingle, [slot]) if republishes_sibling_binding(slot) => {
@@ -16066,7 +15615,7 @@ fn untagged_member_ts(member: &UntaggedMember<'_>, spelled: &str) -> String {
 
 /// What an object flattening an untagged enum spells in the enum's name's place, one operand per
 /// member — and nothing where the name already spells the same payload set.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn ts_flatten_operands(recorded: &UntaggedFlattenRecord) -> Vec<String> {
     let operands: Vec<String> = sibling_key_exclusions(&recorded.member_keys)
         .iter()
@@ -16082,7 +15631,7 @@ fn ts_flatten_operands(recorded: &UntaggedFlattenRecord) -> Vec<String> {
 
 /// What one rendered member contributes to an object that merges the enum: the members of the union
 /// it names, when it names one the registry has recorded, and the member as rendered otherwise.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn zod_merge_branches(
     kind: &VariantKind,
     field_defs: &[FieldDef],
@@ -16116,7 +15665,7 @@ fn zod_merge_branches(
 /// What one rendered member contributes below its own position: the member itself, the leaves of
 /// any union it names the registry has recorded, and — under an `Option` — both the value's choice
 /// and the absence's.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
     // The binding of a type that names a `preprocess` is the one schema that calls it, and the
     // one text that replaces the placeholder of a member's default, so no member of it is written
@@ -16164,7 +15713,6 @@ fn zod_member_leaves(fld: &FieldDef, rendered: &str) -> Vec<ZodUnionMember> {
 /// What serde writes a written type as, when that type proves it is not an object, and `None` when
 /// nothing here proves it. Asked of an untagged union's member and of the whole surface an item
 /// publishes alike, which is what keeps a member and the name standing for it on one answer.
-#[cfg(feature = "serde")]
 fn written_non_object_wire(fld: &FieldDef, leaves_of: LeavesOf) -> Option<&'static str> {
     if fld.array_depth > 0 {
         return Some("array");
@@ -16189,7 +15737,6 @@ fn written_non_object_wire(fld: &FieldDef, leaves_of: LeavesOf) -> Option<&'stat
 /// What a `#[model_schema()]` item publishes, as leaves in the merge's vocabulary — the answer
 /// [`crate::utils::record_wire_leaves`] stores for every name a flattened member can then reach
 /// through.
-#[cfg(feature = "serde")]
 fn published_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Vec<WireLeaf> {
     if written.is_optional() {
         return under_an_option(published_wire_leaves(
@@ -16208,7 +15755,6 @@ fn published_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Vec<WireLea
 
 /// The leaves an externally tagged enum's variants write, one per variant serde writes or reads
 /// and in the order the `oneOf` it publishes writes them.
-#[cfg(feature = "serde")]
 fn external_variant_wire_leaves(variants: &Punctuated<syn::Variant, Token![,]>) -> Vec<WireLeaf> {
     variants
         .iter()
@@ -16228,7 +15774,6 @@ fn external_variant_wire_leaves(variants: &Punctuated<syn::Variant, Token![,]>) 
 /// The leaves the item a field names published, where the field's whole wire *is* that name's and
 /// one of those leaves proves serde writes no object at its position — and `None` everywhere the
 /// one-leaf dispatch already answers.
-#[cfg(feature = "serde")]
 fn named_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Option<Vec<WireLeaf>> {
     if written.array_depth > 0 {
         return None;
@@ -16245,7 +15790,6 @@ fn named_wire_leaves(written: &FieldDef, leaves_of: LeavesOf) -> Option<Vec<Wire
 
 /// Builds the schema module's impl items for an untagged enum: its JSON schema, its `TypeScript`
 /// definition, and its Zod schema, in the order the module publishes them.
-#[cfg(feature = "serde")]
 fn build_untagged_schema_impl_items(
     // The declaration itself rather than the pieces read off it: the name and the parameters are
     // read by different surfaces, and the JSON one reads the parameters beside the attribute.
@@ -16329,7 +15873,7 @@ fn build_untagged_schema_impl_items(
 /// Records what an object that flattens the untagged enum `name` reads of its Zod surface, and
 /// answers the text of the enum's union and of what it publishes beside it: the functions that run
 /// the checks of its members, `checked_ahead`, then the members themselves.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn record_untagged_zod(
     (name, item_name, generics): (&syn::Ident, &str, &syn::Generics),
     args: &ModelSchemaArgs,
@@ -16363,7 +15907,6 @@ fn record_untagged_zod(
 /// Processes an untagged enum (`#[serde(untagged)]`), emitting a TypeScript union (`A | B`), a Zod
 /// `z.union([...])`, and a JSON-schema `anyOf`. Mirrors [`process_discriminated_enum`]'s
 /// setup/assembly so all feature combinations compile.
-#[cfg(feature = "serde")]
 fn process_untagged_enum(
     mut item_enum: syn::ItemEnum,
     name: &syn::Ident,
@@ -17180,7 +16723,6 @@ fn argument_json_schema_value(name: &str, argument: &FieldDef) -> proc_macro2::T
 /// The JSON Schema a value of `ty` is described by, as an expression read where a run's
 /// `in_flight`, `hoisted_defs` and `pointer_prefix` are bound. `subject` names the value in the
 /// refusal of a type no document describes.
-#[cfg(feature = "serde")]
 pub fn type_json_schema_value(subject: &str, ty: &syn::Type) -> proc_macro2::TokenStream {
     argument_json_schema_value(subject, &get_field_def(subject, ty, ""))
 }
@@ -17188,7 +16730,6 @@ pub fn type_json_schema_value(subject: &str, ty: &syn::Type) -> proc_macro2::Tok
 /// The schema module of each model type `ty` names without type arguments: the type itself, under
 /// an `Option`, a list or a reference, and each type handed to a generic type, a tuple, a map, a
 /// range or a `Result`.
-#[cfg(feature = "serde")]
 pub fn named_json_schema_modules(
     ty: &syn::Type,
 ) -> Vec<(proc_macro2::TokenStream, proc_macro2::Span)> {
@@ -18475,7 +18016,6 @@ fn description_json_insert(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
 
 /// `value`, a member's schema, with the member's rustdoc as its `description`; `value` alone where
 /// there is none, or where the schema is not an object.
-#[cfg(feature = "serde")]
 fn described_json_schema_value(
     fld: &FieldDef,
     value: proc_macro2::TokenStream,
@@ -18683,7 +18223,6 @@ fn constraint_leaf(
                 errors.extend(reported);
             }
         },
-        #[cfg(feature = "serde")]
         CheckSink::Fail => quote! {
             #validate_value_fn_ident(#value)?;
         },
@@ -18914,7 +18453,6 @@ fn written_key_items() -> proc_macro2::TokenStream {
 
 /// The `Display` of `MapKey` and the `WrittenKey` that answers it: the text serde writes for the
 /// key, through serde's serializer for a `Formatter`, and nothing where serde writes no text.
-#[cfg(feature = "serde")]
 fn written_key_impls() -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     let shown = quote! {
         impl<K: ?::core::marker::Sized + serde::Serialize> ::core::fmt::Display for MapKey<'_, K> {
@@ -18934,20 +18472,6 @@ fn written_key_impls() -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
         }
     };
     (shown, written)
-}
-
-/// Without `serde`: no `Display` of `MapKey`'s, and the `WrittenKey` that answers the key's own
-/// `Display` text.
-#[cfg(not(feature = "serde"))]
-fn written_key_impls() -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    let written = quote! {
-        impl<K: ?::core::marker::Sized + ::core::fmt::Display> WrittenKey for MapKey<'_, K> {
-            fn written_key(self) -> ::core::option::Option<::std::string::String> {
-                ::core::option::Option::Some(::std::string::ToString::to_string(self.0))
-            }
-        }
-    };
-    (proc_macro2::TokenStream::new(), written)
 }
 
 /// What a field's type answers when it publishes no `validate()` of its own.
@@ -19163,7 +18687,6 @@ fn refusal_from_violations() -> proc_macro2::TokenStream {
 /// Builds the serde hook for a field written under wrappers: it deserializes the field's own
 /// declared type and then runs the same walk `validate()` runs, so the wire is gated where the
 /// constraint lands rather than where the field happens to be spelled.
-#[cfg(feature = "serde")]
 fn build_wrapped_deserializer(
     deserialize_fn_ident: &proc_macro2::Ident,
     validate_value_fn_ident: &proc_macro2::Ident,
@@ -19209,7 +18732,6 @@ fn build_wrapped_deserializer(
 /// The `deserialize_{stem}` hook of a string or numeric member: it reads the `owned` value, held
 /// under `binding`, where the member is bare, and the member's declared type where it is wrapped,
 /// and refuses what `validator` refuses. Nothing for a member a reference borrows.
-#[cfg(feature = "serde")]
 fn value_deserializer(
     member: &CheckedMember,
     validator: &proc_macro2::Ident,
@@ -19248,23 +18770,10 @@ fn value_deserializer(
     }
 }
 
-/// Nothing, where no `serde` reads a member.
-#[cfg(not(feature = "serde"))]
-fn value_deserializer(
-    _member: &CheckedMember,
-    _validator: &proc_macro2::Ident,
-    _read: (&proc_macro2::TokenStream, &proc_macro2::TokenStream),
-    _field_ty: &syn::Type,
-    _shape: &ConstrainedShape,
-) -> proc_macro2::TokenStream {
-    proc_macro2::TokenStream::new()
-}
-
 /// The closure a recovering read lists a field's broken bound with: `validator` run on every
 /// value the bound reaches inside one of type `ty`, answering each violation without
 /// `field_name`, the name the validator writes, which the issue's path already carries. `None`
 /// where the bound reaches nothing of `ty`.
-#[cfg(feature = "serde")]
 pub fn recovering_bound_check(
     validator: &proc_macro2::TokenStream,
     field_name: Option<&str>,
@@ -19867,7 +19376,6 @@ fn list_validator(
 /// What the serde hook of a list written under `wraps` is declared with, or `None` for one a
 /// reference borrows. It names the list `L` and each transparent wrapper by what it derefs to, so
 /// it reads whatever type the member declares.
-#[cfg(feature = "serde")]
 fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
     let mut read = quote! { L };
     let mut holders: Vec<proc_macro2::Ident> = Vec::new();
@@ -19905,7 +19413,6 @@ fn list_hook_header(wraps: &[ConstraintWrap]) -> Option<ListHookHeader> {
 
 /// The serde hook of a list member written under `wraps`, `deserialize_{stem}`, or nothing for one
 /// a reference borrows.
-#[cfg(feature = "serde")]
 fn list_deserializer(
     member: &CheckedMember,
     validator: &proc_macro2::Ident,
@@ -19947,16 +19454,6 @@ fn list_deserializer(
     }
 }
 
-/// Nothing, where no `serde` reads a member.
-#[cfg(not(feature = "serde"))]
-fn list_deserializer(
-    _member: &CheckedMember,
-    _validator: &proc_macro2::Ident,
-    _wraps: &[ConstraintWrap],
-) -> proc_macro2::TokenStream {
-    proc_macro2::TokenStream::new()
-}
-
 /// Generates the static validator of a list field's item count, plus the serde deserializer.
 fn generate_list_validation_code(
     member: &CheckedMember,
@@ -19988,7 +19485,6 @@ fn generate_list_validation_code(
 /// way. A list is that value itself, whatever it holds.
 fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
     let mut wraps = Vec::new();
-    #[cfg(feature = "serde")]
     let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut current = ty;
     loop {
@@ -19996,7 +19492,6 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
         if names_a_list(current) {
             return Some(ConstrainedShape {
                 leaf: ConstraintLeaf::List,
-                #[cfg(feature = "serde")]
                 lifetimes,
                 wraps,
             });
@@ -20008,7 +19503,6 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 let wrap = generic_wrap(&segment.ident.to_string())?;
-                #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
                 current = wrapped_argument(wrap, args)?;
                 wraps.push(wrap);
@@ -20017,7 +19511,6 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
                     .unwrap_or_else(|| ConstraintLeaf::Named(Box::new(current.clone())));
                 return Some(ConstrainedShape {
                     leaf,
-                    #[cfg(feature = "serde")]
                     lifetimes,
                     wraps,
                 });
@@ -20033,7 +19526,6 @@ fn constrained_shape(ty: &syn::Type) -> Option<ConstrainedShape> {
 /// Reads a member's type down to every value whose own type would publish the validator, against
 /// what `def` says the type holds: through every reference and each level of a list, to a map's
 /// values and to each position of a tuple. `None` where it holds no declared type.
-#[cfg(feature = "serde")]
 fn held_shape(ty: &syn::Type, def: &FieldDef) -> Option<HeldShape> {
     held_shape_reaching(ty, def, &[])
 }
@@ -20091,7 +19583,6 @@ fn held_shape_reaching(ty: &syn::Type, def: &FieldDef, parameters: &[String]) ->
                         reaching = &[];
                     }
                     walked.wraps.push(ConstraintWrap::Map);
-                    #[cfg(feature = "serde")]
                     walked.keys.push(key.clone());
                     current = map_value_argument(args)?;
                     held = of_values;
@@ -20272,8 +19763,7 @@ fn names_an_indexed_set(ty: &syn::Type) -> bool {
 }
 
 /// Whether a brand's inner is written as a list itself, or as one behind `Box`, `Rc`, `Arc` or
-/// `Cow`: the reach `constrained_shape` has through transparent wrappers alone, asked in a build
-/// without `serde`.
+/// `Cow`: the reach `constrained_shape` has through transparent wrappers alone.
 fn held_as_a_list(ty: &syn::Type) -> bool {
     let mut current = ty;
     loop {
@@ -20301,7 +19791,6 @@ fn held_as_a_list(ty: &syn::Type) -> bool {
 
 /// Adds the lifetimes a wrapper spells to the ones already collected, skipping `'static` — which
 /// needs no declaration — and any already there, since a lifetime can only be declared once.
-#[cfg(feature = "serde")]
 fn collect_lifetimes(
     args: &syn::AngleBracketedGenericArguments,
     lifetimes: &mut Vec<syn::Lifetime>,
@@ -20428,7 +19917,7 @@ fn validate_as_number_flag(field_type: &FieldDefType, flag_set: bool) -> Result<
 /// The refusal of `as_number` on a member the hook it hangs reads no value of: chrono's
 /// `ts_milliseconds` reads a `DateTime<Utc>`, and `ts_milliseconds_option` an `Option` of one.
 /// A member its author reads and writes through functions of their own takes no hook.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn as_number_hook_refusal(
     field: &Field,
     field_type: &FieldDefType,
@@ -20454,7 +19943,7 @@ fn as_number_hook_refusal(
 }
 
 /// No hook is hung where serde reads no attribute, or where no date is described.
-#[cfg(not(all(feature = "serde", feature = "chrono")))]
+#[cfg(not(feature = "chrono"))]
 const fn as_number_hook_refusal(
     _field: &Field,
     _field_type: &FieldDefType,
@@ -20464,7 +19953,7 @@ const fn as_number_hook_refusal(
 }
 
 /// Whether `ty` is written as a `DateTime` in `Utc`, the date chrono's millisecond hook reads.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn names_a_utc_date(ty: &syn::Type) -> bool {
     last_segment(ty).is_some_and(|last| {
         last.ident == "DateTime"
@@ -20476,7 +19965,7 @@ fn names_a_utc_date(ty: &syn::Type) -> bool {
 }
 
 /// Whether `ty` is written as an `Option` of a `DateTime` in `Utc`.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn names_an_optional_utc_date(ty: &syn::Type) -> bool {
     last_segment(ty).is_some_and(|last| {
         last.ident == "Option"
@@ -20487,7 +19976,7 @@ fn names_an_optional_utc_date(ty: &syn::Type) -> bool {
 }
 
 /// The last segment of the path `ty` is written as, and `None` for a type that is no path.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn last_segment(ty: &syn::Type) -> Option<&syn::PathSegment> {
     let syn::Type::Path(path) = written_type(ty) else {
         return None;
@@ -20499,7 +19988,7 @@ fn last_segment(ty: &syn::Type) -> Option<&syn::PathSegment> {
 /// every surface describes: chrono's hook in each direction its author writes or reads it through
 /// no function of their own, the one serde admits beside the author's. An `Option` under a key
 /// read through the hook takes the `default` a bound's hook takes, so an absent key is `None`.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn as_number_serde_hooks(field: &Field, field_def: &FieldDef) -> Vec<syn::Attribute> {
     let hooks = parse_serde_field_hooks(&field.attrs);
     if !field_def.has_as_number() || hooks.with.is_some() {
@@ -20532,7 +20021,7 @@ fn as_number_serde_hooks(field: &Field, field_def: &FieldDef) -> Vec<syn::Attrib
     hung
 }
 
-#[cfg(all(feature = "serde", not(feature = "chrono")))]
+#[cfg(not(feature = "chrono"))]
 const fn as_number_serde_hooks(_field: &Field, _field_def: &FieldDef) -> Vec<syn::Attribute> {
     Vec::new()
 }
@@ -20631,7 +20120,6 @@ fn push_described_field(field_defs: &mut Vec<FieldDef>, field_def: FieldDef) {
 /// Rejects a named `Option` field whose serde attributes let a `None` reach the wire as `null`,
 /// unless `nullable` already declares that shape on the author's word. A flattened member writes no
 /// key of its own, so serde writes nothing for its `None`.
-#[cfg(feature = "serde")]
 fn check_optional_field_serialization(
     field: &Field,
     is_optional: bool,
@@ -20661,7 +20149,6 @@ fn check_optional_field_serialization(
 
 /// Rejects a `nullable` field whose serde attributes drop the key the flag says is always
 /// written.
-#[cfg(feature = "serde")]
 fn check_nullable_field_serialization(field: &Field, is_nullable: bool) -> Result<(), syn::Error> {
     let Some(ident) = field.ident.as_ref() else {
         return Ok(());
@@ -20682,7 +20169,6 @@ fn check_nullable_field_serialization(field: &Field, is_nullable: bool) -> Resul
 
 /// Rejects a named field whose serde attributes drop its key on the way out while serde still
 /// insists on finding that key on the way in.
-#[cfg(feature = "serde")]
 fn check_omitted_key_is_readable(
     field: &Field,
     is_optional: bool,
@@ -20714,7 +20200,6 @@ fn check_omitted_key_is_readable(
 /// The serde-read guard errors the field violates. A hidden serde attribute leaves every
 /// serde-read diagnostic unreliable — the `Option`-null and `nullable`-key guards included — since
 /// `field_validation_guard_error` reads no serde attribute and so stands whatever the wrapper hid.
-#[cfg(feature = "serde")]
 fn field_guard_errors(
     field: &Field,
     raw_field_ident: &str,
@@ -20789,11 +20274,8 @@ fn collect_field_guard_errors(
     #[cfg(not(feature = "kotlin"))]
     let kotlin_width_error: Option<proc_macro2::TokenStream> = None;
 
-    #[cfg(feature = "serde")]
     let flattened_range_error = ranges::flattened_range_error(field, field_def, &label)
         .or_else(|| ranges::flattened_result_error(field, field_def, &label));
-    #[cfg(not(feature = "serde"))]
-    let flattened_range_error: Option<proc_macro2::TokenStream> = None;
 
     check_undescribable_std_field(field, field_def, &label)
         .err()
@@ -21740,12 +21222,8 @@ fn process_field(
     Option<proc_macro2::TokenStream>,
     Vec<proc_macro2::TokenStream>,
 ) {
-    #[cfg(feature = "serde")]
     let serde_field_meta = parse_serde_field_attributes(&field.attrs);
-    #[cfg(feature = "serde")]
     let field_rename = serde_field_meta.rename.clone();
-    #[cfg(not(feature = "serde"))]
-    let field_rename: Option<String> = None;
 
     let raw_field_ident = field_ident_string(field);
 
@@ -21789,7 +21267,6 @@ fn process_field(
         field_def = field_def.nullable_in_place();
     }
 
-    #[cfg(feature = "serde")]
     let serde_guard_errors = field_guard_errors(
         field,
         &raw_field_ident,
@@ -21799,15 +21276,6 @@ fn process_field(
         ctx,
         field_validation_guard_error,
     );
-    #[cfg(not(feature = "serde"))]
-    let serde_guard_errors: Vec<proc_macro2::TokenStream> = {
-        let _: bool = ctx.container_defaulted;
-        // Held alive the same way, and for the reason `container_is_read_back` states: the only
-        // reader of this flag is the read-hook writer, which this build does not compile.
-        let _: bool = ctx.container_read_back;
-        let _: ContainerWire = ctx.container_wire;
-        field_validation_guard_error.into_iter().collect()
-    };
 
     let guard_errors = collect_field_guard_errors(
         field,
@@ -21832,17 +21300,13 @@ fn process_field(
     apply_model_schema_prop_meta(&mut field_def, model_schema_prop_meta, &final_name);
 
     // What `validate()` walks is read unjudged, the whole value being judged once it is read.
-    #[cfg(feature = "serde")]
     read_unjudged_below(ctx, field, &field_def, index);
     let validation_fn = bound_fns;
 
     let declared = named_member_validate_body(validate_body, field, &field_def, &place);
     let body = then_checks(declared, own_checks).map(|checked| under_member_cfgs(field, checked));
 
-    #[cfg(feature = "serde")]
     let injected_attrs = as_number_serde_hooks(field, &field_def);
-    #[cfg(not(feature = "serde"))]
-    let injected_attrs: Vec<syn::Attribute> = Vec::new();
 
     deferred_attrs.push(injected_attrs);
 
@@ -21850,7 +21314,6 @@ fn process_field(
 }
 
 /// [`held_shape`] of a named member, of a flattened one and of an untagged variant's slot.
-#[cfg(feature = "serde")]
 fn member_held_shape(field: &Field, field_def: &FieldDef) -> Option<HeldShape> {
     held_shape(&field.ty, field_def)
 }
@@ -21890,7 +21353,6 @@ fn under_member_cfgs(field: &Field, checked: proc_macro2::TokenStream) -> proc_m
 /// Gives a member of a struct, or of a tagged variant, the hook that reads the models it holds
 /// unjudged, where the item is read back and `validate()` walks what the member holds: the whole
 /// value is judged once it is read. A member no hook is hung on is read by its own `Deserialize`.
-#[cfg(feature = "serde")]
 fn read_unjudged_below(ctx: &FieldContext<'_>, field: &Field, field_def: &FieldDef, index: usize) {
     if !ctx.container_read_back {
         return;
@@ -22008,7 +21470,6 @@ pub fn bound_member(field: &Field, index: usize) -> BoundMember {
 
 /// Whether the walk reads through a reference anywhere: no hook is emitted for such a field, whose
 /// bound is the validator's alone.
-#[cfg(feature = "serde")]
 fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
     wraps
         .iter()
@@ -22016,7 +21477,6 @@ fn ends_on_a_borrow(wraps: &[ConstraintWrap]) -> bool {
 }
 
 /// Whether the field needs a `#[serde(default)]` written for it alongside the `deserialize_with`.
-#[cfg(feature = "serde")]
 fn needs_injected_default(wraps: &[ConstraintWrap], has_default: bool) -> bool {
     let first_opaque = wraps
         .iter()
@@ -22114,7 +21574,6 @@ fn declared_as(field: &Field, index: usize) -> String {
 /// literal sits on.
 fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
     let mut wraps = Vec::new();
-    #[cfg(feature = "serde")]
     let mut lifetimes: Vec<syn::Lifetime> = Vec::new();
     let mut current = ty;
     loop {
@@ -22132,7 +21591,6 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
             let segment = path.path.segments.last()?;
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 let wrap = generic_wrap(&segment.ident.to_string())?;
-                #[cfg(feature = "serde")]
                 collect_lifetimes(args, &mut lifetimes);
                 current = wrapped_argument(wrap, args)?;
                 wraps.push(wrap);
@@ -22147,7 +21605,6 @@ fn literal_shape(ty: &syn::Type) -> Option<LiteralShape> {
                 };
                 return Some(LiteralShape {
                     leaf,
-                    #[cfg(feature = "serde")]
                     lifetimes,
                     wraps,
                 });
@@ -22192,7 +21649,6 @@ fn literal_broken(leaf: &LiteralLeaf, literal: &LiteralValue) -> Option<proc_mac
 
 /// [`walk_wraps`] for the serde hook of a literal, which names no item: a list level binds no
 /// index.
-#[cfg(feature = "serde")]
 fn unindexed_walk(
     wraps: &[ConstraintWrap],
     value: &proc_macro2::Ident,
@@ -22218,7 +21674,6 @@ fn unindexed_walk(
 
 /// The serde hook of a literal field under `shape`, which reads the field's own type and holds
 /// the value to `validator` as `validate()` does, or nothing for a field read through a borrow.
-#[cfg(feature = "serde")]
 fn literal_hook(
     field_ty: &syn::Type,
     shape: &LiteralShape,
@@ -22262,18 +21717,6 @@ fn literal_hook(
             ::core::result::Result::Ok(read)
         }
     }
-}
-
-/// Nothing, where no `serde` reads a field.
-#[cfg(not(feature = "serde"))]
-fn literal_hook(
-    _field_ty: &syn::Type,
-    _shape: &LiteralShape,
-    _owned: &proc_macro2::TokenStream,
-    _validator: &proc_macro2::Ident,
-    _deserializer: &proc_macro2::Ident,
-) -> proc_macro2::TokenStream {
-    proc_macro2::TokenStream::new()
 }
 
 /// What a literal field adds to `validate()`: the validator run on the value, or on each item of a
@@ -22725,7 +22168,6 @@ fn unit_member_record(name: &str, written: &FieldDef) -> proc_macro2::TokenStrea
 /// untagged enum with a member serde writes as `()` says so, and an alias, a brand or a struct of
 /// one slot whose value is a name, written bare, answers as that name does. Nothing for any other
 /// item.
-#[cfg(feature = "serde")]
 fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
     let record = Ident::new(UNIT_MEMBER_RECORD, proc_macro2::Span::call_site());
     let value = if let Item::Enum(item_enum) = item {
@@ -22774,12 +22216,6 @@ fn unit_member_record_item(item: &Item) -> proc_macro2::TokenStream {
         let forwarded = unit_member_record(name, &def);
         return quote! { pub const #record: bool = #forwarded; };
     }
-    proc_macro2::TokenStream::new()
-}
-
-/// Nothing, in a build that reads no `#[serde(flatten)]`.
-#[cfg(not(feature = "serde"))]
-fn unit_member_record_item(_item: &Item) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::new()
 }
 
@@ -23238,7 +22674,7 @@ fn generate_ts_definition_method(
 /// member) and so cannot be joined to an object's keys: Zod's union refuses a payload that two of
 /// its members accept beside those keys. A generic enum publishes a factory of them, one list per
 /// filling. Nothing for a union a key tells apart.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn zod_published_members(
     item_name: &str,
     parameters: &[String],

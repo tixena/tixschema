@@ -8,14 +8,12 @@ use crate::field_type::{RangeKind, written_std_range, written_std_result};
 use crate::utils::claim_published_name;
 
 /// What a type that builds is refused with.
-#[cfg(feature = "serde")]
 const NONE: [&str; 0] = [];
 
 /// Each filling of a type parameter flattened or held beside a tag that serde writes as no object,
 /// or the lone slot's as an `Option`, in a member of `Manifest`: the type written, the type that
 /// flattens the parameter, the parameter, the key beside it, the filling, and what serde writes it
 /// as.
-#[cfg(feature = "serde")]
 const NON_OBJECT_FILLINGS: [(&str, &str, &str, &str, &str, WrittenAsNoObject); 12] = [
     (
         "Waybill<String>",
@@ -116,11 +114,9 @@ const NON_OBJECT_FILLINGS: [(&str, &str, &str, &str, &str, WrittenAsNoObject); 1
 ];
 
 /// What a refusal says of a parameter flattened or held beside the tag `kind`.
-#[cfg(feature = "serde")]
 const TAG: &str = " beside the tag `kind`";
 
 /// What serde writes a value filling a type parameter as, where the build refuses it.
-#[cfg(feature = "serde")]
 #[derive(Clone, Copy)]
 enum WrittenAsNoObject {
     /// An `Option`, held by the lone slot of the variant `Held` of `Waybill`.
@@ -136,7 +132,6 @@ enum WrittenAsNoObject {
     },
 }
 
-#[cfg(feature = "serde")]
 impl WrittenAsNoObject {
     /// What the refusal says of a value serde writes so.
     fn words(self) -> String {
@@ -252,7 +247,6 @@ fn a_range_written_by_its_bare_name_is_checked_wherever_it_is_written() {
             syn::parse_str(&format!("struct Holder {{ span: {field} }}")).unwrap();
         assert_eq!(identity_checks(&item).len(), checks, "for {field}");
     }
-    #[cfg(feature = "serde")]
     assert!(
         identity_checks(&syn::parse_quote! {
             struct Holder { #[serde(skip)] span: Range<u32>, kept: u32 }
@@ -362,7 +356,6 @@ fn a_range_of_usize_earns_no_refusal_under_swift_or_kotlin() {
     assert_eq!(messages, Vec::<String>::new());
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_range_is_refused_naming_the_field() {
     let messages = refusals(expanded(
@@ -381,14 +374,12 @@ fn a_flattened_range_is_refused_naming_the_field() {
 
 /// The refusals `#[model_schema()]` writes for `source`, a struct or an enum deriving both of
 /// serde's traits.
-#[cfg(feature = "serde")]
 fn refused(source: &str) -> Vec<String> {
     refusals(expanded(&format!(
         "#[derive(Serialize, Deserialize)] {source}"
     )))
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_beside_a_member_is_refused_naming_both() {
     let messages = refused(
@@ -406,7 +397,6 @@ fn a_map_flattened_beside_a_member_is_refused_naming_both() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_beside_a_flattened_struct_another_map_or_through_an_option_is_refused() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
@@ -449,7 +439,6 @@ fn a_map_flattened_beside_a_flattened_struct_another_map_or_through_an_option_is
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_alone_builds() {
     for source in [
@@ -465,7 +454,6 @@ fn a_map_flattened_alone_builds() {
 
 /// The README quotes the refusal as the build answers it: where `#[serde(flatten)]` of a map is
 /// described, and in the list of what an upgrade asks of a crate.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_map_beside_a_member_as_the_build_answers_it() {
     let messages = refused(
@@ -486,7 +474,6 @@ fn the_readme_states_the_refusal_of_a_map_beside_a_member_as_the_build_answers_i
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_declared_above_that_writes_a_map_is_refused_flattened_beside_a_member() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
@@ -526,7 +513,6 @@ fn a_type_declared_above_that_writes_a_map_is_refused_flattened_beside_a_member(
 
 /// A type declared below its holder is refused by no expansion, and read, at the holder, through
 /// the hidden constant of what it reads flattened, in checks the compiler evaluates.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_declared_below_its_holder_is_not_looked_into() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
@@ -559,7 +545,6 @@ fn a_type_declared_below_its_holder_is_not_looked_into() {
 }
 
 /// The refusal of a map flattened beside `id` in the field `field` of `holder`.
-#[cfg(feature = "serde")]
 fn beside_id(holder: &str, field: &str) -> String {
     format!(
         "model_schema: type `{holder}`: field `{field}`: `#[serde(flatten)]` cannot hold a map \
@@ -570,7 +555,6 @@ fn beside_id(holder: &str, field: &str) -> String {
 
 /// What `#[model_schema(default_types(T = ...))]` refuses `source` with, `filling` being what `T`
 /// is declared at.
-#[cfg(feature = "serde")]
 fn refused_with_default(filling: &str, source: &str) -> Vec<String> {
     refusals(super::super::exec_model_schema(
         syn::parse_str(&format!("default_types(T = {filling})")).unwrap(),
@@ -580,14 +564,12 @@ fn refused_with_default(filling: &str, source: &str) -> Vec<String> {
 
 /// What `#[model_schema(default_types(parameter = String))]` refuses `source` with, written as it
 /// is.
-#[cfg(feature = "serde")]
 fn generic(parameter: &str, source: &str) -> Vec<String> {
     generic_at(parameter, "String", source)
 }
 
 /// What `#[model_schema(default_types(parameter = filling))]` refuses `source` with, written as it
 /// is.
-#[cfg(feature = "serde")]
 fn generic_at(parameter: &str, filling: &str, source: &str) -> Vec<String> {
     refusals(super::super::exec_model_schema(
         syn::parse_str(&format!("default_types({parameter} = {filling})")).unwrap(),
@@ -597,19 +579,16 @@ fn generic_at(parameter: &str, filling: &str, source: &str) -> Vec<String> {
 
 /// What a generic `source` deriving both of serde's traits is refused with, its one type parameter
 /// `T` declared at `String`.
-#[cfg(feature = "serde")]
 fn refused_generic(source: &str) -> Vec<String> {
     generic("T", &format!("#[derive(Serialize, Deserialize)] {source}"))
 }
 
 /// What a generic `source` deriving both of serde's traits, which flattens its one type parameter
 /// `T` or holds it beside a tag, is refused with, `T` declared at `Plain`, a struct.
-#[cfg(feature = "serde")]
 fn refused_flattening(source: &str) -> Vec<String> {
     refused_with_default("Plain", source)
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_with_a_map_among_its_variants_is_refused_flattened_beside_a_member() {
     let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
@@ -634,7 +613,6 @@ fn an_untagged_enum_with_a_map_among_its_variants_is_refused_flattened_beside_a_
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_that_writes_no_map_as_its_own_entries_builds_flattened_beside_a_member() {
     let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
@@ -665,7 +643,6 @@ fn an_enum_that_writes_no_map_as_its_own_entries_builds_flattened_beside_a_membe
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_generic_type_written_as_its_argument_is_refused_flattened_beside_a_member_at_a_map() {
     let _: Vec<String> = refused("pub struct Plain { pub text: String }");
@@ -721,7 +698,6 @@ fn a_generic_type_written_as_its_argument_is_refused_flattened_beside_a_member_a
 
 /// The README quotes each refusal of a map that reaches a flattened member through an untagged
 /// enum or a generic brand as the build answers it.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answers_them() {
     let _: Vec<String> = refused("pub struct Captioned { pub name: String }");
@@ -754,7 +730,6 @@ fn the_readme_states_the_refusals_of_a_map_reached_another_way_as_the_build_answ
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_generic_type_declared_below_its_filling_is_not_looked_into() {
     assert_eq!(
@@ -770,7 +745,6 @@ fn a_generic_type_declared_below_its_filling_is_not_looked_into() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_that_flattens_a_map_beside_a_member_is_refused_under_each_tagging() {
     for tagging in [
@@ -797,7 +771,6 @@ fn a_variant_that_flattens_a_map_beside_a_member_is_refused_under_each_tagging()
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_alone_beside_a_tag_is_refused_naming_the_tag() {
     assert_eq!(
@@ -829,7 +802,6 @@ fn a_map_flattened_alone_beside_a_tag_is_refused_naming_the_tag() {
 
 /// The README quotes the refusal of a map beside a tag as the build answers it, as it quotes the
 /// refusal of a map beside a member.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_map_beside_a_tag_as_the_build_answers_it() {
     let messages = refused(
@@ -850,7 +822,6 @@ fn the_readme_states_the_refusal_of_a_map_beside_a_tag_as_the_build_answers_it()
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_alone_beside_a_tag_is_refused_whatever_it_holds() {
     assert_eq!(
@@ -891,7 +862,6 @@ fn a_map_flattened_alone_beside_a_tag_is_refused_whatever_it_holds() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
     let _: Vec<String> = refused("pub struct ShelfMark { pub label: String }");
@@ -936,7 +906,6 @@ fn a_map_flattened_alone_where_serde_writes_no_tag_beside_it_builds() {
 
 /// The refusal of the lone slot of the variant `Counted` of `holder`, written `slot`, under the tag
 /// `kind`.
-#[cfg(feature = "serde")]
 fn slot_beside_kind(holder: &str, slot: &str) -> String {
     format!(
         "model_schema: type `{holder}`: variant `Counted`, field `0`: `{slot}` writes a map, which \
@@ -946,7 +915,6 @@ fn slot_beside_kind(holder: &str, slot: &str) -> String {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_lone_slot_that_writes_a_map_is_refused_under_a_tag_alone() {
     assert_eq!(
@@ -996,7 +964,6 @@ fn a_lone_slot_that_writes_a_map_is_refused_under_a_tag_alone() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_lone_slot_that_writes_a_map_builds_where_serde_writes_no_tag_beside_it() {
     assert_eq!(
@@ -1015,7 +982,6 @@ fn a_lone_slot_that_writes_a_map_builds_where_serde_writes_no_tag_beside_it() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_lone_slot_declared_below_its_enum_is_not_looked_into() {
     assert_eq!(
@@ -1028,7 +994,6 @@ fn a_lone_slot_declared_below_its_enum_is_not_looked_into() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_in_a_lone_slot_under_a_tag_alone_is_refused_where_a_map_fills_it() {
     let _: Vec<String> = refused("pub struct Plain { pub text: String }");
@@ -1087,7 +1052,6 @@ fn a_type_parameter_in_a_lone_slot_under_a_tag_alone_is_refused_where_a_map_fill
 /// The refusal of `filling` filling the type parameter `parameter` that `flattens` flattens
 /// `beside` a key, in the place `subject` names, `named` where the filling is an externally tagged
 /// enum the advice names.
-#[cfg(feature = "serde")]
 fn filled_entry(
     subject: &str,
     flattens: &str,
@@ -1114,7 +1078,6 @@ fn filled_entry(
 /// tagged enum with a unit variant and one without, a struct, a plain enum, an untagged enum with a
 /// member over the first, a brand and an alias of it, and the generic enum that holds a parameter in
 /// the lone slot of a variant under a tag alone.
-#[cfg(feature = "serde")]
 fn declare_entry_fillings() {
     for declared in [
         "pub enum Pallet { Loose, Stacked { layers: u32 } }",
@@ -1150,7 +1113,6 @@ fn declare_entry_fillings() {
 /// serde writes a variant of as an entry of its name over `null` fills it: an externally tagged enum with a unit variant, itself,
 /// under an `Option` or through an alias or a brand, a plain enum, and an untagged enum with a
 /// member over one.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_beside_a_tag_is_refused_where_a_variant_written_as_an_entry_fills_it() {
     declare_entry_fillings();
@@ -1212,7 +1174,6 @@ fn a_type_parameter_beside_a_tag_is_refused_where_a_variant_written_as_an_entry_
 
 /// Every other filling of that parameter builds: an enum whose every variant holds a value, a struct,
 /// and a type declared below.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_beside_a_tag_builds_at_every_other_filling() {
     declare_entry_fillings();
@@ -1232,7 +1193,6 @@ fn a_type_parameter_beside_a_tag_builds_at_every_other_filling() {
 
 /// The refusal of `filling` filling the type parameter `parameter` that `flattens` flattens
 /// `beside` a key, in the place `subject` names, with a value serde writes as `written` says.
-#[cfg(feature = "serde")]
 fn filled_non_object(
     subject: &str,
     flattens: &str,
@@ -1248,7 +1208,6 @@ fn filled_non_object(
 }
 
 /// A value its schema describes by `keyword`, held beside the tag `kind`.
-#[cfg(feature = "serde")]
 const fn beside_kind(keyword: &'static str) -> WrittenAsNoObject {
     WrittenAsNoObject::Whole {
         beside_tag: true,
@@ -1260,7 +1219,6 @@ const fn beside_kind(keyword: &'static str) -> WrittenAsNoObject {
 /// serde writes as no object: a brand over text, a struct of one slot over a number, an alias of
 /// the brand, an untagged enum with a member over text, and a struct of one slot and an alias over
 /// an `Option` of a struct.
-#[cfg(feature = "serde")]
 fn declare_non_object_fillings() {
     declare_entry_fillings();
     for declared in [
@@ -1278,7 +1236,6 @@ fn declare_non_object_fillings() {
 /// A type parameter held by the lone slot of a variant under a tag alone is refused where a value
 /// serde writes as no object fills it, as the same value held there is refused, and where an
 /// `Option` fills it, of which serde refuses every write there.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_beside_a_tag_is_refused_where_a_value_written_as_no_object_fills_it() {
     declare_non_object_fillings();
@@ -1300,7 +1257,6 @@ fn a_type_parameter_beside_a_tag_is_refused_where_a_value_written_as_no_object_f
 
 /// A value serde writes as an object fills that parameter, and so do a holder's own parameter and a
 /// type declared below.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_beside_a_tag_builds_at_an_object() {
     declare_non_object_fillings();
@@ -1324,7 +1280,6 @@ fn a_type_parameter_beside_a_tag_builds_at_an_object() {
 /// The README quotes the refusal of a type parameter held by the lone slot of a variant under a tag
 /// alone filled at an `Option` as the build answers it, in its section and in the list of what an
 /// upgrade asks of a crate.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_filling_written_as_no_object_as_the_build_answers_it() {
     declare_non_object_fillings();
@@ -1346,7 +1301,6 @@ fn the_readme_states_the_refusal_of_a_filling_written_as_no_object_as_the_build_
 /// The README quotes the refusal of a type parameter beside a tag filled at an externally tagged
 /// enum with a unit variant as the build answers it, in its section and in the list of what an
 /// upgrade asks of a crate.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_filling_written_as_an_entry_as_the_build_answers_it() {
     assert_eq!(
@@ -1381,7 +1335,6 @@ fn the_readme_states_the_refusal_of_a_filling_written_as_an_entry_as_the_build_a
 /// no tag and no member: each shape refused there in a variant under a tag alone, or beside a
 /// member under any tagging, builds. Under `skip_serializing` alone serde still reads the variant,
 /// and under `skip_deserializing` alone still writes it: both are refused as before.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_serde_neither_writes_nor_reads_is_refused_nothing_it_holds() {
     assert_eq!(
@@ -1447,7 +1400,6 @@ fn a_variant_serde_neither_writes_nor_reads_is_refused_nothing_it_holds() {
 /// The README quotes the refusal of a lone slot that writes a map beside a tag as the build answers
 /// it: where an internally tagged enum is described, and in the list of what an upgrade asks of a
 /// crate.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_slot_that_writes_a_map_beside_a_tag_as_the_build_answers_it()
 {
@@ -1601,7 +1553,6 @@ fn a_bound_key_on_a_result_field_is_refused_naming_the_field() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_result_is_refused_naming_the_field() {
     let messages = refusals(expanded(
@@ -1619,7 +1570,6 @@ fn a_flattened_result_is_refused_naming_the_field() {
 }
 
 /// What every refusal of a key below a flattened member closes with, where it names `member`.
-#[cfg(feature = "serde")]
 fn keys_below(member: &str) -> String {
     format!(
         "serde reads every key below a flattened member as text, and reads no number and no `bool` \
@@ -1630,7 +1580,6 @@ fn keys_below(member: &str) -> String {
 
 /// The refusal of the member `field` flattens, where `held` names what it holds and `subject`
 /// leads it.
-#[cfg(feature = "serde")]
 fn keyed_by(subject: &str, field: &str, held: &str) -> String {
     format!(
         "model_schema: {subject}field `{field}`: `#[serde(flatten)]` cannot hold {held} \
@@ -1639,7 +1588,6 @@ fn keyed_by(subject: &str, field: &str, held: &str) -> String {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_with_a_key_serde_reads_no_entry_of_is_refused_naming_the_key() {
     let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(u32);");
@@ -1671,7 +1619,6 @@ fn a_map_flattened_with_a_key_serde_reads_no_entry_of_is_refused_naming_the_key(
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_that_flattens_a_map_keyed_by_a_number_is_refused_naming_the_variant() {
     assert_eq!(
@@ -1684,7 +1631,6 @@ fn a_variant_that_flattens_a_map_keyed_by_a_number_is_refused_naming_the_variant
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_declared_above_that_holds_a_map_keyed_by_a_number_is_refused_flattened() {
     for declared in [
@@ -1740,7 +1686,6 @@ fn a_type_declared_above_that_holds_a_map_keyed_by_a_number_is_refused_flattened
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_flattened_with_a_key_serde_reads_from_text_builds() {
     let _: Vec<String> = refused("pub enum Bearing { North, South }");
@@ -1776,7 +1721,6 @@ fn a_map_flattened_with_a_key_serde_reads_from_text_builds() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_declared_below_its_holder_is_not_looked_into_for_a_number_key() {
     assert_eq!(
@@ -1790,7 +1734,6 @@ fn a_type_declared_below_its_holder_is_not_looked_into_for_a_number_key() {
 }
 
 /// The README quotes the refusal as the build answers it.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_as_the_build_answers_it() {
     let _: Vec<String> =
@@ -1811,7 +1754,6 @@ fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_as_the_build_answers
 
 /// The refusal of `filling` filling the parameter `T` `reads` reads below a flattened member,
 /// as the key of a map where `keying`, and `filled_with` after "fills it".
-#[cfg(feature = "serde")]
 fn read_below(
     subject: &str,
     reads: &str,
@@ -1827,7 +1769,6 @@ fn read_below(
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_that_keys_a_map_below_a_flatten_is_refused_where_a_number_fills_it() {
     assert_eq!(
@@ -1884,7 +1825,6 @@ fn a_type_parameter_that_keys_a_map_below_a_flatten_is_refused_where_a_number_fi
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_read_below_a_flatten_is_refused_where_its_filling_holds_a_number_key() {
     assert_eq!(refused_generic("pub struct Inner<T> { pub held: T }"), NONE);
@@ -1911,7 +1851,6 @@ fn a_type_parameter_read_below_a_flatten_is_refused_where_its_filling_holds_a_nu
 /// The refusal of a member of a variant serde reads from the copy of the payload it buffers, where
 /// `subject` names the member and `held` what it holds: `tagged` for an enum under a tag alone, an
 /// untagged enum otherwise.
-#[cfg(feature = "serde")]
 fn buffered(subject: &str, held: &str, tagged: bool) -> String {
     let (enum_is, closing) = if tagged {
         (
@@ -1929,7 +1868,6 @@ fn buffered(subject: &str, held: &str, tagged: bool) -> String {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_or_one_under_a_tag_alone_with_a_map_keyed_by_a_number_is_refused() {
     let _: Vec<String> = refused("#[serde(transparent)] pub struct Fathoms(u32);");
@@ -1973,7 +1911,6 @@ fn an_untagged_enum_or_one_under_a_tag_alone_with_a_map_keyed_by_a_number_is_ref
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_serde_buffers_that_holds_a_type_declared_above_with_such_a_map_is_refused() {
     let _: Vec<String> = refused("pub struct Charted { pub marks: Vec<BTreeMap<i16, u8>> }");
@@ -2019,7 +1956,6 @@ fn an_enum_serde_buffers_that_holds_a_type_declared_above_with_such_a_map_is_ref
 
 /// The refusal of `filling` filling the parameter `T` that `reads` reads in an enum serde buffers,
 /// as the key of a map where `keying`, and `filled_with` after "fills it".
-#[cfg(feature = "serde")]
 fn read_buffered(subject: &str, reads: &str, keying: bool, filling: &str) -> String {
     let as_key = if keying { "as the key of a map " } else { "" };
     let filled_with = if keying {
@@ -2035,7 +1971,6 @@ fn read_buffered(subject: &str, reads: &str, keying: bool, filling: &str) -> Str
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_parameter_an_enum_serde_buffers_reads_is_refused_where_a_number_fills_it() {
     assert_eq!(
@@ -2086,7 +2021,6 @@ fn a_type_parameter_an_enum_serde_buffers_reads_is_refused_where_a_number_fills_
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_serde_reads_such_a_map_in_builds() {
     for source in [
@@ -2113,7 +2047,6 @@ fn an_enum_serde_reads_such_a_map_in_builds() {
 
 /// The lone slot of a variant under a tag alone that is a map keyed by a number is refused beside
 /// the tag, once.
-#[cfg(feature = "serde")]
 #[test]
 fn a_lone_map_beside_a_tag_is_refused_as_a_map_and_not_for_its_key() {
     let messages = refused("#[serde(tag = \"kind\")] pub enum Lined { Lines(BTreeMap<u32, u8>) }");
@@ -2125,7 +2058,6 @@ fn a_lone_map_beside_a_tag_is_refused_as_a_map_and_not_for_its_key() {
 }
 
 /// The README quotes the refusal as the build answers it.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_states_the_refusal_of_a_map_keyed_by_a_number_in_a_buffered_enum() {
     for source in [

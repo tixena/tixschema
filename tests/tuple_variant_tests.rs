@@ -2,12 +2,10 @@
 
 #[cfg(test)]
 #[cfg(feature = "typescript")]
-#[cfg(feature = "serde")]
 #[path = "tuple_variant_tests/tests.rs"]
 mod tests;
 
 #[cfg(test)]
 #[cfg(feature = "typescript")]
-#[cfg(feature = "serde")]
 #[path = "std_range_tests/documents.rs"]
 mod documents;

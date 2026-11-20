@@ -7,25 +7,25 @@
 #[path = "openapi_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "openapi_tests/folder_http_rest_transport.rs"]
 mod folder_http_rest_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "openapi_tests/search_http_rest_transport.rs"]
 mod search_http_rest_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "openapi_tests/content_http_rest_transport.rs"]
 mod content_http_rest_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "openapi_tests/plain_http_rest_transport.rs"]
 mod plain_http_rest_transport;
 
 // What a service generates reaches the trait, its module and, for the document, its registry
 // through `$crate`, this binary's root.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{
     ContentService, ContentServiceSchema, DocumentService, DocumentServiceSchema, FolderService,
     FolderServiceSchema, PlainService, RenamedMemberService, RenamedMemberServiceSchema,

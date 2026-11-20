@@ -1,14 +1,12 @@
 //! Tests of `#[model_schema]` on plain structs: the TypeScript, Zod and JSON Schema each publishes.
 
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::Value;
 use tixschema::model_schema;
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct BasicUser {
     age: u32,
     height: f32,
@@ -18,26 +16,22 @@ struct BasicUser {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EmptyStruct;
 
 /// A unit struct declaring only `Serialize` — proves the macro emits only the impl whose derive
 /// was present, not the pair.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Debug, Clone, PartialEq)]
 struct WriteOnlyMarker;
 
 /// The read-only twin of [`WriteOnlyMarker`].
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 struct ReadOnlyMarker;
 
 /// A field typed as a unit struct — proves the field position round-trips `{}` too, not just the
 /// bare type.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct HoldsMarker {
@@ -45,7 +39,6 @@ struct HoldsMarker {
     marker: EmptyStruct,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct UserWithOptionals {
@@ -59,7 +52,6 @@ struct UserWithOptionals {
     nickname: Option<String>,
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_basic_structs_constructible() {
     let basic = BasicUserDraft {
@@ -121,10 +113,7 @@ fn test_basic_struct_ts_definition() {
     assert!(ts_definition.contains("name: string;"));
     assert!(ts_definition.contains("age: number;"));
     assert!(ts_definition.contains("height: number;"));
-    #[cfg(feature = "serde")]
     let is_active = "is_active: boolean;";
-    #[cfg(not(feature = "serde"))]
-    let is_active = "isActive: boolean;";
     assert!(ts_definition.contains(is_active));
 
     assert!(!ts_definition.contains("export const BasicUser$Schema"));
@@ -147,10 +136,7 @@ fn test_basic_struct_zod_schema() {
     assert!(zod_schema.contains(
         "height: z.preprocess((held) => (held instanceof Number ? held.valueOf() : held), z.number().transform("
     ));
-    #[cfg(feature = "serde")]
     let is_active = "is_active: z.boolean()";
-    #[cfg(not(feature = "serde"))]
-    let is_active = "isActive: z.boolean()";
     assert!(zod_schema.contains(is_active));
 
     assert!(!zod_schema.contains("export type BasicUser"));
@@ -158,7 +144,6 @@ fn test_basic_struct_zod_schema() {
     assert!(!zod_schema.contains("age: number;"));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_optional_fields_json_schema() {
     let schema = UserWithOptionals::json_schema();
@@ -181,13 +166,13 @@ fn test_optional_fields_json_schema() {
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
 /// decides the wire, not the spelling, and none of these fields carries `ts_optional`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn omitted_member(name: &str, ts_type: &str) -> String {
     format!("{name}: {ts_type} | undefined;")
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_optional_fields_ts_definition() {
     let ts_definition = UserWithOptionals::ts_definition();
 
@@ -202,7 +187,7 @@ fn test_optional_fields_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn test_optional_fields_zod_schema() {
     let zod_schema = UserWithOptionals::zod_schema();
 
@@ -243,7 +228,7 @@ fn test_empty_struct_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_field_typed_as_a_unit_struct_ts_definition() {
     let ts_definition = HoldsMarker::ts_definition();
 
@@ -254,7 +239,7 @@ fn test_field_typed_as_a_unit_struct_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn test_field_typed_as_a_unit_struct_zod_schema() {
     let zod_schema = HoldsMarker::zod_schema();
 
@@ -265,7 +250,6 @@ fn test_field_typed_as_a_unit_struct_zod_schema() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_field_typed_as_a_unit_struct_round_trips_as_an_empty_object() {
     let value = HoldsMarkerDraft {
         label: "widget".to_owned(),
@@ -278,7 +262,6 @@ fn test_field_typed_as_a_unit_struct_round_trips_as_an_empty_object() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_empty_struct_writes_and_reads_an_empty_object() {
     assert_eq!(serde_json::to_string(&EmptyStructDraft).unwrap(), "{}");
     serde_json::from_str::<EmptyStruct>("{}").unwrap();
@@ -287,13 +270,11 @@ fn test_empty_struct_writes_and_reads_an_empty_object() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_serialize_only_unit_struct_writes_an_empty_object() {
     assert_eq!(serde_json::to_string(&WriteOnlyMarkerDraft).unwrap(), "{}");
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_deserialize_only_unit_struct_reads_an_empty_object() {
     serde_json::from_str::<ReadOnlyMarker>("{}").unwrap();
     serde_json::from_str::<ReadOnlyMarker>("null").unwrap_err();

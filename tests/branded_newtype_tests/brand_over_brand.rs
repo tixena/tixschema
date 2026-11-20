@@ -1,7 +1,6 @@
 //! A length or a pattern written on a field typed with a brand over a brand measures the text the
 //! innermost string holds, on every surface.
 
-#[cfg(feature = "serde")]
 mod measured_through_the_inner_brand {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

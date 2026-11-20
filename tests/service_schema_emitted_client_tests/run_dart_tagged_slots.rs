@@ -4,7 +4,7 @@
 //! written beside the tag, a unit variant of that enum as an entry of its name over `null`, and an
 //! `ObjectId` there as its `$oid` key.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

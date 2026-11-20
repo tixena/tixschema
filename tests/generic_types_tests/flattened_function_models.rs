@@ -9,7 +9,6 @@ use super::corrected::{Pinned, Position, position, with_its_keys};
 
 /// What the Rust read and the Zod schemas print for the holders of flattened types whose functions
 /// list the keys they are handed.
-#[cfg(feature = "serde")]
 pub const FLATTENED_POSITIONS: &str = "\
 a flattened type that reads its keys: read {\"dock\":\"north\",\"keys\":[\"tag\"],\"tag\":\"t\"}
 two flattened types that read their keys: read {\"dock\":\"north\",\"mark\":\"m\",\"seen\":[\"mark\",\"tag\"],\"keys\":[\"mark\",\"tag\"],\"tag\":\"t\"}
@@ -57,7 +56,6 @@ pub fn with_its_seen(mut payload: Value) -> Value {
 }
 
 /// The holders of flattened types whose functions list the keys they are handed, as positions.
-#[cfg(feature = "serde")]
 pub fn flattened_positions() -> Vec<Position> {
     vec![
         position::<Pinned>(

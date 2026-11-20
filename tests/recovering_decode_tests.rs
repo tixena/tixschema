@@ -10,6 +10,5 @@ tixschema::decode_with_foundation!();
 tixschema::mongodb_foundation!();
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "recovering_decode_tests/tests.rs"]
 mod tests;

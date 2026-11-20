@@ -6,16 +6,11 @@
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::kotlin_flattened::FLATTENED;
-#[cfg(feature = "serde")]
 use super::kotlin_inner::INNER;
-#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
-#[cfg(feature = "serde")]
 use super::read::plain_enum;
 use super::read::refusal;
-#[cfg(feature = "serde")]
 use super::read::{
     DECODED, brand_companion, brand_serializers, kept_inline, mapped, mapped_over_a_brand,
 };
@@ -24,9 +19,7 @@ use super::read::{
     kept_draft, to_valid_free, valid_class_over, valid_unjudged, valid_unjudged_over,
 };
 use super::read::{held, walked_issues, with_of};
-#[cfg(feature = "serde")]
 use super::read::{to_valid, valid_class, valid_class_with};
-#[cfg(feature = "serde")]
 use super::tests::{
     audit_kotlin, correlation_id_kotlin, date_value_kotlin, dynamic_value_kotlin,
     external_tagged_kotlin, simple_choice_kotlin, status_kotlin, window_error_kotlin,
@@ -36,7 +29,6 @@ use super::tests::{
 };
 
 /// What a type with no rule answers.
-#[cfg(feature = "serde")]
 const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
      List<String> = validate()";
 
@@ -45,11 +37,9 @@ const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validatio
 const FALLBACK: &str = "private fun Any?.validationIssues(): List<String> = emptyList()";
 
 /// What a string answers where a declared type is asked for its text.
-#[cfg(feature = "serde")]
 const TEXT: &str = "private fun String.kotlinSchemaText(): String = this";
 
 /// What a string and a collection answer where a declared type is asked for its length.
-#[cfg(feature = "serde")]
 const LENGTH: &str = "private fun String.kotlinSchemaLength(): Int = codePointCount(0, length); \
                       private fun Collection<*>.kotlinSchemaLength(): Int = size";
 
@@ -92,25 +82,21 @@ pub struct Later {
 }
 
 /// A brand over a string, which answers its text.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Slug(String);
 
 /// A brand over a brand: it answers through the brand it holds.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Badge(Slug);
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 pub type Title = String;
 
 /// A bound on a brand declared below, on one declared above and on an alias of a string.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Entry {
@@ -122,7 +108,6 @@ pub struct Entry {
     pub titled: Title,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -181,7 +166,6 @@ fn parcel() -> Parcel {
 
 /// The statement that holds the text the declared type `read` answers to `least` characters,
 /// under `place`.
-#[cfg(feature = "serde")]
 fn asked_statement(read: &str, place: &str, least: u32) -> String {
     let counted = format!("{read}.kotlinSchemaLength()");
     format!(
@@ -192,7 +176,6 @@ fn asked_statement(read: &str, place: &str, least: u32) -> String {
 
 /// What a member typed with a declared type adds after its own bound: the type's `validate()`,
 /// each message under the member's key.
-#[cfg(feature = "serde")]
 fn held_statement(read: &str) -> String {
     format!(
         "violations.addAll({read}.validationIssues().map {{ kotlinSchemaUnder(\"{read}\", it) }})"
@@ -244,9 +227,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
         serde_json::to_value([HaulDraft::Held, HaulDraft::Split("a".to_owned(), held)]).unwrap()[0],
         serde_json::json!({ "kind": "Held" })
     );
-    #[cfg(feature = "serde")]
     let titled: Title = "t".to_owned();
-    #[cfg(feature = "serde")]
     assert_eq!(
         serde_json::to_value((
             Badge::new(Slug::new("b".to_owned()).unwrap()).unwrap(),
@@ -266,10 +247,7 @@ fn every_fixture_is_written_as_serde_writes_it() {
 /// under the member and a slot's under the variant and its position.
 #[test]
 fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
-    #[cfg(feature = "serde")]
     let (codes, held_slots) = ("itemCodeList", "held");
-    #[cfg(not(feature = "serde"))]
-    let (codes, held_slots) = ("item_code_list", "Split");
     let parcel_messages = [
         format!("'{codes}': duplicate item code x"),
         "'label': too short: minimum length is 1, got 0".to_owned(),
@@ -286,7 +264,6 @@ fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
         ManifestDraft { parcel: parcel() }.validation_issues(),
         under("parcel")
     );
-    #[cfg(feature = "serde")]
     assert_eq!(
         EntryDraft {
             late: LateSlug::new("l".to_owned()).unwrap(),
@@ -322,7 +299,6 @@ fn rust_holds_each_fixture_to_every_rule_the_kotlin_validate_holds() {
 
 /// The model of the shared table: each member in the order declared, its bound, what it holds and
 /// its checks, then the type's check.
-#[cfg(feature = "serde")]
 #[test]
 fn a_class_runs_each_members_rules_and_then_its_own_check() {
     assert_eq!(
@@ -395,7 +371,6 @@ fn a_holder_of_a_type_declared_below_writes_what_a_type_with_no_validate_answers
 /// A brand over a string answers its text with a member, and a brand over a brand through the
 /// brand it holds; a map keyed by the brand over a brand throws the refusal of the brand it holds
 /// under the key's text.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_answers_its_text() {
     assert_eq!(
@@ -428,7 +403,6 @@ fn a_brand_answers_its_text() {
 
 /// A holder asks a declared type for its text and answers for a string itself, so a brand
 /// declared above, one declared below and an alias of a string are each measured.
-#[cfg(feature = "serde")]
 #[test]
 fn a_bound_on_a_declared_type_measures_the_text_the_type_answers() {
     assert_eq!(
@@ -471,7 +445,6 @@ fn a_slot_of_a_variant_of_several_is_named_by_the_variant_and_its_position() {
 }
 
 /// Under a tag and a content key, the same slot is named by the content key and its position.
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_of_a_variant_of_several_is_named_by_the_content_key_and_its_position() {
     let haul = super::tests::renumbered(&haul_kotlin::kotlin_definition());
@@ -498,7 +471,6 @@ fn every_shape_carries_validate() {
                 )
             ),
         ),
-        #[cfg(feature = "serde")]
         (
             super::tests::renumbered(&correlation_id_kotlin::kotlin_definition()),
             format!(
@@ -591,7 +563,6 @@ fn a_tuple_struct_over_a_parameter_and_a_holder_of_a_tuple_carry_validate() {
 }
 
 /// A plain enum carries the method after its members.
-#[cfg(feature = "serde")]
 #[test]
 fn a_plain_enum_carries_validate() {
     assert_eq!(
@@ -611,7 +582,6 @@ fn a_plain_enum_carries_validate() {
 }
 
 /// A sealed interface declares the method, and each variant overrides it, under every tagging.
-#[cfg(feature = "serde")]
 #[test]
 fn a_sealed_interface_declares_validate_and_each_variant_overrides_it() {
     let overridden = format!("{{ override {NO_ISSUES} }}");
@@ -669,7 +639,6 @@ fn a_sealed_interface_declares_validate_and_each_variant_overrides_it() {
 }
 
 /// A flattened member writes no key, so what it reports is written under no name.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_member_is_reported_under_no_name() {
     let audit = super::tests::renumbered(&audit_kotlin::kotlin_definition());
@@ -688,7 +657,6 @@ fn a_flattened_member_is_reported_under_no_name() {
 /// The serializer the emitter writes for a struct with a flattened member and for a tuple struct
 /// is its unjudged one, a model it holds read unjudged, and the type's own serializer follows it.
 /// The struct refuses a key neither its own member nor the struct it flattens reads.
-#[cfg(feature = "serde")]
 #[test]
 fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one() {
     for (definition, written, own) in [
@@ -774,7 +742,6 @@ fn the_serializer_the_emitter_writes_for_each_struct_shape_is_its_unjudged_one()
 }
 
 /// `written`, a serializer the emitter writes, behind the private functions its read calls.
-#[cfg(feature = "serde")]
 fn with_helpers(written: &str) -> String {
     let pathed = written.contains("kotlinSchemaAt(")
         || written.contains("kotlinSchemaInner(")
@@ -798,7 +765,6 @@ fn with_helpers(written: &str) -> String {
 
 /// The serializer the emitter writes for an enum under each tagging is its unjudged one, and the
 /// type's own serializer follows it.
-#[cfg(feature = "serde")]
 #[test]
 fn the_serializer_the_emitter_writes_for_each_enum_shape_is_its_unjudged_one() {
     for (definition, written, own) in [

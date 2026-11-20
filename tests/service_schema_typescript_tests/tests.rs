@@ -1,8 +1,6 @@
 //! A service whose operations cover every input shape and every outcome, read off the TypeScript
 //! it publishes and off a bundle written to a file the way a consuming codebase writes one.
 
-#![cfg(feature = "serde")]
-
 /// The same bundle, put through a real TypeScript compiler where one is reachable.
 #[cfg(feature = "typescript")]
 #[path = "type_check.rs"]

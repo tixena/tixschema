@@ -1,6 +1,5 @@
 //! A key written on a list measures the list: `minLength` and `maxLength` count its items.
 
-#[cfg(feature = "serde")]
 mod a_key_on_a_list {
     use alloc::collections::{BTreeSet, BinaryHeap, VecDeque};
     use serde::{Deserialize, Serialize};
@@ -687,7 +686,6 @@ mod a_key_on_a_list {
 
 /// A key written on a field typed with the alias of a list counts the list, declared above or below
 /// the field's type.
-#[cfg(feature = "serde")]
 mod a_key_on_an_alias_of_a_list {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

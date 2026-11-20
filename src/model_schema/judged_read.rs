@@ -11,10 +11,8 @@
 //! A type that names a `preprocess`, on itself or on a member, has the same read written for it:
 //! each function is called on the payload inside the unjudged read, ahead of what it corrects.
 
-#[cfg(feature = "serde")]
 mod readers;
 
-#[cfg(feature = "serde")]
 use core::cell::RefCell;
 use core::mem;
 use core::slice;
@@ -26,18 +24,14 @@ use syn::punctuated::Punctuated;
 use syn::{Attribute, DeriveInput, Field, Fields, ItemEnum, ItemStruct, LitStr, Token};
 
 use super::preprocess::{self, Named};
-#[cfg(feature = "serde")]
 use super::wrapped_argument;
-#[cfg(feature = "serde")]
 use super::{
     ConstraintLeaf, ConstraintWrap, HeldEnd, constrained_shape, helper_name_stem, list_hook_header,
     map_value_argument, needs_injected_default, reads_through,
 };
 use super::{prefixed_guard_message, refusal_from_violations, sole_type_argument};
 use crate::features::model_schema_prop::FunctionName;
-#[cfg(feature = "serde")]
 use crate::features::serde::has_serde_read_hook;
-#[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_key_omission;
 use crate::features::serde::read_bounds::{
     ReadBounds, read_bounds, undeclared_bounds, written_lifetimes,
@@ -46,7 +40,6 @@ use crate::features::serde::{
     derive_reads_a_default, derives_deserialize, derives_serialize, read_hook, serde_conversion,
 };
 use crate::field_type::is_ownership_wrapper;
-#[cfg(feature = "serde")]
 use crate::field_type::{
     RESULT_ARMS, RangeKind, get_field_def, is_map_wrapper, is_refused_sequence_wrapper,
     is_sequence_wrapper, written_std_range, written_std_result,
@@ -54,15 +47,12 @@ use crate::field_type::{
 use crate::utils::{to_snake_case, unclaimed_parameter, written_names, written_type};
 
 /// The read the recovering decode of a type lists from, which every type under the flag has.
-#[cfg(feature = "serde")]
 const LISTED_READ: &str = "decode_with_read_unjudged";
 
 /// The name of the trait that answers the unjudged read of a type that has none of its own.
-#[cfg(feature = "serde")]
 const FALLBACK: &str = "ReadUnjudged";
 
 /// The name of the type a hook reads a model as, to read it unjudged.
-#[cfg(feature = "serde")]
 const HELD: &str = "Unjudged";
 
 /// What a brand's own bound answers of a value, the checks the brand names apart: the value a
@@ -105,7 +95,6 @@ enum Judged {
 #[derive(Default)]
 struct Hooked {
     /// The number of type arguments of each generic model a hook reads through readers.
-    #[cfg(feature = "serde")]
     arities: Vec<usize>,
     /// What answers the reads the hooks write for a type that has none of its own.
     fallbacks: TokenStream,
@@ -138,7 +127,6 @@ struct Corrects {
 
 /// One model a member holds, as its hook reads it: the model, and the name of the type the read
 /// writes where the member's type writes the model.
-#[cfg(feature = "serde")]
 struct HookLeaf {
     held_as: String,
     leaf: String,
@@ -148,7 +136,6 @@ struct HookLeaf {
 /// as text: the item's read is written after its members are walked, and a token outlives no
 /// expansion. Each text writes `Self` where the member does: the item's name is written out as the
 /// hook is.
-#[cfg(feature = "serde")]
 struct MemberHook {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
     back: String,
@@ -169,7 +156,6 @@ struct MemberHook {
 }
 
 /// Where a member sits in its item, as its hook is written and hung.
-#[cfg(feature = "serde")]
 pub(super) struct HookPlace<'item> {
     /// Whether the container answers a missing key itself, with `#[serde(default)]`.
     pub container_defaulted: bool,
@@ -181,7 +167,6 @@ pub(super) struct HookPlace<'item> {
 
 /// One bound the item, or its read, holds a type to: `bounded: bound`, under the `for<..>` the
 /// predicate binds, with `Self` written out.
-#[cfg(feature = "serde")]
 struct Predicate {
     binder: TokenStream,
     /// Whether it names a lifetime the item declares, which no hook declares.
@@ -196,7 +181,6 @@ struct Predicate {
 
 /// What a hook of the item being expanded is written with, beside its member: the item's name
 /// where a member writes `Self`, its parameters, and the bounds the item and its read declare.
-#[cfg(feature = "serde")]
 pub struct HookScope {
     /// Whether the item is read at `'static`, which no hook generic over `'de` reads at.
     at_static: bool,
@@ -214,7 +198,6 @@ pub struct HookScope {
 
 /// One hook as it is written: the member's texts with `Self` written out, and the parameters and
 /// bounds of the hook and of each type it reads a model as.
-#[cfg(feature = "serde")]
 struct HookWritten {
     back: TokenStream,
     leaves: Vec<LeafWritten>,
@@ -225,7 +208,6 @@ struct HookWritten {
 }
 
 /// The type a hook reads one model as, as it is written.
-#[cfg(feature = "serde")]
 struct LeafWritten {
     held_as: Ident,
     leaf: TokenStream,
@@ -239,7 +221,6 @@ struct LeafWritten {
 }
 
 /// The read of a member's type with every model it holds read unjudged.
-#[cfg(feature = "serde")]
 struct Reached {
     /// The member's value, built back from `held_0`, what `read_as` was read into.
     back: TokenStream,
@@ -249,7 +230,6 @@ struct Reached {
     read_as: syn::Type,
 }
 
-#[cfg(feature = "serde")]
 thread_local! {
     /// The hooks of the item being expanded, in the order its members were walked.
     static MEMBER_HOOKS: RefCell<Vec<MemberHook>> = const { RefCell::new(Vec::new()) };
@@ -291,7 +271,6 @@ impl Corrects {
     }
 }
 
-#[cfg(feature = "serde")]
 impl MemberHook {
     /// The function the member is read through: its type with each model it holds read through
     /// that model's `unjudged` read, from the payload the member's own functions corrected where
@@ -396,7 +375,6 @@ impl MemberHook {
     }
 }
 
-#[cfg(feature = "serde")]
 impl Predicate {
     /// `bounded: bound` under `binder`, `written` in that order, with `named` written where they
     /// write `Self`. `parameters` and `lifetimes` are the item's.
@@ -459,7 +437,6 @@ impl Predicate {
     }
 }
 
-#[cfg(feature = "serde")]
 impl HookScope {
     /// The item's type parameters `ty` names, or `None` where a bound of the item or of its read
     /// ties one of them to a parameter `ty` does not name, or to a lifetime of the item, or where
@@ -674,7 +651,6 @@ impl HookScope {
 }
 
 /// The type `written` reads a model as, and its `Deserialize`, which answers with `held_leaf`.
-#[cfg(feature = "serde")]
 fn held_type(written: &LeafWritten, held_leaf: &TokenStream, reader: &Ident) -> TokenStream {
     let LeafWritten {
         held_as,
@@ -703,7 +679,6 @@ fn held_type(written: &LeafWritten, held_leaf: &TokenStream, reader: &Ident) -> 
 /// Collects into `named` each of `declared` that `tokens` writes as a type, once, and answers
 /// whether each is written where a type is inferred from it: not as the start of a longer path,
 /// and not as a qualified type.
-#[cfg(feature = "serde")]
 fn parameters_in(tokens: TokenStream, declared: &[String], named: &mut Vec<String>) -> bool {
     let written: Vec<TokenTree> = tokens.into_iter().collect();
     let mut inferred = true;
@@ -740,7 +715,6 @@ fn parameters_in(tokens: TokenStream, declared: &[String], named: &mut Vec<Strin
 }
 
 /// Collects into `named` the name of each lifetime `tokens` writes.
-#[cfg(feature = "serde")]
 fn lifetimes_in(tokens: TokenStream, named: &mut Vec<String>) {
     let mut quoted = false;
     for token in tokens {
@@ -759,7 +733,6 @@ fn lifetimes_in(tokens: TokenStream, named: &mut Vec<String>) {
 
 /// `predicates` written one per bounded type, each bound once: a bound written twice, or a type
 /// bounded in two predicates, is one clippy reports in the consumer's crate.
-#[cfg(feature = "serde")]
 fn merged<'item>(predicates: impl Iterator<Item = &'item Predicate>) -> Vec<TokenStream> {
     let mut grouped: Vec<(TokenStream, Vec<&TokenStream>)> = Vec::new();
     for predicate in predicates {
@@ -788,7 +761,6 @@ fn merged<'item>(predicates: impl Iterator<Item = &'item Predicate>) -> Vec<Toke
 }
 
 /// Forgets every hook recorded: an item's read holds only that item's own.
-#[cfg(feature = "serde")]
 pub fn forget_member_hooks() {
     MEMBER_HOOKS.with(|held| held.borrow_mut().clear());
 }
@@ -813,13 +785,11 @@ fn corrected_read(unjudged: &Ident) -> Ident {
 }
 
 /// The binding a level of [`Reached::back`] holds its value under.
-#[cfg(feature = "serde")]
 fn held_binding(depth: usize) -> Ident {
     Ident::new(&format!("held_{depth}"), Span::call_site())
 }
 
 /// `ty` with its type argument at `position` written `argument`.
-#[cfg(feature = "serde")]
 fn with_argument(ty: &syn::TypePath, position: usize, argument: &syn::Type) -> syn::Type {
     let mut written = ty.clone();
     if let Some(last) = written.path.segments.last_mut()
@@ -846,7 +816,6 @@ fn with_argument(ty: &syn::TypePath, position: usize, argument: &syn::Type) -> s
 /// How a value of type `ty` is read with the model it holds unjudged, the model read as the type
 /// `held_as`: a declared type itself, or one under `Option`, `Vec`, `Box` and the values of a map.
 /// `None` for any other type.
-#[cfg(feature = "serde")]
 fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
     let written = written_type(ty);
     let syn::Type::Path(named) = written else {
@@ -874,7 +843,6 @@ fn reached(ty: &syn::Type, depth: usize, held_as: &Ident) -> Option<Reached> {
 /// the walk reads through `wraps` and ends on `end`: one model, the arms of a `Result` or the
 /// positions of a tuple. Each model is read as a type named after `taken`, the names written
 /// beside it, which it joins. `None` where `ty` writes another wrapper than the walk reads.
-#[cfg(feature = "serde")]
 fn walked_read(
     ty: &syn::Type,
     depth: usize,
@@ -902,7 +870,6 @@ fn walked_read(
 }
 
 /// [`walked_read`] of a type written as a path.
-#[cfg(feature = "serde")]
 fn walked_path(
     named: &syn::TypePath,
     depth: usize,
@@ -949,7 +916,6 @@ fn walked_path(
 }
 
 /// [`walked_read`] of a fixed array, which the walk reads as a sequence.
-#[cfg(feature = "serde")]
 fn walked_array(
     array: &syn::TypeArray,
     depth: usize,
@@ -973,7 +939,6 @@ fn walked_array(
 
 /// [`walked_read`] of a tuple the walk ends on: each position the walk reaches is read as the
 /// walk below it says, and every other position as it is written.
-#[cfg(feature = "serde")]
 fn walked_tuple(
     tuple: &syn::TypeTuple,
     depth: usize,
@@ -1016,7 +981,6 @@ fn walked_tuple(
 
 /// The std `Result` `named` read with the models `arms` walk to in either arm read unjudged, built
 /// back arm by arm. An arm no walk reaches is read as it is written.
-#[cfg(feature = "serde")]
 fn result_read(
     named: &syn::TypePath,
     depth: usize,
@@ -1059,7 +1023,6 @@ fn result_read(
 
 /// The wrapper `named` is, the position of the argument it holds a value of, and that argument,
 /// or `None` for a type that is no wrapper a hook reads through.
-#[cfg(feature = "serde")]
 fn wrapped_by<'ty>(
     named: &'ty syn::TypePath,
     arguments: &'ty syn::AngleBracketedGenericArguments,
@@ -1087,7 +1050,6 @@ fn wrapped_by<'ty>(
 
 /// [`wrapped_by`], and the wrappers the walk of `validate()` reads that the recovering decode does
 /// not: an `Rc` and an `Arc`, and every list but a `Vec`.
-#[cfg(feature = "serde")]
 fn walked_wrapper<'ty>(
     named: &'ty syn::TypePath,
     arguments: &'ty syn::AngleBracketedGenericArguments,
@@ -1109,7 +1071,6 @@ fn walked_wrapper<'ty>(
 
 /// The value of `named`, the wrapper `wrap` over its argument at `position`, read as `below`
 /// reads that argument and built back from it.
-#[cfg(feature = "serde")]
 fn held_under(
     named: &syn::TypePath,
     wrap: ConstraintWrap,
@@ -1162,7 +1123,6 @@ fn held_under(
 
 /// The range read as `held`, its bounds each read into `inner`, built back from what `value` makes
 /// of each.
-#[cfg(feature = "serde")]
 fn range_built_back(
     kind: RangeKind,
     held: &Ident,
@@ -1199,7 +1159,6 @@ fn range_built_back(
 /// the same member, which is what judges what the hook leaves unjudged. Answers whether the
 /// member was given one. The read writes it generic over the item's parameters the member names,
 /// or leaves the member to its own `Deserialize` where the item's bounds keep it from one.
-#[cfg(feature = "serde")]
 pub(super) fn hook_member(field: &Field, shape: &super::HeldShape, place: &HookPlace<'_>) -> bool {
     if parse_serde_key_omission(&field.attrs).skips_deserializing
         || has_serde_read_hook(&field.attrs)
@@ -1467,7 +1426,6 @@ fn remote_definition(
 /// What the `unjudged` read of a type answers where the type has none of its own: serde's read
 /// of it. An inherent function is found ahead of a trait's, so a type that has one answers with
 /// its own.
-#[cfg(feature = "serde")]
 fn held_fallback(named: &Ident, unjudged: &Ident) -> TokenStream {
     quote! {
         trait #named<'de>: serde::Deserialize<'de> {
@@ -1490,7 +1448,6 @@ fn reader_parameter(input: &DeriveInput) -> Ident {
 /// What the hooks recorded for the item being expanded add to its read, each model read through
 /// its own `unjudged` read, from the payload the member's own functions corrected. A hook the
 /// item's `bounds` keep from being written is left out, and its member read as serde reads it.
-#[cfg(feature = "serde")]
 fn unjudged_hooks(
     input: &DeriveInput,
     bounds: &ReadBounds,
@@ -1540,26 +1497,11 @@ fn unjudged_hooks(
 /// What answers the reads the hooks of an item's read write, where the type they read has none of
 /// its own: its unjudged read, where they call `unjudged`, and the read of a generic model by
 /// readers, for each of `arities`.
-#[cfg(feature = "serde")]
 fn hook_fallbacks(written: &[String], unjudged: Option<&Ident>, arities: &[usize]) -> TokenStream {
     let fallback =
         unjudged.map(|read| held_fallback(&unclaimed_parameter(FALLBACK, written), read));
     let by_readers = readers::reader_fallbacks(arities);
     quote! { #fallback #by_readers }
-}
-
-/// No hook is recorded in a build that reads no serde attribute: a model below judges itself.
-#[cfg(not(feature = "serde"))]
-fn unjudged_hooks(
-    _input: &DeriveInput,
-    _bounds: &ReadBounds,
-    _unjudged: &Ident,
-    _reader: &Ident,
-    _written: &[String],
-    _corrects: &Corrects,
-    _left_out: &dyn Fn(Option<&str>, usize) -> bool,
-) -> Hooked {
-    Hooked::default()
 }
 
 /// The members of `input`, each with its place and the name of the variant that holds it.
@@ -1619,7 +1561,6 @@ fn reads_a_missing_key(field: &Field) -> bool {
 
 /// What the hook of a list held to a count is declared with, where `path` names that hook of
 /// `field`: its type parameters, the type it reads and the bounds it holds that type to.
-#[cfg(feature = "serde")]
 fn counted_list_header(
     field: &Field,
     key: &str,
@@ -1643,15 +1584,6 @@ fn counted_list_header(
         read.clone(),
         quote! { #read: serde::Deserialize<'de>, #(#held_to)* #counted },
     ))
-}
-
-/// No list is held to a count in a build that reads no serde attribute.
-#[cfg(not(feature = "serde"))]
-const fn counted_list_header(
-    _field: &Field,
-    _key: &str,
-) -> Option<(TokenStream, TokenStream, TokenStream)> {
-    None
 }
 
 /// The hook a member that names `functions` is read through where the macro hangs no other on
@@ -1985,7 +1917,6 @@ fn written_read(
 /// What the unjudged read of the unit struct `name` is written as where the struct names a
 /// `preprocess`: `model_schema_read_unjudged`, which calls each function on the payload and reads
 /// what they answer through the function it is answered beside, and that function's name.
-#[cfg(feature = "serde")]
 pub fn unit_struct_correction(name: &Ident) -> Option<(TokenStream, Ident)> {
     let corrects = Corrects::of(&[name.to_string()]);
     let own = &corrects.named.own;
@@ -2077,7 +2008,6 @@ pub fn of_struct(item: &mut ItemStruct, publishes_validate: bool) -> TokenStream
 /// `model_schema_issues_with{n}` hands to the check of it, and its own unjudged read otherwise,
 /// `own_read` where the macro writes one. A brand of neither has none: what a holder calls of it
 /// answers with the brand's own `Deserialize`.
-#[cfg(feature = "serde")]
 fn held_whole(input: &DeriveInput, own_read: bool) -> TokenStream {
     let walks = holds_a_parameter(input);
     if !(walks || own_read) {
@@ -2086,14 +2016,7 @@ fn held_whole(input: &DeriveInput, own_read: bool) -> TokenStream {
     readers::by_readers(input, None, own_read, walks).0
 }
 
-/// No read is handed a reader in a build that reads no serde attribute.
-#[cfg(not(feature = "serde"))]
-fn held_whole(_input: &DeriveInput, _own_read: bool) -> TokenStream {
-    TokenStream::new()
-}
-
 /// Whether a member of `input`, a brand, is one of its type parameters, written alone.
-#[cfg(feature = "serde")]
 fn holds_a_parameter(input: &DeriveInput) -> bool {
     let parameters: Vec<String> = input
         .generics
@@ -2139,23 +2062,12 @@ pub fn drafted_struct(item: &mut ItemStruct, publishes_validate: bool, valid: &I
 
 /// The read of `input` with a reader handed in for each of its type parameters, and that of its
 /// valid type `valid`, where it has one. `own_read` says the macro writes the item's unjudged read.
-#[cfg(feature = "serde")]
 fn read_by(
     input: &DeriveInput,
     valid: Option<&Ident>,
     own_read: bool,
 ) -> (TokenStream, TokenStream) {
     readers::by_readers(input, valid, own_read, true)
-}
-
-/// No read is handed a reader in a build that reads no serde attribute.
-#[cfg(not(feature = "serde"))]
-fn read_by(
-    _input: &DeriveInput,
-    _valid: Option<&Ident>,
-    _own_read: bool,
-) -> (TokenStream, TokenStream) {
-    (TokenStream::new(), TokenStream::new())
 }
 
 /// [`drafted_struct`] for an enum.
@@ -2201,7 +2113,6 @@ pub fn drafted_enum(item: &mut ItemEnum, publishes_validate: bool, valid: &Ident
 /// `decode_with_read_unjudged`, the read the recovering decode of `input` lists from: the type's
 /// own unjudged read where it publishes `validate()`, and serde's where it publishes none. Every
 /// holder of a model publishes `validate()`, so that read holds nothing judged.
-#[cfg(feature = "serde")]
 pub fn listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, false)
 }
@@ -2209,14 +2120,12 @@ pub fn listed_read(input: &DeriveInput) -> TokenStream {
 /// [`listed_read`] of a brand that carries a bound, which no walk lists: the brand's unjudged
 /// read, refused where [`BOUND_ALONE`] answers a violation of the value read. The checks the
 /// brand names are listed beside it, from the value this read answers.
-#[cfg(feature = "serde")]
 pub fn bounded_listed_read(input: &DeriveInput) -> TokenStream {
     delegated_listed_read(input, true)
 }
 
 /// `decode_with_read_unjudged` of a type whose own unjudged read is the one to list from, refused
 /// where the type is `bounded` and [`BOUND_ALONE`] answers a violation of the value read.
-#[cfg(feature = "serde")]
 fn delegated_listed_read(input: &DeriveInput, bounded: bool) -> TokenStream {
     let (listed, unjudged) = (
         Ident::new(LISTED_READ, Span::call_site()),
@@ -2272,7 +2181,6 @@ fn delegated_listed_read(input: &DeriveInput, bounded: bool) -> TokenStream {
 
 /// The name of the read the recovering decode lists from: a type's unjudged read, which reads
 /// what it holds unjudged.
-#[cfg(feature = "serde")]
 fn listed() -> Ident {
     Ident::new(UNJUDGED_READ, Span::call_site())
 }
@@ -2282,7 +2190,6 @@ fn listed() -> Ident {
 /// type declared beside the function, generic over the parameters of the item `scope` describes
 /// that the model names. `None` where a hook would read no model in `ty`, or `scope` keeps the
 /// read from being written for it.
-#[cfg(feature = "serde")]
 pub fn listed_reader(ty: &syn::Type, scope: &HookScope) -> Option<TokenStream> {
     let written_ty = naming_the_type(ty.to_token_stream(), &scope.named);
     if written_ty.to_string().contains('\'') {

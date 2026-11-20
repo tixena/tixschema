@@ -298,7 +298,6 @@ fn an_enum_is_read_on_a_copy_that_keeps_what_serde_reads_of_each_variant() {
 
 /// A member of an untagged enum that holds a brand reads it with no judgement and asks it for no
 /// bound, as a struct's member does: serde chooses the variant by shape alone.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_of_an_untagged_enum_reads_a_brand_by_shape_alone() {
     let chosen = expansion_under(
@@ -337,7 +336,6 @@ fn a_member_of_an_untagged_enum_reads_a_brand_by_shape_alone() {
 /// A member that names one of the item's type parameters is read through a hook generic over
 /// exactly the parameters it names, every bound in its `where` clause, each once, and the type the
 /// model is read as declares only the parameters the model names.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_that_names_a_type_parameter_is_read_through_a_hook_generic_over_it() {
     let read = expansion_under(
@@ -369,7 +367,6 @@ fn a_member_that_names_a_type_parameter_is_read_through_a_hook_generic_over_it()
 }
 
 /// `Self` is written as the item where a hook writes the member's type and the model it holds.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_written_with_self_is_read_through_a_hook_that_names_the_item() {
     let node = expansion_under(
@@ -411,7 +408,6 @@ fn a_member_written_with_self_is_read_through_a_hook_that_names_the_item() {
 
 /// A bound that ties the parameter a member names to another, or to a lifetime of the item, and
 /// a read at `'static`, leave the member to its own `Deserialize`.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
     for (args, source) in [
@@ -449,7 +445,6 @@ fn a_member_the_items_bounds_keep_from_a_hook_is_read_with_none() {
 /// The read of an untagged enum with a parameter is written under the bounds serde's derive writes
 /// for the enum as it is written: `Deserialize<'de>` of the parameter the member names, and no
 /// `Default`.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive() {
     let read = expansion_under(
@@ -477,7 +472,6 @@ fn an_untagged_member_that_names_a_parameter_keeps_the_bounds_of_serdes_derive()
 
 /// A member of a variant serde never reads, under `skip` or `skip_deserializing`, is read by no
 /// hook under any tagging, where a member of a variant serde reads keeps its own.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_of_a_variant_serde_never_reads_is_read_by_no_hook() {
     for tagging in ["", "#[serde(tag = \"kind\")]", "#[serde(untagged)]"] {
@@ -507,7 +501,6 @@ fn a_member_of_a_variant_serde_never_reads_is_read_by_no_hook() {
 
 /// The parameters a member's type names, in the order the item declares them, and `None` where
 /// serde's call of a hook could not infer one, or where it names a const parameter.
-#[cfg(feature = "serde")]
 #[test]
 fn a_hook_declares_the_parameters_its_members_type_names_where_they_are_inferred() {
     let input: syn::DeriveInput = syn::parse_str(

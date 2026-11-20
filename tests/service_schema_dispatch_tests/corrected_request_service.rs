@@ -1,8 +1,6 @@
 //! A request whose message names a `preprocess`, on the type and on a field: the dispatcher reads
 //! it through both functions - driven through the `http_rest` dispatcher by hand, no server.
 
-#![cfg(feature = "serde")]
-
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};

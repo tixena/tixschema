@@ -120,17 +120,6 @@ Every model type the type holds lists the entry too: the type's document calls e
 tixschema = { version = "0.6", features = ["zod"] }
 ```
 
-#### Serde Attributes Ignored
-
-**Symptom:** TypeScript and Zod write a member in camelCase where a `#[serde(rename = "...")]` or a `#[serde(rename_all = "...")]` names another key: `#[serde(rename = "mail")] pub email_address: String` is `emailAddress`, where serde writes `mail`.
-
-**Cause:** tixschema's `serde` feature is off, so no `#[serde(...)]` attribute is read, and TypeScript and Zod write each member in camelCase.
-
-**Solution:**
-```toml
-tixschema = { version = "0.6", features = ["serde"] }
-```
-
 ### Compilation Errors
 
 #### Map Keys Without Enumerable Members
@@ -376,7 +365,7 @@ A list that writes one direction alone, `rename(serialize = "written")`, leaves 
 error: model_schema: field `both_ways`: serde `rename` names `written` when serializing only, and leaves the other direction at the name it would otherwise use, so the payload serde writes is not one serde reads. A schema and an emitted client describe one key per member, so neither can be written for the pair. Write both directions at one value, or use the single-value spelling `rename = "..."`.
 ```
 
-The same refusal answers `rename_all` and `rename_all_fields`, and a list written on a variant or on the type. It is raised in every build that describes the type, a mobile client included: the `serde` feature with any of `typescript`, `zod`, `dart`, `swift` and `kotlin`. A build with none of the five takes the list: the [recovering decode](recovering-decode.md#recovering-decode-decode_with) looks a value up under the `deserialize` side, and a [MongoDB path](mongodb-operations.md#mongodb-operations-and-typed-filters) is under the `serialize` side.
+The same refusal answers `rename_all` and `rename_all_fields`, and a list written on a variant or on the type. It is raised in every build that describes the type, a mobile client included: any of `typescript`, `zod`, `dart`, `swift` and `kotlin`. A build with none of the five takes the list: the [recovering decode](recovering-decode.md#recovering-decode-decode_with) looks a value up under the `deserialize` side, and a [MongoDB path](mongodb-operations.md#mongodb-operations-and-typed-filters) is under the `serialize` side.
 
 ### Runtime Issues
 

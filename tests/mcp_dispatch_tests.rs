@@ -3,8 +3,6 @@
 //! read back through the dispatcher. Every message an assertion reads passes the official
 //! 2026-07-28 schema.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]

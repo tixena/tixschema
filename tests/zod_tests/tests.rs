@@ -58,7 +58,6 @@ struct ComplexCollections {
     optional_map: Option<HashMap<String, i32>>,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CustomFieldRename {
@@ -106,7 +105,6 @@ struct Person {
     previous_addresses: Vec<Address>,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -342,7 +340,6 @@ fn test_float_types_do_not_use_int_modifier() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_serde_rename_all_affects_field_names() {
     let zod = RenamedFields::zod_schema();
 
@@ -361,7 +358,6 @@ fn test_serde_rename_all_affects_field_names() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_serde_field_rename() {
     let zod = CustomFieldRename::zod_schema();
 

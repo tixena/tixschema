@@ -3,7 +3,6 @@
 
 use super::held_numbers::u32_held;
 use super::unwritten_models::furling_dart;
-#[cfg(feature = "serde")]
 use super::unwritten_models::{flemishing_dart, ranging_dart, reefing_dart, splaying_dart};
 
 /// The member is read, and `toJson` writes no key for it.
@@ -22,7 +21,6 @@ fn a_member_serde_never_writes_is_read_and_has_no_entry() {
 }
 
 /// Beside a flattened member, the member is read, and `toJson` writes no key for it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
     let reefing = reefing_dart::dart_definition();
@@ -40,7 +38,6 @@ fn a_member_serde_never_writes_beside_a_flattened_one_has_no_entry() {
 /// A flattened struct and a flattened map serde never writes are read, and `toJson` spreads
 /// nothing of them. One that is no `Option` is read as a flattened member is, its key being none
 /// to leave out.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_member_serde_never_writes_is_read_and_spread_nowhere() {
     let flemishing = flemishing_dart::dart_definition();

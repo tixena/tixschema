@@ -2,8 +2,6 @@
 //! field and in each form a path reads it in: the implementation gets the path's value, whatever
 //! the body carries.
 
-#![cfg(feature = "serde")]
-
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};

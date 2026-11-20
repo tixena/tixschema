@@ -322,7 +322,6 @@ fn the_readme_shows_the_reads_of_the_documents_parcel() {
 /// A brand with a bound chooses no variant of an untagged enum, declared above or below it, and
 /// neither does an alias of it: the enum asks no type for a bound, and takes the first variant
 /// whose payload reads.
-#[cfg(feature = "serde")]
 #[test]
 fn a_bounded_brand_chooses_no_variant_of_an_untagged_enum() {
     let bounded: Item = syn::parse_quote! {
@@ -362,7 +361,6 @@ fn a_bounded_brand_chooses_no_variant_of_an_untagged_enum() {
 
 /// A brand over an optional value Swift converts reads it in a closure that throws, called with
 /// `try`. A build with a web surface refuses such a brand, so its text is held here.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_an_optional_converted_value_calls_its_closure_with_try() {
     let hoard: Item = syn::parse_quote! {
@@ -397,7 +395,7 @@ fn a_brand_over_an_optional_converted_value_calls_its_closure_with_try() {
 }
 
 /// [`a_brand_over_an_optional_converted_value_calls_its_closure_with_try`], over a date.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_brand_over_an_optional_date_calls_its_closure_with_try() {
     let landfall: Item = syn::parse_quote! {

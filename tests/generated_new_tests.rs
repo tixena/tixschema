@@ -1,7 +1,5 @@
 //! The `new` every struct's valid type has, which answers what `validate()` answers.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]

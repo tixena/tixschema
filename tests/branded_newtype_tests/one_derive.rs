@@ -5,7 +5,6 @@
 /// Two structs written with the same attributes, each beside the brand of one slot over the type of
 /// the field its derive takes: serde writes `Written` as `count`, `text` being skipped when it
 /// serializes, and reads `Received` as `text`, `count` having a `default`.
-#[cfg(feature = "serde")]
 mod by_the_derive {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

@@ -4,10 +4,7 @@
 //! `generated_class_name_refusals/` is a crate of its own, held to the `.stderr` file beside it,
 //! the same under each client feature.
 
-#![cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#![cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 
 #[cfg(test)]
 mod tests {

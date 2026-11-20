@@ -1,9 +1,6 @@
 //! The test binary of `mobile_rename_direction_tests/`.
 
-#![cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#![cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 
 #[cfg(test)]
 #[cfg(feature = "dart")]

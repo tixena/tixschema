@@ -207,8 +207,7 @@ reads the merged meta as it reads a member's own. `process_field` asks it throug
 - `written_as_text` says what is reached: a field written as a string or a path itself, under
   `Option`, an ownership wrapper or a reference. A list and its items, a field typed with
   a named type (a brand included), a number, a map, a tuple and a type parameter are not. It is
-  `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path`, written
-  apart because it is asked in a build without `serde`;
+  `constrained_shape`'s walk held to `ConstraintLeaf::Str` and `ConstraintLeaf::Path`;
   `the_reach_of_an_enums_check_is_the_constraint_walks` holds the two together. A member that
   carries a `literal` is not reached: the enum's check never sits beside a literal, which takes no
   other rule. `reached_by_enums_check` is the one question, `written_as_text` and no `literal`:
@@ -269,8 +268,7 @@ what a change has to keep.
   `nested_under` writes the name.
 - **`validate()` in every build.** It holds every bound and every check, whatever the features,
   and a type that derives `Deserialize` reads through `judged_read` in every build, so its read
-  refuses what `validate()` refuses. `serde` is the one switch: without `serde` a member is
-  reported under its Rust name.
+  refuses what `validate()` refuses.
 - **Every shape.** `process_struct`, `process_tuple_struct`, a unit struct, the three tagged enum
   processors and the untagged one (a member's check in its variant's arm, through
   `build_member_check_arms`, and the enum's own after the `match`), a plain enum, and a brand
@@ -370,8 +368,8 @@ keep.
 `as_number` is a bare flag (no value): it renders a `DateTime<Tz>` field as a `number` (epoch
 milliseconds) with an inline self-contained Zod coercer, instead of the default native `Date`, and
 as `{"type": "integer"}` in the JSON Schema. It is only valid on `DateTime<Tz>` fields (anything
-else is a compile error) and is honored on a tuple-variant `DateTime<Tz>` enum payload. With the
-`serde` feature on, it also injects `#[serde(with = "chrono::serde::ts_milliseconds")]`
+else is a compile error) and is honored on a tuple-variant `DateTime<Tz>` enum payload. It also
+injects `#[serde(with = "chrono::serde::ts_milliseconds")]`
 (`ts_milliseconds_option` for `Option<DateTime<Utc>>`) so Rust writes the same epoch-milliseconds
 number every other surface describes — a consumer's own `chrono` dependency needs its `serde`
 feature enabled for that module to exist. What a change has to keep:
@@ -407,7 +405,7 @@ feature enabled for that module to exist. What a change has to keep:
   `tests/generic_types_tests/declarations.rs` the Zod schema under `node`, and
   `run_untagged_millis.rs` each client.
 
-`nullable` is a bare flag (no value): on an `Option<T>` field it renders `T | null` with the key **required** on TypeScript, Zod and JSON Schema, instead of the default coercing `T | undefined` with the key left optional. It is only valid on `Option<T>` fields, an alias of an `Option` declared above among them, written in place (non-`Option` is a compile error), is refused together with `ts_optional` (the two disagree about the key), and composes with `preprocess` — the preprocess wrap goes around the whole nullable union. With the `serde` feature on, it is also refused together with a key-dropping serde attribute (`skip_serializing_if`, `skip_serializing`, `skip`) — the flag declares the key always written, so dropping it would let serde write a payload the generated schema does not admit. The mirror guard, `check_optional_field_serialization`, requires that same attribute on a bare `Option<T>` field carrying no `nullable`.
+`nullable` is a bare flag (no value): on an `Option<T>` field it renders `T | null` with the key **required** on TypeScript, Zod and JSON Schema, instead of the default coercing `T | undefined` with the key left optional. It is only valid on `Option<T>` fields, an alias of an `Option` declared above among them, written in place (non-`Option` is a compile error), is refused together with `ts_optional` (the two disagree about the key), and composes with `preprocess` — the preprocess wrap goes around the whole nullable union. It is also refused together with a key-dropping serde attribute (`skip_serializing_if`, `skip_serializing`, `skip`) — the flag declares the key always written, so dropping it would let serde write a payload the generated schema does not admit. The mirror guard, `check_optional_field_serialization`, requires that same attribute on a bare `Option<T>` field carrying no `nullable`.
 A flattened one is not held to it (`is_flattened_field`): it writes no key of its own, so serde
 writes nothing for its `None`, whatever its attributes say, and reads the payload back.
 
@@ -484,8 +482,6 @@ reads the path off its Zod issue, the Dart and Kotlin servers walk the tool's JS
 - `rename_direction_guard_errors` refuses a `rename` whose two sides differ in every build that
   describes a type, so the key a surface is named by (`get_final_field_name`) is the key
   `member_steps` reads.
-- Without the `serde` feature no attribute is read: a variant is under its own name and a member
-  is as it is declared, the steps serde's defaults write.
 - `CheckedMember::label` and `CheckedMember::stem` keep the Rust ident: a refusal at build time
   and a helper (`validate_{field}_value`, `validate_{variant}_{index}_value`) name the member as
   its author wrote it, a slot by its place among the ones declared.
@@ -530,15 +526,12 @@ reads the path off its Zod issue, the Dart and Kotlin servers walk the tool's JS
   (`UnwrittenKey`, reached for `&MapKey` alone), and `keyed_under` then leaves the key out of the
   name. `validate()` is written under the bounds the type declares, so a map of declared types
   keyed by a type that names one of the item's own parameters is refused at expansion
-  (`unwritable_map_key_errors`, asked ahead of every shape, in every build with `serde`) unless the
+  (`unwritable_map_key_errors`, asked ahead of every shape, in every build) unless the
   item declares `Serialize` for that parameter, in its generics or in a `where` clause. The
   consumer writes `K: Serialize` on the type and `#[serde(bound(serialize = ""))]` beside it: the
   derive otherwise writes `K: Serialize` a second time, and clippy's `trait_duplication_in_bounds`
   refuses that. A map of values that are no declared type is not walked and is refused nothing.
-  Nothing here names `serde_json`. Without `serde`, `written_key_impls` writes no `Display` of
-  `MapKey`'s, and `written_key` answers the key's own `Display` text, so a `String` key reads the
-  same in both builds. A key with no `Display` is answered by `UnwrittenKey`, and no key is
-  refused at expansion.
+  Nothing here names `serde_json`.
 - `nested_under` composes: a name is written into a report one run of steps at a time, innermost
   first, which is what lets a key be left out.
 

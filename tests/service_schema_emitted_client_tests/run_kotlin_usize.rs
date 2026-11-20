@@ -3,7 +3,7 @@
 //! `Long.MAX_VALUE` included, each payload serde refuses refused, a default read as serde reads it,
 //! and `validate()` answering what the Rust `validate()` answers.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

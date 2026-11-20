@@ -1,7 +1,5 @@
 //! Services that ask for `mcp`, and the tools each lists.
 
-#![cfg(feature = "serde")]
-
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context, Poll, Waker};

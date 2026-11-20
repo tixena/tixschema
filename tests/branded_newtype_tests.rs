@@ -1,8 +1,6 @@
 //! The test binary of `branded_newtype_tests/`, built with the `serde` feature: without it no
 //! struct is a brand.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]

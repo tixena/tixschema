@@ -58,7 +58,6 @@ struct ComplexCollections {
     optional_map: Option<HashMap<String, i32>>,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CustomFieldRename {
@@ -97,7 +96,6 @@ struct Person {
     previous_addresses: Vec<Address>,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -280,7 +278,6 @@ fn test_float_types_use_number_schema() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_serde_rename_all_affects_property_names() {
     let schema = RenamedFields::json_schema();
 
@@ -298,7 +295,6 @@ fn test_serde_rename_all_affects_property_names() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_serde_field_rename() {
     let schema = CustomFieldRename::json_schema();
 

@@ -10,7 +10,6 @@ use super::unwritten_models::{
     FLATTENED, PAYLOAD, REFUSED, WRITTEN, braiding_swift, flemishing_swift, furling_swift,
     ranging_swift, reefing_swift, splaying_swift,
 };
-#[cfg(feature = "serde")]
 use super::unwritten_models::{
     VARIANTS, dousing_swift, ratcheting_swift, shackling_swift, wearing_swift,
 };
@@ -137,7 +136,6 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_written_in_swift() {
 /// What prints each enum of [`VARIANTS`] read from its payload: the member of its variant
 /// `Furled` read, and the value written back. serde writes each value of the table with its keys
 /// in the sorted order [`WRITTEN_BACK`] writes them in.
-#[cfg(feature = "serde")]
 fn variants_main() -> String {
     let lines: Vec<String> = VARIANTS
         .iter()
@@ -156,7 +154,6 @@ fn variants_main() -> String {
 }
 
 /// Each enum reads the member of its variant and writes it back as serde does: never.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variants_member_serde_never_writes_is_read_and_not_written_in_swift() {
     let source = [

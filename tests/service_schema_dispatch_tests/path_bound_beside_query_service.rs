@@ -2,8 +2,6 @@
 //! operation whose `limit` the path leaves unbound - so this service's dispatcher does reach for
 //! `parse_query`, just not in `get_document`'s own arm.
 
-#![cfg(feature = "serde")]
-
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};

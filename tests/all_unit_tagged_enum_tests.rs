@@ -5,6 +5,5 @@
 //! all.
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "all_unit_tagged_enum_tests/tests.rs"]
 mod tests;

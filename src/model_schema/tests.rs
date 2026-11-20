@@ -7,7 +7,6 @@ use super::{
     validate_as_number_flag, validate_nullable_flag, validate_ts_optional_flag,
 };
 
-#[cfg(feature = "serde")]
 use super::{
     CheckedMember, ConstraintLeaf, FieldContext, MemberAccess,
     adjacent_collapsed_slot_guard_errors, branded_guard_errors, build_field_validation,
@@ -29,7 +28,7 @@ use super::{
     record_value_shape,
 };
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 use super::{
     NonObject, WireLeaf, flatten_edge_guard_error, record_wire_leaves, record_zod_union_members,
     surfaced_non_object, written_non_object,
@@ -38,7 +37,6 @@ use super::{
 #[cfg(feature = "zod")]
 use super::{MergedOperand, SourceAbsence};
 use crate::field_type::{MissingKey, Scope, Zone, is_set_wrapper};
-#[cfg(feature = "serde")]
 use crate::foundation::{exec_decode_with_foundation, exec_mongodb_foundation};
 #[cfg(feature = "typescript")]
 use crate::utils::NullAdmitted;
@@ -70,7 +68,6 @@ use super::{
 use crate::features::model_schema_prop::FunctionName;
 #[cfg(feature = "zod")]
 use crate::utils::record_nonstrict;
-#[cfg(feature = "serde")]
 use crate::utils::{Declared, declared, record_plain_enum};
 use crate::utils::{is_recorded_untagged_enum, record_untagged_enum};
 #[cfg(feature = "zod")]
@@ -79,7 +76,6 @@ use syn::spanned::Spanned as _;
 
 /// The slot `$slot` of `Lettered::Held` under a tag alone, the refusals the expansion raises for
 /// it, and what serde answers for a write of `$value` through the same declaration.
-#[cfg(feature = "serde")]
 macro_rules! refused_beside_serde {
     ($slot:ty, $value:expr) => {{
         #[derive(serde::Serialize)]
@@ -154,12 +150,10 @@ const SEQUENCE_WRAPPERS: [&str; 5] = ["BTreeSet", "BinaryHeap", "HashSet", "Vec"
 
 /// The module name a generated hook is written against, standing in for the one the enum's own
 /// expansion registers.
-#[cfg(feature = "serde")]
 const UNTAGGED_MODULE: Option<&str> = Some("choice_schema");
 
 /// The refusal a `#[model_schema_prop]` on a brand's slot earns, less the prefix `item_label`
 /// supplies in front of it.
-#[cfg(feature = "serde")]
 const BRANDED_SLOT_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread on the slot of a \
      `#[serde(transparent)]` newtype -- a brand publishes its inner's own schema with a `.brand()` \
      written onto it, so no key written here reaches any surface. The checks a brand does carry \
@@ -168,7 +162,6 @@ const BRANDED_SLOT_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread on the
 
 /// The refusal a `#[model_schema_prop]` on any other field of a brand earns, less the prefix
 /// `item_label` supplies in front of it.
-#[cfg(feature = "serde")]
 const UNREAD_BRAND_FIELD_PROP_REFUSAL: &str = "`#[model_schema_prop]` is unread on a field serde \
      neither reads nor writes -- a `#[serde(transparent)]` struct is read and written as the value \
      of one field alone, and a brand publishes that field's own schema with a `.brand()` written \
@@ -190,7 +183,6 @@ const UNREAD_BRAND_FIELD_SOURCE: &str = "#[derive(Debug, Deserialize, Serialize)
 
 /// A transparent struct whose two derives take `count` and `text` as its value, written with named
 /// fields and with slots.
-#[cfg(feature = "serde")]
 const SPLIT_TRANSPARENT_SOURCES: [(&str, &str, &str); 2] = [
     (
         "#[derive(Debug, Deserialize, Serialize)] #[serde(transparent)] pub struct Split { \
@@ -221,7 +213,6 @@ const SLOT_PROP_KEYS: [&str; 9] = [
 
 /// One of each struct shape the flag is generated on beside a struct with named fields, each with
 /// the arguments it is declared under.
-#[cfg(feature = "serde")]
 const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -271,12 +262,10 @@ const DECODE_WITH_STRUCT_SHAPES: [(&str, &str); 11] = [
 
 /// What `mongodb` adds for a flagged type's typed paths: the struct of them in its module, and on
 /// the type the const that holds them.
-#[cfg(feature = "serde")]
 const TYPED_PATHS: [&str; 2] = ["pub struct MongoFields <", "pub const MONGO_FIELDS :"];
 
 /// What `mongodb` adds for the operations of a type that lists "mongodb": on the type the reads,
 /// the count and the writes. The error and the read they answer are the crate's library's.
-#[cfg(feature = "serde")]
 const OPERATIONS: [&str; 12] = [
     "pub fn find_one <",
     "pub fn find_one_with < 'c ,",
@@ -294,7 +283,6 @@ const OPERATIONS: [&str; 12] = [
 
 /// One enum per form serde writes an enum in, then one per form whose variants carry an alias or
 /// are never read, each with the arguments it is declared under.
-#[cfg(feature = "serde")]
 const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -340,7 +328,6 @@ const DECODE_WITH_ENUM_FORMS: [(&str, &str); 10] = [
 
 /// One type per source serde flattens into a struct, then one enum per form serde writes an enum
 /// in whose struct variant flattens a field, each with the arguments it is declared under.
-#[cfg(feature = "serde")]
 const DECODE_WITH_FLATTEN_FORMS: [(&str, &str); 6] = [
     (
         "enable = [\"decode_with\", \"mongodb\"]",
@@ -406,7 +393,6 @@ const TEXT_REACH: [(&str, bool); 24] = [
 
 /// Every list spelling, with how many wrappers it is reached through and whether a brand holds
 /// it as its own value.
-#[cfg(feature = "serde")]
 const LIST_REACH: [(&str, usize, bool); 16] = [
     ("Vec<String>", 0, true),
     ("VecDeque<Part>", 0, true),
@@ -488,7 +474,6 @@ fn ts_optional_err_on_a_positional_slot() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn ts_optional_err_on_a_member_off_the_wire() {
     let err = ts_optional_verdict(
@@ -523,7 +508,7 @@ fn as_number_err_on_non_datetime_field() {
 }
 
 /// The refusal of `as_number` on a date the hook it hangs reads no value of, `written` naming it.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 fn as_number_hook_refusal(written: &str) -> String {
     format!(
         "model_schema: field `stamp`: `#[model_schema_prop(as_number)]` writes and reads the field \
@@ -537,7 +522,7 @@ fn as_number_hook_refusal(written: &str) -> String {
 /// `as_number` hangs chrono's millisecond hook on a `DateTime<Utc>` and an `Option` of one, and
 /// is refused on any other date the field holds where its author reads and writes it through no
 /// function of their own.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn as_number_is_refused_on_a_date_the_millisecond_hook_reads_no_value_of() {
     for (field, written) in [
@@ -585,7 +570,7 @@ fn as_number_is_refused_on_a_date_the_millisecond_hook_reads_no_value_of() {
 
 /// A bound on a date under `as_number` is refused in the words of the epoch milliseconds it is
 /// written as, and one on any other date in the words of the text it is written as.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_bound_on_a_date_under_as_number_is_refused_as_the_milliseconds_it_is_written_as() {
     let refused = refusal_texts(&expansion_over(
@@ -668,7 +653,6 @@ where
 
 /// Runs the guard over the sole field of `item`, deriving `is_optional` and `is_nullable` the way
 /// the generator does rather than re-sniffing the type.
-#[cfg(feature = "serde")]
 fn guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
     let field_name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
@@ -679,7 +663,6 @@ fn guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
 
 /// Runs the `nullable`-key guard over the sole field of `item`, reading the flag off its
 /// `model_schema_prop` attribute the way the generator does.
-#[cfg(feature = "serde")]
 fn nullable_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
     let is_nullable = super::parse_model_schema_prop_attributes(&field.attrs).nullable;
@@ -688,7 +671,6 @@ fn nullable_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
 
 /// Runs the omitted-key readability guard over the sole field of `item`, with the container's own
 /// `default` read off the item the way the generator reads it.
-#[cfg(feature = "serde")]
 fn omitted_key_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
     let field = item.fields.iter().next().unwrap();
     let field_name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
@@ -704,7 +686,6 @@ fn omitted_key_guard_result(item: &syn::ItemStruct) -> Result<(), syn::Error> {
 /// written `Option<T>` is: refused with no key-dropping attribute, read back under
 /// `skip_serializing_if` alone, and taken under `nullable`. An alias declared below is no `Option`
 /// the guards know of, and keeps the refusal of a key serde requires.
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_of_an_alias_of_an_option_declared_above_is_held_to_the_key_guards_as_an_option() {
     let kept: syn::ItemStruct = syn::parse_quote! {
@@ -761,7 +742,6 @@ fn the_option_flags_are_taken_on_a_field_of_an_alias_of_an_option() {
     validate_ts_optional_flag(&field, &field_def, true).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn bare_option_field_is_rejected() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -780,7 +760,6 @@ fn bare_option_field_is_rejected() {
 /// A flattened `Option`, and a flattened field of an alias of an `Option` declared above, write no
 /// key of their own, so serde writes nothing for `None`: no key guard refuses one written with no
 /// attribute that drops a key, in a struct or in a variant's members.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_option_with_no_key_dropping_attribute_passes_the_key_guards() {
     drop(expansion_over(
@@ -812,7 +791,6 @@ fn a_flattened_option_with_no_key_dropping_attribute_passes_the_key_guards() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn bare_nullable_option_field_is_accepted() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -824,7 +802,6 @@ fn bare_nullable_option_field_is_accepted() {
     guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn nullable_field_with_a_key_dropping_attribute_is_rejected() {
     for spelling in [
@@ -847,7 +824,6 @@ fn nullable_field_with_a_key_dropping_attribute_is_rejected() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn nullable_field_with_no_key_dropping_attribute_is_accepted() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -859,7 +835,6 @@ fn nullable_field_with_no_key_dropping_attribute_is_accepted() {
     nullable_guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn non_nullable_field_with_a_key_dropping_attribute_passes_the_nullable_guard() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -871,7 +846,6 @@ fn non_nullable_field_with_a_key_dropping_attribute_passes_the_nullable_guard() 
     nullable_guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_non_option_omitted_key_with_no_default_is_rejected() {
     for spelling in [
@@ -889,7 +863,6 @@ fn a_non_option_omitted_key_with_no_default_is_rejected() {
 }
 
 /// Every spelling serde can already read a missing key back from.
-#[cfg(feature = "serde")]
 #[test]
 fn an_omitted_key_serde_can_read_back_is_left_alone() {
     for item_source in [
@@ -912,7 +885,6 @@ fn an_omitted_key_serde_can_read_back_is_left_alone() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_positional_slot_is_not_subject_to_the_omitted_key_guard() {
     let item: syn::ItemStruct = syn::parse_str(
@@ -923,12 +895,10 @@ fn a_positional_slot_is_not_subject_to_the_omitted_key_guard() {
 }
 
 /// The single-field `Report` written with `notes` at the given spelling.
-#[cfg(feature = "serde")]
 fn report_with(spelling: &str) -> syn::ItemStruct {
     syn::parse_str(&format!("struct Report {{ notes: {spelling} }}")).unwrap()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_option_around_a_covered_wrapper_is_rejected_as_the_vec_spelling_is() {
     for spelling in SEQUENCE_WRAPPERS
@@ -947,7 +917,6 @@ fn an_option_around_a_covered_wrapper_is_rejected_as_the_vec_spelling_is() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_option_inside_a_covered_wrapper_leaves_the_guard_nothing_to_refuse() {
     for spelling in SEQUENCE_WRAPPERS
@@ -972,7 +941,6 @@ fn an_option_inside_a_covered_wrapper_leaves_the_guard_nothing_to_refuse() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_covered_wrapper_of_a_plain_element_satisfies_the_guard() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -980,7 +948,6 @@ fn a_covered_wrapper_of_a_plain_element_satisfies_the_guard() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn skip_serializing_if_satisfies_the_guard() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -992,7 +959,6 @@ fn skip_serializing_if_satisfies_the_guard() {
     guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn any_skip_serializing_if_predicate_satisfies_the_guard() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -1004,7 +970,6 @@ fn any_skip_serializing_if_predicate_satisfies_the_guard() {
     guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn skip_satisfies_the_guard() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -1016,7 +981,6 @@ fn skip_satisfies_the_guard() {
     guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn skip_serializing_satisfies_the_guard() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -1028,7 +992,6 @@ fn skip_serializing_satisfies_the_guard() {
     guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn skip_deserializing_alone_does_not_satisfy_the_guard() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -1041,7 +1004,6 @@ fn skip_deserializing_alone_does_not_satisfy_the_guard() {
     assert!(message.contains("note"));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn non_option_field_is_unaffected() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -1052,7 +1014,6 @@ fn non_option_field_is_unaffected() {
     guard_result(&item).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn positional_option_field_is_exempt() {
     let item: syn::ItemStruct = syn::parse_quote! {
@@ -1062,13 +1023,11 @@ fn positional_option_field_is_exempt() {
 }
 
 /// Collects the untagged-path guard failures as rendered `compile_error!` token streams.
-#[cfg(feature = "serde")]
 fn untagged_guard_error_tokens(item: &mut syn::ItemEnum) -> Vec<proc_macro2::TokenStream> {
     collect_untagged_members(item, UNTAGGED_MODULE, &super::ModelSchemaArgs::default()).5
 }
 
 /// Collects the untagged-path guard failures as rendered `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn untagged_guard_errors(mut item: syn::ItemEnum) -> Vec<String> {
     untagged_guard_error_tokens(&mut item)
         .iter()
@@ -1076,7 +1035,6 @@ fn untagged_guard_errors(mut item: syn::ItemEnum) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_named_variant_bare_option_is_rejected() {
     let errors = untagged_guard_errors(syn::parse_quote! {
@@ -1094,7 +1052,6 @@ fn untagged_named_variant_bare_option_is_rejected() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_named_variant_omitting_none_is_accepted() {
     let errors = untagged_guard_errors(syn::parse_quote! {
@@ -1108,7 +1065,6 @@ fn untagged_named_variant_omitting_none_is_accepted() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_tuple_variant_option_is_exempt() {
     let errors = untagged_guard_errors(syn::parse_quote! {
@@ -1119,7 +1075,6 @@ fn untagged_tuple_variant_option_is_exempt() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_unsupported_variant_shapes_are_all_reported() {
     let errors = untagged_guard_errors(syn::parse_quote! {
@@ -1147,7 +1102,6 @@ fn untagged_unsupported_variant_shapes_are_all_reported() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_unsupported_variant_refusal_points_at_the_variant() {
     use syn::spanned::Spanned as _;
@@ -1162,7 +1116,6 @@ fn untagged_unsupported_variant_refusal_points_at_the_variant() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_supported_variant_shapes_are_left_alone() {
     let errors = untagged_guard_errors(syn::parse_quote! {
@@ -1174,7 +1127,6 @@ fn untagged_supported_variant_shapes_are_left_alone() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_reaching_a_map_key_with_no_members_is_refused() {
     register_alias_info(
@@ -1217,7 +1169,7 @@ fn untagged_member_reaching_a_map_key_with_no_members_is_refused() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn untagged_member_carries_its_constraint_to_the_surfaces() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -1245,7 +1197,6 @@ fn untagged_member_carries_its_constraint_to_the_surfaces() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_constraint_generates_the_validator_and_hangs_nothing_on_the_member() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -1281,7 +1232,6 @@ fn untagged_member_constraint_generates_the_validator_and_hangs_nothing_on_the_m
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_constraint_generates_nothing_without_a_schema_module() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -1308,7 +1258,6 @@ fn a_tuple_structs_slot_takes_a_check() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
     let expanded = expansion_over(
@@ -1337,7 +1286,6 @@ fn a_tuple_structs_slot_is_named_by_its_position_and_read_off_self() {
     assert!(!unchecked.contains("fn validate_"), "got: {unchecked}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_newtype_member_constraint_is_named_by_its_position_and_hangs_nothing_on_the_slot() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -1387,7 +1335,6 @@ fn untagged_newtype_member_constraint_is_named_by_its_position_and_hangs_nothing
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_prop_attribute_is_stripped_from_the_emitted_item() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -1418,7 +1365,6 @@ fn untagged_member_prop_attribute_is_stripped_from_the_emitted_item() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_prop_guards_apply() {
     for (member, needle) in [
@@ -1449,7 +1395,6 @@ fn untagged_member_prop_guards_apply() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_with_an_enumerable_map_key_is_left_alone() {
     register_alias_info("Bucket", "Bucket", "bucket_schema", AliasKind::EnumMembers);
@@ -1467,7 +1412,6 @@ fn untagged_member_with_an_enumerable_map_key_is_left_alone() {
 }
 
 /// The refusal every map-key spelling no surface can write earns, read off the untagged walk.
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_reaching_an_unwritable_map_key_is_refused() {
     for (member_type, needle) in [
@@ -1512,7 +1456,6 @@ fn untagged_member_reaching_an_unwritable_map_key_is_refused() {
 }
 
 /// The JSON-schema values the untagged walk renders its members as.
-#[cfg(feature = "serde")]
 fn untagged_member_values(mut item: syn::ItemEnum) -> Vec<String> {
     collect_untagged_members(
         &mut item,
@@ -1525,7 +1468,6 @@ fn untagged_member_values(mut item: syn::ItemEnum) -> Vec<String> {
     .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_a_map_renders_the_field_position_map() {
     register_alias_info("Bucket", "Bucket", "bucket_schema", AliasKind::EnumMembers);
@@ -1549,7 +1491,6 @@ fn untagged_member_holding_a_map_renders_the_field_position_map() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_a_tuple_renders_the_arity_bounds() {
     let values = untagged_member_values(syn::parse_quote! {
@@ -1569,7 +1510,6 @@ fn untagged_member_holding_a_tuple_renders_the_arity_bounds() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_a_map_of_tuples_describes_each_value_as_its_array() {
     let values = untagged_member_values(syn::parse_quote! {
@@ -1585,7 +1525,6 @@ fn untagged_member_holding_a_map_of_tuples_describes_each_value_as_its_array() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn untagged_member_holding_an_unwritable_map_key_emits_only_the_compile_error() {
     let values = untagged_member_values(syn::parse_quote! {
@@ -1611,7 +1550,6 @@ fn untagged_member_holding_an_unwritable_map_key_emits_only_the_compile_error() 
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_external_variant_holding_an_unrenderable_content_is_refused() {
     let rendered = super::external_content_rejection_value(
@@ -1653,7 +1591,6 @@ fn variant_field_defs(source: &str, variant_name: &str) -> Vec<super::FieldDef> 
 }
 
 /// The content sink's caret, at both contents an externally tagged variant can carry.
-#[cfg(feature = "serde")]
 #[test]
 fn a_refused_external_content_points_at_the_written_content() {
     const SOURCE: &str = "enum Tagged { \
@@ -1713,7 +1650,6 @@ fn a_refused_adjacent_content_points_at_the_written_content() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_refused_untagged_member_points_at_the_written_value() {
     for (member_type, context) in [
@@ -1734,7 +1670,6 @@ fn a_refused_untagged_member_points_at_the_written_value() {
 }
 
 /// Collects the internally tagged path's guard failures as rendered `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn internal_guard_errors(item: &syn::ItemEnum) -> Vec<String> {
     internally_tagged_guard_errors(item, "type")
         .iter()
@@ -1742,7 +1677,6 @@ fn internal_guard_errors(item: &syn::ItemEnum) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_serializable_variants_are_accepted() {
     let errors = internal_guard_errors(&syn::parse_quote! {
@@ -1758,7 +1692,6 @@ fn internally_tagged_serializable_variants_are_accepted() {
 
 /// Each slot is refused once, as the value `value` names, quoting word for word the error serde
 /// answers for a write of it.
-#[cfg(feature = "serde")]
 fn assert_quotes_serde(rows: &[(&str, Vec<String>, String)], value: &str) {
     let named = format!("variant `Held` of internally tagged enum `Lettered` wraps {value},");
     for (slot, errors, said) in rows {
@@ -1777,13 +1710,11 @@ fn assert_quotes_serde(rows: &[(&str, Vec<String>, String)], value: &str) {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_char_is_refused_in_the_words_serde_refuses_it() {
     assert_quotes_serde(&[refused_beside_serde!(char, 'c')], "a char");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_string_is_refused_in_the_words_serde_refuses_it() {
     use std::path::PathBuf;
@@ -1798,7 +1729,7 @@ fn a_tagged_string_is_refused_in_the_words_serde_refuses_it() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_tagged_date_is_refused_in_the_words_serde_refuses_it() {
     use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -1818,7 +1749,7 @@ fn a_tagged_date_is_refused_in_the_words_serde_refuses_it() {
 /// A date under `as_number` is read and written through the hook the key hangs on it, which writes
 /// the integer of its epoch milliseconds: beside a tag and flattened, the expansion refuses it in
 /// the words serde refuses that integer in.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_date_under_as_number_is_refused_as_the_integer_serde_writes() {
     use chrono::{DateTime, Utc};
@@ -1865,13 +1796,11 @@ fn a_date_under_as_number_is_refused_as_the_integer_serde_writes() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_boolean_is_refused_in_the_words_serde_refuses_it() {
     assert_quotes_serde(&[refused_beside_serde!(bool, true)], "a boolean");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_integer_of_every_width_is_refused_in_the_words_serde_refuses_it() {
     assert_quotes_serde(
@@ -1892,7 +1821,6 @@ fn a_tagged_integer_of_every_width_is_refused_in_the_words_serde_refuses_it() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_float_of_every_width_is_refused_in_the_words_serde_refuses_it() {
     assert_quotes_serde(
@@ -1905,7 +1833,6 @@ fn a_tagged_float_of_every_width_is_refused_in_the_words_serde_refuses_it() {
 }
 
 /// serde's tag refuses an `Option` before it reads what the `Option` holds.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_option_is_refused_in_the_words_serde_refuses_it() {
     assert_quotes_serde(
@@ -1919,7 +1846,6 @@ fn a_tagged_option_is_refused_in_the_words_serde_refuses_it() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_sequence_is_refused_in_the_words_serde_refuses_it() {
     use std::collections::HashSet;
@@ -1935,7 +1861,7 @@ fn a_tagged_sequence_is_refused_in_the_words_serde_refuses_it() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "indexmap"))]
+#[cfg(feature = "indexmap")]
 #[test]
 fn a_tagged_index_set_is_refused_in_the_words_serde_refuses_it() {
     use indexmap::IndexSet;
@@ -1946,7 +1872,6 @@ fn a_tagged_index_set_is_refused_in_the_words_serde_refuses_it() {
 }
 
 /// serde writes a fixed-size array as a tuple, whatever its length is written as.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_tuple_and_a_fixed_size_array_are_refused_in_the_words_serde_refuses_them() {
     const PAIR: usize = 2;
@@ -1971,7 +1896,6 @@ fn a_tagged_tuple_and_a_fixed_size_array_are_refused_in_the_words_serde_refuses_
 
 /// serde writes a range and a `Result` beside the tag, in the object the tag is written in, and
 /// reads them back: the refusal names what serde writes there.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_range_and_result_are_refused_as_what_serde_writes_beside_the_tag() {
     use core::ops::Range;
@@ -2015,7 +1939,7 @@ fn a_tagged_range_and_result_are_refused_as_what_serde_writes_beside_the_tag() {
 /// serde writes an `ObjectId` beside the tag as its `$oid` key, and reads it back, as it writes a
 /// flattened one: the slot builds, owned or in a `Box`, and an `Option` of it is refused as any
 /// `Option` there is.
-#[cfg(all(feature = "serde", feature = "mongodb"))]
+#[cfg(feature = "mongodb")]
 #[test]
 fn a_tagged_object_id_builds_as_a_flattened_one_does() {
     use bson2::oid::ObjectId;
@@ -2054,7 +1978,6 @@ fn a_tagged_object_id_builds_as_a_flattened_one_does() {
 }
 
 /// The one refusal `source` earns names `value` and what serde writes beside the tag for it.
-#[cfg(feature = "serde")]
 fn assert_written_beside(source: &str, value: &str, written: &str) {
     let errors = internal_guard_errors(&syn::parse_str(source).unwrap());
     assert_eq!(errors.len(), 1, "got: {errors:?} for {source}");
@@ -2067,7 +1990,6 @@ fn assert_written_beside(source: &str, value: &str, written: &str) {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_newtype_names_the_outermost_wrapper() {
     let errors = internal_guard_errors(&syn::parse_quote! {
@@ -2081,7 +2003,6 @@ fn internally_tagged_newtype_names_the_outermost_wrapper() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_newtype_over_a_map_is_rejected_as_unnameable() {
     let errors = internal_guard_errors(&syn::parse_quote! {
@@ -2096,7 +2017,6 @@ fn internally_tagged_newtype_over_a_map_is_rejected_as_unnameable() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_tuple_variant_is_rejected() {
     let errors = internal_guard_errors(&syn::parse_quote! {
@@ -2113,7 +2033,6 @@ fn internally_tagged_tuple_variant_is_rejected() {
 /// Under a tag alone serde's derive refuses a tuple variant of no slot, skipped or not, and the
 /// refusal raised ahead of every shape says so: the internally tagged guard raises none of its
 /// own for it, so the declaration earns one refusal.
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_empty_tuple_variant_is_refused_in_serdes_words() {
     let refusal = "model_schema: variant `Empty`: `Empty()` is a tuple variant with no field, and \
@@ -2150,7 +2069,6 @@ fn internally_tagged_empty_tuple_variant_is_refused_in_serdes_words() {
 }
 
 /// A name is not the criterion — what serde writes for it is.
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_newtype_over_a_registered_plain_enum_is_rejected() {
     record_plain_enum("Hue", true);
@@ -2172,7 +2090,6 @@ fn internally_tagged_newtype_over_a_registered_plain_enum_is_rejected() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn internally_tagged_newtype_over_a_non_enum_or_unknown_name_is_accepted() {
     record_plain_enum("Payload", false);
@@ -2182,7 +2099,6 @@ fn internally_tagged_newtype_over_a_non_enum_or_unknown_name_is_accepted() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn flattening_a_registered_plain_enum_is_rejected() {
     record_plain_enum("Hue", true);
@@ -2217,7 +2133,6 @@ fn flattening_a_registered_plain_enum_is_rejected() {
 }
 
 /// Collects an enum's `cfg_attr` guard failures as rendered `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn enum_cfg_attr_errors(item: &syn::ItemEnum) -> Vec<String> {
     let type_meta = parse_serde_type_attributes(&item.attrs);
     enum_cfg_attr_guard_errors(item, &type_meta)
@@ -2226,7 +2141,6 @@ fn enum_cfg_attr_errors(item: &syn::ItemEnum) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_type_is_rejected() {
     let errors = enum_cfg_attr_errors(&syn::parse_quote! {
@@ -2241,7 +2155,6 @@ fn cfg_attr_wrapped_serde_on_a_type_is_rejected() {
     assert!(errors[0].contains("cfg_attr"), "got: {}", errors[0]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_variant_is_rejected() {
     let errors = enum_cfg_attr_errors(&syn::parse_quote! {
@@ -2256,15 +2169,12 @@ fn cfg_attr_wrapped_serde_on_a_variant_is_rejected() {
 }
 
 /// Collects an item's rename-direction guard failures as rendered `compile_error!` token strings.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn rename_direction_errors(item: &syn::Item) -> Vec<String> {
     super::rename_direction_guard_errors(item)
@@ -2273,15 +2183,12 @@ fn rename_direction_errors(item: &syn::Item) -> Vec<String> {
         .collect()
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_container_renaming_naming_two_keys_is_rejected() {
@@ -2298,15 +2205,12 @@ fn a_container_renaming_naming_two_keys_is_rejected() {
     assert!(errors[0].contains("snake_case"), "got: {}", errors[0]);
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_field_renaming_naming_two_keys_is_rejected() {
@@ -2322,15 +2226,12 @@ fn a_field_renaming_naming_two_keys_is_rejected() {
     assert!(errors[0].contains("in_name"), "got: {}", errors[0]);
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_variant_and_its_member_are_both_reached() {
@@ -2354,15 +2255,12 @@ fn a_variant_and_its_member_are_both_reached() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn renamings_naming_one_key_are_left_alone() {
@@ -2377,15 +2275,12 @@ fn renamings_naming_one_key_are_left_alone() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn each_casing_rule_of_an_enum_naming_two_keys_is_rejected() {
@@ -2411,15 +2306,12 @@ fn each_casing_rule_of_an_enum_naming_two_keys_is_rejected() {
 }
 
 /// The README quotes each refusal as it is printed.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_rename_refusal_says_that_neither_a_schema_nor_a_client_can_be_written() {
@@ -2459,15 +2351,12 @@ fn a_rename_refusal_says_that_neither_a_schema_nor_a_client_can_be_written() {
 }
 
 /// The source text each rename-direction refusal of the item `source` declares is spanned on.
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 fn rename_refusal_spans(source: &str) -> Vec<String> {
     super::rename_direction_guard_errors(&syn::parse_str(source).unwrap())
@@ -2476,15 +2365,12 @@ fn rename_refusal_spans(source: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn a_rename_refusal_is_spanned_on_the_key_that_names_the_two() {
@@ -2550,15 +2436,12 @@ fn gates_above(source: &str, named: &str) -> Vec<String> {
 #[test]
 fn the_rename_guard_is_compiled_in_every_build_that_describes_a_type() {
     let describing = quote::quote! {
-        all(
-            feature = "serde",
-            any(
-                feature = "typescript",
-                feature = "zod",
-                feature = "dart",
-                feature = "swift",
-                feature = "kotlin"
-            )
+        any(
+            feature = "typescript",
+            feature = "zod",
+            feature = "dart",
+            feature = "swift",
+            feature = "kotlin"
         )
     };
     let compiled = quote::quote!(cfg(#describing)).to_string();
@@ -2588,8 +2471,7 @@ fn the_rename_guard_is_compiled_in_every_build_that_describes_a_type() {
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_flattened_plain_enum_refusal_is_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_flattened_plain_enum_refusal_is_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -2603,7 +2485,7 @@ fn the_flattened_plain_enum_refusal_is_compiled_in_every_build_with_serde() {
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -2619,9 +2501,8 @@ fn the_flattened_plain_enum_refusal_is_compiled_in_every_build_with_serde() {
 /// A plain enum declared above the type that flattens it, in a struct, in a variant's members,
 /// beside the tag of a variant and through an alias, and one declared below it, which no
 /// expansion sees.
-#[cfg(feature = "serde")]
 #[test]
-fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() {
+fn a_flattened_plain_enum_declared_above_is_refused_in_every_build() {
     for declared in [
         "#[derive(Serialize, Deserialize)] pub enum Weather { Calm, Gale }",
         "pub type Climate = Weather;",
@@ -2688,7 +2569,6 @@ fn a_flattened_plain_enum_declared_above_is_refused_in_every_build_with_serde() 
 /// a struct of one slot, a brand, a generic struct of one slot whose value is its type parameter,
 /// a struct of one slot over that struct, and a struct of one slot and an alias over an `Option` of
 /// the enum.
-#[cfg(feature = "serde")]
 fn declare_plain_enum_values() {
     for (args, declared) in [
         ("", "pub enum ProbeMood { Calm, Tense }"),
@@ -2719,7 +2599,6 @@ fn declare_plain_enum_values() {
 
 /// The refusal of field `field` of `holder` flattened over `inner`, which serde writes as a plain
 /// enum's variant name.
-#[cfg(feature = "serde")]
 fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> String {
     format!(
         "model_schema: field `{field}` of `{holder}` carries `#[serde(flatten)]` over `{inner}`, \
@@ -2733,7 +2612,6 @@ fn flattened_plain_enum_refusal(field: &str, holder: &str, inner: &str) -> Strin
 
 /// The refusal of the slot of variant `Held` of `holder`, under the tag `kind`, over `inner`,
 /// which serde writes as a plain enum's variant name.
-#[cfg(feature = "serde")]
 fn tagged_plain_enum_refusal(holder: &str, inner: &str) -> String {
     format!(
         "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, which \
@@ -2750,7 +2628,6 @@ fn tagged_plain_enum_refusal(holder: &str, inner: &str) -> String {
 /// the enum, each refused with the refusal of the plain enum itself, named as written. serde writes
 /// `{"id":"i","Calm":null}` for each and reads it back, so neither is told its write does not join
 /// the object.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_is() {
     declare_plain_enum_values();
@@ -2803,7 +2680,6 @@ fn a_flattened_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_i
 /// way of a brand, a `Box`, a chain of types declared above, and an `Option` of each or in each,
 /// flattened, every one refused with the refusal of the plain enum itself, named as written.
 /// serde writes a `Some` as the key naming the variant, holding null, and a `None` as no key.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_value_over_a_plain_enum_through_a_chain_or_an_option_is_refused_as_the_plain_enum_is()
  {
@@ -2855,7 +2731,6 @@ fn a_flattened_value_over_a_plain_enum_through_a_chain_or_an_option_is_refused_a
 /// written. serde writes `{"kind":"Held","Calm":null}` for each and reads it back, so none is told
 /// it cannot sit beside the tag. One that writes an `Option` of the enum is refused as an
 /// `Option`, serde refusing every write of it there.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_newtype_variant_over_a_value_serde_writes_as_a_plain_enum_is_refused_as_the_plain_enum_is()
  {
@@ -2910,8 +2785,7 @@ fn a_tagged_newtype_variant_over_a_value_serde_writes_as_a_plain_enum_is_refused
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_flattened_non_object_refusal_is_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_flattened_non_object_refusal_is_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -2937,7 +2811,7 @@ fn the_flattened_non_object_refusal_is_compiled_in_every_build_with_serde() {
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -2949,7 +2823,6 @@ fn the_flattened_non_object_refusal_is_compiled_in_every_build_with_serde() {
 }
 
 /// The refusal of a flattened `inner` of `holder` that serde writes as a `named` value.
-#[cfg(feature = "serde")]
 fn whole_non_object_refusal(holder: &str, inner: &str, named: &str) -> String {
     format!(
         "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` is not written as an object \
@@ -2962,7 +2835,6 @@ fn whole_non_object_refusal(holder: &str, inner: &str, named: &str) -> String {
 
 /// The refusal of a flattened `inner` of `holder` whose union member at `branch` serde writes as
 /// a plain enum's variant name.
-#[cfg(feature = "serde")]
 fn flattened_variant_name_refusal(holder: &str, inner: &str, branch: &str) -> String {
     format!(
         "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` writes a union member as a \
@@ -2977,10 +2849,8 @@ fn flattened_variant_name_refusal(holder: &str, inner: &str, branch: &str) -> St
 /// A brand over text, a tuple struct and an untagged enum with a member over a plain enum, each
 /// flattened where it is declared above, in a struct and in a variant's members, and a brand
 /// declared below, which no expansion sees.
-#[cfg(feature = "serde")]
 #[test]
-fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every_build_with_serde()
-{
+fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every_build() {
     for declared in [
         "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct RecordId(String);",
         "#[derive(Serialize, Deserialize)] pub struct Pair(String, u32);",
@@ -3042,7 +2912,7 @@ fn a_flattened_type_serde_writes_as_no_object_declared_above_is_refused_in_every
 /// `as_number` are refused flattened and beside a tag as the integer serde writes for it, through
 /// a generic type filled at one and an alias of one too, where a date with no `as_number` is
 /// refused as the text serde writes.
-#[cfg(all(feature = "serde", feature = "chrono"))]
+#[cfg(feature = "chrono")]
 #[test]
 fn a_date_under_as_number_declared_above_is_refused_as_the_integer_serde_writes() {
     for (args, declared) in [
@@ -3108,7 +2978,7 @@ fn a_date_under_as_number_declared_above_is_refused_as_the_integer_serde_writes(
 
 /// The record every build with serde writes of a date under `as_number` proves what the record a
 /// Zod surface writes proves: the integer serde writes.
-#[cfg(all(feature = "serde", feature = "zod", feature = "chrono"))]
+#[cfg(all(feature = "zod", feature = "chrono"))]
 #[test]
 fn both_records_prove_the_integer_serde_writes_for_a_date_under_as_number() {
     for declared in [
@@ -3135,8 +3005,7 @@ fn both_records_prove_the_integer_serde_writes_for_a_date_under_as_number() {
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_tagged_non_object_refusal_is_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_tagged_non_object_refusal_is_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     for named in [
         "tagged_non_object_message",
@@ -3149,7 +3018,7 @@ fn the_tagged_non_object_refusal_is_compiled_in_every_build_with_serde() {
     ] {
         assert_eq!(
             gates_above(expansion, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -3157,7 +3026,6 @@ fn the_tagged_non_object_refusal_is_compiled_in_every_build_with_serde() {
 
 /// The refusal of the slot of variant `Held` of `holder`, under the tag `kind`, over `inner`,
 /// which `written` says serde writes as no object.
-#[cfg(feature = "serde")]
 fn tagged_non_object_refusal(holder: &str, inner: &str, written: &str) -> String {
     format!(
         "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, \
@@ -3174,10 +3042,8 @@ fn tagged_non_object_refusal(holder: &str, inner: &str, written: &str) -> String
 /// enum with a member that is no object, each declared above, and the slots that stay accepted:
 /// a brand over a struct, an untagged enum of objects, a type declared below, and an enum under a
 /// tag and a content key.
-#[cfg(feature = "serde")]
 #[test]
-fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_every_build_with_serde()
- {
+fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_every_build() {
     for declared in [
         "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct ProbeId(String);",
         "#[derive(Serialize, Deserialize)] pub struct ProbePair(String, u32);",
@@ -3251,7 +3117,6 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_no_object_is_refused_in_
 /// A newtype variant under a tag alone over an untagged enum declared above with a member serde
 /// writes as a variant's name beside the tag, a plain enum's and an externally tagged enum's unit
 /// variant's, and the same enums flattened.
-#[cfg(feature = "serde")]
 #[test]
 fn a_union_member_written_as_a_variant_name_is_refused_with_the_key_serde_writes_for_it() {
     for declared in [
@@ -3330,8 +3195,7 @@ fn a_union_member_written_as_a_variant_name_is_refused_with_the_key_serde_writes
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_tagged_optional_refusal_is_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_tagged_optional_refusal_is_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -3345,7 +3209,7 @@ fn the_tagged_optional_refusal_is_compiled_in_every_build_with_serde() {
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -3353,7 +3217,6 @@ fn the_tagged_optional_refusal_is_compiled_in_every_build_with_serde() {
 
 /// The refusal of the slot of variant `Held` of `holder`, under the tag `kind`, over `inner`,
 /// which serde writes as an `Option`.
-#[cfg(feature = "serde")]
 fn tagged_optional_refusal(holder: &str, inner: &str) -> String {
     format!(
         "model_schema: variant `Held` of internally tagged enum `{holder}` wraps `{inner}`, \
@@ -3371,10 +3234,8 @@ fn tagged_optional_refusal(holder: &str, inner: &str) -> String {
 /// `Option`, an alias of that struct and a struct of one slot over it, each declared above, and
 /// the shapes that stay accepted: that struct flattened into a struct and into a variant's
 /// members, a slot declared below, and an enum under a tag and a content key.
-#[cfg(feature = "serde")]
 #[test]
-fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_in_every_build_with_serde()
- {
+fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_in_every_build() {
     for declared in [
         "#[derive(Serialize, Deserialize)] pub struct ProbeFields { pub note: String }",
         "#[derive(Serialize, Deserialize)] pub struct ProbeMaybe(Option<ProbeFields>);",
@@ -3440,7 +3301,6 @@ fn a_tagged_newtype_variant_over_a_type_serde_writes_as_an_optional_is_refused_i
 
 /// The refusal of a flattened `inner` of `holder` whose union member at `branch` serde writes as
 /// a `named` value.
-#[cfg(feature = "serde")]
 fn flattened_branch_refusal(holder: &str, inner: &str, branch: &str, named: &str) -> String {
     format!(
         "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` writes a union member that is \
@@ -3454,7 +3314,6 @@ fn flattened_branch_refusal(holder: &str, inner: &str, branch: &str, named: &str
 /// A newtype variant under a tag alone over a type declared above that serde writes as an
 /// `Option` of a value with a leaf written as no object is refused as an `Option`, which serde's
 /// tag refuses before it reads the value, and the same type flattened is refused with its branch.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_optional_of_a_value_written_as_no_object_is_refused_as_an_optional() {
     for declared in [
@@ -3506,7 +3365,6 @@ fn a_tagged_optional_of_a_value_written_as_no_object_is_refused_as_an_optional()
 /// `()` beside a tag and flattened, in each way it is reached: written in place, through a struct
 /// of one slot over it, through a generic type filled at it, and as a member of an untagged enum.
 /// serde writes it as the tag alone, or as no key, and reads neither back as a union member.
-#[cfg(feature = "serde")]
 #[test]
 fn a_unit_beside_a_tag_or_flattened_is_refused_in_the_words_of_what_serde_writes() {
     for declared in [
@@ -3606,8 +3464,7 @@ fn a_unit_beside_a_tag_or_flattened_is_refused_in_the_words_of_what_serde_writes
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_tagged_filled_refusal_is_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_tagged_filled_refusal_is_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -3624,7 +3481,7 @@ fn the_tagged_filled_refusal_is_compiled_in_every_build_with_serde() {
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -3632,7 +3489,6 @@ fn the_tagged_filled_refusal_is_compiled_in_every_build_with_serde() {
 
 /// The expansion of `source`, deriving both serde traits, under the `#[model_schema(...)]`
 /// arguments `args`.
-#[cfg(feature = "serde")]
 fn serialized_under(args: &str, source: &str) -> proc_macro2::TokenStream {
     super::exec_model_schema(
         syn::parse_str(args).unwrap(),
@@ -3644,7 +3500,6 @@ fn serialized_under(args: &str, source: &str) -> proc_macro2::TokenStream {
 /// struct, a struct of one slot over text and one over an `Option`, and a struct of one slot, a
 /// brand over a `Box` and an alias whose value is their type parameter, one of them through
 /// another.
-#[cfg(feature = "serde")]
 fn declare_filled_probes() {
     for (args, declared) in [
         ("", "pub struct ProbeFields { pub note: String }"),
@@ -3677,7 +3532,6 @@ fn declare_filled_probes() {
 }
 
 /// The refusals of variant `Held` of `holder`, under the tag `kind` alone, over `slot`.
-#[cfg(feature = "serde")]
 fn held_under_tag(holder: &str, slot: &str) -> Vec<String> {
     refusal_texts(&serialized_under(
         "",
@@ -3688,10 +3542,8 @@ fn held_under_tag(holder: &str, slot: &str) -> Vec<String> {
 /// A newtype variant under a tag alone over a generic type declared above whose value is its type
 /// parameter, filled at a value serde writes as no object, through a struct of one slot, a brand,
 /// an alias and a chain of them, refused as the slot of the same shape no parameter fills is.
-#[cfg(feature = "serde")]
 #[test]
-fn a_tagged_newtype_variant_over_a_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde()
- {
+fn a_tagged_newtype_variant_over_a_generic_type_filled_at_no_object_is_refused_in_every_build() {
     declare_filled_probes();
     let whole = "is not written as an object \u{2014} its schema describes a";
     let text = held_under_tag("ProbeFilledText", "ProbeWrap<String>");
@@ -3749,10 +3601,8 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_no_object_is_refused_i
 /// A newtype variant under a tag alone over a generic type declared above whose value is its type
 /// parameter, filled at an `Option` or at a type serde writes as one, directly and through a
 /// chain, refused as the slot of the same shape no parameter fills is.
-#[cfg(feature = "serde")]
 #[test]
-fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_optional_is_refused_in_every_build_with_serde()
- {
+fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_optional_is_refused_in_every_build() {
     declare_filled_probes();
     let optional = held_under_tag("ProbeFilledOptional", "ProbeWrap<Option<ProbeFields>>");
     assert_eq!(
@@ -3791,7 +3641,6 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_optional_is_refused
 /// The generic slots under a tag alone that stay accepted: a filling serde writes as an object,
 /// directly and through a chain, a type declared below, the enum's own parameter, and an enum under
 /// a tag and a content key.
-#[cfg(feature = "serde")]
 #[test]
 fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_object_is_accepted() {
     declare_filled_probes();
@@ -3829,8 +3678,7 @@ fn a_tagged_newtype_variant_over_a_generic_type_filled_at_an_object_is_accepted(
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_filled_holder_and_flatten_refusals_are_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_filled_holder_and_flatten_refusals_are_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     for named in [
         "non_object_wire",
@@ -3849,7 +3697,7 @@ fn the_filled_holder_and_flatten_refusals_are_compiled_in_every_build_with_serde
     ] {
         assert_eq!(
             gates_above(expansion, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -3859,7 +3707,6 @@ fn the_filled_holder_and_flatten_refusals_are_compiled_in_every_build_with_serde
 /// generic type declared above filled at an argument: a struct of one slot, a brand and an alias
 /// filled at a value serde writes as no object, at an `Option` and at a struct, a struct of one
 /// slot over an `Option` of one, and a struct of one slot over `Option<String>`.
-#[cfg(feature = "serde")]
 fn declare_filled_holders() {
     declare_filled_probes();
     for (args, declared) in [
@@ -3911,9 +3758,8 @@ fn declare_filled_holders() {
 /// declared above filled at a value serde writes as no object, a struct of one slot, a brand, an
 /// alias and a chain of them, refused as the slot over the filling itself is, and over one filled
 /// at an `Option`, refused as the slot over that `Option` is.
-#[cfg(feature = "serde")]
 #[test]
-fn a_tagged_newtype_variant_over_a_holder_of_a_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde()
+fn a_tagged_newtype_variant_over_a_holder_of_a_generic_type_filled_at_no_object_is_refused_in_every_build()
  {
     declare_filled_holders();
     let whole = "is not written as an object \u{2014} its schema describes a";
@@ -3998,7 +3844,6 @@ fn a_tagged_newtype_variant_over_a_holder_of_a_generic_type_filled_at_no_object_
 
 /// The refusal of a flattened `inner` of `holder` whose union member at `branch` serde writes as a
 /// `named` value.
-#[cfg(feature = "serde")]
 fn branch_non_object_refusal(holder: &str, inner: &str, branch: &str, named: &str) -> String {
     format!(
         "model_schema: `{holder}`: `#[serde(flatten)]` of `{inner}` writes a union member that is \
@@ -4010,7 +3855,6 @@ fn branch_non_object_refusal(holder: &str, inner: &str, branch: &str, named: &st
 }
 
 /// The refusals of `holder`, a struct that flattens `flattened` beside a member of its own.
-#[cfg(feature = "serde")]
 fn flattened_beside_an_id(holder: &str, flattened: &str) -> Vec<String> {
     let written: syn::Type = syn::parse_str(flattened).unwrap();
     let attribute = if get_field_def("wrap", &written, "").stands_for_an_option() {
@@ -4029,9 +3873,8 @@ fn flattened_beside_an_id(holder: &str, flattened: &str) -> Vec<String> {
 /// an `Option`, through a brand, an alias and a chain, each refused as the type of the same shape
 /// no parameter fills is; and a type declared above whose value is one, flattened, refused as the
 /// type over the filling itself is.
-#[cfg(feature = "serde")]
 #[test]
-fn a_flattened_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde() {
+fn a_flattened_generic_type_filled_at_no_object_is_refused_in_every_build() {
     declare_filled_holders();
     let text = flattened_beside_an_id("ProbeFlatText", "ProbeWrap<String>");
     assert_eq!(
@@ -4135,10 +3978,8 @@ fn a_flattened_generic_type_filled_at_no_object_is_refused_in_every_build_with_s
 /// A generic type declared above whose value is its type parameter, flattened at an `Option` of
 /// text, and a type declared above whose value is an `Option` of one filled at text, each refused
 /// with the branch of the `Option`, as a struct of one slot over `Option<String>` is.
-#[cfg(feature = "serde")]
 #[test]
-fn a_flattened_generic_type_filled_at_an_option_of_no_object_is_refused_in_every_build_with_serde()
-{
+fn a_flattened_generic_type_filled_at_an_option_of_no_object_is_refused_in_every_build() {
     declare_filled_holders();
     for (holder, flattened) in [
         ("ProbeFlatMaybeText", "ProbeWrap<Option<String>>"),
@@ -4156,7 +3997,6 @@ fn a_flattened_generic_type_filled_at_an_option_of_no_object_is_refused_in_every
 /// The shapes left alone: a generic type filled at a struct and at an `Option` of one, flattened,
 /// and a type whose value is one, flattened and in a tagged slot; a generic type declared below,
 /// flattened and filling a type declared above.
-#[cfg(feature = "serde")]
 #[test]
 fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
     declare_filled_holders();
@@ -4206,8 +4046,7 @@ fn a_generic_type_filled_at_an_object_is_accepted_flattened_and_held() {
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_filled_untagged_member_refusals_are_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_filled_untagged_member_refusals_are_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     for named in [
         "non_object_wire",
@@ -4222,7 +4061,7 @@ fn the_filled_untagged_member_refusals_are_compiled_in_every_build_with_serde() 
     ] {
         assert_eq!(
             gates_above(expansion, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -4231,7 +4070,6 @@ fn the_filled_untagged_member_refusals_are_compiled_in_every_build_with_serde() 
 /// Declares, beside the types [`declare_filled_probes`] declares, the untagged enums with an object
 /// member and a newtype member: over a generic type declared above filled at text, a number, an
 /// `Option` and a struct, over one declared below, and over each filling itself.
-#[cfg(feature = "serde")]
 fn declare_filled_members() {
     declare_filled_probes();
     for declared in [
@@ -4258,10 +4096,8 @@ fn declare_filled_members() {
 /// An untagged enum with a member over a generic type declared above filled at text, flattened
 /// beside a member and held by a newtype variant under a tag alone, each refused with the branch
 /// the enum with the member over text itself is refused with.
-#[cfg(feature = "serde")]
 #[test]
-fn an_untagged_member_over_a_generic_type_filled_at_no_object_is_refused_in_every_build_with_serde()
-{
+fn an_untagged_member_over_a_generic_type_filled_at_no_object_is_refused_in_every_build() {
     declare_filled_members();
     let flattened = refusal_texts(&serialized_under(
         "",
@@ -4343,7 +4179,6 @@ fn an_untagged_member_over_a_generic_type_filled_at_no_object_is_refused_in_ever
 /// An untagged member over a generic type declared above filled at a number through a chain and
 /// under `Box`, and at an `Option` of one, flattened and held under a tag alone, each refused with
 /// the branch the member over that filling itself is refused with.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_over_a_generic_type_filled_through_a_chain_or_at_an_option_is_refused_as_its_filling()
  {
@@ -4391,7 +4226,6 @@ fn an_untagged_member_over_a_generic_type_filled_through_a_chain_or_at_an_option
 /// generic type declared below, flattened and held under a tag alone. The Swift read of the one
 /// declared below hands it every key beside it, so a build with Swift refuses it flattened beside a
 /// key.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_over_a_generic_type_filled_at_an_object_or_declared_below_is_accepted() {
     declare_filled_members();
@@ -4429,8 +4263,7 @@ fn an_untagged_member_over_a_generic_type_filled_at_an_object_or_declared_below_
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_untagged_parameter_refusals_are_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_untagged_parameter_refusals_are_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -4447,7 +4280,7 @@ fn the_untagged_parameter_refusals_are_compiled_in_every_build_with_serde() {
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -4458,7 +4291,6 @@ fn the_untagged_parameter_refusals_are_compiled_in_every_build_with_serde() {
 /// `Option`, in a generic type declared above, forwarded to another such enum, beside a member
 /// written as text, and at the second of two parameters; an alias of one filled at text; and the
 /// enums and the alias with each such member written over a filling itself.
-#[cfg(feature = "serde")]
 fn declare_own_members() {
     declare_filled_members();
     for (args, declared) in [
@@ -4530,7 +4362,6 @@ fn declare_own_members() {
 
 /// The refusals of `flattened` flattened beside a member, and of `flattened` held by a newtype
 /// variant under a tag alone, each holder named after `holder`.
-#[cfg(feature = "serde")]
 fn flattened_and_held(holder: &str, flattened: &str) -> [Vec<String>; 2] {
     [
         flattened_beside_an_id(&format!("ProbeFlat{holder}"), flattened),
@@ -4540,7 +4371,6 @@ fn flattened_and_held(holder: &str, flattened: &str) -> [Vec<String>; 2] {
 
 /// The refusals [`flattened_and_held`] answers where the union named `inner` writes its member at
 /// `branch` as a `named` value.
-#[cfg(feature = "serde")]
 fn branch_refusals(holder: &str, inner: &str, branch: &str, named: &str) -> [Vec<String>; 2] {
     [
         vec![branch_non_object_refusal(
@@ -4563,10 +4393,8 @@ fn branch_refusals(holder: &str, inner: &str, branch: &str, named: &str) -> [Vec
 /// An untagged enum whose member is its own type parameter, filled at text, flattened beside a
 /// member and held by a newtype variant under a tag alone, each refused with the branch the enum
 /// with the member over text itself is refused with, and named with its argument.
-#[cfg(feature = "serde")]
 #[test]
-fn an_untagged_enum_filled_at_no_object_at_its_own_parameter_is_refused_in_every_build_with_serde()
-{
+fn an_untagged_enum_filled_at_no_object_at_its_own_parameter_is_refused_in_every_build() {
     declare_own_members();
     assert_eq!(
         flattened_and_held("OwnMember", "ProbeOwnMember<String>"),
@@ -4595,7 +4423,6 @@ fn an_untagged_enum_filled_at_no_object_at_its_own_parameter_is_refused_in_every
 /// and at the second of two parameters, and an alias of one, each flattened and held under a tag
 /// alone at a filling serde writes as no object, refused with the branch the enum with the member
 /// over that filling itself is refused with.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_filled_at_its_own_parameter_through_a_wrapper_a_holder_or_another_enum_is_refused_as_its_filling()
  {
@@ -4655,7 +4482,6 @@ fn an_untagged_enum_filled_at_its_own_parameter_through_a_wrapper_a_holder_or_an
 
 /// The generic untagged enums left alone: each filled at a struct and one declared below, flattened
 /// and held under a tag alone, and one filled at a type parameter of the holder under a tag alone.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_is_accepted() {
     declare_own_members();
@@ -4688,8 +4514,7 @@ fn an_untagged_enum_filled_at_an_object_at_its_own_parameter_or_declared_below_i
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_refusals_of_a_slot_over_an_untagged_enum_are_compiled_in_every_build_with_serde() {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_refusals_of_a_slot_over_an_untagged_enum_are_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -4705,7 +4530,7 @@ fn the_refusals_of_a_slot_over_an_untagged_enum_are_compiled_in_every_build_with
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -4715,7 +4540,6 @@ fn the_refusals_of_a_slot_over_an_untagged_enum_are_compiled_in_every_build_with
 /// brands over an untagged enum: with a member written as text, through a generic type declared
 /// above, at the enum's own parameter, with every member an object, and over an enum declared
 /// below; and an untagged enum with a member over one of them.
-#[cfg(feature = "serde")]
 fn declare_slot_members() {
     declare_own_members();
     for (args, declared) in [
@@ -4759,10 +4583,8 @@ fn declare_slot_members() {
 /// A struct of one slot and a brand over an untagged enum with a member written as text, flattened
 /// beside a member and held by a newtype variant under a tag alone, each refused with the branch
 /// an alias of the same enum is refused with, and named as written.
-#[cfg(feature = "serde")]
 #[test]
-fn a_slot_over_an_untagged_enum_with_a_member_that_is_no_object_is_refused_in_every_build_with_serde()
- {
+fn a_slot_over_an_untagged_enum_with_a_member_that_is_no_object_is_refused_in_every_build() {
     declare_slot_members();
     assert_eq!(
         flattened_and_held("TextAlias", "ProbeTextAlias"),
@@ -4794,7 +4616,6 @@ fn a_slot_over_an_untagged_enum_with_a_member_that_is_no_object_is_refused_in_ev
 /// enum's own parameter, a generic type declared above filled at a struct of one slot over one,
 /// and an untagged enum with a member over one, each flattened and held under a tag alone,
 /// refused with the branch the enum the slot holds is refused with.
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_over_an_untagged_enum_through_a_generic_type_or_held_by_one_is_refused_as_the_enum() {
     declare_slot_members();
@@ -4819,7 +4640,6 @@ fn a_slot_over_an_untagged_enum_through_a_generic_type_or_held_by_one_is_refused
 /// The holders left alone: a struct of one slot and a brand over an untagged enum whose every
 /// member is an object, a struct of one slot over an enum declared below, and a holder declared
 /// below, flattened and held under a tag alone.
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_over_an_untagged_enum_of_objects_or_declared_below_is_accepted() {
     declare_slot_members();
@@ -4842,9 +4662,7 @@ fn a_slot_over_an_untagged_enum_of_objects_or_declared_below_is_accepted() {
 
 /// No local build is of the clients alone, so the gates are read off the sources.
 #[test]
-fn the_refusals_of_a_holder_of_an_untagged_enum_at_its_own_parameter_are_compiled_in_every_build_with_serde()
- {
-    let with_serde = quote::quote!(cfg(feature = "serde")).to_string();
+fn the_refusals_of_a_holder_of_an_untagged_enum_at_its_own_parameter_are_compiled_in_every_build() {
     let expansion = include_str!("../model_schema.rs");
     let registry = include_str!("../utils.rs");
     for (source, named) in [
@@ -4859,7 +4677,7 @@ fn the_refusals_of_a_holder_of_an_untagged_enum_at_its_own_parameter_are_compile
     ] {
         assert_eq!(
             gates_above(source, named),
-            [with_serde.as_str()],
+            Vec::<String>::new(),
             "for `{named}`"
         );
     }
@@ -4869,7 +4687,6 @@ fn the_refusals_of_a_holder_of_an_untagged_enum_at_its_own_parameter_are_compile
 /// slot and brand whose value is an untagged enum filled at their own type parameter: the enum
 /// whose member is its own type parameter, through an alias of one, in a generic type declared
 /// above, and an enum declared below; and an untagged enum with a member over the alias.
-#[cfg(feature = "serde")]
 fn declare_own_holders() {
     declare_slot_members();
     for (args, declared) in [
@@ -4916,10 +4733,9 @@ fn declare_own_holders() {
 /// own type parameter, each filled at text, flattened beside a member and held by a newtype
 /// variant under a tag alone, refused with the branch the enum filled at text is refused with,
 /// and named with their arguments.
-#[cfg(feature = "serde")]
 #[test]
-fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_no_object_is_refused_in_every_build_with_serde()
- {
+fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_no_object_is_refused_in_every_build()
+{
     declare_own_holders();
     assert_eq!(
         flattened_and_held("OwnMember", "ProbeOwnMember<String>"),
@@ -4951,7 +4767,6 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_no_object_is_refu
 /// the enum, a generic type declared above filled at such a struct, and an untagged enum with a
 /// member over such an alias, each filled at text, flattened and held under a tag alone, refused
 /// with the branch the shape over the enum filled at text is refused with.
-#[cfg(feature = "serde")]
 #[test]
 fn a_holder_of_an_untagged_enum_at_its_own_parameter_through_another_type_is_refused_as_its_filling()
  {
@@ -4991,7 +4806,6 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_through_another_type_is_ref
 /// The holders left alone: each filled at a struct, a holder over an enum declared below and a
 /// holder declared below, flattened and held under a tag alone, and one filled at a type parameter
 /// of the type that holds it under a tag alone.
-#[cfg(feature = "serde")]
 #[test]
 fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_declared_below_is_accepted()
  {
@@ -5027,9 +4841,9 @@ fn a_holder_of_an_untagged_enum_at_its_own_parameter_filled_at_an_object_or_decl
 
 /// What the record every build with serde writes proves of each flattened type is what the record
 /// a Zod surface writes proves, so the refusal reads the same with a schema surface and without.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
-fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves() {
+fn the_record_every_build_writes_proves_what_the_zod_surface_proves() {
     for declared in [
         "#[derive(Serialize, Deserialize)] pub struct Plain { pub a: String }",
         "#[derive(Serialize, Deserialize)] #[serde(transparent)] pub struct Slug(String);",
@@ -5090,11 +4904,7 @@ fn the_record_every_build_with_serde_writes_proves_what_the_zod_surface_proves()
 
 /// The struct a build of the clients alone took, each client naming `both_ways`, a key serde
 /// neither writes nor reads.
-#[cfg(all(
-    feature = "serde",
-    feature = "dart",
-    not(any(feature = "typescript", feature = "zod"))
-))]
+#[cfg(all(feature = "dart", not(any(feature = "typescript", feature = "zod"))))]
 #[test]
 fn a_rename_naming_two_keys_is_refused_where_only_a_client_is_emitted() {
     let source = "pub struct SplitNames { \
@@ -5125,10 +4935,7 @@ fn a_rename_naming_two_keys_is_refused_where_only_a_client_is_emitted() {
 
 /// A map key serde writes as an array is refused where only a client is emitted, in the words the
 /// schema surfaces use.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_tuple_map_key_is_refused_in_every_build_that_describes_a_type() {
     let expanded =
@@ -5149,7 +4956,6 @@ fn a_tuple_map_key_is_refused_in_every_build_that_describes_a_type() {
 }
 
 #[cfg(all(
-    feature = "serde",
     feature = "mongodb",
     any(feature = "dart", feature = "swift", feature = "kotlin")
 ))]
@@ -5168,10 +4974,7 @@ fn an_object_id_map_key_is_refused_in_every_build_that_describes_a_type() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn nested_list_and_optional_map_keys_are_refused_in_every_build_that_describes_a_type() {
     for (field_type, said) in [
@@ -5202,10 +5005,7 @@ fn nested_list_and_optional_map_keys_are_refused_in_every_build_that_describes_a
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_string_map_key_is_left_alone_in_every_build_that_describes_a_type() {
     let expanded =
@@ -5219,10 +5019,7 @@ fn a_string_map_key_is_left_alone_in_every_build_that_describes_a_type() {
 
 /// The refusals below are the ones the schema surfaces already give, held in a build of the clients
 /// alone.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 fn refusal_in_every_build(source: &str, said: &str) {
     let expanded = expansion_over(source).to_string();
     assert_eq!(
@@ -5233,10 +5030,7 @@ fn refusal_in_every_build(source: &str, said: &str) {
     assert!(expanded.contains(said), "for `{source}`, got: {expanded}");
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_brand_over_an_option_is_refused_in_every_build_that_describes_a_type() {
     refusal_in_every_build(
@@ -5245,10 +5039,7 @@ fn a_brand_over_an_option_is_refused_in_every_build_that_describes_a_type() {
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_tuple_slot_dropped_from_one_direction_is_refused_in_every_build_that_describes_a_type() {
     refusal_in_every_build(
@@ -5258,10 +5049,7 @@ fn a_tuple_slot_dropped_from_one_direction_is_refused_in_every_build_that_descri
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn an_alias_of_a_tuple_keyed_map_is_refused_in_every_build_that_describes_a_type() {
     refusal_in_every_build(
@@ -5270,10 +5058,7 @@ fn an_alias_of_a_tuple_keyed_map_is_refused_in_every_build_that_describes_a_type
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_const_handed_to_a_written_type_is_refused_in_every_build_that_describes_a_type() {
     refusal_in_every_build(
@@ -5383,7 +5168,6 @@ fn the_brand_slot_alias_and_const_guards_are_compiled_in_every_build_that_descri
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_without_serde_leaves_an_enum_alone() {
     let errors = enum_cfg_attr_errors(&syn::parse_quote! {
@@ -5398,7 +5182,6 @@ fn cfg_attr_without_serde_leaves_an_enum_alone() {
 }
 
 /// Runs the field walk the way [`process_field`] does and renders the `cfg_attr` guard failure.
-#[cfg(feature = "serde")]
 fn field_cfg_attr_error(item: &syn::ItemStruct) -> Option<String> {
     let field = item.fields.iter().next()?;
     let name = mapped_or_default(field.ident.as_ref(), ToString::to_string);
@@ -5408,7 +5191,6 @@ fn field_cfg_attr_error(item: &syn::ItemStruct) -> Option<String> {
         .map(|rejection| cfg_attr_guard_error(rejection, &field_label(&name)).to_string())
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_field_is_rejected() {
     let error = field_cfg_attr_error(&syn::parse_quote! {
@@ -5860,7 +5642,6 @@ fn a_bare_value_or_map_is_refused_nowhere_at_expansion() {
 /// A member serde neither writes nor reads, and every member of a variant it neither writes nor
 /// reads, is on no surface: neither the full path nor a bare name of a JSON value is refused or
 /// checked there. Written one way, the member is refused as before.
-#[cfg(feature = "serde")]
 #[test]
 fn a_json_value_serde_neither_writes_nor_reads_is_refused_nowhere() {
     for source in [
@@ -6235,7 +6016,6 @@ fn an_alias_of_an_undescribable_primitive_is_refused() {
 /// not refused.
 #[test]
 fn an_undescribable_primitive_off_the_wire_or_named_by_a_parameter_is_not_refused() {
-    #[cfg(feature = "serde")]
     assert_eq!(
         undescribable_primitive_refusals("pub struct Wide { #[serde(skip)] pub x: i128 }"),
         []
@@ -6339,7 +6119,7 @@ fn a_u64_field_is_refused_for_swift() {
 /// No Swift type declares a member serde neither writes nor reads, nor a member of a variant it
 /// neither writes nor reads, so the width guard reads past both; a member under one one-way skip
 /// is written or read, and is refused.
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[test]
 fn the_swift_width_guard_reads_past_what_serde_neither_writes_nor_reads() {
     let unwired: [syn::Item; 4] = [
@@ -6816,21 +6596,18 @@ fn a_refused_items_module_answers_the_call_a_reference_emits() {
 }
 
 /// Every attribute the walked fields are left carrying, rendered as the emitted item carries them.
-#[cfg(feature = "serde")]
 fn walked_field_attrs<'field>(fields: impl Iterator<Item = &'field syn::Field>) -> String {
     let attrs: Vec<&syn::Attribute> = fields.flat_map(|field| field.attrs.iter()).collect();
     quote::quote!(#(#attrs)*).to_string()
 }
 
 /// Every field of an enum, in the order the walks visit them.
-#[cfg(feature = "serde")]
 fn enum_fields(item: &syn::ItemEnum) -> impl Iterator<Item = &syn::Field> {
     item.variants
         .iter()
         .flat_map(|variant| variant.fields.iter())
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_refused_pattern_leaves_no_hook_naming_the_dropped_module() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -6863,7 +6640,6 @@ fn a_refused_pattern_leaves_no_hook_naming_the_dropped_module() {
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -6900,7 +6676,6 @@ fn a_constraint_refused_its_placement_leaves_no_hook_naming_the_dropped_module()
 
 /// A literal on a field reached through an interior-mutability wrapper is refused: the validator
 /// has no way to reach the value it compares.
-#[cfg(feature = "serde")]
 #[test]
 fn a_literal_reached_through_an_interior_mutability_wrapper_is_refused() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -6936,7 +6711,6 @@ fn a_literal_reached_through_an_interior_mutability_wrapper_is_refused() {
 
 /// A refusal at build time and a helper name the field as its author wrote it. A report made as
 /// the program runs names the key serde writes.
-#[cfg(feature = "serde")]
 #[test]
 fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -6982,7 +6756,6 @@ fn a_renamed_field_is_refused_by_its_rust_name_and_reported_under_its_key() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_refused_map_key_leaves_no_hook_naming_the_dropped_module() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -7011,7 +6784,6 @@ fn a_refused_map_key_leaves_no_hook_naming_the_dropped_module() {
     assert_eq!(rendered, "", "got: {rendered}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_struct_field_that_clears_the_guards_is_hung_with_no_hook() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7057,7 +6829,6 @@ fn a_struct_field_that_clears_the_guards_is_hung_with_no_hook() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7129,7 +6900,6 @@ fn a_field_whose_type_could_publish_a_validator_contributes_a_body_that_runs_it(
 
 /// The place a nested report is written under: the key, then the index each list level of the
 /// walk binds, innermost last.
-#[cfg(feature = "serde")]
 #[test]
 fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
     let place = |spelling: &str, under: Option<&str>| {
@@ -7194,7 +6964,6 @@ fn a_nested_report_is_placed_under_its_key_and_the_index_of_each_list_level() {
 }
 
 /// What the fields of `item` add to `validate()`, under camel case, as one text.
-#[cfg(feature = "serde")]
 fn walked_bodies(item: &mut syn::ItemStruct) -> String {
     let generics = item.generics.clone();
     super::collect_struct_fields(
@@ -7216,7 +6985,6 @@ fn walked_bodies(item: &mut syn::ItemStruct) -> String {
     .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_declared_types_is_walked_entry_by_entry_under_the_key_serde_writes() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7241,12 +7009,11 @@ fn a_map_of_declared_types_is_walked_entry_by_entry_under_the_key_serde_writes()
     }
 }
 
-/// The text a map's entry is named by: what serde writes for the key, and without `serde` the
-/// key's `Display` text. A key with neither answers no text.
+/// The text a map's entry is named by: what serde writes for the key. A key serde writes no text
+/// for answers none.
 #[test]
-fn a_map_key_is_named_through_serde_or_through_its_display() {
+fn a_map_key_is_named_through_serde() {
     let written = super::written_key_items().to_string();
-    #[cfg(feature = "serde")]
     let (named, unread) = (
         [
             "impl < K : ? :: core :: marker :: Sized + serde :: Serialize > :: core :: fmt :: \
@@ -7255,16 +7022,6 @@ fn a_map_key_is_named_through_serde_or_through_its_display() {
              MapKey < '_ , K >",
         ],
         ":: core :: fmt :: Display > WrittenKey",
-    );
-    #[cfg(not(feature = "serde"))]
-    let (named, unread) = (
-        [
-            "impl < K : ? :: core :: marker :: Sized + :: core :: fmt :: Display > WrittenKey \
-             for MapKey < '_ , K >",
-            ":: core :: option :: Option :: Some (:: std :: string :: ToString :: to_string \
-             (self . 0))",
-        ],
-        "serde",
     );
     for held in named {
         assert!(written.contains(held), "{held} is not in {written}");
@@ -7278,7 +7035,6 @@ fn a_map_key_is_named_through_serde_or_through_its_display() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_written_as_a_fields_type_is_walked_position_by_position() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7303,7 +7059,6 @@ fn a_tuple_written_as_a_fields_type_is_walked_position_by_position() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_of_a_tuple_struct_is_walked_and_reported_under_its_position() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7332,7 +7087,6 @@ fn a_slot_of_a_tuple_struct_is_walked_and_reported_under_its_position() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_the_variants_name() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -7365,7 +7119,6 @@ fn a_slot_of_a_tagged_variant_is_walked_and_reported_under_the_variants_name() {
 
 /// A map, a tuple and a slot that hold no declared type are not walked, a type parameter and a
 /// set of strings among what they hold.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate() {
     let mut fields: syn::ItemStruct = syn::parse_quote! {
@@ -7425,7 +7178,6 @@ fn a_map_a_tuple_and_a_slot_that_hold_no_declared_type_add_nothing_to_validate()
 }
 
 /// A set, a deque and a heap are walked only where they hold a declared type, as a `Vec` is.
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token() {
     for held in ["String", "u32", "T"] {
@@ -7484,7 +7236,6 @@ fn a_field_written_as_a_set_of_values_no_declared_type_describes_adds_no_token()
 }
 
 /// A set of declared types keeps its walk, each item named by its index.
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_written_as_a_set_of_declared_types_is_walked_item_by_item() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7503,7 +7254,6 @@ fn a_field_written_as_a_set_of_declared_types_is_walked_item_by_item() {
 }
 
 /// The reader hung on a field that holds a declared type is hung on no map and no tuple.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7539,7 +7289,6 @@ fn a_map_and_a_tuple_of_declared_types_are_hung_with_no_reader() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_holding_a_declared_type_is_read_through_a_hook_that_renames_no_refusal() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7588,7 +7337,6 @@ fn a_field_holding_a_declared_type_is_read_through_a_hook_that_renames_no_refusa
     assert!(!read.contains("nested_under"), "got: {read}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_names_a_read_declares_are_never_names_the_item_writes() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7627,7 +7375,6 @@ fn the_names_a_read_declares_are_never_names_the_item_writes() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_the_unjudged_read_does_not_reach_is_read_by_its_own_type() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7666,7 +7413,6 @@ fn a_field_the_unjudged_read_does_not_reach_is_read_by_its_own_type() {
     assert!(!read.contains("read_unjudged_"), "got: {read}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_the_reader_would_displace_is_left_to_read_itself() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7710,7 +7456,6 @@ fn a_field_the_reader_would_displace_is_left_to_read_itself() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_container_that_is_not_read_back_publishes_no_reader() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7744,7 +7489,6 @@ fn a_container_that_is_not_read_back_publishes_no_reader() {
     assert_eq!(walked_field_attrs(item.fields.iter()), "");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_the_crate_renders_itself_contributes_no_body_to_reach_into() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7779,7 +7523,6 @@ fn a_field_the_crate_renders_itself_contributes_no_body_to_reach_into() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_optional_struct_field_is_hung_with_neither_the_hook_nor_the_default_it_answers_for() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -7815,7 +7558,6 @@ fn an_optional_struct_field_is_hung_with_neither_the_hook_nor_the_default_it_ans
 }
 
 /// The untagged member is read as serde's derive reads it: it earns no hook, and so no `default`.
-#[cfg(feature = "serde")]
 #[test]
 fn an_optional_untagged_member_is_hung_with_no_hook_and_no_default() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -8550,7 +8292,6 @@ fn a_bound_the_type_compares_alike_is_not_refused_as_unrepresentable() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bound_outside_the_range_is_refused_on_a_variant_field_and_on_a_slot() {
     for source in [
@@ -8930,7 +8671,6 @@ fn an_equal_pair_and_a_count_a_fixed_length_always_meets_are_not_refused() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_whose_own_bounds_no_value_meets_is_refused() {
     for (inner, least, most, refusal) in [
@@ -9528,7 +9268,7 @@ fn a_kotlin_field_reaching_usize_is_not_refused() {
 
 /// A member serde neither writes nor reads is declared by no Kotlin type, so its width is refused
 /// nothing; one under a single one-way skip is still refused.
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[test]
 fn the_kotlin_width_guard_reads_past_a_member_serde_neither_writes_nor_reads() {
     for item in [
@@ -9558,7 +9298,7 @@ fn the_kotlin_width_guard_reads_past_a_member_serde_neither_writes_nor_reads() {
 /// nor reads, nor a member of a variant it neither writes nor reads: a width neither client maps,
 /// a std type no schema describes, a map keyed by a value serde writes as no string, and a JSON
 /// value. Each is refused where serde writes it.
-#[cfg(all(feature = "serde", feature = "kotlin", feature = "swift"))]
+#[cfg(all(feature = "kotlin", feature = "swift"))]
 #[test]
 fn no_guard_of_a_members_type_refuses_what_serde_neither_writes_nor_reads() {
     let expanded = |source: &str| {
@@ -9703,7 +9443,6 @@ fn the_flag_leaves_by_the_guard_channel_where_it_has_no_key_to_make_optional() {
         );
     }
 
-    #[cfg(feature = "serde")]
     {
         let off_the_wire = field_prop_guard_errors(&syn::parse_quote! {
             struct Report {
@@ -9749,7 +9488,6 @@ fn the_field_prop_flags_on_the_shapes_they_fit_are_accepted() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_without_serde_leaves_a_field_alone() {
     let error = field_cfg_attr_error(&syn::parse_quote! {
@@ -10586,13 +10324,11 @@ fn alias_ts_definition_method_carries_no_cfg_attribute() {
 }
 
 /// Collects a branded newtype's guard failures as rendered `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn branded_errors(item: &syn::ItemStruct) -> Vec<String> {
     branded_errors_with(item, &super::ModelSchemaArgs::default())
 }
 
 /// [`branded_errors`] for a brand carrying `model_schema` arguments.
-#[cfg(feature = "serde")]
 fn branded_errors_with(item: &syn::ItemStruct, args: &super::ModelSchemaArgs) -> Vec<String> {
     branded_guard_errors(item, args)
         .iter()
@@ -10600,7 +10336,6 @@ fn branded_errors_with(item: &syn::ItemStruct, args: &super::ModelSchemaArgs) ->
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_an_undescribable_std_inner_is_refused() {
     for (inner, named, wire) in [
@@ -10633,7 +10368,6 @@ fn a_brand_over_an_undescribable_std_inner_is_refused() {
 }
 
 /// A brand over an inner every surface describes earns nothing.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_describable_inner_is_left_alone() {
     for inner in [
@@ -10661,7 +10395,6 @@ fn json_schema_args() -> super::ModelSchemaArgs {
 
 /// A brand's guard failures for the given `pattern`, over a `String` inner that clears every other
 /// guard.
-#[cfg(feature = "serde")]
 fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     branded_errors_with(
         &syn::parse_quote! {
@@ -10672,7 +10405,6 @@ fn brand_pattern_errors(pattern: &str) -> Vec<String> {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_brand_pattern_guard_follows_the_regex_crate() {
     for pattern in PROBE_PATTERNS {
@@ -10686,7 +10418,6 @@ fn the_brand_pattern_guard_follows_the_regex_crate() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_pattern_the_regex_crate_rejects_names_the_type_and_quotes_the_parse_error() {
     let errors = brand_pattern_errors(r"^ab\");
@@ -10706,7 +10437,6 @@ fn a_brand_pattern_the_regex_crate_rejects_names_the_type_and_quotes_the_parse_e
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_pattern_javascript_cannot_carry_names_the_type_and_the_construct() {
     for (pattern, construct) in UNPORTABLE_PROBE_PATTERNS {
@@ -10722,14 +10452,12 @@ fn a_brand_pattern_javascript_cannot_carry_names_the_type_and_the_construct() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_pattern_naming_a_group_the_rust_way_clears_the_guard() {
     let errors = brand_pattern_errors("^(?P<word>[a-z]+)$");
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_pattern_admitting_every_value_names_the_type_and_says_so() {
     for pattern in ["", "^", "$", "|", "a*", "^a*"] {
@@ -10750,7 +10478,6 @@ fn a_brand_pattern_admitting_every_value_names_the_type_and_says_so() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_pattern_that_is_one_assertion_and_nothing_else_names_the_type_and_says_so() {
     for pattern in [r"\b", r"\B"] {
@@ -10771,7 +10498,6 @@ fn a_brand_pattern_that_is_one_assertion_and_nothing_else_names_the_type_and_say
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_pattern_that_still_constrains_clears_the_guard() {
     for pattern in ["^$", "^a*$", r"\b\w+"] {
@@ -10780,7 +10506,6 @@ fn a_brand_pattern_that_still_constrains_clears_the_guard() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     register_alias_info("Doc", "Doc", "doc_schema", AliasKind::NoEnumMembers);
@@ -10819,7 +10544,6 @@ fn a_brand_over_a_map_with_an_unwritable_key_is_refused() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_writable_map_key_clears_the_guard() {
     register_alias_info("Slot", "Slot", "slot_schema", AliasKind::EnumMembers);
@@ -10838,7 +10562,6 @@ fn a_brand_over_a_writable_map_key_clears_the_guard() {
 }
 
 /// A tuple as a map's value is described as its fixed array, as in every other position.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_map_with_a_tuple_value_builds() {
     for inner in [
@@ -10854,7 +10577,6 @@ fn a_brand_over_a_map_with_a_tuple_value_builds() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_renderable_slot_clears_the_guard() {
     for inner in [
@@ -10872,7 +10594,6 @@ fn a_brand_over_a_renderable_slot_clears_the_guard() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn each_string_constraint_alone_rejects_a_numeric_inner() {
     for args in [
@@ -10894,7 +10615,6 @@ fn each_string_constraint_alone_rejects_a_numeric_inner() {
 }
 
 /// The shapes whose surfaces read the string constraints as something other than a string check.
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_non_string_inner_are_rejected() {
     for (inner, shape) in [
@@ -10929,7 +10649,6 @@ fn string_constraints_over_a_non_string_inner_are_rejected() {
 }
 
 /// A brand over a list takes the two lengths, which count its items, whatever the list holds.
-#[cfg(feature = "serde")]
 #[test]
 fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
     for inner in [
@@ -10975,7 +10694,6 @@ fn a_length_over_a_list_inner_passes_and_a_pattern_beside_it_is_refused() {
 }
 
 /// A list no transparent wrapper holds is refused the lengths, as it was.
-#[cfg(feature = "serde")]
 #[test]
 fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
     for inner in [
@@ -10997,7 +10715,6 @@ fn a_length_over_a_list_behind_a_cell_or_a_borrow_is_refused() {
 }
 
 /// The inners that carry the constraints faithfully.
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_string_shaped_inner_pass() {
     for inner in [
@@ -11039,7 +10756,6 @@ fn seed_published_shape(rust_ident: &str, shape: PublishedShape) {
 }
 
 /// A brand's guard failures for a `pattern` over the named inner, spelled as a bare name.
-#[cfg(feature = "serde")]
 fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     let ty: syn::Type = syn::parse_str(inner).unwrap();
     branded_errors_with(
@@ -11051,7 +10767,6 @@ fn brand_over_named_inner_errors(inner: &str) -> Vec<String> {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_named_inner_the_registry_answers_for_are_rejected() {
     for (inner, shape) in [
@@ -11074,7 +10789,6 @@ fn string_constraints_over_a_named_inner_the_registry_answers_for_are_rejected()
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_named_inner_the_registry_calls_a_string_pass() {
     seed_value_shape("StringSibling", None);
@@ -11082,7 +10796,6 @@ fn string_constraints_over_a_named_inner_the_registry_calls_a_string_pass() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
     let bare = brand_over_named_inner_errors("SiblingRegisteredNowhere");
@@ -11104,7 +10817,6 @@ fn string_constraints_over_a_name_the_registry_cannot_answer_for_pass() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_rejected() {
     for inner in [
@@ -11138,7 +10850,6 @@ fn string_constraints_over_a_name_written_over_the_brands_own_parameter_are_reje
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_registered_name_carrying_the_brands_parameter_are_rejected() {
     seed_value_shape("RegisteredStringGeneric", None);
@@ -11220,7 +10931,6 @@ fn brand_surface(item: &syn::ItemStruct) -> super::Surface {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_it() {
     seed_published_shape("PublishesItsParameter", PublishedShape::Parameter(0));
@@ -11244,7 +10954,6 @@ fn string_constraints_over_a_parameter_publisher_read_the_argument_written_for_i
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_recorded_position_is_read_off_the_arguments_the_reference_writes() {
     seed_published_shape("PublishesItsSecond", PublishedShape::Parameter(1));
@@ -11258,7 +10967,6 @@ fn a_recorded_position_is_read_off_the_arguments_the_reference_writes() {
 
 /// The question a constrained brand leaves where the registry has no record, spelled as the brand's
 /// own expansion would leave it.
-#[cfg(feature = "serde")]
 fn ask_about(brand: &syn::ItemStruct) -> bool {
     deferred_shape_question(brand, &pattern_args()).is_some_and(|question| {
         record_shape_question(question);
@@ -11278,7 +10986,6 @@ fn brand_over(inner: &str) -> syn::ItemStruct {
 
 /// What the expansion registering a name emits for the questions asked about it, as rendered
 /// `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn deferred_refusals_for(rust_ident: &str) -> Vec<String> {
     let name = syn::Ident::new(rust_ident, proc_macro2::Span::call_site());
     deferred_shape_refusals(Some(&name))
@@ -11287,7 +10994,6 @@ fn deferred_refusals_for(rust_ident: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_question_left_where_the_registry_was_silent_is_answered_by_the_later_registration() {
     let brand = brand_over("AnsweredLater<u32>");
@@ -11310,7 +11016,6 @@ fn a_question_left_where_the_registry_was_silent_is_answered_by_the_later_regist
     assert!(errors[0].contains("numeric"), "got: {}", errors[0]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn both_orders_of_the_same_pair_refuse_in_one_wording() {
     assert!(ask_about(&brand_over("WordingBelow<u32>")));
@@ -11328,7 +11033,6 @@ fn both_orders_of_the_same_pair_refuse_in_one_wording() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_question_a_string_argument_answers_settles_silently() {
     assert!(ask_about(&brand_over("SettlesSilently<String>")));
@@ -11337,7 +11041,6 @@ fn a_question_a_string_argument_answers_settles_silently() {
     assert!(errors.is_empty(), "got: {errors:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_question_no_registration_reaches_stays_unanswered() {
     assert!(ask_about(&brand_over("NeverRegisters<u32>")));
@@ -11373,7 +11076,6 @@ fn a_brand_with_nothing_to_append_asks_nothing() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_deferred_answer_reads_the_record_the_consult_would_have_read() {
     assert!(ask_about(&brand_over("FlatlyNumeric")));
@@ -11434,7 +11136,6 @@ fn a_tuple_struct_records_the_value_surface_its_slots_publish() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_default() {
     for inner in ["T", "U"] {
@@ -11450,7 +11151,6 @@ fn string_constraints_over_the_brands_own_type_parameter_consult_the_declared_de
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_pass() {
     let errors = branded_errors_with(
@@ -11466,7 +11166,6 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_string_default_p
 }
 
 /// A bare, a wrapped, and an unrelated parameter each substitute as expected.
-#[cfg(feature = "serde")]
 #[test]
 fn declared_defaults_are_substituted_through_the_inners_shape() {
     let parameters = ["IdType".to_owned()];
@@ -11491,7 +11190,6 @@ fn declared_defaults_are_substituted_through_the_inners_shape() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_default_are_rejected() {
     let errors = branded_errors_with(
@@ -11519,7 +11217,6 @@ fn string_constraints_over_the_brands_own_type_parameter_with_a_non_string_defau
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_unconstrained_brand_over_a_non_string_inner_passes() {
     for inner in [
@@ -11539,7 +11236,6 @@ fn an_unconstrained_brand_over_a_non_string_inner_passes() {
 }
 
 /// The message has to name the surfaces that disagree, or it reads as an arbitrary restriction.
-#[cfg(feature = "serde")]
 #[test]
 fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     let errors = branded_errors_with(
@@ -11558,7 +11254,6 @@ fn the_constraint_guard_message_names_the_constraints_and_the_surfaces() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11572,7 +11267,6 @@ fn cfg_attr_wrapped_serde_on_a_branded_type_is_rejected() {
     assert!(errors[0].contains("cfg_attr"), "got: {}", errors[0]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11585,7 +11279,6 @@ fn cfg_attr_wrapped_serde_on_a_branded_inner_slot_is_rejected() {
     assert!(errors[0].contains("#[serde(...)]"), "got: {}", errors[0]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11598,7 +11291,6 @@ fn branded_newtype_over_option_is_rejected() {
     assert!(errors[0].contains("null"), "got: {}", errors[0]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn generic_branded_newtype_over_option_is_rejected() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -11609,7 +11301,6 @@ fn generic_branded_newtype_over_option_is_rejected() {
     assert!(errors[0].contains("Option"), "got: {}", errors[0]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn compliant_branded_newtype_passes_every_guard() {
     let errors = branded_errors(&syn::parse_quote! {
@@ -12056,7 +11747,6 @@ fn a_refused_enable_list_writes_nothing_of_the_recovering_decode() {
 }
 
 /// What the two initializers write in this build, as text.
-#[cfg(feature = "serde")]
 fn both_libraries() -> String {
     let mut written = exec_decode_with_foundation(&quote::quote! {});
     written.extend(exec_mongodb_foundation(&quote::quote! {}));
@@ -12074,10 +11764,7 @@ fn expansion_under(args: &str, source: &str) -> String {
 
 /// A transparent struct that serde writes without a key it still requires on read is refused only
 /// when it derives both directions.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_one_direction_transparent_struct_is_not_refused_for_a_skipped_key() {
     let body = "#[serde(transparent)] pub struct Received { #[serde(default)] count: u32, \
@@ -12195,15 +11882,12 @@ fn an_item_refused_for_a_name_another_publishes_is_re_emitted_without_its_member
     );
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#[cfg(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 #[test]
 fn an_item_refused_for_a_serde_attribute_is_re_emitted_without_its_members_keys() {
@@ -12251,7 +11935,6 @@ fn an_item_refused_for_a_name_the_indexmap_feature_reads_is_re_emitted_without_i
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_shape_refused_before_its_members_are_walked_is_re_emitted_without_their_keys() {
     for (source, refusal) in [
@@ -12281,7 +11964,6 @@ fn a_shape_refused_before_its_members_are_walked_is_re_emitted_without_their_key
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_refused_by_its_guards_is_re_emitted_without_its_members_keys() {
     assert_refused_without_member_keys(
@@ -12302,15 +11984,10 @@ fn a_string_check_on_a_struct_that_is_no_brand_is_refused() {
     ] {
         let expanded = expansion_under(args, "pub struct Named { pub name: String }");
         assert!(expanded.contains("compile_error"), "got: {expanded}");
-        let feature = if cfg!(feature = "serde") {
-            ""
-        } else {
-            " A branded newtype is read with tixschema's `serde` feature, which this build has off."
-        };
         assert!(
             expanded.contains(&format!(
                 "type `Named`: `{check}` is supported only on a branded newtype: a \
-                 `#[serde(transparent)]` struct serde writes as the value of one field.{feature} \
+                 `#[serde(transparent)]` struct serde writes as the value of one field. \
                  On a field, write it in `#[model_schema_prop(...)]`."
             )),
             "got: {expanded}"
@@ -12396,7 +12073,6 @@ fn the_name_of_a_variant_that_carries_data_is_not_measured() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn each_name_serde_writes_or_reads_for_a_unit_variant_is_measured() {
     for (args, source, refusal) in [
@@ -12437,16 +12113,13 @@ fn each_name_serde_writes_or_reads_for_a_unit_variant_is_measured() {
 
 /// A build that describes the type refuses a rename whose two directions differ, ahead of the
 /// check.
-#[cfg(all(
-    feature = "serde",
-    not(any(
-        feature = "typescript",
-        feature = "zod",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    ))
-))]
+#[cfg(not(any(
+    feature = "typescript",
+    feature = "zod",
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
+)))]
 #[test]
 fn a_unit_variants_read_name_is_measured_where_it_is_not_the_written_one() {
     let expanded = expansion_under(
@@ -12469,7 +12142,6 @@ fn a_unit_variants_read_name_is_measured_where_it_is_not_the_written_one() {
 
 /// An untagged enum writes a unit variant as `null`, and refuses it for that, wherever the list
 /// writes `untagged`.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_unit_variant_has_no_name_to_measure() {
     for attribute in [
@@ -12586,7 +12258,6 @@ fn an_enums_check_reaches_a_field_written_as_a_string_or_a_path() {
 }
 
 /// The reach is the constraint walk's own: a text leaf, which a list is not.
-#[cfg(feature = "serde")]
 #[test]
 fn the_reach_of_an_enums_check_is_the_constraint_walks() {
     for (spelling, reached) in TEXT_REACH {
@@ -12599,7 +12270,6 @@ fn the_reach_of_an_enums_check_is_the_constraint_walks() {
 
 /// A model declared above under a name the standard library also uses is a named type to the
 /// walks, and a name nothing declared stays the standard type.
-#[cfg(feature = "serde")]
 #[test]
 fn a_model_named_like_a_text_type_is_a_named_type_to_the_walks() {
     for name in ["Path", "PathBuf", "String", "str"] {
@@ -12686,12 +12356,6 @@ fn a_member_that_carries_a_literal_is_held_to_nothing_of_its_enums_check() {
         assert_eq!(held.min_length, None, "for {source}");
         assert_eq!(held.max_length, None, "for {source}");
         assert_eq!(held.pattern, None, "for {source}");
-        #[cfg(any(
-            feature = "serde",
-            feature = "zod",
-            feature = "dart",
-            feature = "swift"
-        ))]
         assert_eq!(held.patterns().count(), 0, "for {source}");
     }
 }
@@ -12720,7 +12384,6 @@ fn an_enums_check_beside_a_literal_field_builds_under_every_tagging() {
     }
 }
 
-#[cfg(any(feature = "serde", feature = "zod"))]
 #[test]
 fn a_member_is_held_to_its_own_pattern_and_its_enums() {
     let enum_check = "pattern = \"^[a-z]+$\"";
@@ -12845,7 +12508,6 @@ fn an_alias_with_no_string_check_is_not_refused() {
     assert!(!expanded.contains("compile_error"), "got: {expanded}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_string_check_on_a_brand_is_held_by_its_validator_whatever_the_other_features() {
     let expanded = expansion_under(
@@ -12859,7 +12521,6 @@ fn a_string_check_on_a_brand_is_held_by_its_validator_whatever_the_other_feature
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its_field() {
     let expanded = expansion_under(
@@ -12896,7 +12557,6 @@ fn decode_with_walks_a_transparent_struct_with_a_named_field_as_the_value_of_its
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_enum_form_serde_writes() {
     for (args, source) in DECODE_WITH_ENUM_FORMS {
@@ -12965,7 +12625,6 @@ fn decode_with_is_generated_on_every_enum_form_serde_writes() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_reads_an_untagged_member_as_serde_reads_it_and_lists_its_bound() {
     let expanded = expansion_under(
@@ -12987,7 +12646,6 @@ fn decode_with_reads_an_untagged_member_as_serde_reads_it_and_lists_its_bound() 
     assert_eq!(expanded.matches("pub mod decode_reach_schema {").count(), 1);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
     for (args, source) in DECODE_WITH_STRUCT_SHAPES {
@@ -13047,7 +12705,6 @@ fn decode_with_is_generated_on_every_struct_shape_serde_writes() {
 
 /// A type that lists `"decode_with"` alone is read from BSON under `bson`, as every flagged type
 /// is, and gets nothing of the MongoDB layer under any feature. An unflagged one gets neither.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_that_lists_no_mongodb_gets_no_typed_path_and_no_operation() {
     for ((args, source), listed) in DECODE_WITH_STRUCT_SHAPES
@@ -13101,7 +12758,6 @@ fn a_type_that_lists_no_mongodb_gets_no_typed_path_and_no_operation() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_item_is_recorded_as_one_value_where_serde_writes_it_as_one() {
     for (source, one_value) in [
@@ -13161,7 +12817,6 @@ fn a_type_declared_above_is_held_by_how_serde_writes_it() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     let expanded = expansion_under(
@@ -13203,7 +12858,6 @@ fn decode_with_reads_a_constrained_brand_with_the_brands_own_reader() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
     let source = "pub struct DecodeEnvelope<T> { pub items: Vec<T> }";
@@ -13239,7 +12893,6 @@ fn decode_with_bounds_its_own_impls_and_nothing_else_of_a_generic_type() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_generated_on_a_type_with_a_flattened_field() {
     for (args, source) in DECODE_WITH_FLATTEN_FORMS {
@@ -13391,14 +13044,12 @@ fn decode_with_is_not_refused_on_a_field_that_borrows_nothing_from_the_value() {
             !expanded.contains("a field that borrows"),
             "for {source}, got: {expanded}"
         );
-        #[cfg(feature = "serde")]
         assert!(
             expanded.contains("fn from_value_with"),
             "for {source}, got: {expanded}"
         );
     };
     not_refused("pub struct DecodeLettered { pub label: Cow<'static, str> }");
-    #[cfg(feature = "serde")]
     for source in [
         "pub struct DecodeLettered { #[serde(skip)] pub label: &'static str, pub name: String }",
         "pub struct DecodeLettered { #[serde(skip_deserializing)] pub label: &'static str }",
@@ -13409,7 +13060,6 @@ fn decode_with_is_not_refused_on_a_field_that_borrows_nothing_from_the_value() {
 
 /// Three enums under a tag two functions of whose typed paths would take one name, each beside
 /// what `decode_with` is refused on it for.
-#[cfg(feature = "serde")]
 fn enums_with_one_name_for_two_functions() -> [(&'static str, &'static str); 3] {
     [
         (
@@ -13438,7 +13088,6 @@ fn enums_with_one_name_for_two_functions() -> [(&'static str, &'static str); 3] 
 }
 
 /// The README quotes each refusal as it is printed.
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_is_refused_where_two_functions_of_an_enums_paths_would_take_one_name() {
     for (source, refusal) in enums_with_one_name_for_two_functions() {
@@ -13457,7 +13106,6 @@ fn decode_with_is_refused_where_two_functions_of_an_enums_paths_would_take_one_n
 
 /// The variant that holds `__`, the second of two values with one snake case, and the variant an
 /// `is_` asks for.
-#[cfg(feature = "serde")]
 #[test]
 fn each_refusal_of_a_name_two_functions_would_take_is_spanned_on_its_variant() {
     for ((source, _refusal), variant) in enums_with_one_name_for_two_functions().into_iter().zip([
@@ -13481,7 +13129,6 @@ fn each_refusal_of_a_name_two_functions_would_take_is_spanned_on_its_variant() {
 }
 
 /// An enum without the flag has no arm function, and is refused none of the three.
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_without_decode_with_keeps_a_name_two_arm_functions_would_take() {
     for (source, _refusal) in enums_with_one_name_for_two_functions() {
@@ -13672,7 +13319,6 @@ fn a_map_keyed_by_what_serde_writes_as_text_is_not_refused() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_serde_neither_writes_nor_reads_is_not_refused() {
     assert_eq!(
@@ -13698,7 +13344,6 @@ fn a_member_serde_neither_writes_nor_reads_is_not_refused() {
 
 /// A member its author's functions write and read, under `with` or under both `serialize_with`
 /// and `deserialize_with`, is not refused, in a struct, in a slot and in a variant.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_written_and_read_by_its_authors_functions_is_not_refused() {
     for source in [
@@ -13740,7 +13385,6 @@ fn a_member_one_of_whose_directions_is_serdes_own_is_refused() {
 /// A variant its author's functions write and read, under `with` or under both `serialize_with`
 /// and `deserialize_with`, is not refused for what its members hold, and the variants beside it
 /// still are.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_written_and_read_by_its_authors_functions_is_not_refused() {
     for hooks in [
@@ -13797,7 +13441,6 @@ fn a_variant_one_of_whose_directions_is_serdes_own_is_refused() {
 
 /// An enum whose one such map is in a variant its author's functions write and read is not
 /// refused where it is held, and one whose variant has one of the two functions alone is.
-#[cfg(feature = "serde")]
 #[test]
 fn a_held_enum_whose_map_is_in_a_variant_behind_its_authors_functions_is_not_refused() {
     record_declared_above(&[
@@ -13822,7 +13465,6 @@ fn a_held_enum_whose_map_is_in_a_variant_behind_its_authors_functions_is_not_ref
 
 /// A held model is read past where its author's functions write and read the member that holds
 /// it, and a model whose one such map they write and read is not refused where it is held.
-#[cfg(feature = "serde")]
 #[test]
 fn a_held_model_behind_its_authors_functions_is_not_refused() {
     record_declared_above(&[
@@ -13855,7 +13497,6 @@ fn a_held_model_behind_its_authors_functions_is_not_refused() {
 
 /// A brand or an alias declared above over a number or a `bool` is refused as the number is, and
 /// one over a `String` is not.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_keyed_by_a_brand_or_an_alias_over_a_number_is_refused() {
     for declared in [
@@ -13894,7 +13535,6 @@ fn a_map_keyed_by_a_brand_or_an_alias_over_a_number_is_refused() {
 #[test]
 fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
     super::record_bson_refused_key_item(&syn::parse_str("pub type Slot<T> = T;").unwrap());
-    #[cfg(feature = "serde")]
     for declared in [
         "#[serde(transparent)] pub struct Ordinal<IdType>(IdType);",
         "#[serde(transparent)] pub struct Seat<Row, Place> { place: Place, \
@@ -13903,21 +13543,14 @@ fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
         super::record_bson_refused_key_item(&syn::parse_str(declared).unwrap());
     }
     for (key, refused) in [
-        #[cfg(feature = "serde")]
         ("Ordinal<u32>", true),
-        #[cfg(feature = "serde")]
         ("Ordinal<bool>", true),
-        #[cfg(feature = "serde")]
         ("Ordinal<Ordinal<u32>>", true),
-        #[cfg(feature = "serde")]
         ("Ordinal<String>", false),
-        #[cfg(feature = "serde")]
         ("Ordinal", false),
         ("Slot<u16>", true),
         ("Slot<String>", false),
-        #[cfg(feature = "serde")]
         ("Seat<String, u8>", true),
-        #[cfg(feature = "serde")]
         ("Seat<u8, String>", false),
     ] {
         let expected: Vec<String> = refused
@@ -13938,7 +13571,6 @@ fn a_map_keyed_by_a_generic_brand_or_an_alias_filled_at_a_number_is_refused() {
 /// `Rc`, `Arc` or `Cow`, or through a brand declared above, is refused where the parameter is
 /// filled at a number or a `bool`, and not where it is filled at a `String` or where the brand it
 /// reaches it through is declared below it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_keyed_by_a_generic_brand_over_a_wrapper_or_a_brand_of_its_parameter_is_refused() {
     record_declared_above(&[
@@ -14120,19 +13752,13 @@ fn a_held_model_with_no_refused_map_is_not_refused() {
         "pub struct Seating { pub by_number: HashMap<u32, String> }",
         "pub struct Node { pub by_number: HashMap<u32, String>, pub children: Vec<Node> }",
     ]);
-    for written in [
-        "Labels",
-        #[cfg(feature = "serde")]
-        "Option<Hidden>",
-        "Vec<Unseen>",
-    ] {
+    for written in ["Labels", "Option<Hidden>", "Vec<Unseen>"] {
         assert_eq!(
             bson_refused_key_messages(&format!("pub struct Venue {{ pub held: {written} }}")),
             Vec::<String>::new(),
             "for {written}"
         );
     }
-    #[cfg(feature = "serde")]
     assert_eq!(
         bson_refused_key_messages("pub struct Venue { #[serde(skip)] pub seating: Seating }"),
         Vec::<String>::new()
@@ -14681,10 +14307,8 @@ fn an_alias_keyed_by_its_own_parameter_declared_below_is_not_refused() {
 fn an_alias_whose_value_is_its_own_parameter_is_read_as_a_key_and_holds_no_map() {
     declare_above(&[
         "pub type Slot<T> = T;",
-        #[cfg(feature = "serde")]
         "#[serde(transparent)] pub struct Seat<Row, Place> { place: Place, \
          row: PhantomData<Row> }",
-        #[cfg(feature = "serde")]
         "pub type Seated<Row, Place> = Seat<HashMap<Row, String>, Place>;",
     ]);
     let refused_as_a_key = |key: &str| {
@@ -14697,7 +14321,6 @@ fn an_alias_whose_value_is_its_own_parameter_is_read_as_a_key_and_holds_no_map()
         );
     };
     refused_as_a_key("Slot<u32>");
-    #[cfg(feature = "serde")]
     refused_as_a_key("Seated<String, u8>");
     assert_eq!(
         bson_refused_key_messages("pub struct Roster { pub slot: Slot<u32> }"),
@@ -14795,7 +14418,6 @@ fn an_item_without_decode_with_expands_as_it_did() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
     let source = "pub struct DecodeFlagged { pub name: String }";
@@ -14880,7 +14502,6 @@ fn decode_with_generates_the_entry_point_the_walker_and_the_callback_types() {
 /// The exceptions are the `clippy::pub_use` each re-export of a support library expects, the
 /// `doc(hidden)` on each library's module, and the `non_upper_case_globals` a constant named like
 /// its variant or unit struct expects.
-#[cfg(feature = "serde")]
 #[test]
 fn nothing_decode_with_emits_suppresses_a_lint_but_the_three_exceptions() {
     let named_fields = (
@@ -14951,7 +14572,6 @@ fn nothing_decode_with_emits_suppresses_a_lint_but_the_three_exceptions() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
     let named_fields = (
@@ -15025,7 +14645,6 @@ fn what_decode_with_emits_is_written_for_the_lints_a_consumer_denies() {
 }
 
 /// A flagged type reaches another through its field by that type's own name.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
     let flagged = expansion_under(
@@ -15046,7 +14665,6 @@ fn a_flagged_type_names_the_type_it_reaches_and_never_its_module() {
     assert!(!walker.contains("decode_inner_schema"), "got: {walker}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn what_a_schema_module_already_held_reads_the_authors_scope_past_the_added_names() {
     // A member held to a bound is checked and read by functions of the schema module, which name
@@ -16143,10 +15761,7 @@ fn a_const_argument_on_a_type_without_the_entry_is_refused_only_where_a_feature_
     let described = cfg!(any(
         feature = "typescript",
         feature = "zod",
-        all(
-            feature = "serde",
-            any(feature = "dart", feature = "swift", feature = "kotlin")
-        )
+        any(feature = "dart", feature = "swift", feature = "kotlin")
     ));
     assert_eq!(refusals.len(), usize::from(described), "got: {refusals:?}");
 }
@@ -16660,7 +16275,6 @@ fn display_tokens(source: &str, args: &proc_macro2::TokenStream) -> String {
     .to_string()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn constraints_keep_the_display_assertion_when_the_brand_opts_out_of_the_impl() {
     let tokens = display_tokens(
@@ -16707,7 +16321,6 @@ fn the_display_block_carries_only_the_impl_once_the_impl_is_emitted() {
 /// How many tokens of each `to_string()` call site a constrained brand expands to point back at
 /// the inner field. Built from parsed source, so a token that carries the inner type's span has a
 /// location to report and a macro-synthesized one does not.
-#[cfg(feature = "serde")]
 fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, usize) {
     let item: syn::ItemStruct = syn::parse_str(source).unwrap();
     let args = super::parse_model_schema_args(quote::quote! { pattern = "^[a-z]+$" });
@@ -16726,7 +16339,6 @@ fn constrained_brand_inner_spanned_tokens(source: &str, inner: &str) -> (usize, 
     (count(&bound.alone), count(&validate_method))
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn constrained_to_string_calls_carry_the_inner_fields_location() {
     let (bound_alone, validate_method) =
@@ -16744,13 +16356,11 @@ fn constrained_to_string_calls_carry_the_inner_fields_location() {
 /// A constrained brand's emitted text for an inner spelled `inner`, as the three streams it is made
 /// of: the validator, the method that answers for the bound alone, and the `validate()` method,
 /// each of which calls into the first.
-#[cfg(feature = "serde")]
 fn constrained_brand_emission(inner: &str, module: &str) -> (String, String, String) {
     brand_emission_under(inner, module, quote::quote! { pattern = "^[a-z]+$" })
 }
 
 /// [`constrained_brand_emission`] under the checks `written` on the brand.
-#[cfg(feature = "serde")]
 fn brand_emission_under(
     inner: &str,
     module: &str,
@@ -16776,7 +16386,6 @@ fn brand_emission_under(
 
 /// A brand over a list is counted by the validator a list field gets, under the brand's own name
 /// and reporting under no field.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text() {
     let lengths = || quote::quote! { minLength = 1, maxLength = 3 };
@@ -16815,7 +16424,6 @@ fn a_brand_over_a_list_counts_its_items_where_a_string_brand_measures_its_text()
 }
 
 /// The constrained path's generated text is what it has always been.
-#[cfg(feature = "serde")]
 #[test]
 fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     for spelling in ["String", "Option<PathBuf>", "Slug"] {
@@ -16841,7 +16449,6 @@ fn the_constrained_path_renders_the_same_to_string_calls_it_always_has() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_path_brand_is_checked_through_its_lossy_rendering() {
     for spelling in [
@@ -18099,7 +17706,6 @@ fn a_set_writes_unique_items_at_its_own_level_alone() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_an_untagged_member() {
     for wrapper in SEQUENCE_WRAPPERS {
@@ -18113,7 +17719,6 @@ fn every_sequence_wrapper_describes_as_the_vec_of_its_element_in_an_untagged_mem
 
 /// One value per arm of the untagged-member dispatch, labelled as it was written. Built at no array
 /// level, so each holds exactly the tokens its arm emits before the array wrap sees them.
-#[cfg(feature = "serde")]
 fn untagged_member_dispatch_values() -> Vec<(&'static str, super::FieldDef)> {
     let parsed: [(&'static str, syn::Type); 5] = [
         ("MetricTag", syn::parse_quote!(MetricTag)),
@@ -18162,7 +17767,6 @@ fn untagged_member_dispatch_values() -> Vec<(&'static str, super::FieldDef)> {
 }
 
 /// Every arm of the untagged-member dispatch hands the array wrap a value the wrap can carry.
-#[cfg(feature = "serde")]
 #[test]
 fn every_untagged_member_value_is_one_the_array_wrap_can_carry() {
     for (label, value) in untagged_member_dispatch_values() {
@@ -18176,7 +17780,6 @@ fn every_untagged_member_value_is_one_the_array_wrap_can_carry() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_array_wrap_carries_each_untagged_member_arms_own_tokens() {
     for (label, value) in untagged_member_dispatch_values() {
@@ -18585,7 +18188,6 @@ fn adjacently_tagged_empty_named_variant_nests_an_empty_content_object() {
 }
 
 /// The `validate()` contribution for a field spelled `spelling`, reached from `access`, as tokens.
-#[cfg(feature = "serde")]
 fn emitted_validation_from(spelling: &str, access: MemberAccess) -> String {
     let ty: syn::Type = syn::parse_str(spelling).unwrap();
     let shape = constrained_shape(&ty).unwrap();
@@ -18595,13 +18197,11 @@ fn emitted_validation_from(spelling: &str, access: MemberAccess) -> String {
 }
 
 /// The `validate()` contribution for a struct's field spelled `spelling`, as tokens.
-#[cfg(feature = "serde")]
 fn emitted_validation(spelling: &str) -> String {
     emitted_validation_from(spelling, MemberAccess::SelfField)
 }
 
 /// The two positions differ in one place and nowhere else: where the checked value is reached.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_member_is_reached_through_the_binding_its_arm_made() {
     for spelling in [
@@ -18620,7 +18220,6 @@ fn a_variant_member_is_reached_through_the_binding_its_arm_made() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bare_field_is_checked_in_place() {
     assert_eq!(
@@ -18632,7 +18231,6 @@ fn a_bare_field_is_checked_in_place() {
 }
 
 /// A constraint describes the value on the wire, and a `None` puts none there.
-#[cfg(feature = "serde")]
 #[test]
 fn an_option_is_checked_inside_its_some() {
     assert_eq!(
@@ -18643,7 +18241,6 @@ fn an_option_is_checked_inside_its_some() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_transparent_wrapper_is_dereferenced_through() {
     let expected = "{ let value_0 = & self . field ; let value_1 = & * * value_0 ; if let :: core \
@@ -18658,7 +18255,6 @@ fn a_transparent_wrapper_is_dereferenced_through() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_borrowed_str_is_dereferenced_through() {
     for spelling in ["&'a str", "&'static str", "&'a mut str"] {
@@ -18679,7 +18275,6 @@ fn a_borrowed_str_is_dereferenced_through() {
 }
 
 /// A list is checked itself, in place, as a bare string is: nothing it holds is walked.
-#[cfg(feature = "serde")]
 #[test]
 fn a_sequence_is_checked_itself_and_none_of_its_elements() {
     let expected = emitted_validation("String");
@@ -18704,7 +18299,6 @@ fn a_sequence_is_checked_itself_and_none_of_its_elements() {
 
 /// The wrappers compose in the order they were written, each reaching exactly one level, and
 /// the walk stops at the list they hold.
-#[cfg(feature = "serde")]
 #[test]
 fn mixed_wrappers_compose_in_written_order() {
     assert_eq!(
@@ -18716,7 +18310,6 @@ fn mixed_wrappers_compose_in_written_order() {
 }
 
 /// A struct's field named `field`, as its helpers name and reach it.
-#[cfg(feature = "serde")]
 fn checked_struct_field() -> CheckedMember {
     let item: syn::ItemStruct = syn::parse_quote! { struct Probe { field: String } };
     let field = item.fields.iter().next().unwrap();
@@ -18724,7 +18317,6 @@ fn checked_struct_field() -> CheckedMember {
 }
 
 /// The schema-module items emitted for a `minLength` field spelled `spelling`, as tokens.
-#[cfg(feature = "serde")]
 fn emitted_string_module(spelling: &str) -> String {
     let ty: syn::Type = syn::parse_str(spelling).unwrap();
     let shape = constrained_shape(&ty).unwrap();
@@ -18739,7 +18331,6 @@ fn emitted_string_module(spelling: &str) -> String {
 
 /// The validator emitted for a `String` field constrained by `pattern`, as tokens — everything the
 /// schema module holds ahead of the deserializer.
-#[cfg(feature = "serde")]
 fn emitted_pattern_validator(pattern: &str) -> String {
     let ty: syn::Type = syn::parse_str("String").unwrap();
     let meta = ModelSchemaPropMeta {
@@ -18759,7 +18350,6 @@ fn emitted_pattern_validator(pattern: &str) -> String {
 
 /// The schema-module items emitted for a list field spelled `spelling` under `minLength = 1,
 /// maxLength = 3`, as tokens.
-#[cfg(feature = "serde")]
 fn emitted_list_module(spelling: &str) -> String {
     let ty: syn::Type = syn::parse_str(spelling).unwrap();
     let shape = constrained_shape(&ty).unwrap();
@@ -18774,7 +18364,6 @@ fn emitted_list_module(spelling: &str) -> String {
 }
 
 /// A list's validator and hook name no type the list holds, so one text serves every list.
-#[cfg(feature = "serde")]
 #[test]
 fn a_list_is_counted_by_a_validator_and_a_hook_written_over_any_list() {
     let module = emitted_list_module("Vec<Part>");
@@ -18815,7 +18404,6 @@ fn a_list_is_counted_by_a_validator_and_a_hook_written_over_any_list() {
 }
 
 /// A wrapped list's hook names each transparent wrapper by what it derefs to.
-#[cfg(feature = "serde")]
 #[test]
 fn a_wrapped_lists_hook_reads_through_its_wrappers() {
     let module = emitted_list_module("Option<Arc<[String]>>");
@@ -18847,7 +18435,6 @@ fn a_wrapped_lists_hook_reads_through_its_wrappers() {
 }
 
 /// A borrowed list is counted by `validate()` alone.
-#[cfg(feature = "serde")]
 #[test]
 fn a_borrowed_list_publishes_its_validator_and_no_hook() {
     for spelling in ["&'a [String]", "&'static Vec<u8>", "Option<&'a [Part]>"] {
@@ -18864,7 +18451,6 @@ fn a_borrowed_list_publishes_its_validator_and_no_hook() {
 }
 
 /// Just the deserializer of [`emitted_string_module`], which is everything after the validator.
-#[cfg(feature = "serde")]
 fn emitted_string_deserializer(spelling: &str) -> String {
     let module = emitted_string_module(spelling);
     assert!(
@@ -18874,7 +18460,6 @@ fn emitted_string_deserializer(spelling: &str) -> String {
     module[module.find("pub fn deserialize_field").unwrap()..].to_owned()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bare_field_deserializes_the_constrained_value_itself() {
     assert_eq!(
@@ -18914,7 +18499,6 @@ fn a_bare_field_deserializes_the_constrained_value_itself() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_field_names_its_helpers_for_its_variant() {
     assert_eq!(helper_name_stem("note", None), "note");
@@ -18927,7 +18511,6 @@ fn a_variant_field_names_its_helpers_for_its_variant() {
 
 /// The sole field of `item`, run through the constraint generator under `constraint` as the field
 /// of variant `One`, returning (`module_items`, `validate_body`, `guard_error`).
-#[cfg(feature = "serde")]
 fn generated_field_validation(
     item: &syn::ItemStruct,
     constraint: &ModelSchemaPropMeta,
@@ -18936,7 +18519,6 @@ fn generated_field_validation(
 }
 
 /// [`generated_field_validation`] for the field of `variant`, or of a struct where there is none.
-#[cfg(feature = "serde")]
 fn generated_validation_under(
     item: &syn::ItemStruct,
     constraint: &ModelSchemaPropMeta,
@@ -18966,7 +18548,6 @@ fn generated_validation_under(
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_tuple_structs_slot_is_checked_where_a_named_field_of_the_struct_is() {
     let min_length = ModelSchemaPropMeta {
@@ -18996,7 +18577,6 @@ fn a_tuple_structs_slot_is_checked_where_a_named_field_of_the_struct_is() {
     assert_eq!(unconstrained, (false, false, None));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variants_slot_is_checked_where_a_named_member_of_the_variant_is() {
     let positional: syn::ItemStruct = syn::parse_quote! { struct Probe(String); };
@@ -19022,7 +18602,6 @@ fn a_variants_slot_is_checked_where_a_named_member_of_the_variant_is() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
     for (spelling, wrapper) in [
@@ -19060,7 +18639,6 @@ fn a_constraint_under_an_interior_mutability_wrapper_names_the_wrapper() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_constrained_tuple_variant_names_its_helpers_by_the_slots_position() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -19114,7 +18692,6 @@ fn a_constrained_tuple_variant_names_its_helpers_by_the_slots_position() {
     assert_eq!(rendered_attrs, "", "a tagged slot was given a serde hook");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_wrapped_field_deserializes_its_declared_type() {
     assert_eq!(
@@ -19136,7 +18713,6 @@ fn a_wrapped_field_deserializes_its_declared_type() {
 
 /// The `validate()` walk for `spelling` rewritten into the ending the wire needs: the collected
 /// violation becomes the answered one, and nothing else about the walk is touched.
-#[cfg(feature = "serde")]
 fn wire_walk_of(spelling: &str) -> String {
     let ty: syn::Type = syn::parse_str(spelling).unwrap();
     let shape = constrained_shape(&ty).unwrap();
@@ -19158,7 +18734,6 @@ fn wire_walk_of(spelling: &str) -> String {
     .to_owned()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_wire_walk_is_the_validate_walk_shape_for_shape() {
     for spelling in [
@@ -19177,7 +18752,6 @@ fn the_wire_walk_is_the_validate_walk_shape_for_shape() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_borrowed_field_type_carries_its_lifetime_into_the_hook() {
     assert!(
@@ -19204,7 +18778,6 @@ fn a_borrowed_field_type_carries_its_lifetime_into_the_hook() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_borrowed_str_publishes_its_validator_and_no_hook() {
     for spelling in ["&'a str", "&'static str", "Option<&'a str>"] {
@@ -19231,7 +18804,6 @@ fn a_borrowed_str_publishes_its_validator_and_no_hook() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_borrowed_str_member_is_hung_with_no_hook() {
     let min_length = ModelSchemaPropMeta {
@@ -19271,7 +18843,6 @@ fn a_borrowed_str_member_is_hung_with_no_hook() {
 
 /// A member read through a reference, whatever it borrows, publishes its validator and is hung
 /// with no hook.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_read_through_any_reference_is_hung_with_no_hook() {
     let min_length = ModelSchemaPropMeta {
@@ -19304,7 +18875,6 @@ fn a_member_read_through_any_reference_is_hung_with_no_hook() {
 
 /// The validator of a value read through a reference is the owned value's, and no hook is
 /// written beside it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_value_read_through_any_reference_publishes_its_validator_and_no_hook() {
     for spelling in [
@@ -19350,7 +18920,6 @@ fn a_value_read_through_any_reference_publishes_its_validator_and_no_hook() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn only_an_outermost_option_without_a_default_gets_one_injected() {
     let defaulted = true;
@@ -19390,7 +18959,6 @@ fn only_an_outermost_option_without_a_default_gets_one_injected() {
 }
 
 /// A field with no value for a length or a range to describe emits nothing at all.
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_without_a_constrainable_value_has_no_shape() {
     for spelling in [
@@ -19407,7 +18975,6 @@ fn a_field_without_a_constrainable_value_has_no_shape() {
 }
 
 /// A bound is read through every reference, to whatever it borrows.
-#[cfg(feature = "serde")]
 #[test]
 fn every_reference_is_read_through_to_what_it_borrows() {
     use super::ConstraintWrap::{Borrowed, Optional};
@@ -19436,7 +19003,6 @@ fn every_reference_is_read_through_to_what_it_borrows() {
 }
 
 /// A held model is walked through every reference, to what the owned spelling walks to.
-#[cfg(feature = "serde")]
 #[test]
 fn a_held_model_is_walked_through_every_reference() {
     use super::ConstraintWrap::{Borrowed, Optional, Sequence};
@@ -19460,7 +19026,6 @@ fn a_held_model_is_walked_through_every_reference() {
 }
 
 /// A field read through a reference is given no hook: serde reads no reference to a model.
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_read_through_a_reference_is_given_no_read_hook() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -19510,7 +19075,6 @@ fn a_field_read_through_a_reference_is_given_no_read_hook() {
     assert!(!read.contains("read_unjudged_"), "got: {read}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_typed_with_a_named_type_ends_on_that_type() {
     for (spelling, leaf, depth) in [
@@ -19533,7 +19097,6 @@ fn a_field_typed_with_a_named_type_ends_on_that_type() {
 }
 
 /// A list is a value of its own: the walk ends on it and reads nothing it holds.
-#[cfg(feature = "serde")]
 #[test]
 fn a_list_is_the_value_the_walk_ends_on() {
     for (spelling, depth, _held) in LIST_REACH {
@@ -19545,7 +19108,6 @@ fn a_list_is_the_value_the_walk_ends_on() {
 }
 
 /// `held_as_a_list` is the constraint walk held to a list behind transparent wrappers alone.
-#[cfg(feature = "serde")]
 #[test]
 fn the_list_a_brand_holds_is_the_constraint_walks() {
     let no_list = [
@@ -19724,7 +19286,6 @@ fn slot_refusal(spelling: &str, declared_slots: usize) -> Option<String> {
         .map(|err| err.to_string())
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_dropped_from_one_direction_only_is_refused() {
     for (spelling, refused) in SLOT_OMISSION_SPELLINGS {
@@ -19772,7 +19333,6 @@ fn variant_slot_refusals(declaration: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_slot_dropped_from_one_direction_only_is_refused() {
     for (spelling, refused) in SLOT_OMISSION_SPELLINGS {
@@ -19802,7 +19362,6 @@ fn a_named_variant_member_is_refused_for_no_spelling() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_lone_variant_slot_is_refused_for_the_same_spellings() {
     for (spelling, refused) in SLOT_OMISSION_SPELLINGS {
@@ -19817,7 +19376,6 @@ fn a_lone_variant_slot_is_refused_for_the_same_spellings() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_taking_its_lone_slot_off_the_wire_publishes_a_unit() {
     for spelling in ["skip", "skip_serializing, skip_deserializing"] {
@@ -19855,7 +19413,6 @@ fn every_other_declared_arity_keeps_the_kind_it_declared() {
 
 /// The adjacent-form refusals a declaration earns, one per variant that earns one, as rendered
 /// `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn adjacent_refusals(declaration: &str) -> Vec<String> {
     let item: syn::ItemEnum = syn::parse_str(declaration).unwrap();
     adjacent_collapsed_slot_guard_errors(&item, "type", "value")
@@ -19864,7 +19421,6 @@ fn adjacent_refusals(declaration: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_adjacent_variant_whose_lone_slot_is_dropped_is_refused() {
     let refusals = adjacent_refusals("enum Wire { One(#[serde(skip)] String) }");
@@ -19884,7 +19440,6 @@ fn an_adjacent_variant_whose_lone_slot_is_dropped_is_refused() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn every_other_adjacent_arity_is_left_alone() {
     for declaration in [
@@ -19900,7 +19455,6 @@ fn every_other_adjacent_arity_is_left_alone() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_adjacent_collapse_refusal_points_at_the_variant() {
     let item: syn::ItemEnum =
@@ -19913,7 +19467,6 @@ fn the_adjacent_collapse_refusal_points_at_the_variant() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_adjacent_collapse_refusal_quotes_the_declared_keys() {
     let item: syn::ItemEnum = syn::parse_str("enum Wire { One(#[serde(skip)] String) }").unwrap();
@@ -19926,7 +19479,6 @@ fn the_adjacent_collapse_refusal_quotes_the_declared_keys() {
 }
 
 /// The collected walk a renderer probe hands one variant, holding just the members it writes.
-#[cfg(feature = "serde")]
 fn walked_members(field_defs: &[super::FieldDef]) -> super::UntaggedVariantMembers {
     super::UntaggedVariantMembers {
         bound: Vec::new(),
@@ -19940,7 +19492,6 @@ fn walked_members(field_defs: &[super::FieldDef]) -> super::UntaggedVariantMembe
 }
 
 /// The member spelling an untagged variant is refused with, run over the kind it publishes.
-#[cfg(feature = "serde")]
 fn untagged_refusal(declaration: &str, members: &[super::FieldDef]) -> String {
     let variant = declared_variant(declaration);
     render_untagged_variant(
@@ -19952,7 +19503,6 @@ fn untagged_refusal(declaration: &str, members: &[super::FieldDef]) -> String {
     .map_or_else(|err| err.to_string(), |_| String::new())
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_variant_whose_lone_slot_is_dropped_is_refused_for_the_collapse() {
     let refusal = untagged_refusal("enum Wire { One(#[serde(skip)] String) }", &[]);
@@ -19971,7 +19521,6 @@ fn an_untagged_variant_whose_lone_slot_is_dropped_is_refused_for_the_collapse() 
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_untagged_collapse_refusal_points_at_the_variant() {
     let variant = declared_variant("enum Wire { One(#[serde(skip)] String) }");
@@ -19988,7 +19537,6 @@ fn the_untagged_collapse_refusal_points_at_the_variant() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_declared_untagged_unit_variant_keeps_its_own_refusal() {
     // The ellipsis and em dash are spelled by escape so the pin stays byte-exact without writing a
@@ -20008,7 +19556,6 @@ fn a_declared_untagged_unit_variant_keeps_its_own_refusal() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_refused_untagged_tuple_variant_is_named_by_its_declared_arity() {
     let carried = get_field_def("_1", &syn::parse_str::<syn::Type>("u32").unwrap(), "");
@@ -20019,7 +19566,6 @@ fn a_refused_untagged_tuple_variant_is_named_by_its_declared_arity() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn every_path_spelling_reaches_a_constrainable_value() {
     for spelling in [
@@ -20039,7 +19585,6 @@ fn every_path_spelling_reaches_a_constrainable_value() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_path_is_checked_through_its_lossy_rendering() {
     let module = emitted_string_module("PathBuf");
@@ -20057,7 +19602,6 @@ fn a_path_is_checked_through_its_lossy_rendering() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bare_path_field_deserializes_the_owned_path() {
     assert_eq!(
@@ -20071,7 +19615,6 @@ fn a_bare_path_field_deserializes_the_owned_path() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_wrapped_path_field_deserializes_its_declared_type() {
     assert_eq!(
@@ -20080,7 +19623,6 @@ fn a_wrapped_path_field_deserializes_its_declared_type() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_trivial_pattern_is_emitted_as_the_call_it_says_the_same_thing_as() {
     assert_eq!(
@@ -20103,7 +19645,6 @@ fn a_trivial_pattern_is_emitted_as_the_call_it_says_the_same_thing_as() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_pattern_of_any_real_shape_keeps_its_regex() {
     assert_eq!(
@@ -20119,7 +19660,7 @@ fn a_pattern_of_any_real_shape_keeps_its_regex() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_scalar_union_member_is_recorded_as_the_type_serde_writes_it_as() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -20151,7 +19692,7 @@ fn a_scalar_union_member_is_recorded_as_the_type_serde_writes_it_as() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_scalar_member_is_refused_naming_the_branch() {
     let error = recorded_union_flatten_error(
@@ -20182,7 +19723,7 @@ fn flattening_a_union_with_a_scalar_member_is_refused_naming_the_branch() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_nested_scalar_union_member_is_refused_by_its_trail() {
     recorded_union_flatten_error(
@@ -20212,7 +19753,7 @@ fn a_nested_scalar_union_member_is_refused_by_its_trail() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_of_objects_is_not_refused() {
     assert!(
@@ -20235,7 +19776,7 @@ fn flattening_a_union_of_objects_is_not_refused() {
 /// Records an untagged enum's members the way its own expansion does, then asks the flatten guard
 /// what an object naming it would be told. Returns the rendered `compile_error!`, or `None` where
 /// the merge has nothing to refuse.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn recorded_union_flatten_error(
     rust_ident: &str,
     mut item: syn::ItemEnum,
@@ -20259,7 +19800,7 @@ fn recorded_union_flatten_error(
 
 /// The branch trails one untagged enum's members are recorded at, beside what each is proved to
 /// write, in declaration order.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn recorded_member_trails(mut item: syn::ItemEnum) -> Vec<(String, Option<&'static str>)> {
     let (_, _, _, merge_parts, _, errors, _, _, _, _) = collect_untagged_members(
         &mut item,
@@ -20276,7 +19817,7 @@ fn recorded_member_trails(mut item: syn::ItemEnum) -> Vec<(String, Option<&'stat
 /// Registers a name carrying both answers a `#[model_schema()]` item's own expansion records for
 /// it: what serde writes it as, and the JSON type keyword its published wire describes as where
 /// that wire is proved to be no object.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn seed_registered_wire(rust_ident: &str, kind: AliasKind, wire: Option<&'static str>) {
     register_alias_info(
         rust_ident,
@@ -20294,7 +19835,7 @@ fn seed_registered_wire(rust_ident: &str, kind: AliasKind, wire: Option<&'static
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn an_optional_union_member_is_recorded_as_its_value_beside_the_absence() {
     assert_eq!(
@@ -20315,7 +19856,7 @@ fn an_optional_union_member_is_recorded_as_its_value_beside_the_absence() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_member_written_without_an_option_keeps_the_one_position_it_had() {
     assert_eq!(
@@ -20329,7 +19870,7 @@ fn a_member_written_without_an_option_keeps_the_one_position_it_had() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_an_optional_member_is_refused_naming_the_null_leaf() {
     let error = recorded_union_flatten_error(
@@ -20355,7 +19896,7 @@ fn flattening_a_union_with_an_optional_member_is_refused_naming_the_null_leaf() 
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn an_optional_scalar_union_member_is_refused_below_the_option_it_was_written_under() {
     let error = recorded_union_flatten_error(
@@ -20375,7 +19916,7 @@ fn an_optional_scalar_union_member_is_refused_below_the_option_it_was_written_un
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_union_member_naming_a_registered_non_object_wire_is_recorded_as_that_wire() {
     seed_registered_wire("StringBrand", AliasKind::StringWire, Some("string"));
@@ -20408,7 +19949,7 @@ fn a_union_member_naming_a_registered_non_object_wire_is_recorded_as_that_wire()
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_named_string_wire_member_is_refused_naming_the_branch() {
     seed_registered_wire("Slug", AliasKind::StringWire, Some("string"));
@@ -20429,7 +19970,7 @@ fn flattening_a_union_with_a_named_string_wire_member_is_refused_naming_the_bran
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_named_stringified_or_enumerated_member_is_refused() {
     seed_registered_wire("Switch", AliasKind::Stringified, Some("boolean"));
@@ -20467,7 +20008,7 @@ fn flattening_a_union_with_a_named_stringified_or_enumerated_member_is_refused()
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_union_member_naming_an_object_or_an_unregistered_type_stays_admitted() {
     seed_registered_wire("Doc", AliasKind::NoEnumMembers, None);
@@ -20488,12 +20029,12 @@ fn a_union_member_naming_an_object_or_an_unregistered_type_stays_admitted() {
 }
 
 /// What the flatten guard is asked about a field naming one item directly, with no union between.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn direct_flatten_error(field: &syn::Field) -> Option<String> {
     flatten_edge_guard_error(field, "Host").map(|error| error.to_string())
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_registered_scalar_wire_is_refused_where_the_field_was_written() {
     seed_registered_wire("Counted", AliasKind::NoEnumMembers, Some("integer"));
@@ -20512,7 +20053,7 @@ fn flattening_a_registered_scalar_wire_is_refused_where_the_field_was_written() 
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_registered_string_boolean_or_array_wire_is_refused_by_its_own_keyword() {
     for (rust_ident, kind, keyword) in [
@@ -20531,7 +20072,7 @@ fn flattening_a_registered_string_boolean_or_array_wire_is_refused_by_its_own_ke
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_direct_flatten_of_an_object_or_an_unregistered_name_stays_admitted() {
     seed_registered_wire("DirectDoc", AliasKind::NoEnumMembers, None);
@@ -20552,7 +20093,7 @@ fn a_direct_flatten_of_an_object_or_an_unregistered_name_stays_admitted() {
 
 /// A flattened value written in place, which no name stands for: serde refuses every write of a
 /// list, a tuple, text and a number flattened, and writes `()` as no key.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_direct_flatten_of_a_value_written_in_place_is_refused_by_its_own_keyword() {
     seed_registered_wire("DirectCount", AliasKind::NoEnumMembers, Some("integer"));
@@ -20613,7 +20154,7 @@ fn a_direct_flatten_of_a_value_written_in_place_is_refused_by_its_own_keyword() 
     assert!(error.contains(&refused), "got: {error}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_direct_flatten_of_a_plain_enum_is_left_to_the_guard_written_for_it() {
     seed_registered_wire("DirectHue", AliasKind::EnumMembers, Some("string"));
@@ -20629,7 +20170,7 @@ fn a_direct_flatten_of_a_plain_enum_is_left_to_the_guard_written_for_it() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_direct_flatten_of_a_nullable_scalar_registration_is_refused_at_its_value_branch() {
     seed_slot_registration(&syn::parse_quote! { struct DirectMaybeCount(Option<i64>); });
@@ -20651,7 +20192,7 @@ fn a_direct_flatten_of_a_nullable_scalar_registration_is_refused_at_its_value_br
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_nullable_registration_is_refused_by_the_keyword_its_value_side_proves() {
     seed_slot_registration(&syn::parse_quote! { struct DirectMaybeName(Option<String>); });
@@ -20672,7 +20213,7 @@ fn a_nullable_registration_is_refused_by_the_keyword_its_value_side_proves() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_direct_flatten_of_a_nullable_object_registration_stays_admitted() {
     seed_registered_wire("DirectPlainDoc", AliasKind::NoEnumMembers, None);
@@ -20687,7 +20228,7 @@ fn a_direct_flatten_of_a_nullable_object_registration_stays_admitted() {
 
 /// Runs the registration a tuple struct's own expansion runs, so what the registry answers for the
 /// name is what a declaration put there rather than a word written by hand.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn seed_slot_registration(item: &syn::ItemStruct) {
     let (item_name, module_name, _) = super::struct_module_idents(&item.ident, None);
     super::register_struct(
@@ -20702,7 +20243,7 @@ fn seed_slot_registration(item: &syn::ItemStruct) {
 }
 
 /// The same for a branded newtype, whose wire is its inner's.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn seed_brand_registration(item: &syn::ItemStruct) {
     let rust_ident = item.ident.to_string();
     super::register_branded_newtype(
@@ -20738,7 +20279,7 @@ fn every_spelling_of_one_value_publishes_one_json_type_keyword() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_union_member_naming_a_numeric_registration_is_recorded_by_its_own_keyword() {
     seed_brand_registration(&syn::parse_quote! {
@@ -20768,7 +20309,7 @@ fn a_union_member_naming_a_numeric_registration_is_recorded_by_its_own_keyword()
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_named_integer_wire_member_is_refused_naming_the_keyword() {
     seed_brand_registration(&syn::parse_quote! {
@@ -20792,7 +20333,7 @@ fn flattening_a_union_with_a_named_integer_wire_member_is_refused_naming_the_key
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn an_array_shaped_registration_is_recorded_apart_from_a_map_shaped_one() {
     seed_slot_registration(&syn::parse_quote! { struct WireBag(Vec<String>); });
@@ -20818,7 +20359,7 @@ fn an_array_shaped_registration_is_recorded_apart_from_a_map_shaped_one() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_named_array_wire_member_is_refused_while_a_map_stays_admitted() {
     seed_slot_registration(&syn::parse_quote! { struct FlatWireBag(Vec<String>); });
@@ -20855,7 +20396,7 @@ fn flattening_a_union_with_a_named_array_wire_member_is_refused_while_a_map_stay
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_union_member_naming_a_nullable_registration_carries_its_null_leaf() {
     seed_slot_registration(&syn::parse_quote! { struct WireMaybeDoc(Option<Holder>); });
@@ -20878,7 +20419,7 @@ fn a_union_member_naming_a_nullable_registration_carries_its_null_leaf() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_named_nullable_member_is_refused_naming_the_trail() {
     seed_slot_registration(&syn::parse_quote! { struct FlatWireMaybeDoc(Option<Holder>); });
@@ -20914,7 +20455,7 @@ fn flattening_a_union_with_a_named_nullable_member_is_refused_naming_the_trail()
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_union_member_naming_a_tagged_enum_carries_one_leaf_per_variant() {
     seed_external_registration(&syn::parse_quote! {
@@ -20938,7 +20479,7 @@ fn a_union_member_naming_a_tagged_enum_carries_one_leaf_per_variant() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_union_member_naming_an_all_object_tagged_enum_keeps_its_one_leaf() {
     seed_external_registration(&syn::parse_quote! {
@@ -20958,7 +20499,7 @@ fn a_union_member_naming_an_all_object_tagged_enum_keeps_its_one_leaf() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn flattening_a_union_with_a_tagged_enum_member_is_refused_naming_the_trail() {
     seed_external_registration(&syn::parse_quote! {
@@ -21009,14 +20550,13 @@ fn flattening_a_union_with_a_tagged_enum_member_is_refused_naming_the_trail() {
 
 /// Runs the registration an externally tagged enum's own expansion runs, so the leaves the registry
 /// answers with for the name are ones a declaration put there rather than words written by hand.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn seed_external_registration(item: &syn::ItemEnum) {
     let rust_ident = item.ident.to_string();
     super::register_enum(&item.ident, &rust_ident, AliasKind::NoEnumMembers);
     super::Surface::externally_tagged(&item.variants).record(&rust_ident);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_empty_string_pattern_keeps_the_call_it_was_already_emitted_as() {
     assert_eq!(
@@ -21031,7 +20571,6 @@ fn the_empty_string_pattern_keeps_the_call_it_was_already_emitted_as() {
 }
 
 /// A boundary with something beside it is the rewrite the lone-assertion refusal names.
-#[cfg(feature = "serde")]
 #[test]
 fn a_word_boundary_pattern_keeps_its_regex() {
     assert_eq!(
@@ -21090,50 +20629,7 @@ fn a_member_key_carrying_a_quote_or_a_backslash_is_escaped() {
     assert_eq!(super::ts_member_key("a\\b"), "\"a\\\\b\"");
 }
 
-/// Without `serde` a struct's member is written in camelCase in TypeScript and Zod.
-#[cfg(all(not(feature = "serde"), feature = "typescript"))]
-#[test]
-fn without_serde_a_struct_member_is_written_in_camel_case() {
-    let written = super::exec_model_schema(
-        proc_macro2::TokenStream::new(),
-        syn::parse_quote! {
-            pub struct Signup {
-                #[model_schema_prop(minLength = 3)]
-                pub user_name: String,
-            }
-        },
-    )
-    .to_string();
-
-    assert!(written.contains("userName: string;"), "got: {written}");
-    assert!(!written.contains("user_name: string;"), "got: {written}");
-    #[cfg(feature = "zod")]
-    assert!(written.contains("userName: z.string()"), "got: {written}");
-}
-
-/// Without `serde` a named member of an enum's variant is written in camelCase in TypeScript and
-/// Zod.
-#[cfg(all(not(feature = "serde"), feature = "typescript"))]
-#[test]
-fn without_serde_a_variant_member_is_written_in_camel_case() {
-    let written = super::exec_model_schema(
-        proc_macro2::TokenStream::new(),
-        syn::parse_quote! {
-            pub enum Event {
-                Opened { opened_at: u32 },
-                Closed,
-            }
-        },
-    )
-    .to_string();
-
-    assert!(written.contains("openedAt: number;"), "got: {written}");
-    assert!(!written.contains("opened_at: number;"), "got: {written}");
-    #[cfg(feature = "zod")]
-    assert!(written.contains("openedAt: z.number()"), "got: {written}");
-}
-
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn an_untagged_sibling_exclusion_writes_a_non_identifier_key_as_a_string() {
     let closed = super::close_untagged_flatten_member(
@@ -21148,7 +20644,6 @@ fn an_untagged_sibling_exclusion_writes_a_non_identifier_key_as_a_string() {
 }
 
 /// Collects a discriminated enum's guard failures as rendered `compile_error!` token strings.
-#[cfg(feature = "serde")]
 fn discriminated_guard_errors(mut item: syn::ItemEnum) -> Vec<String> {
     collect_discriminated_variants(
         &mut item,
@@ -21163,7 +20658,6 @@ fn discriminated_guard_errors(mut item: syn::ItemEnum) -> Vec<String> {
 }
 
 /// The field defs one variant of a discriminated enum collected, beside the ones it flattens.
-#[cfg(feature = "serde")]
 fn collected_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, Vec<String>) {
     let variants = collect_discriminated_variants(
         &mut item,
@@ -21183,7 +20677,6 @@ fn collected_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, Vec<String
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_variant_field_is_split_out_of_the_variants_members() {
     let (written, flattened) = collected_variant_fields(syn::parse_quote! {
@@ -21199,7 +20692,6 @@ fn a_flattened_variant_field_is_split_out_of_the_variants_members() {
     assert_eq!(flattened, vec!["extra".to_owned()]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_variant_field_over_an_unrecorded_name_is_not_refused() {
     assert_eq!(
@@ -21216,7 +20708,6 @@ fn a_flattened_variant_field_over_an_unrecorded_name_is_not_refused() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_variant_field_over_a_plain_enum_is_refused() {
     record_plain_enum("VariantHue", true);
@@ -21238,7 +20729,7 @@ fn a_flattened_variant_field_over_a_plain_enum_is_refused() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_flattened_variant_field_over_a_multi_branch_source_is_accepted() {
     let mut choice: syn::ItemEnum = syn::parse_quote! {
@@ -21273,7 +20764,7 @@ fn a_flattened_variant_field_over_a_multi_branch_source_is_accepted() {
     assert!(refusals.is_empty(), "got: {refusals:?}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn an_optional_flattened_variant_field_is_accepted() {
     let refusals = discriminated_guard_errors(syn::parse_quote! {
@@ -21290,7 +20781,6 @@ fn an_optional_flattened_variant_field_is_accepted() {
 
 /// What the walk of the members of `variant` collects, the variant of an untagged enum named
 /// `Probe` with no casing, no parameter and no default.
-#[cfg(feature = "serde")]
 fn walked_untagged_variant(variant: &mut syn::Variant) -> super::UntaggedVariantMembers {
     super::collect_untagged_variant_members(
         variant,
@@ -21308,7 +20798,6 @@ fn walked_untagged_variant(variant: &mut syn::Variant) -> super::UntaggedVariant
 }
 
 /// The members one untagged variant collected, beside the ones it flattens.
-#[cfg(feature = "serde")]
 fn collected_untagged_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, Vec<String>) {
     let variant = item.variants.first_mut().unwrap();
     let walked = walked_untagged_variant(variant);
@@ -21322,7 +20811,6 @@ fn collected_untagged_variant_fields(mut item: syn::ItemEnum) -> (Vec<String>, V
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_untagged_variant_field_is_split_out_of_the_variants_members() {
     let (written, flattened) = collected_untagged_variant_fields(syn::parse_quote! {
@@ -21338,7 +20826,7 @@ fn a_flattened_untagged_variant_field_is_split_out_of_the_variants_members() {
     assert_eq!(flattened, vec!["extra".to_owned()]);
 }
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn a_flattening_untagged_member_proves_no_key_list() {
     let mut item: syn::ItemEnum = syn::parse_quote! {
@@ -21366,7 +20854,6 @@ fn a_flattening_untagged_member_proves_no_key_list() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_untagged_variant_field_over_a_plain_enum_is_refused() {
     record_plain_enum("UntaggedVariantHue", true);
@@ -21388,7 +20875,7 @@ fn a_flattened_untagged_variant_field_over_a_plain_enum_is_refused() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_flattened_untagged_variant_field_over_a_multi_branch_source_is_accepted() {
     let mut choice: syn::ItemEnum = syn::parse_quote! {
@@ -21423,7 +20910,6 @@ fn a_flattened_untagged_variant_field_over_a_multi_branch_source_is_accepted() {
     assert!(refusals.is_empty(), "got: {refusals:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_untagged_variant_field_over_a_single_key_set_source_is_not_refused() {
     assert_eq!(
@@ -21450,7 +20936,6 @@ fn expansion_over(source: &str) -> proc_macro2::TokenStream {
 }
 
 /// [`expansion_over`], carrying the `#[model_schema(...)]` arguments a bare source cannot write.
-#[cfg(feature = "serde")]
 fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStream {
     super::exec_model_schema(
         syn::parse_str(args).unwrap(),
@@ -21459,7 +20944,6 @@ fn expansion_with_args_over(args: &str, source: &str) -> proc_macro2::TokenStrea
 }
 
 /// A brand over a string or a path publishes the text a field's bound is measured on.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_publishes_its_text_only_over_a_string_or_a_path() {
     for (args, source, text) in [
@@ -21509,7 +20993,6 @@ fn a_brand_publishes_its_text_only_over_a_string_or_a_path() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_under_a_structs_own_tag_key_is_refused() {
     for source in [
@@ -21650,7 +21133,6 @@ fn a_unit_variant_and_a_tuple_variant_with_fields_are_not_refused() {
 
 /// How many `compile_error!` invocations `tokens` writes, counted off the token trees so a name a
 /// message quotes in its own text is not mistaken for a second diagnostic.
-#[cfg(feature = "serde")]
 fn compile_error_count(tokens: &proc_macro2::TokenStream) -> usize {
     let mut count = 0;
     for tree in tokens.clone() {
@@ -21669,7 +21151,6 @@ fn compile_error_count(tokens: &proc_macro2::TokenStream) -> usize {
 
 /// The message of every `compile_error!` `tokens` carries: an assertion the compiler evaluates
 /// against a type the expansion did not see refuses nothing by itself.
-#[cfg(feature = "serde")]
 fn refusal_texts(tokens: &proc_macro2::TokenStream) -> Vec<String> {
     let mut texts = Vec::new();
     let (mut named, mut invoked) = (false, false);
@@ -21693,12 +21174,10 @@ fn refusal_texts(tokens: &proc_macro2::TokenStream) -> Vec<String> {
 }
 
 /// The all-unit enum of the untagged case, written under `attributes`.
-#[cfg(feature = "serde")]
 fn all_unit_source(attributes: &str) -> String {
     format!("{attributes} pub enum BalanceError {{ DbError, InsufficientBalance }}")
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_all_unit_untagged_enum_earns_the_unit_variant_refusal_on_every_variant() {
     let tokens = expansion_over(&all_unit_source(
@@ -21720,7 +21199,7 @@ fn an_all_unit_untagged_enum_earns_the_unit_variant_refusal_on_every_variant() {
     }
 }
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 #[test]
 fn a_refused_all_unit_untagged_enum_publishes_no_string_union() {
     let tokens = expansion_over(&all_unit_source(
@@ -21736,7 +21215,6 @@ fn a_refused_all_unit_untagged_enum_publishes_no_string_union() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_same_all_unit_enum_without_untagged_is_not_refused() {
     let tokens = expansion_over(&all_unit_source("#[serde(rename_all = \"kebab-case\")]"));
@@ -21744,7 +21222,6 @@ fn the_same_all_unit_enum_without_untagged_is_not_refused() {
     assert!(refusal_texts(&tokens).is_empty(), "got: {tokens}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_same_untagged_attribute_over_carrying_variants_is_not_refused() {
     let tokens = expansion_over(
@@ -21803,7 +21280,6 @@ fn branded_slot_source(keys: &str) -> String {
     format!("#[serde(transparent)] pub struct Branded(#[model_schema_prop({keys})] String);")
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_prop_on_a_branded_newtypes_slot_is_refused() {
     for keys in SLOT_PROP_KEYS {
@@ -21821,7 +21297,6 @@ fn a_prop_on_a_branded_newtypes_slot_is_refused() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_unknown_key_on_a_brand_slot_earns_the_position_refusal() {
     let tokens = expansion_over(&branded_slot_source("bogus_key = 3"));
@@ -21839,7 +21314,6 @@ fn a_refused_brand_slot_keeps_no_prop_attribute_on_the_emitted_item() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_prop_on_a_brand_field_serde_does_not_read_is_refused_once() {
     let tokens = expansion_over(UNREAD_BRAND_FIELD_SOURCE);
@@ -21868,7 +21342,6 @@ fn a_named_brand_with_no_prop_on_any_field_earns_no_refusal() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn each_prop_attribute_on_a_brand_slot_earns_its_own_refusal() {
     let refusals = branded_slot_refusals(
@@ -21885,7 +21358,6 @@ fn branded_slot_refusals(source: &str) -> Vec<proc_macro2::TokenStream> {
     super::branded_slot_prop_errors(&syn::parse_str(source).unwrap())
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_slot_refusal_is_spanned_on_the_attribute() {
     let refusals = branded_slot_refusals(&branded_slot_source("pattern = \"^[a-z]+$\""));
@@ -21898,7 +21370,6 @@ fn a_brand_slot_refusal_is_spanned_on_the_attribute() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_prop_on_a_named_brand_field_earns_the_refusal() {
     let refusals = branded_slot_refusals(
@@ -21927,7 +21398,6 @@ fn a_prop_on_a_named_brand_field_earns_the_refusal() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_prop_on_a_tuple_brand_earns_the_refusal_of_the_slot_it_is_written_on() {
     let (read, marker) = (
@@ -21969,7 +21439,6 @@ fn a_prop_on_a_tuple_brand_earns_the_refusal_of_the_slot_it_is_written_on() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_prop_on_a_tuple_brands_marker_is_refused_once() {
     let tokens = expansion_over(
@@ -22017,7 +21486,6 @@ fn transparent_direction_refusal(written: &str, read: &str) -> String {
     )
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_transparent_struct_written_and_read_as_two_fields_is_refused_naming_both() {
     for (source, written, read) in SPLIT_TRANSPARENT_SOURCES {
@@ -22046,7 +21514,6 @@ fn the_readme_shows_the_transparent_direction_refusal() {
     assert!(include_str!("../../docs/guide/generics-and-brands.md").contains(&shown));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_transparent_direction_refusal_is_spanned_on_the_struct_name() {
     for (source, _, _) in SPLIT_TRANSPARENT_SOURCES {
@@ -22403,7 +21870,6 @@ fn a_single_combination_binds_no_name_on_either_path() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_bottoming_out_in_a_declared_type_is_walked_and_a_primitive_one_is_not() {
     let mut item: syn::ItemStruct = syn::parse_quote! {
@@ -22472,7 +21938,6 @@ fn untagged_enum_registry_answers_only_after_the_enum_is_recorded() {
 }
 
 /// serde reads `untagged` wherever the list writes it, after a key with a value included.
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_is_recorded_untagged_wherever_its_list_writes_the_key() {
     for (attribute, name) in [
@@ -22498,7 +21963,6 @@ fn an_enum_is_recorded_untagged_wherever_its_list_writes_the_key() {
 }
 
 /// A brand over `Box<IdType>` expands without panicking, checked against `Box<String>`.
-#[cfg(feature = "serde")]
 #[test]
 fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_default() {
     let tokens = expansion_with_args_over(
@@ -22518,7 +21982,6 @@ fn a_constrained_brand_over_a_wrapped_parameter_expands_against_the_wrapped_defa
 }
 
 /// A constrained generic brand's hook carries its own type identity and names no outside crate.
-#[cfg(feature = "serde")]
 #[test]
 fn a_constrained_generic_brand_defines_its_own_type_identity() {
     let generic = expansion_with_args_over(
@@ -22552,7 +22015,6 @@ fn a_constrained_generic_brand_defines_its_own_type_identity() {
 /// A parameter the brand's inner names is read at its declared default through the type
 /// identity, and a parameter beside a concrete inner changes nothing: the inner is judged at every
 /// filling by `validate_value` alone.
-#[cfg(feature = "serde")]
 #[test]
 fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
     let over_parameter = expansion_with_args_over(
@@ -22600,7 +22062,6 @@ fn only_a_brand_whose_inner_names_a_parameter_reads_at_the_declared_default() {
 
 /// The default a parameter takes where `default_types` leaves its entry out is the standard
 /// `String`, written at its full path.
-#[cfg(feature = "serde")]
 #[test]
 fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
     let rendered = expansion_with_args_over(
@@ -22621,7 +22082,6 @@ fn the_fallback_default_of_a_generic_brand_is_the_standard_string() {
 }
 
 /// Declares what the table of declared defaults reads, above the brands that name them.
-#[cfg(feature = "serde")]
 fn declare_the_names_a_default_may_be() {
     for (args, source) in [
         (
@@ -22642,7 +22102,6 @@ fn declare_the_names_a_default_may_be() {
 
 /// A generic brand with a string check reads its value as the declared default only where the
 /// expansion can prove the default writes every lifetime it has.
-#[cfg(feature = "serde")]
 #[test]
 fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
     declare_the_names_a_default_may_be();
@@ -22695,7 +22154,6 @@ fn a_declared_default_is_read_only_where_every_lifetime_it_has_is_written() {
 }
 
 /// A generic brand with no string check is refused nothing, whatever its default.
-#[cfg(feature = "serde")]
 #[test]
 fn a_generic_brand_with_no_string_check_is_refused_no_default() {
     let expanded = expansion_with_args_over(
@@ -22708,7 +22166,6 @@ fn a_generic_brand_with_no_string_check_is_refused_no_default() {
 
 /// `validate()` is written once, in the `impl` that holds the type's delegates, under the
 /// generics the type declares: a type with a parameter gets no second `impl` at one filling.
-#[cfg(feature = "serde")]
 #[test]
 fn validate_is_written_once_in_the_types_own_impl() {
     for (args, source, own_impl) in [
@@ -22804,7 +22261,6 @@ fn validate_is_written_once_in_the_types_own_impl() {
 /// A generic brand's `validate()` hands the value to the function that reads it as its declared
 /// default, under no bound the brand's author did not write, and no function answers a reference
 /// to that default. The read asks of the parameter what serde's derive asks, and no `Display`.
-#[cfg(feature = "serde")]
 #[test]
 fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is() {
     let generic = expansion_with_args_over(
@@ -22871,7 +22327,6 @@ fn a_generic_brands_checks_are_run_by_the_function_that_asks_which_filling_it_is
 /// A declared default that writes a lifetime is compared and read at the lifetime of the borrow,
 /// so a value is never read at a lifetime longer than its own. Nothing else asks which filling
 /// the brand holds.
-#[cfg(feature = "serde")]
 #[test]
 fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
     let rendered = expansion_with_args_over(
@@ -22896,7 +22351,6 @@ fn a_default_that_writes_a_lifetime_is_read_at_the_borrows_own() {
 }
 
 /// Every lifetime a type writes is replaced, and one a `for<...>` or a signature binds is not.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_is_written_at_one_lifetime() {
     for (written, at_one) in [
@@ -23044,7 +22498,6 @@ fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
 /// A brand over one of its own parameters keeps the read serde's derive writes it, and gains the
 /// read a holder hands a reader of the parameter to, and the walk that hands the value to the
 /// holder's check of it.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_its_own_parameter_hands_the_value_to_its_holder() {
     let expanded = expansion_under(
@@ -23079,7 +22532,6 @@ fn a_brand_over_its_own_parameter_hands_the_value_to_its_holder() {
 /// An untagged enum with a member over `()` publishes the record the JSON Schema merge reads on
 /// its schema module's `Schema`, under the one name the merge asks for, and an alias, a brand and
 /// a struct of one slot over a name, written bare, forward that name's; nothing else carries it.
-#[cfg(feature = "serde")]
 #[test]
 fn the_record_of_a_member_over_unit_is_published_under_its_one_name() {
     assert_eq!(super::UNIT_MEMBER_RECORD, "WRITES_A_UNIT_MEMBER");
@@ -23134,7 +22586,6 @@ fn the_record_of_a_member_over_unit_is_published_under_its_one_name() {
 /// writes is not.
 #[test]
 fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
-    #[cfg(feature = "serde")]
     assert_refused_without_member_keys(
         "",
         "pub enum ProbeBecalmed { #[serde(skip)] Drifting { #[model_schema_prop(minLength = 1)] \
@@ -23170,7 +22621,6 @@ fn an_enum_with_no_variant_serde_writes_or_reads_is_refused() {
 }
 
 /// What a variant under `#[serde(untagged)]` in an enum serde writes with names is refused with.
-#[cfg(feature = "serde")]
 fn untagged_variant_refusal(enum_name: &str, variant: &str) -> String {
     format!(
         "model_schema: type `{enum_name}`: variant `{variant}` is under `#[serde(untagged)]`, so \
@@ -23184,7 +22634,6 @@ fn untagged_variant_refusal(enum_name: &str, variant: &str) -> String {
 /// names, is refused under every tagging, its members' keys taken off, ahead of every refusal that
 /// reads it beside the enum's tag; every such variant is refused in one expansion, and one serde's
 /// derive refuses for its place is refused in serde's words.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
     for (source, enum_name) in [
@@ -23275,7 +22724,6 @@ fn a_variant_under_untagged_in_an_enum_written_with_names_is_refused() {
 /// does a variant under it serde neither writes nor reads; under a tag alone, a tuple variant of no
 /// slot or of several is left to the refusals in the words of serde's derive, which refuses it
 /// untagged or not.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_variant_of_an_untagged_enum_or_off_the_wire_is_not_refused() {
     for source in [
@@ -23322,7 +22770,6 @@ fn an_untagged_variant_of_an_untagged_enum_or_off_the_wire_is_not_refused() {
 /// tuple variant of no slot, a lone slot taken off the wire under a content key, a bare `Option`
 /// member, a unit variant's name that breaks the enum's pattern, an untagged unit variant and
 /// tuple variant of several slots, and an untagged member over text a holder flattens.
-#[cfg(feature = "serde")]
 #[test]
 fn the_guards_of_the_wire_read_past_a_variant_serde_neither_writes_nor_reads() {
     for (args, source) in [
@@ -23386,7 +22833,6 @@ fn the_guards_of_the_wire_read_past_a_variant_serde_neither_writes_nor_reads() {
 
 /// The guards [`the_guards_of_the_wire_read_past_a_variant_serde_neither_writes_nor_reads`] reads
 /// past refuse a variant serde drops in one direction alone, as before.
-#[cfg(feature = "serde")]
 #[test]
 fn the_guards_of_the_wire_refuse_a_variant_serde_drops_in_one_direction() {
     // Declared ahead of the holder that flattens it, which reads what it records.
@@ -23437,10 +22883,7 @@ fn the_guards_of_the_wire_refuse_a_variant_serde_drops_in_one_direction() {
     }
 }
 
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 #[test]
 fn a_transparent_tuple_struct_with_a_one_way_slot_expands_and_a_plain_one_is_refused() {
     let transparent = refusal_texts(&expansion_over(
@@ -23459,7 +22902,6 @@ fn a_transparent_tuple_struct_with_a_one_way_slot_expands_and_a_plain_one_is_ref
     );
 }
 
-#[cfg(feature = "serde")]
 fn map_key_refusal(parameter: &str, source: &str) -> Vec<String> {
     refusal_texts(&super::exec_model_schema(
         syn::parse_str(&format!("default_types({parameter} = String)")).unwrap(),
@@ -23467,7 +22909,6 @@ fn map_key_refusal(parameter: &str, source: &str) -> Vec<String> {
     ))
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_of_models_keyed_by_a_parameter_with_no_serialize_is_refused() {
     assert_eq!(
@@ -23483,7 +22924,6 @@ fn a_map_of_models_keyed_by_a_parameter_with_no_serialize_is_refused() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_key_that_wraps_a_parameter_or_sits_in_an_enum_variant_is_refused() {
     let wrapped = map_key_refusal(
@@ -23506,7 +22946,6 @@ fn a_map_key_that_wraps_a_parameter_or_sits_in_an_enum_variant_is_refused() {
     assert!(variant[0].contains("`Stock`"), "got: {variant:?}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_key_is_accepted_where_the_parameter_declares_serialize_or_the_walk_reads_no_key() {
     let accepted = [
@@ -23589,7 +23028,6 @@ fn a_type_that_writes_examples_gets_the_keyword_in_its_schema_modules_document()
     assert!(super::json_schema_examples(&[]).is_none());
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_strict_struct_serde_reads_no_member_of_is_refused_under_a_conversion() {
     for (key, members) in [
@@ -23635,7 +23073,6 @@ fn a_strict_struct_serde_reads_no_member_of_is_refused_under_a_conversion() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_braced_variant_serde_reads_no_member_of_is_read_by_the_macro_and_closes_its_enum() {
     for tagging in [
@@ -23671,7 +23108,6 @@ fn a_braced_variant_serde_reads_no_member_of_is_read_by_the_macro_and_closes_its
     assert!(!written_alone.contains("model_schema_off_refuses_a_key"));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_braced_variant_of_no_member_beside_one_that_flattens_a_map_holds_its_enum_open() {
     let tokens = expansion_over(
@@ -23689,7 +23125,6 @@ fn a_braced_variant_of_no_member_beside_one_that_flattens_a_map_holds_its_enum_o
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_braced_variant_serde_never_reads_or_reads_through_its_authors_function_leaves_its_enum_closed()
 {
@@ -23728,7 +23163,6 @@ fn a_braced_variant_serde_never_reads_or_reads_through_its_authors_function_leav
     assert!(!lenient.contains("deny_unknown_fields"));
 }
 
-#[cfg(feature = "serde")]
 fn sealed_methods_of(declaration: &str) -> String {
     let item: syn::ItemStruct = syn::parse_str(declaration).unwrap();
     let field = item.fields.iter().next().unwrap();
@@ -23741,7 +23175,6 @@ fn sealed_methods_of(declaration: &str) -> String {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn a_brands_new_takes_a_named_type_parameter() {
     let written = sealed_methods_of("pub struct Code(String);");
     assert!(
@@ -23753,7 +23186,6 @@ fn a_brands_new_takes_a_named_type_parameter() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn a_brands_new_parameter_is_numbered_where_the_inner_writes_value() {
     let written = sealed_methods_of("pub struct Payload(Value);");
     assert!(
@@ -23770,7 +23202,6 @@ fn a_brands_new_parameter_is_numbered_where_the_inner_writes_value() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn a_generic_brands_new_keeps_the_inner_as_its_parameter() {
     let written = sealed_methods_of("pub struct Held<Item>(Item);");
     assert!(written.contains("pub fn new (value : Item"), "{written}");

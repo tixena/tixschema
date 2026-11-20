@@ -6,7 +6,7 @@
 //! own. A struct's tag of another value, or none, is refused in words that name the key and the
 //! tag as serde writes them. The models are declared where the Dart client is built.
 
-#![cfg(all(feature = "swift", feature = "dart", feature = "serde"))]
+#![cfg(all(feature = "swift", feature = "dart"))]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

@@ -9,7 +9,6 @@ use super::unwritten_models::{
     FLATTENED, PAYLOAD, REFUSED, WRITTEN, braiding_dart, flemishing_dart, furling_dart,
     ranging_dart, reefing_dart, splaying_dart,
 };
-#[cfg(feature = "serde")]
 use super::unwritten_models::{
     VARIANTS, dousing_dart, ratcheting_dart, shackling_dart, wearing_dart,
 };
@@ -116,7 +115,6 @@ fn a_flattened_member_serde_never_writes_is_read_and_not_written_in_dart() {
 
 /// What prints each enum of [`VARIANTS`] read from its payload: the member of its variant
 /// `Furled` read, and the value written back.
-#[cfg(feature = "serde")]
 fn variants_main() -> String {
     let lines: Vec<String> = VARIANTS
         .iter()
@@ -132,7 +130,6 @@ fn variants_main() -> String {
 }
 
 /// Each enum reads the member of its variant and writes it back as serde does: never.
-#[cfg(feature = "serde")]
 #[test]
 fn a_variants_member_serde_never_writes_is_read_and_not_written_in_dart() {
     let source = module(

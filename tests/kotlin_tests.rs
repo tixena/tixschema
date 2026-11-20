@@ -26,13 +26,13 @@ mod kotlin_plain_enum;
 
 /// The private function the emitter writes into a serializer that reads a part of a value apart.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_inner.rs"]
 mod kotlin_inner;
 
 /// The private function the emitter writes into a serializer that reads a flattened member.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_flattened.rs"]
 mod kotlin_flattened;
 
@@ -94,32 +94,32 @@ mod unrecorded_options_models;
 /// under a function that answers the payload as it was handed and under one that answers `null`,
 /// and an enum under a tag alone.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/corrected_options_models.rs"]
 mod corrected_options_models;
 
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
 mod unwritten_models;
 
 /// What the Kotlin emitter writes and reads of a member serde never writes.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/unwritten.rs"]
 mod unwritten;
 
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/aliased_models.rs"]
 mod aliased_models;
 
 /// A name serde reads beside the one it writes: a variant's alias and a member's.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/aliased.rs"]
 mod aliased;
 
@@ -138,37 +138,37 @@ mod text_forms;
 
 /// `()` held in each place a value is, and a tuple struct of no slot beside it.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "service_schema_emitted_client_tests/unit_models.rs"]
 mod unit_models;
 
 /// What the Kotlin emitter reads and writes of `()`.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/units.rs"]
 mod units;
 
 /// Models whose names on the wire hold a character a Kotlin string literal reads apart from text.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "dart_tests/quoted_models.rs"]
 mod quoted_models;
 
 /// What the Kotlin emitter writes of a name on the wire that holds such a character.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/quoted.rs"]
 mod quoted;
 
 /// A member, and a variant, serde neither writes nor reads, typed with a width no client maps.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "swift_tests/unwired_models.rs"]
 mod unwired_models;
 
 /// What the Kotlin emitter declares of a member, and a variant, serde neither writes nor reads.
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "kotlin_tests/unwired.rs"]
 mod unwired;
 

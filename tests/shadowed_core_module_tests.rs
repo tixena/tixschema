@@ -5,8 +5,6 @@
 //! The assertion is that this binary compiles. Gated on the `serde` feature, which
 //! `#[service_schema]` requires.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[path = "shadowed_core_module_tests/tests.rs"]
 mod tests;

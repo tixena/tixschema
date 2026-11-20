@@ -1,17 +1,15 @@
 //! A crate that places a client and no dispatcher, which is the half a caller of a service wants.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[macro_use]
 #[path = "service_schema_client_only_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_client_only_tests/amqp_client.rs"]
 mod amqp_client;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_client_only_tests/http_rest_client.rs"]
 mod http_rest_client;
 
@@ -23,7 +21,7 @@ mod http_rest_client;
 #[path = "service_schema_client_only_tests/stream_service.rs"]
 mod stream_service;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_client_only_tests/stream_http_rest_client.rs"]
 mod stream_http_rest_client;
 
@@ -35,17 +33,17 @@ mod stream_http_rest_client;
 #[path = "service_schema_client_only_tests/multipart_service.rs"]
 mod multipart_service;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_client_only_tests/multipart_http_rest_client.rs"]
 mod multipart_http_rest_client;
 
 // The client reaches what the service declared through `$crate`, which is this binary's root: the
 // service's own module, which every message it sends is built through.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use multipart_service::{UploadClientService, upload_client_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use stream_service::{ContentClientService, content_client_service_schema};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{
     CallService, DocumentClientService, call_service_schema, document_client_service_schema,
 };

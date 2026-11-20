@@ -22,13 +22,13 @@ use super::refusal_from_violations;
 use super::unbounded;
 use super::{LiteralLeaf, literal_shape, sole_type_argument};
 use crate::features::model_schema_prop::{LiteralValue, parse_model_schema_prop_attributes};
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 use crate::features::serde::parse_serde_field_attributes;
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 use crate::features::serde::parse_serde_type_attributes;
 use crate::features::serde::{consume_unread_value, derives_deserialize, derives_serialize};
 use crate::field_type::held_literal;
-#[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::record_drafted_type;
 use crate::utils::written_names;
 use crate::utils::written_type;
@@ -1233,7 +1233,7 @@ pub fn record(item: &syn::Item, undrafted: bool, checked: bool, new_by: NewBy) {
         #[cfg(feature = "typescript")]
         wrapping: wrapping(item),
     };
-    #[cfg(any(feature = "typescript", all(feature = "serde", feature = "zod")))]
+    #[cfg(any(feature = "typescript", feature = "zod"))]
     if let Some(declared_name) = &declared.name {
         record_drafted_type(
             &declared_name.to_string(),
@@ -1263,26 +1263,19 @@ fn wrapping(item: &syn::Item) -> Wrapping {
 /// Whether the valid type of `item` is its draft under the brand alone.
 #[cfg(feature = "typescript")]
 fn unwrapped(item: &syn::Item) -> bool {
-    match item {
-        #[cfg(feature = "serde")]
-        syn::Item::Enum(item_enum) => parse_serde_type_attributes(&item_enum.attrs).untagged,
-        syn::Item::Struct(item_struct) => {
-            matches!(&item_struct.fields, syn::Fields::Unnamed(fields) if fields.unnamed.iter().all(slot_skipped))
-        }
-        _ => false,
+    if let syn::Item::Enum(item_enum) = item {
+        parse_serde_type_attributes(&item_enum.attrs).untagged
+    } else if let syn::Item::Struct(item_struct) = item {
+        matches!(&item_struct.fields, syn::Fields::Unnamed(fields) if fields.unnamed.iter().all(slot_skipped))
+    } else {
+        false
     }
 }
 
 /// Whether serde neither writes nor reads the slot `field`.
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn slot_skipped(field: &syn::Field) -> bool {
     parse_serde_field_attributes(&field.attrs).skip
-}
-
-/// Whether serde neither writes nor reads the slot `field`: never, in a build with no `serde`.
-#[cfg(all(feature = "typescript", not(feature = "serde")))]
-const fn slot_skipped(_field: &syn::Field) -> bool {
-    false
 }
 
 /// What the item being expanded declares.
@@ -1332,7 +1325,6 @@ pub fn renames_the_container(attrs: &[Attribute]) -> bool {
 /// its read, or the deserializer's own error as the one entry. Nothing where the type derives no
 /// `Deserialize`. A type that takes parameters answers the read of its own `Deserialize`, with
 /// the one entry it refuses with.
-#[cfg(feature = "serde")]
 pub fn own_from_deserializer(
     generics: &Generics,
     judged: bool,

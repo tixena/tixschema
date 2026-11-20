@@ -43,7 +43,6 @@ fn validate_holds_the_members_the_build_keeps() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn the_read_refuses_through_the_members_the_build_keeps() {
     assert_eq!(

@@ -2,7 +2,6 @@
 //! with no key for it, in a struct of its own and beside a flattened member.
 
 use super::unwritten_models::furling_swift;
-#[cfg(feature = "serde")]
 use super::unwritten_models::{flemishing_swift, ranging_swift, reefing_swift, splaying_swift};
 
 /// The member is read, and the `encode(to:)` written in place of Swift's own encodes no key for
@@ -26,7 +25,6 @@ fn a_member_serde_never_writes_is_read_and_not_encoded() {
 
 /// Beside a flattened member, the member is read, and `encode(to:)` opens the object and writes
 /// the flattened member alone.
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_serde_never_writes_beside_a_flattened_one_is_not_encoded() {
     let reefing = reefing_swift::swift_definition();
@@ -46,7 +44,6 @@ fn a_member_serde_never_writes_beside_a_flattened_one_is_not_encoded() {
 /// A flattened struct and a flattened map serde never writes are read, and `encode(to:)` encodes
 /// nothing of them, the object opened all the same. One that is no `Option` is read as a flattened
 /// member is, its key being none to leave out.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_member_serde_never_writes_is_read_and_not_encoded() {
     let encoded_note = "public func encode(to encoder: Encoder) throws { var container = \

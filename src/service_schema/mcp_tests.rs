@@ -1,7 +1,5 @@
 //! What the `mcp` transport reads of a trait, and what it refuses at expansion.
 
-#![cfg(feature = "serde")]
-
 use super::mcp_refusals::refusals;
 use super::parse::{OperationDef, ServiceDef, parse_service};
 use super::transport::Transport;

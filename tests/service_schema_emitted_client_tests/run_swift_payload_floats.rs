@@ -4,7 +4,7 @@
 //! answers an integer for a float. Each float is refused at the integer's coding path in serde's
 //! words, as serde refuses it; every integer serde reads is read, and so is a float member.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;

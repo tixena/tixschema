@@ -9,10 +9,7 @@ use crate::features::model_schema_prop::FunctionName;
 
 /// The value of the hidden constant of the names each variant of `item` is read under when it is
 /// flattened: one list per variant, none for a type that is no externally tagged enum.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub(super) fn entries(item: &Item, preprocess: &[FunctionName]) -> TokenStream {
     use crate::features::serde::{variant_names_when_flattened, variants_on_the_wire};
     let Item::Enum(declared) = item else {
@@ -27,10 +24,7 @@ pub(super) fn entries(item: &Item, preprocess: &[FunctionName]) -> TokenStream {
 /// it hands it: a struct's own keys, and the tag and the content key of an enum under both. A
 /// struct that flattens a member or names a function on itself, a brand, and any other type take
 /// none.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub(super) fn taken(item: &Item, preprocess: &[FunctionName]) -> TokenStream {
     use syn::Fields;
 
@@ -60,10 +54,7 @@ pub(super) fn taken(item: &Item, preprocess: &[FunctionName]) -> TokenStream {
 /// The value of the hidden constant of the names the unit variants of `item` are read under when it
 /// is flattened, the first of the names each is read under: none for a type that is no externally
 /// tagged enum.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 pub(super) fn units(item: &Item, preprocess: &[FunctionName]) -> TokenStream {
     use crate::features::serde::{
         parse_serde_key_omission, variant_names_when_flattened, variants_on_the_wire,
@@ -86,29 +77,20 @@ pub(super) fn units(item: &Item, preprocess: &[FunctionName]) -> TokenStream {
     quote! { &[#(#first_names),*] }
 }
 
-/// With no `serde`, or no client that reads a flattened member, no enum takes an entry.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-)))]
+/// With no client that reads a flattened member, no enum takes an entry.
+#[cfg(not(any(feature = "dart", feature = "swift", feature = "kotlin")))]
 pub(super) fn entries(_item: &Item, _preprocess: &[FunctionName]) -> TokenStream {
     quote! { &[] }
 }
 
-/// With no `serde`, or no client that reads a flattened member, nothing is taken.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-)))]
+/// With no client that reads a flattened member, nothing is taken.
+#[cfg(not(any(feature = "dart", feature = "swift", feature = "kotlin")))]
 pub(super) fn taken(_item: &Item, _preprocess: &[FunctionName]) -> TokenStream {
     quote! { &[] }
 }
 
-/// With no `serde`, or no client that reads a flattened member, no enum has a unit entry.
-#[cfg(not(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-)))]
+/// With no client that reads a flattened member, no enum has a unit entry.
+#[cfg(not(any(feature = "dart", feature = "swift", feature = "kotlin")))]
 pub(super) fn units(_item: &Item, _preprocess: &[FunctionName]) -> TokenStream {
     quote! { &[] }
 }

@@ -2,8 +2,6 @@
 //! sight - a hand-written `Transport` recording the `parts` the client built from the message plus
 //! the file handle the caller passed in, and answering with a JSON body to decode back.
 
-#![cfg(feature = "serde")]
-
 use crate::multipart_http_rest_client;
 use core::future::{Future, ready};
 use core::pin::pin;

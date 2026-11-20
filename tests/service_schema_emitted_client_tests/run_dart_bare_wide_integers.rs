@@ -3,7 +3,7 @@
 //! each call prints the request the transport was handed and what the client answered. The
 //! analyzer passes the `http_rest` and the `ws_rpc` client.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

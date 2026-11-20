@@ -50,7 +50,7 @@ fn test_typescript_feature_types_constructible() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_typescript_enabled_struct_ts_definition() {
     let ts_definition = TypeScriptTestUser::ts_definition();
 
@@ -65,7 +65,7 @@ fn test_typescript_enabled_struct_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_typescript_enabled_struct_zod_schema() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
@@ -79,7 +79,7 @@ fn test_typescript_enabled_struct_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_typescript_enabled_plain_enum_ts_definition() {
     let ts_definition = TypeScriptTestStatus::ts_definition();
 
@@ -92,7 +92,7 @@ fn test_typescript_enabled_plain_enum_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_typescript_enabled_plain_enum_zod_schema() {
     let zod_schema = TypeScriptTestStatus::zod_schema();
 
@@ -106,7 +106,7 @@ fn test_typescript_enabled_plain_enum_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_typescript_enabled_discriminated_enum_ts_definition() {
     let ts_definition = TypeScriptTestPayment::ts_definition();
 
@@ -118,7 +118,7 @@ fn test_typescript_enabled_discriminated_enum_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_typescript_enabled_discriminated_enum_zod_schema() {
     let zod_schema = TypeScriptTestPayment::zod_schema();
 
@@ -141,7 +141,7 @@ fn test_typescript_disabled_struct_ts_definition_not_available() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", not(feature = "typescript"), feature = "zod"))]
+#[cfg(all(not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_struct_zod_schema_javascript_style() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
@@ -159,23 +159,7 @@ fn test_typescript_disabled_struct_zod_schema_javascript_style() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", not(feature = "serde"), feature = "zod"))]
-fn test_typescript_disabled_plain_enum_zod_schema_typescript_not_serde_style() {
-    let zod_schema = TypeScriptTestStatus::zod_schema();
-
-    // When serde feature is disabled, the rename_all attribute is not processed
-    // so the enum values will be the original Rust names (Title case)
-    assert!(zod_schema.contains(
-        "const TypeScriptTestStatus$RawSchema = z.enum([\"Active\", \"Inactive\", \"Pending\"])"
-    ));
-    assert!(zod_schema.contains("export const TypeScriptTestStatus$Schema: ZodType<TypeScriptTestStatus> = TypeScriptTestStatus$RawSchema;"));
-    assert!(zod_schema.contains(".meta({"));
-
-    assert!(!zod_schema.contains("export type TypeScriptTestStatus"));
-}
-
-#[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_typescript_disabled_plain_enum_zod_schema_typescript_serde_style() {
     let zod_schema = TypeScriptTestStatus::zod_schema();
 
@@ -191,7 +175,7 @@ fn test_typescript_disabled_plain_enum_zod_schema_typescript_serde_style() {
 }
 
 #[test]
-#[cfg(all(not(feature = "typescript"), feature = "serde", feature = "zod"))]
+#[cfg(all(not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_plain_enum_zod_schema_javascript_serde_style() {
     let zod_schema = TypeScriptTestStatus::zod_schema();
 
@@ -207,23 +191,7 @@ fn test_typescript_disabled_plain_enum_zod_schema_javascript_serde_style() {
 }
 
 #[test]
-#[cfg(all(not(feature = "typescript"), not(feature = "serde"), feature = "zod"))]
-fn test_typescript_disabled_plain_enum_zod_schema_javascript_not_serde_style() {
-    let zod_schema = TypeScriptTestStatus::zod_schema();
-
-    // When serde feature is disabled, the rename_all attribute is not processed
-    // so the enum values will be the original Rust names (Title case)
-    assert!(zod_schema.contains(
-        "export const TypeScriptTestStatus$Schema = z.enum([\"Active\", \"Inactive\", \"Pending\"])"
-    ));
-    assert!(zod_schema.contains(".meta({"));
-
-    assert!(!zod_schema.contains(": ZodType<TypeScriptTestStatus>"));
-    assert!(!zod_schema.contains("export type TypeScriptTestStatus"));
-}
-
-#[test]
-#[cfg(all(feature = "serde", not(feature = "typescript"), feature = "zod"))]
+#[cfg(all(not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_discriminated_enum_zod_schema_javascript_style() {
     let zod_schema = TypeScriptTestPayment::zod_schema();
 
@@ -235,7 +203,7 @@ fn test_typescript_disabled_discriminated_enum_zod_schema_javascript_style() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_typescript_and_zod_both_enabled() {
     let ts_definition = TypeScriptTestUser::ts_definition();
     let zod_schema = TypeScriptTestUser::zod_schema();
@@ -252,7 +220,7 @@ fn test_typescript_and_zod_both_enabled() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", not(feature = "typescript"), feature = "zod"))]
+#[cfg(all(not(feature = "typescript"), feature = "zod"))]
 fn test_typescript_disabled_zod_enabled() {
     let zod_schema = TypeScriptTestUser::zod_schema();
 
@@ -264,7 +232,7 @@ fn test_typescript_disabled_zod_enabled() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript", not(feature = "zod")))]
+#[cfg(all(feature = "typescript", not(feature = "zod")))]
 fn test_typescript_enabled_zod_disabled() {
     let ts_definition = TypeScriptTestUser::ts_definition();
 

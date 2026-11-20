@@ -8,7 +8,7 @@
 //! serde takes. The fixed arrays and the tuples of `run_dart_refusals.rs` are declared where the
 //! Dart client is built.
 
-#![cfg(all(feature = "swift", feature = "dart", feature = "serde"))]
+#![cfg(all(feature = "swift", feature = "dart"))]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

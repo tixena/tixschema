@@ -5,6 +5,6 @@
 //! the reference and avoid "use before declaration" errors.
 
 #[cfg(test)]
-#[cfg(all(feature = "typescript", feature = "zod", feature = "serde"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[path = "recursive_type_tests/tests.rs"]
 mod tests;

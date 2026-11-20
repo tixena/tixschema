@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::unknown_keys::{plain_enum_read, plain_enum_reads, plain_enum_text};
 
 #[model_schema()]
@@ -170,7 +169,6 @@ pub struct ProductLookup {
 }
 
 /// Members named after words the client languages reserve, and one none of them does.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReservedMembers {
@@ -188,7 +186,6 @@ pub struct ReservedBesideItsMove {
 }
 
 /// A plain enum whose members lower-case to words Dart and Swift reserve.
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReservedMember {
@@ -348,7 +345,6 @@ fn test_primitive_and_string_fields() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_option_bare_is_nullable_and_optional_and_conditionally_omitted() {
     let dart = stock_item_dart::dart_definition();
     assert!(
@@ -374,7 +370,6 @@ fn test_option_bare_is_nullable_and_optional_and_conditionally_omitted() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_ts_optional_makes_the_constructor_param_optional() {
     let dart = stock_item_dart::dart_definition();
@@ -452,7 +447,6 @@ fn test_nested_type_reference_calls_its_own_fromjson_and_tojson() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
     let dart = stock_status_dart::dart_definition();
     assert!(dart.contains("enum StockStatus {"));
@@ -464,7 +458,6 @@ fn test_plain_enum_is_an_enhanced_enum_with_wire_values() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_plain_enum_wire_values_match_what_serde_writes() {
     let value = serde_json::to_value(StockStatus::Backordered).unwrap();
     assert_eq!(value, serde_json::json!("backordered"));
@@ -482,7 +475,6 @@ fn test_internally_tagged_enum_is_a_sealed_hierarchy() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_internally_tagged_named_variant_merges_the_tag_into_the_same_object() {
     let dart = stock_event_dart::dart_definition();
     assert!(
@@ -498,7 +490,6 @@ fn test_internally_tagged_named_variant_merges_the_tag_into_the_same_object() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_internally_tagged_unit_variant_writes_only_the_tag() {
     let dart = stock_event_dart::dart_definition();
     assert!(
@@ -508,7 +499,6 @@ fn test_internally_tagged_unit_variant_writes_only_the_tag() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_internally_tagged_wire_shape_matches_serde() {
     let received = StockEventDraft::Received {
         quantity: 5,
@@ -524,7 +514,6 @@ fn test_internally_tagged_wire_shape_matches_serde() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_adjacently_tagged_tuple_single_writes_tag_and_content() {
     let dart = dynamic_value_dart::dart_definition();
     assert!(dart.contains("sealed class DynamicValueDraft {"));
@@ -539,7 +528,6 @@ fn test_adjacently_tagged_tuple_single_writes_tag_and_content() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_adjacently_tagged_unit_variant_has_no_content_key() {
     let dart = dynamic_value_dart::dart_definition();
     assert!(
@@ -556,7 +544,6 @@ fn test_adjacently_tagged_unit_variant_has_no_content_key() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_adjacently_tagged_wire_shape_matches_serde() {
     let value = serde_json::to_value(DynamicValueDraft::Number(7)).unwrap();
     assert_eq!(
@@ -598,7 +585,6 @@ fn test_externally_tagged_named_and_tuple_variants_wrap_by_key() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_externally_tagged_wire_shape_matches_serde() {
     assert_eq!(
         serde_json::to_value(PaymentMethodDraft::Cash).unwrap(),
@@ -618,7 +604,6 @@ fn test_externally_tagged_wire_shape_matches_serde() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_untagged_enum_tries_each_variant_in_turn() {
     let dart = received_at_dart::dart_definition();
     assert!(dart.contains("sealed class ReceivedAtDraft {"));
@@ -628,7 +613,6 @@ fn test_untagged_enum_tries_each_variant_in_turn() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_untagged_wire_shape_matches_serde() {
     assert_eq!(
         serde_json::to_value(ReceivedAtDraft::Epoch(1_700_000_000)).unwrap(),
@@ -651,7 +635,6 @@ fn test_branded_newtype_wraps_the_inner_value() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_branded_newtype_wire_shape_is_the_bare_inner_value() {
     let value = serde_json::to_value(Sku::new("ABC-123".to_owned()).unwrap()).unwrap();
     assert_eq!(value, serde_json::json!("ABC-123"));
@@ -694,7 +677,6 @@ fn test_generic_struct_codec_threads_converter_functions() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_generic_tagged_enum_threads_converters_through_the_whole_hierarchy() {
     let dart = either_dart::dart_definition();
     assert!(dart.contains("sealed class EitherDraft<IdType> {"));
@@ -818,7 +800,6 @@ fn test_enum_keyed_map_decodes_and_encodes_through_the_enum_itself() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
     let dart = stock_audit_dart::dart_definition();
@@ -840,7 +821,6 @@ fn test_a_struct_with_no_fields_writes_no_parameter_group_at_all() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_struct_shaped_variant_with_no_fields_writes_no_parameter_group_either() {
     let dart = dynamic_value_dart::dart_definition();
@@ -856,7 +836,6 @@ fn test_a_struct_shaped_variant_with_no_fields_writes_no_parameter_group_either(
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_dropped_key_read_as_its_default_is_not_nullable_in_dart() {
     let dart = stock_label_dart::dart_definition();
@@ -899,7 +878,6 @@ fn test_an_optional_scalar_calls_nothing_and_so_spells_no_null_away() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_member_named_after_a_reserved_word_moves_and_keeps_its_key() {
     assert_eq!(
@@ -1001,22 +979,10 @@ fn a_moved_member_steps_past_a_field_already_written_under_its_name() {
     );
 }
 
-#[cfg(feature = "serde")]
 fn sku() -> Sku {
     Sku::new(String::new()).unwrap()
 }
 
-#[cfg(not(feature = "serde"))]
-fn sku() -> Sku {
-    SkuDraft(String::new()).into()
-}
-
-#[cfg(feature = "serde")]
 const fn sku_text(held: &Sku) -> &str {
     held.as_inner().as_str()
-}
-
-#[cfg(not(feature = "serde"))]
-fn sku_text(held: &Sku) -> &str {
-    held.0.as_str()
 }

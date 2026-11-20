@@ -5,7 +5,7 @@
 //! [`Mooring`] is refused at `inner.held` with ``invalid value: integer `-1`, expected u32``.
 //! Every payload serde reads is read and written back as serde writes it back.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use std::collections::HashMap;
 

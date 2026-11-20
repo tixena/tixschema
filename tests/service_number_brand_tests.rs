@@ -3,8 +3,6 @@
 //! wrap is read, and the `http_rest` client writes them as that text. A brand over a `String` is
 //! still read as text.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[macro_use]
 #[path = "service_number_brand_tests/service.rs"]

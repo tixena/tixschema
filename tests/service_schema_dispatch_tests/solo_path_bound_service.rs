@@ -1,8 +1,6 @@
 //! A bodyless `GET` whose every argument the path binds, and no other operation in the service to
 //! read a query either - driven through the `http_rest` dispatcher by hand, no server.
 
-#![cfg(feature = "serde")]
-
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};

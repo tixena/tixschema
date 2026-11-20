@@ -102,7 +102,7 @@
 //! from a test of your crate:
 //!
 #![cfg_attr(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    all(feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -219,7 +219,7 @@ fn main() {
 //! reads it, and the documentation gets a JSON Schema:
 //!
 #![cfg_attr(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    all(feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -279,7 +279,7 @@ assert_eq!(document["oneOf"][0]["properties"]["type"]["const"], "orderPlaced");
 //! with a message that names the field. Each rule is written once, on its field:
 //!
 #![cfg_attr(
-    all(feature = "serde", feature = "zod"),
+    feature = "zod",
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -325,9 +325,7 @@ assert_eq!(Signup::json_schema()["properties"]["userName"]["minLength"], 3);
 //! carries the rules. Its JSON Schema lets an editor check the file as it is typed, and the serde
 //! read refuses a file that breaks a rule when the worker starts:
 //!
-#![cfg_attr(
-    feature = "serde",
-    doc = r##"
+#![doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -367,8 +365,7 @@ fn main() {
     assert!(refused.to_string().contains("'workerCount': too small: minimum is 1, got 0"));
 }
 ```
-"##
-)]
+"##]
 //!
 //! The config file names its schema in its own `$schema` key, which editors read:
 //!
@@ -390,12 +387,7 @@ fn main() {
 //! `validate()` that runs the server's rules:
 //!
 #![cfg_attr(
-    all(
-        feature = "serde",
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    ),
+    all(feature = "dart", feature = "swift", feature = "kotlin"),
     doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -489,9 +481,7 @@ fn main() {
 //! into your crate. The dispatcher below answers frames with no socket and no runtime, which is
 //! also how a test drives it:
 //!
-#![cfg_attr(
-    feature = "serde",
-    doc = r##"
+#![doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -585,8 +575,7 @@ fn main() {
     assert_eq!(refused["error"]["fault"]["issues"][0]["field"], "orderId");
 }
 ```
-"##
-)]
+"##]
 //!
 //! The dispatcher reads each message and checks it before it calls the implementation, and a
 //! defect no operation declared reaches the caller as a fault, kept apart from the operation's own
@@ -691,9 +680,7 @@ fn main() -> Result<(), WriteError> {
 //! lists every issue at its path, hands the list to your code once, and reads the repaired value
 //! again:
 //!
-#![cfg_attr(
-    feature = "serde",
-    doc = r#"
+#![doc = r#"
 ```rust
 # extern crate bson2 as bson;
 use serde::{Deserialize, Serialize};
@@ -736,8 +723,7 @@ fn main() {
     );
 }
 ```
-"#
-)]
+"#]
 //!
 //! `from_value_piped` takes small resolver functions in place of one callback, and under the `bson`
 //! feature `from_bson_with` and `from_bson_piped` read a BSON document. The four are methods of
@@ -935,8 +921,7 @@ use service_schema::exec_service_schema;
 ///   `enable = ["jsonschema"]` each type parameter needs an entry. An entry that names no
 ///   parameter, and the argument on a type with no type parameter, are refused in every build.
 /// - `pattern = "regex"`, `minLength = N`, `maxLength = N`: rules on text, written on the type.
-///   On a branded newtype, which needs the `serde` feature, they hold its value whatever the other
-///   features. On an enum they hold each string field and the name of each variant that carries no
+///   On a branded newtype they hold its value whatever the features. On an enum they hold each string field and the name of each variant that carries no
 ///   data, and a variant name that breaks them is refused at expansion. They are refused on any
 ///   other struct and on an alias.
 /// - `nonstrict`, or `nonstrict = true` or `nonstrict = false`: reads past a key no member declares,
@@ -1355,7 +1340,7 @@ export function safeDecodeEvent(
 /// header of [Getting started](index.html#getting-started) does:
 ///
 #[cfg_attr(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    all(feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1554,8 +1539,7 @@ export function safeDecodeDocument(
 /// - **A type parameter with no `default_types` entry**, on a type that lists
 ///   `enable = ["jsonschema"]`: refused at the parameter.
 /// - **`pattern`, `minLength` or `maxLength` on a struct that is no brand**: refused; write them on
-///   the field with `#[model_schema_prop(...)]`. Without the `serde` feature a
-///   `#[serde(transparent)]` struct is no brand, and the refusal names the feature.
+///   the field with `#[model_schema_prop(...)]`.
 ///
 /// The guide holds the full rules:
 /// [Published Names](https://github.com/tixena/tixschema/blob/master/docs/guide/models.md#published-names-name),
@@ -1583,8 +1567,7 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// `"decode_with"` in [`#[model_schema(enable = [...])]`](attr.model_schema.html). Each such type
 /// re-exports the library from its `{type}_schema` module, so within one crate
 /// `invoice_schema::Issue` and `customer_schema::Issue` are one type, and one resolver serves every
-/// type. It takes no arguments, and writes nothing in a build without the `serde` feature, so the
-/// line stays whatever the crate builds with.
+/// type. It takes no arguments.
 ///
 /// # What a type that lists `"decode_with"` gains
 ///
@@ -1646,7 +1629,7 @@ pub fn model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// [crate page](index.html#reading-records-an-older-writer-stored) shows the same read with one
 /// callback:
 ///
-#[cfg_attr(feature = "serde", doc = include_str!("decode_with_example.md"))]
+#[cfg_attr(any(doc, doctest), doc = include_str!("decode_with_example.md"))]
 ///
 /// # Errors met most
 ///
@@ -1903,7 +1886,7 @@ assert_eq!(messages.len(), 2);
 /// The rules on every surface, and the read that refuses a payload:
 ///
 #[cfg_attr(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    all(feature = "typescript", feature = "zod"),
     doc = r##"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -2004,10 +1987,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// JSON Schema calls no function. A type with `enable = ["decode_with"]` lists each message as an
 /// `Issue::Invalid` at the path the message names.
 ///
-#[cfg_attr(
-    feature = "serde",
-    doc = include_str!("check_example.md")
-)]
+#[cfg_attr(any(doc, doctest), doc = include_str!("check_example.md"))]
 ///
 /// The key is refused where it is not an array of string literals, where a name is no identifier or
 /// is written twice, on a type alias, and on the slot of a branded newtype. A name with no function
@@ -2052,10 +2032,7 @@ assert!(refused.contains(r#"'currency': not the literal "EUR", got USD"#));
 /// a `preprocess` lists `serde_json`. Row 4 of the example reads a BSON document, the one row that
 /// needs the `bson` crate:
 ///
-#[cfg_attr(
-    feature = "serde",
-    doc = include_str!("preprocess_example.md")
-)]
+#[cfg_attr(any(doc, doctest), doc = include_str!("preprocess_example.md"))]
 ///
 /// The key is refused where it is not an array of string literals, where a name is no identifier
 /// or is written twice, beside `with`, `deserialize_with` or `as` on the same field, on a field
@@ -2095,8 +2072,7 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 /// returns `Result<Success, Error>`, or nothing under `#[service_schema_op(one_way)]`. Each half
 /// checks a message before it crosses: a client before it sends, a dispatcher before it calls the
 /// implementation. A defect no operation declared reaches the caller as a fault, apart from the
-/// operation's own errors. Every declaration needs tixschema's `serde` feature, and is refused
-/// without it.
+/// operation's own errors.
 ///
 /// # Where it goes
 ///
@@ -2191,8 +2167,8 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///
 /// # What your crate lists
 ///
-/// The crate that declares the service lists `tixschema` under that name with `serde` on, and
-/// `serde` with its `derive` feature. A crate that invokes a dispatcher macro lists `serde`,
+/// The crate that declares the service lists `tixschema` under that name, and `serde` with its
+/// `derive` feature. A crate that invokes a dispatcher macro lists `serde`,
 /// `serde_json` and `tracing`; a client macro, `serde` and `serde_json`; and
 /// `{service}_amqp_rpc_server!()`, also `lapin`, `tokio` with its `macros` feature, and `futures`.
 /// The TypeScript side needs Zod 4. The Dart, Swift and Kotlin clients name no networking library:
@@ -2325,15 +2301,13 @@ pub fn model_schema_prop(_args: TokenStream, input: TokenStream) -> TokenStream 
 ///
 /// The three shapes of an operation, and what the macro declares beside them:
 ///
-#[cfg_attr(feature = "serde", doc = include_str!("service_schema_example.md"))]
+#[cfg_attr(any(doc, doctest), doc = include_str!("service_schema_example.md"))]
 ///
 /// A Rust client over `ws_rpc`. Its transport here has no socket: it hands each request frame to
 /// the dispatcher's `answer` and returns the reply, which is also how a test drives a client.
 /// `FrameSession` is the transport the client macro writes for one real socket.
 ///
-#[cfg_attr(
-    feature = "serde",
-    doc = r#"
+#[doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
 use tixschema::{model_schema, service_schema};
@@ -2456,14 +2430,13 @@ fn main() -> Result<(), Vec<String>> {
     Ok(())
 }
 ```
-"#
-)]
+"#]
 ///
 /// The service's TypeScript, which a test or a small binary of the crate writes into the web
 /// project:
 ///
 #[cfg_attr(
-    all(feature = "serde", feature = "typescript", feature = "zod"),
+    all(feature = "typescript", feature = "zod"),
     doc = r#"
 ```rust
 use serde::{Deserialize, Serialize};
@@ -2599,7 +2572,6 @@ fn main() {
 ///
 /// # Errors met most
 ///
-/// - **The `serde` feature off**: the declaration is refused, naming the feature to add.
 /// - **An operation without `&self`, without `ctx: &Ctx` after it, or returning no `Result` without
 ///   `one_way`**: refused, saying what to write.
 /// - **An implementation that leaves out an operation**: `E0046`.
@@ -2676,10 +2648,7 @@ pub fn service_schema(args: TokenStream, input: TokenStream) -> TokenStream {
 /// `IncomingRequest` from the request, awaits `dispatch`, and turns the `OutgoingResponse` into the
 /// response. Nothing here opens a socket.
 ///
-#[cfg_attr(
-    feature = "serde",
-    doc = include_str!("service_schema_op_example.md")
-)]
+#[cfg_attr(any(doc, doctest), doc = include_str!("service_schema_op_example.md"))]
 ///
 /// The guide holds the full rules:
 /// [Operation Names](https://github.com/tixena/tixschema/blob/master/docs/guide/services.md#operation-names),

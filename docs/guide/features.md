@@ -19,22 +19,22 @@ The crate uses optional features to control code generation and dependencies. Ea
 Common configurations:
 
 ```toml
-# Default (serde + zod + typescript)
+# Default (zod + typescript)
 tixschema = "0.6"
 
 # All features including optional ones
-tixschema = { version = "0.6", features = ["serde", "zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.6", features = ["zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod)
 tixschema = { version = "0.6", default-features = false, features = ["typescript"] }
 
-# TypeScript + Zod with serde: the default `web` set, written out
-tixschema = { version = "0.6", default-features = false, features = ["serde", "zod", "typescript"] }
+# TypeScript + Zod: the default `web` set, written out
+tixschema = { version = "0.6", default-features = false, features = ["zod", "typescript"] }
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
 
-The features say what tixschema can generate, and a type's [`enable` list](recovering-decode.md#opting-in) says what it generates for that type: the recovering decode for `"decode_with"`, from BSON as well under `bson`, the MongoDB layer for `"mongodb"`, under `mongodb`, and the conversions to arky's frontmatter `Value` for `"arky"`, under `arky`. A crate whose types write the list writes [the initializers](recovering-decode.md#the-support-libraries) at its root, `tixschema::decode_with_foundation!();`, and `tixschema::mongodb_foundation!();` where a type lists `"mongodb"`. `mongodb_foundation!()` writes nothing in a build without `mongodb`, and `decode_with_foundation!()` nothing in a build without `serde`, so both calls stay whatever features the crate builds with.
+The features say what tixschema can generate, and a type's [`enable` list](recovering-decode.md#opting-in) says what it generates for that type: the recovering decode for `"decode_with"`, from BSON as well under `bson`, the MongoDB layer for `"mongodb"`, under `mongodb`, and the conversions to arky's frontmatter `Value` for `"arky"`, under `arky`. A crate whose types write the list writes [the initializers](recovering-decode.md#the-support-libraries) at its root, `tixschema::decode_with_foundation!();`, and `tixschema::mongodb_foundation!();` where a type lists `"mongodb"`. `mongodb_foundation!()` writes nothing in a build without `mongodb`, so both calls stay whatever features the crate builds with.
 
 ### A member named after a word the client language reserves
 

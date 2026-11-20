@@ -2,7 +2,6 @@
 
 /// The same brand declared twice: `transparent` written first, and written after a key that
 /// carries a value. serde writes both the same way, so every surface describes both the same way.
-#[cfg(feature = "serde")]
 mod written_after_a_valued_key {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

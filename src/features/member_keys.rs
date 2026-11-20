@@ -98,6 +98,7 @@ pub fn of(def: &FieldDef) -> Option<Vec<String>> {
 /// The names the unit variants of the flattened member typed `def` are read under, as the one
 /// placeholder its holder's `*_definition()` writes them in place of, where its type is one the
 /// expansion has not met.
+#[cfg(feature = "swift")]
 pub fn units_of(def: &FieldDef) -> Option<Vec<String>> {
     let index = registered(def)?;
     UNITED.with(|united| united.borrow_mut().insert(index));
@@ -108,6 +109,7 @@ pub fn units_of(def: &FieldDef) -> Option<Vec<String>> {
 /// placeholder its holder's `*_definition()` writes them in place of, where its type is one the
 /// expansion has not met: a struct's own keys and an enum's tag and content key, none for any
 /// other type.
+#[cfg(any(feature = "dart", feature = "swift"))]
 pub fn taken_of(def: &FieldDef) -> Option<Vec<String>> {
     let index = registered(def)?;
     TAKING.with(|taking| taking.borrow_mut().insert(index));
@@ -118,6 +120,7 @@ pub fn taken_of(def: &FieldDef) -> Option<Vec<String>> {
 /// placeholder its holder's `*_definition()` writes them in place of, one bracketed list per
 /// variant, where its type is one the expansion has not met. The list is empty where the type is
 /// no externally tagged enum.
+#[cfg(any(feature = "dart", feature = "swift"))]
 pub fn entries_of(def: &FieldDef) -> Option<String> {
     let index = registered(def)?;
     ENTRIED.with(|entried| entried.borrow_mut().insert(index));

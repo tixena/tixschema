@@ -3,7 +3,7 @@
 //! an `Option`: each is refused in serde's words, naming the float as `serde_json` spells it and the
 //! integer type, and every other refusal keeps its words. The analyzer passes every type.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

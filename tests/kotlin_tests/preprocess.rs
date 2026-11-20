@@ -7,11 +7,9 @@ use serde_json::{Value, json};
 use tixschema::model_schema;
 
 use super::kotlin_pathed::PATHED;
-#[cfg(feature = "serde")]
 use super::read::DECODED;
 use super::read::plain_enum;
 use super::read::refusal;
-#[cfg(feature = "serde")]
 use super::read::{judged_valid, to_valid, valid_class, valid_unjudged};
 use super::read::{
     judged_valid_over, kept_draft, to_valid_free, valid_class_over, valid_unjudged_over,
@@ -119,7 +117,6 @@ fn every_fixture_is_read_through_its_functions_and_written_as_serde_writes_it() 
 /// The type's function is called by `PacketUnjudged`, over the plugin's serializer, and the
 /// label's by `PacketLabelPreprocess`, which the property names and which is written after the
 /// type's two serializers.
-#[cfg(feature = "serde")]
 #[test]
 fn a_type_and_a_member_that_name_a_function_are_read_through_it() {
     assert_eq!(

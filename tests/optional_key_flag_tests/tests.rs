@@ -1,6 +1,5 @@
 //! `ts_optional` is the whole of what decides between `field?: T` and `field: T | undefined`.
 
-#[cfg(feature = "serde")]
 mod under_the_serde_feature {
     use super::member;
     use serde::{Deserialize, Serialize};
@@ -48,92 +47,6 @@ mod under_the_serde_feature {
         assert!(
             member(&skip_serializing, "b: string | undefined;"),
             "Got: {skip_serializing}"
-        );
-    }
-}
-
-#[cfg(not(feature = "serde"))]
-mod without_the_serde_feature {
-    use super::member;
-    use tixschema::model_schema;
-
-    /// An `Option<T>` no attribute says anything about. Declarable only here — under the `serde`
-    /// feature the `Option`-null guard refuses both of these fields. Fields are declared
-    /// alphabetically (this crate's lint requirement); the README orders them for reading, so
-    /// each member is held as a whole line.
-    #[model_schema(enable = ["jsonschema"])]
-    #[derive(Debug, Clone, PartialEq)]
-    struct Profile {
-        name: String,
-        nick_handle: Option<String>,
-        #[model_schema_prop(ts_optional)]
-        nickname: Option<String>,
-    }
-
-    #[test]
-    fn the_flag_writes_the_optional_key_for_a_field_nothing_else_speaks_for() {
-        let ts = Profile::ts_definition();
-
-        assert!(member(&ts, "nickname?: string | undefined;"), "Got: {ts}");
-        assert!(member(&ts, "nickHandle: string | undefined;"), "Got: {ts}");
-        assert!(member(&ts, "name: string;"), "Got: {ts}");
-    }
-
-    /// The README documents the flag against this build, and shows the split above.
-    #[test]
-    fn the_readme_declares_the_shape_the_flag_decides_and_shows_what_it_emits() {
-        let readme = include_str!("../../docs/guide/optional-and-nullable-keys.md");
-
-        assert!(
-            readme.contains(
-                "    #[model_schema_prop(ts_optional)]\n    pub nickname: Option<String>,\n    \
-                 pub nick_handle: Option<String>,\n"
-            ),
-            "the README no longer declares the no-serde shape verbatim"
-        );
-        for line in [
-            "  nickname?: string | undefined;",
-            "  nickHandle: string | undefined;",
-        ] {
-            assert!(
-                readme.lines().any(|written| written == line),
-                "the README no longer shows this member verbatim: {line}"
-            );
-        }
-    }
-
-    /// Only TypeScript.
-    #[test]
-    #[cfg(feature = "zod")]
-    fn the_flag_leaves_zod_as_it_stands() {
-        let zod = Profile::zod_schema();
-
-        assert!(
-            zod.contains(
-                "nickname: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),"
-            ),
-            "Got: {zod}"
-        );
-        assert!(
-            zod.contains(
-                "nickHandle: z.union([z.null().transform(() => undefined), z.string(), z.undefined()]).prefault(undefined),"
-            ),
-            "Got: {zod}"
-        );
-    }
-
-    #[test]
-    fn the_flag_leaves_the_json_schema_as_it_stands() {
-        let schema = Profile::json_schema();
-
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["name"]),
-            "Got: {schema}"
-        );
-        assert_eq!(
-            schema["properties"]["nickname"], schema["properties"]["nick_handle"],
-            "Got: {schema}"
         );
     }
 }

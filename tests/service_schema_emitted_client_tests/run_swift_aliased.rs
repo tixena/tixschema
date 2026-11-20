@@ -5,7 +5,7 @@
 //! under the name serde writes, and a member read under two of its names is refused, as serde
 //! refuses it.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use core::fmt::Write as _;
 

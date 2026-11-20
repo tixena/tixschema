@@ -54,19 +54,16 @@ use tixschema::model_schema;
 use serde::de::DeserializeOwned;
 
 use super::documents::admits;
-#[cfg(feature = "serde")]
 use super::untagged_millis_models::{
     MILLIS_ROWS, MillisNamed, MillisNamedDraft, MillisOrFlag, MillisOrFlagDraft, serde_written,
 };
-#[cfg(feature = "serde")]
 use super::untagged_millis_models::{MillisLater, MillisMaybe};
 
 /// The epoch milliseconds serde writes for `2024-01-02T03:04:05.678Z` under `as_number`.
 const MILLIS: i64 = 1_704_164_645_678;
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct AllChronoTypes {
     date: NaiveDate,
     local_datetime: NaiveDateTime,
@@ -76,16 +73,14 @@ struct AllChronoTypes {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct DateList {
     dates: Vec<NaiveDate>,
     name: String,
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct DateMap {
     events: HashMap<String, DateTime<Utc>>,
     name: String,
@@ -94,16 +89,14 @@ struct DateMap {
 // An enum-keyed map enumerates its keys, so every member carries the value schema outright
 // instead of the single `additionalProperties` the String-keyed `DateMap` above carries.
 #[model_schema()]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ScheduleSlot {
     Closing,
     Opening,
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct SlotSchedule {
     dates: HashMap<ScheduleSlot, NaiveDate>,
     timestamps: HashMap<ScheduleSlot, DateTime<Utc>>,
@@ -112,8 +105,7 @@ struct SlotSchedule {
 // A String-keyed map has no key list to enumerate, so one `additionalProperties` schema stands for
 // every member — and it is the value type's own rendering, arrayed and nullable as the value is.
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoValueMaps {
     dates: HashMap<String, NaiveDate>,
     local_datetimes: HashMap<String, NaiveDateTime>,
@@ -126,8 +118,7 @@ struct ChronoValueMaps {
 // A chrono value keeps the rendering it has in field position however deep the map nesting goes:
 // the depth belongs to the map, never to the value type.
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct NestedChronoMaps {
     dates_by_group: HashMap<String, HashMap<String, NaiveDate>>,
     timestamps_by_run: HashMap<String, HashMap<String, DateTime<Utc>>>,
@@ -135,8 +126,7 @@ struct NestedChronoMaps {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct EventWithDate {
     date: NaiveDate,
     name: String,
@@ -158,16 +148,14 @@ pub enum FixedValue {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LocalEvent {
     local_datetime: NaiveDateTime,
     title: String,
 }
 
 #[model_schema()]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct LocalTimestamp {
     id: String,
     local_time: DateTime<Local>,
@@ -182,24 +170,21 @@ struct OptionalTimestamp {
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct Schedule {
     start_time: NaiveTime,
     task: String,
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct TimestampedRecord {
     created_at: DateTime<Utc>,
     id: String,
 }
 
 #[model_schema(enable = ["jsonschema"])]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 struct Sample {
     #[model_schema_prop(as_number)]
     created_at: DateTime<Utc>,
@@ -903,7 +888,6 @@ fn test_as_number_types_constructible() {
     assert_eq!(values.len(), 2);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_as_number_field_crosses_the_wire_as_epoch_milliseconds() {
     let sample = SampleDraft {
@@ -1097,7 +1081,6 @@ fn the_json_schema_of_each_chrono_type_admits_what_serde_writes_and_refuses_a_zo
 
 /// serde writes and reads a date under `as_number` in an untagged enum's member as the integer of
 /// its epoch milliseconds, and refuses its text, as [`MILLIS_ROWS`] states.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_under_as_number_crosses_the_wire_as_epoch_milliseconds() {
     let at = DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
@@ -1120,7 +1103,6 @@ fn an_untagged_member_under_as_number_crosses_the_wire_as_epoch_milliseconds() {
 
 /// The JSON Schema of each enum of [`MILLIS_ROWS`] admits each payload serde reads, and refuses
 /// each one it refuses.
-#[cfg(feature = "serde")]
 #[test]
 fn the_json_schema_of_an_untagged_member_under_as_number_admits_what_serde_reads() {
     for (read_as, json, written, _) in MILLIS_ROWS {
@@ -1140,7 +1122,7 @@ fn the_json_schema_of_an_untagged_member_under_as_number_admits_what_serde_reads
 }
 
 /// TypeScript and Zod describe the number serde writes for an untagged member under `as_number`.
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn an_untagged_member_under_as_number_is_described_as_a_number() {
     let flag = MillisOrFlag::ts_definition();
@@ -1166,7 +1148,6 @@ fn an_untagged_member_under_as_number_is_described_as_a_number() {
 
 /// An untagged member under `as_number` read through a hook of its author's keeps it, and one
 /// that names a check is read as the epoch milliseconds and held to the check.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_member_under_as_number_keeps_its_own_hook_and_its_check() {
     let at = DateTime::from_timestamp(1_758_000_000, 0).unwrap();
@@ -1200,7 +1181,6 @@ fn an_untagged_member_under_as_number_keeps_its_own_hook_and_its_check() {
 /// A date under `as_number` its author reads, or writes, through a function of their own is
 /// written and read as the epoch milliseconds in the other direction, through the hook the key
 /// hangs there.
-#[cfg(feature = "serde")]
 #[test]
 fn a_date_under_as_number_with_a_hook_of_its_own_in_one_direction_is_written_as_a_number() {
     let at = DateTime::from_timestamp_millis(1_758_000_000_000).unwrap();
@@ -1221,7 +1201,6 @@ fn a_date_under_as_number_with_a_hook_of_its_own_in_one_direction_is_written_as_
 
 /// An `Option` of a date under `as_number` serde drops the key of is read back from its absence,
 /// as an `Option` read by no hook is.
-#[cfg(feature = "serde")]
 #[test]
 fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
     let empty = DroppedMillisDraft {
@@ -1252,7 +1231,6 @@ fn an_absent_key_of_an_optional_date_under_as_number_is_read_as_none() {
 
 /// serde refuses a date read through chrono's millisecond hook beside a tag alone and flattened as
 /// the integer it writes, in the words the README quotes for a date under `as_number`.
-#[cfg(feature = "serde")]
 #[test]
 fn serde_refuses_a_date_in_milliseconds_beside_a_tag_and_flattened_as_an_integer() {
     #[derive(Serialize)]

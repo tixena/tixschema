@@ -6,7 +6,7 @@
 //! reads, a name no variant of a plain enum has, a range of a key it does not write, a `Result` of
 //! both keys, and a tuple and a fixed array of another length, a longer one among them.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use core::fmt::Write as _;
 

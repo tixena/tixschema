@@ -4,14 +4,11 @@
 //! as the first variant whose payload reads it, the variant over an `Option` holding nothing among
 //! them, and writes it back as `null`.
 
-#![cfg(all(
-    feature = "serde",
-    any(
-        all(feature = "zod", feature = "typescript"),
-        feature = "dart",
-        feature = "swift",
-        feature = "kotlin"
-    )
+#![cfg(any(
+    all(feature = "zod", feature = "typescript"),
+    feature = "dart",
+    feature = "swift",
+    feature = "kotlin"
 ))]
 
 use core::fmt::Write as _;

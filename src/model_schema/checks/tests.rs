@@ -237,7 +237,6 @@ fn a_check_on_a_type_alias_is_refused() {
 }
 
 /// A brand publishes its inner's own schema, so every key written on its slot is refused.
-#[cfg(feature = "serde")]
 #[test]
 fn a_check_on_the_slot_of_a_brand_is_refused() {
     let found = refusals(expansion(
@@ -285,7 +284,6 @@ fn a_check_takes_the_value_under_an_option_and_a_wrapper() {
 
 /// A check is read as a bound is: wherever a bound has a shape, the two walks take the same
 /// steps.
-#[cfg(feature = "serde")]
 #[test]
 fn the_reach_of_a_check_is_the_reach_of_a_bound() {
     use crate::model_schema::{ConstraintWrap, constrained_shape};
@@ -325,7 +323,6 @@ fn the_reach_of_a_check_is_the_reach_of_a_bound() {
 
 /// A check is called by its name alone, so no import of the schema module is in scope of the
 /// call: each bound of a type that names a check brings the module in for itself.
-#[cfg(feature = "serde")]
 #[test]
 fn a_bound_imports_the_schema_module_for_itself_where_the_type_names_a_check() {
     let bounded = "pub struct Tagged { #[model_schema_prop(minLength = 1, check = \
@@ -403,7 +400,7 @@ fn the_zod_wrap_hands_each_function_a_payload_of_its_own() {
 /// A field's check is on the schema of the value the Rust check takes: after the field's bounds,
 /// inside the `Option`'s union and inside the `preprocess`, and on the array of a list after its
 /// count.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_fields_check_is_written_on_the_schema_of_its_own_value() {
     let wrap = |name: &str| {
@@ -447,7 +444,7 @@ fn a_fields_check_is_written_on_the_schema_of_its_own_value() {
 }
 
 /// The text of every string literal `tokens` holds, in the order written.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn strings(tokens: TokenStream) -> Vec<String> {
     let mut found = Vec::new();
     for tree in tokens {

@@ -7,11 +7,11 @@
 #[path = "service_schema_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_tests/amqp_transport.rs"]
 mod amqp_transport;
 
 // Both halves a transport contributes reach what the service declared through `$crate`, which is
 // this binary's root.
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{ProbeService, probe_service_schema};

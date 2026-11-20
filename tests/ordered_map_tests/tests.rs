@@ -1,7 +1,7 @@
 //! Tests of the order-keeping map and the list beside it: `IndexMap` and `IndexSet`, each held to
 //! what its std twin gives on every surface.
 
-#[cfg(all(feature = "serde", any(feature = "typescript", feature = "zod")))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 mod list_rule;
 
 #[cfg(feature = "kotlin")]

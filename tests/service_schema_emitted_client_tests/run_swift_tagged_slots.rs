@@ -3,7 +3,7 @@
 //! the object without the tag, as serde hands it, and written beside the tag, an externally tagged
 //! enum's unit variant as an entry of its name over `null`, and an `ObjectId` as its `$oid` key.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

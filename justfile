@@ -58,17 +58,15 @@ test-named-features:
     cargo test --no-default-features --features "zod"
     cargo test --no-default-features --features "typescript"
     cargo test --no-default-features --features "typescript,zod"
-    cargo test --no-default-features --features "serde,zod"
-    cargo test --no-default-features --features "serde,zod,mongodb"
-    cargo test --no-default-features --features "serde,bson"
+    cargo test --no-default-features --features "zod,mongodb"
+    cargo test --no-default-features --features "bson"
     cargo test --all-features
     cargo test --manifest-path bson3/Cargo.toml --no-default-features
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript,zod"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod,mongodb"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,bson"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod,mongodb"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "bson"
     cargo test --manifest-path bson3/Cargo.toml --all-features
     @echo "✅ Key feature combinations passed!"
 
@@ -89,22 +87,16 @@ test-minimal:
 # Test specific feature combinations individually
 test-combinations:
     @echo "Testing individual feature combinations..."
-    cargo test --no-default-features --features "serde"
+    cargo test --no-default-features
     cargo test --no-default-features --features "zod"
     cargo test --no-default-features --features "mongodb"
     cargo test --no-default-features --features "typescript"
-    cargo test --no-default-features --features "serde,zod"
-    cargo test --no-default-features --features "serde,typescript"
     cargo test --no-default-features --features "zod,typescript"
-    cargo test --no-default-features --features "serde,zod,typescript"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde"
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "mongodb"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,typescript"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod,typescript"
-    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "serde,zod,typescript"
     @echo "✅ Individual combinations passed!"
 
 # Quick test - just run default tests
@@ -145,7 +137,7 @@ typecheck-ts:
     @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: run \`just node-libs\`, put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Type-checking the emitted bundle with $(command -v "${TIXSCHEMA_TSC:-tsc}")..."
     TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --test service_schema_typescript_tests type_check
-    TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --no-default-features --features "serde,typescript" --test service_schema_typescript_tests type_check
+    TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test --no-default-features --features "typescript" --test service_schema_typescript_tests type_check
     @test -n "${TIXSCHEMA_NODE_MODULES:-}" && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/zod" ] && [ -d "${TIXSCHEMA_NODE_MODULES}/node_modules/typescript" ] || { echo "No zod/typescript: run \`just node-libs\`, or set TIXSCHEMA_NODE_MODULES to a directory whose node_modules holds zod and typescript." >&2; exit 1; }
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Compiling a second package against the bundle's declarations, and loading the bundle..."

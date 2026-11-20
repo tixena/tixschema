@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use tixschema::model_schema;
 
 /// The check Zod writes on the array of a set, which refuses an array that repeats an item.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 const REPEAT_CHECK: &str = ".check((ctx) => {
   const seen = new Set<string>();
   for (const item of ctx.value) {
@@ -67,7 +67,7 @@ struct NullNestingSlots {
 
 /// The member an `Option` field written with a `skip_serializing_if` renders as. The attribute
 /// decides the wire, not the spelling, and none of these fields carries `ts_optional`.
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn omitted_member(name: &str, ts_type: &str) -> String {
     format!("{name}: {ts_type} | undefined;")
 }
@@ -142,30 +142,25 @@ fn test_each_slot_writes_the_null_its_own_option_puts_there() {
     assert_eq!(payload["tuple_both"][1], serde_json::json!([null]));
 }
 
-#[cfg(feature = "serde")]
 fn integer_or_null() -> serde_json::Value {
     serde_json::json!({ "anyOf": [{ "type": "integer" }, { "type": "null" }] })
 }
 
-#[cfg(feature = "serde")]
 fn array_of(items: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "type": "array", "items": items })
 }
 
-#[cfg(feature = "serde")]
 fn or_null(base: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "anyOf": [base, { "type": "null" }] })
 }
 
 /// The array of a set, whose items are distinct.
-#[cfg(feature = "serde")]
 fn set_of(items: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "type": "array", "items": items, "uniqueItems": true })
 }
 
 /// `schema` with the `uniqueItems` of each set taken out: what a set describes beside what its
 /// `Vec` twin describes.
-#[cfg(feature = "serde")]
 fn without_unique_items(schema: &serde_json::Value) -> serde_json::Value {
     match schema {
         serde_json::Value::Object(members) => serde_json::Value::Object(
@@ -185,7 +180,6 @@ fn without_unique_items(schema: &serde_json::Value) -> serde_json::Value {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
     let schema = ElementNullFields::json_schema();
@@ -208,7 +202,6 @@ fn test_an_element_null_field_describes_as_an_array_of_nullable_items() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
     let schema = SlotNullFields::json_schema();
@@ -232,7 +225,6 @@ fn test_a_slot_null_field_describes_as_the_array_it_writes_when_present() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_each_slot_describes_the_null_its_own_option_writes() {
     let properties = NullNestingSlots::json_schema()["properties"].clone();
@@ -292,7 +284,7 @@ fn test_each_slot_describes_the_null_its_own_option_writes() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 fn test_the_typescript_surface_puts_the_null_at_the_level_it_was_written() {
     for spelling in [
         "set_items: Array<number | null>;",
@@ -327,7 +319,7 @@ fn test_the_typescript_surface_puts_the_null_at_the_level_it_was_written() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     let element_null = ElementNullFields::zod_schema();
     for spelling in [
@@ -384,7 +376,6 @@ fn test_the_zod_surface_puts_the_nullable_at_the_level_it_was_written() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_set_nesting_describes_as_the_vec_nesting_it_writes() {
     let properties = NullNestingSlots::json_schema()["properties"].clone();

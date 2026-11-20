@@ -1,8 +1,6 @@
 //! The skills of an `mcp` service: the rules of a name, the frontmatter of a `SKILL.md`, the
 //! folder read at expansion, and what an operation that writes a skill is refused for.
 
-#![cfg(feature = "serde")]
-
 use super::exec_service_schema;
 use super::mcp_refusals::refusals;
 use super::parse::{ServiceDef, parse_service};

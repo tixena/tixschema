@@ -7,7 +7,7 @@
 //! into its holder takes both keys. The models are those the Kotlin runs are held to, compiled
 //! with the `kotlin` feature.
 
-#![cfg(all(feature = "dart", feature = "kotlin", feature = "serde"))]
+#![cfg(all(feature = "dart", feature = "kotlin"))]
 
 use core::fmt::Write as _;
 

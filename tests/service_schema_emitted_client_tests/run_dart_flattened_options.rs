@@ -14,7 +14,7 @@
 //! refuses what the function answers; the holders of `corrected_options_models.rs` are read as Zod
 //! reads each of their payloads.
 
-#![cfg(all(feature = "dart", feature = "serde"))]
+#![cfg(feature = "dart")]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

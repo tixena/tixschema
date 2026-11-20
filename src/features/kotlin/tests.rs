@@ -8,7 +8,6 @@ mod texts;
 
 use proc_macro2::{Span, TokenTree};
 
-#[cfg(feature = "serde")]
 use super::read::INNER;
 use super::read::{DECODED, HELD_FALLBACK, THROWN, held_refusal};
 use super::validate::jvm_pattern;
@@ -24,7 +23,6 @@ const UNDER: &str = "private fun kotlinSchemaUnder(place: String, violation: Str
 
 /// The read of an entry's value in the serializer of a map keyed by a brand: from its text under
 /// the key's text.
-#[cfg(feature = "serde")]
 const MAPPED_VALUE: &str =
     "kotlinSchemaDecoded(input.json, valueSerializer, entry.value, entry.key, \".\" + entry.key)";
 
@@ -65,7 +63,6 @@ fn held(named: &str, class: &str) -> String {
 
 /// The companion `of` of the sealed brand `named` over `value`, which `declared` lists the type
 /// parameters of.
-#[cfg(feature = "serde")]
 fn factory(named: &str, declared: &str, value: &str) -> String {
     let (parameters, arguments) = if declared.is_empty() {
         (String::new(), String::new())
@@ -151,7 +148,6 @@ fn judged_over(named: &str, parameter: &str, bound: &str, handed: &str) -> Strin
 }
 
 /// The serializer of a map keyed by the brand `named`, which reads each entry as `entry` says.
-#[cfg(feature = "serde")]
 fn mapped_reading(named: &str, entry: &str) -> String {
     format!(
         "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
@@ -176,7 +172,6 @@ fn mapped_reading(named: &str, entry: &str) -> String {
 /// The serializer of a map keyed by the brand `named`, which has a key serializer of its own: each
 /// key read by it from its text at the map's path, which judges it, its refusal thrown again under
 /// the key's text at the map's path.
-#[cfg(feature = "serde")]
 fn mapped(named: &str) -> String {
     mapped_reading(
         named,
@@ -191,7 +186,6 @@ fn mapped(named: &str) -> String {
 
 /// The serializer of a map keyed by the brand `named`, which has no key serializer: each key read
 /// unjudged from its text at the map's path, then judged, each message under the key's text.
-#[cfg(feature = "serde")]
 fn mapped_judging(named: &str) -> String {
     mapped_reading(
         named,
@@ -207,7 +201,6 @@ fn mapped_judging(named: &str) -> String {
 /// The serializer of a map keyed by the brand `named`, which holds the brand `inner` over a text:
 /// each key read as [`mapped_judging`] reads it, where the refusal of the brand it holds is thrown
 /// under the key's text as well.
-#[cfg(feature = "serde")]
 fn mapped_over_a_brand(named: &str, inner: &str) -> String {
     mapped_reading(
         named,
@@ -613,7 +606,6 @@ fn a_key_of_a_declared_type_is_written_as_its_serializer_writes_it() {
 /// names it on the map: a value is refused under the key's text, which kotlinx would state as the
 /// brand's `toString()`. The key keeps the serializer it is read through. A brand over a text has
 /// no key serializer, so the map's serializer judges its key under the key's text.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_keyed_by_a_brand_is_read_through_the_brands_map_serializer() {
     let pitch: ItemStruct = syn::parse_quote! {
@@ -656,7 +648,6 @@ fn a_map_keyed_by_a_brand_is_read_through_the_brands_map_serializer() {
 
 /// A brand over a brand over a text writes the serializer of a map keyed by it, which places the
 /// refusal of the brand it holds under the key's text, as it places its own.
-#[cfg(feature = "serde")]
 #[test]
 fn a_map_keyed_by_a_brand_over_a_text_brand_places_the_inner_refusal_under_the_key() {
     let tone: ItemStruct = syn::parse_quote! {
@@ -685,7 +676,6 @@ fn a_map_keyed_by_a_brand_over_a_text_brand_places_the_inner_refusal_under_the_k
 }
 
 /// Only a brand that holds a string, or a brand or an alias that answers one, answers its text.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_over_anything_but_a_text_answers_none() {
     let text: ItemStruct = syn::parse_quote! {
@@ -719,7 +709,6 @@ fn a_brand_over_anything_but_a_text_answers_none() {
 
 /// A brand that holds one of its parameters bare runs its bounds where the value is of the type
 /// declared for the parameter, and writes none where that type is written with arguments.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_with_a_parameter_is_bounded_at_its_declared_default() {
     let item: ItemStruct = syn::parse_quote! {
@@ -824,7 +813,6 @@ fn a_types_own_check_is_called_on_the_whole_value() {
 
 /// The README shows the parcel and the manifest of its checks as the emitter writes them, each
 /// line break of the block standing for one space.
-#[cfg(feature = "serde")]
 #[test]
 fn the_readme_shows_what_the_parcel_of_the_documents_emits() {
     let within = [FunctionName {
@@ -986,7 +974,6 @@ fn a_holder_reads_each_model_it_walks_with_no_judgement() {
 /// A brand's value class keeps the plugin's serializer, and answers what its bounds alone hold
 /// the value to beside `validate()`, which calls its checks as well. A map keyed by it judges each
 /// key by `validate()` under the key's text.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
     let item: ItemStruct = syn::parse_quote! {
@@ -1026,7 +1013,6 @@ fn a_brand_is_judged_by_its_own_serializer_and_answers_its_bounds_alone() {
 }
 
 /// A brand with a parameter writes its serializers over the parameter's own.
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_with_a_parameter_takes_the_serializer_of_what_it_holds() {
     let item: ItemStruct = syn::parse_quote! {
@@ -1157,7 +1143,6 @@ fn a_tuple_struct_of_one_slot_is_the_value_of_its_slot() {
 
 /// The one slot serde writes of a struct that declares two is the array of that slot, and
 /// `validate()` names it by its position there, as Rust's names it.
-#[cfg(feature = "serde")]
 #[test]
 fn the_one_slot_left_of_two_is_named_by_its_position() {
     let item: ItemStruct = syn::parse_quote! {
@@ -1195,7 +1180,6 @@ fn the_one_slot_left_of_two_is_named_by_its_position() {
 
 /// A struct with a flattened member reads the model it merges, and the values of the map it
 /// merges, unjudged, and its own serializer judges the whole.
-#[cfg(feature = "serde")]
 #[test]
 fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
     let base: ItemStruct = syn::parse_quote! {
@@ -1248,7 +1232,6 @@ fn a_struct_with_a_flattened_member_reads_what_it_merges_unjudged() {
 /// A flattened struct the emitter wrote takes the keys serde reads it from: each name and alias of
 /// a member it reads, and neither its own tag nor a member serde never reads. One it has not
 /// written takes the `elementNames` of its descriptor.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
     let pennant: ItemStruct = syn::parse_quote! {
@@ -1292,7 +1275,6 @@ fn a_flattened_struct_takes_the_keys_serde_reads_where_the_emitter_wrote_it() {
 /// them, the entry a flattened externally tagged enum took, and the keys a type the emitter has
 /// not written publishes, through a placeholder. Beside a flattened map or a struct with a
 /// flattened member of its own, no key is refused.
-#[cfg(feature = "serde")]
 #[test]
 fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
     let refused = |read: &str, named: &str| {
@@ -1396,7 +1378,6 @@ fn a_key_no_member_reads_is_refused_where_every_key_a_member_reads_is_known() {
 /// a tag alone takes the keys its descriptor names, and one under a tag and a content key takes
 /// both. One that names a function on itself has no key to be looked for by, and is `null`
 /// wherever its read throws.
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
     let hank: ItemEnum = syn::parse_quote! {
@@ -1472,7 +1453,6 @@ fn a_flattened_option_of_an_enum_under_a_tag_key_is_looked_for_by_its_tag() {
 /// the object and reads the rest as the variant, and writes the variant with the tag ahead of it.
 /// A newtype variant reads the rest as the value it holds, and writes that value's members beside
 /// the tag, as serde writes them.
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_under_a_tag_alone_is_read_and_written_by_hand_over_its_variants() {
     let item: ItemEnum = syn::parse_quote! {
@@ -1606,7 +1586,6 @@ fn an_enum_under_its_variants_names_reads_what_a_variant_holds_unjudged() {
 /// An untagged enum takes the first variant whose payload decodes and whose bounds hold: each
 /// member's own, and those of each brand it holds. A check and what a held model reports choose
 /// none, so a variant that holds no bound is taken as it decodes.
-#[cfg(feature = "serde")]
 #[test]
 fn an_untagged_enum_takes_the_first_variant_that_decodes() {
     let coded: ItemStruct = syn::parse_quote! {
@@ -1767,7 +1746,6 @@ fn a_tuple_that_reaches_a_type_parameter_declares_it() {
 
 /// A plain enum that reads a variant under an alias takes the plugin's descriptor, with and
 /// without a check, and names no internal serialization API.
-#[cfg(feature = "serde")]
 #[test]
 fn a_plain_enum_with_an_alias_names_no_internal_serialization_api() {
     let swell: ItemEnum = syn::parse_quote! {

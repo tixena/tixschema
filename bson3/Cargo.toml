@@ -14,21 +14,20 @@ publish = false
 # `cfg(feature = "...")`, and this package is where they read it from.
 default = ["web"]
 
-web = ["tixschema/web", "serde", "zod", "typescript"]
-mobile = ["tixschema/mobile", "serde", "dart", "swift", "kotlin"]
+web = ["tixschema/web", "zod", "typescript"]
+mobile = ["tixschema/mobile", "dart", "swift", "kotlin"]
 mongo = ["tixschema/mongo", "mongodb", "chrono", "indexmap", "arky"]
 
-serde = ["tixschema/serde"]
 zod = ["tixschema/zod"]
 mongodb = ["tixschema/mongodb", "bson"]
-bson = ["tixschema/bson", "serde"]
+bson = ["tixschema/bson"]
 typescript = ["tixschema/typescript"]
 chrono = ["tixschema/chrono"]
 indexmap = ["tixschema/indexmap"]
 dart = ["tixschema/dart"]
 swift = ["tixschema/swift"]
 kotlin = ["tixschema/kotlin"]
-arky = ["tixschema/arky", "serde"]
+arky = ["tixschema/arky"]
 
 [dev-dependencies]
 tixschema = { path = "..", default-features = false }

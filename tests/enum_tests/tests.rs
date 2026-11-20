@@ -1,14 +1,11 @@
 //! Tests of enums: plain enums and discriminated unions on every surface.
 
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use serde_json::Value;
-#[cfg(feature = "serde")]
 use tixschema::model_schema;
 
 // A tagged enum whose tag is written after a serde key this crate has no use for.
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(expecting = "an action", tag = "kind", rename_all = "camelCase")]
@@ -19,7 +16,6 @@ enum ActionTaggedAfterIgnoredKey {
 
 // The same declaration with nothing for the walk to step over, so the two renderings can be held
 // against each other: an attribute the walk ignores may not change a byte of what is generated.
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -28,7 +24,6 @@ enum ActionTaggedWithNothingIgnored {
     Upload { value: String },
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "source")]
@@ -39,15 +34,13 @@ enum ActionWithLiteralEnum {
     Upload { value: String },
 }
 
-#[cfg(feature = "serde")]
 /**
  * Calculated Expression Operator
  *
  * Represents the operator to be used in a calculated expression.
  */
 #[model_schema()]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum CalculatedExpressionOperator {
     /**
      * Addition. Adds a value with another value.
@@ -75,7 +68,6 @@ pub enum CalculatedExpressionOperator {
     Subtract,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum DistributionValidMimeType {
@@ -87,7 +79,6 @@ pub enum DistributionValidMimeType {
     ApplicationPdf,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -95,7 +86,6 @@ enum DocumentLiteralValue {
     Document,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MimeType {
@@ -107,7 +97,6 @@ pub enum MimeType {
     ApplicationPdf,
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -126,7 +115,6 @@ enum PaymentMethod {
     },
 }
 
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -137,7 +125,6 @@ enum UserStatus {
     Suspended,
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_ts_zod_serde_enums_constructible() {
     let actions = [
@@ -167,7 +154,6 @@ fn test_ts_zod_serde_enums_constructible() {
     assert_eq!(statuses.len(), 4);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_serde_mime_enums_constructible() {
     let distributions = [
@@ -179,7 +165,6 @@ fn test_serde_mime_enums_constructible() {
     assert_eq!(mimes.len(), 2);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_payment_method_constructible() {
     let payments = [
@@ -200,7 +185,6 @@ fn test_payment_method_constructible() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_plain_enum_json_schema() {
     let schema = UserStatus::json_schema();
 
@@ -215,7 +199,7 @@ fn test_plain_enum_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_plain_enum_ts_definition_serde_style() {
     let ts_definition = UserStatus::ts_definition();
 
@@ -232,7 +216,7 @@ fn test_plain_enum_ts_definition_serde_style() {
 
 /// A unit-only enum's reader switches on the bare string itself: no tag, so no object access.
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_plain_enum_variant_reader() {
     let ts = UserStatus::ts_definition();
 
@@ -256,7 +240,7 @@ fn test_plain_enum_variant_reader() {
 }
 
 #[test]
-#[cfg(all(any(feature = "typescript", feature = "zod"), feature = "serde"))]
+#[cfg(any(feature = "typescript", feature = "zod"))]
 fn test_plain_enum_members() {
     let members = UserStatus::enum_members();
     assert_eq!(members.len(), 4);
@@ -266,7 +250,6 @@ fn test_plain_enum_members() {
     assert!(members.contains(&"suspended".to_owned()));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_discriminated_union_json_schema() {
     let schema = PaymentMethod::json_schema();
@@ -285,7 +268,6 @@ fn test_discriminated_union_json_schema() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_payment_method_variants_json_schema() {
     let payment_method = PaymentMethodDraft::PayPal {
@@ -308,7 +290,7 @@ fn test_payment_method_variants_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_discriminated_union_ts_definition() {
     let ts_definition = PaymentMethod::ts_definition();
 
@@ -329,7 +311,7 @@ fn test_discriminated_union_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn a_braced_variant_of_an_internally_tagged_enum_is_read_at_its_enum() {
     let zod_schema = PaymentMethod::zod_schema();
     let read_through = zod_schema.matches("{ when: () => true }").count();
@@ -341,7 +323,7 @@ fn a_braced_variant_of_an_internally_tagged_enum_is_read_at_its_enum() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_tag_written_after_an_ignored_key_reaches_the_ts_definition() {
     let ts = ActionTaggedAfterIgnoredKey::ts_definition();
     assert!(
@@ -357,7 +339,7 @@ fn test_tag_written_after_an_ignored_key_reaches_the_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 fn test_tag_written_after_an_ignored_key_reaches_the_zod_schema() {
     let zod = ActionTaggedAfterIgnoredKey::zod_schema();
     assert!(
@@ -373,7 +355,6 @@ fn test_tag_written_after_an_ignored_key_reaches_the_zod_schema() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_tag_written_after_an_ignored_key_reaches_the_json_schema() {
     let schema = ActionTaggedAfterIgnoredKey::json_schema();
     for variant in schema["oneOf"].as_array().unwrap() {
@@ -397,7 +378,7 @@ fn test_tag_written_after_an_ignored_key_reaches_the_json_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_enum_with_docs() {
     let ts_definition = CalculatedExpressionOperator::ts_definition();
 
@@ -405,7 +386,7 @@ fn test_enum_with_docs() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_single_value_enum_ts_definition() {
     let ts_definition = DocumentLiteralValue::ts_definition();
 
@@ -414,7 +395,7 @@ fn test_single_value_enum_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_single_value_enum_zod_schema() {
     let zod_schema = DocumentLiteralValue::zod_schema();
 
@@ -423,7 +404,7 @@ fn test_single_value_enum_zod_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_single_value_enum_in_tagged_union_ts() {
     let ts_definition = ActionWithLiteralEnum::ts_definition();
 
@@ -432,7 +413,7 @@ fn test_single_value_enum_in_tagged_union_ts() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_single_value_enum_in_tagged_union_zod() {
     let zod_schema = ActionWithLiteralEnum::zod_schema();
 
@@ -441,7 +422,7 @@ fn test_single_value_enum_in_tagged_union_zod() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_plain_enum_special_chars_zod_has_raw_and_schema() {
     let zod = MimeType::zod_schema();
     assert!(
@@ -463,7 +444,7 @@ fn test_plain_enum_special_chars_zod_has_raw_and_schema() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde"))]
+#[cfg(feature = "typescript")]
 fn test_plain_enum_special_chars_ts_definition() {
     let ts = MimeType::ts_definition();
     assert!(
@@ -477,7 +458,7 @@ fn test_plain_enum_special_chars_ts_definition() {
 }
 
 #[test]
-#[cfg(all(feature = "typescript", feature = "serde", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 fn test_distribution_mime_type_zod_schema() {
     let zod = DistributionValidMimeType::zod_schema();
     assert!(

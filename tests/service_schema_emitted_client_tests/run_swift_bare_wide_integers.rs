@@ -3,7 +3,7 @@
 //! of one: each call prints the request the transport was handed and what the client answered.
 //! The `ws_rpc` client compiles beside it.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use core::fmt::Write as _;
 

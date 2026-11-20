@@ -1,7 +1,7 @@
 //! A float quoted back by the emitted Swift `validate()` is written as Rust's `Display` writes it:
 //! the digits, with no exponent and no `.0` on a whole float.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use core::fmt::Write as _;
 

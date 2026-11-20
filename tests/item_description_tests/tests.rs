@@ -424,7 +424,7 @@ fn ts_definition_writes_the_description_and_no_json_schema() {
 
 // One text per item, held in every build with `serde`, `typescript` and `zod`, whatever
 // `jsonschema` is.
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn ts_definition_is_one_text_with_jsonschema_on_and_off() {
     let count: LineCount = 2;
@@ -472,7 +472,7 @@ fn ts_definition_is_one_text_with_jsonschema_on_and_off() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_members_keep_the_jsdoc_they_had() {
     let ts = Invoice::ts_definition();
@@ -483,7 +483,7 @@ fn the_members_keep_the_jsdoc_they_had() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_json_schema_is_the_text_it_was() {
     assert_eq!(
@@ -497,7 +497,7 @@ fn the_json_schema_is_the_text_it_was() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "typescript", feature = "zod"))]
+#[cfg(all(feature = "typescript", feature = "zod"))]
 #[test]
 fn the_zod_schema_is_the_text_it_was() {
     assert_eq!(

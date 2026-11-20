@@ -316,7 +316,7 @@ fn an_alias_of_an_alias_of_a_brand_forwards_the_annotation() {
     assert!(!zod.contains("ZodType<"), "got: {zod}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_one_slot_tuple_struct_over_a_brand_is_typed_by_what_it_parses_to() {
     let zod = SlotWrapper::zod_schema();
@@ -333,7 +333,7 @@ fn a_one_slot_tuple_struct_over_a_brand_is_typed_by_what_it_parses_to() {
     assert!(!zod.contains(": ZodType<"), "got: {zod}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     let zod = BoundBrandSlot::zod_schema();
@@ -352,7 +352,7 @@ fn a_one_slot_tuple_struct_over_a_bound_generic_brand_reads_the_call_back() {
     assert!(!zod.contains(": ZodType<"), "got: {zod}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn an_example_on_a_republished_binding_lands_on_the_value_the_annotation_reads() {
     let zod = ExampledSlot::zod_schema();
@@ -389,7 +389,7 @@ fn a_non_generic_alias_of_a_generic_brand_reads_the_bound_call_back() {
     assert!(!zod.contains("ZodType<"), "got: {zod}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_generic_item_republishing_a_factory_types_its_default_by_what_it_parses_to() {
     for (zod, exported) in [
@@ -409,7 +409,7 @@ fn a_generic_item_republishing_a_factory_types_its_default_by_what_it_parses_to(
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     for (zod, line) in [
@@ -450,7 +450,7 @@ fn a_composite_over_a_brand_keeps_the_annotation_naming_its_own_type() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_named_transparent_struct_over_a_brand_is_a_brand_over_it() {
     let zod = NamedWrapper::zod_schema();
@@ -488,7 +488,7 @@ fn an_alias_of_a_built_expression_keeps_the_annotation_naming_its_own_type() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_generic_slot_over_a_bare_parameter_keeps_the_annotation_naming_its_own_type() {
     let zod = SlotHolder::<CorrelationId>::zod_schema();
@@ -505,7 +505,7 @@ fn a_generic_slot_over_a_bare_parameter_keeps_the_annotation_naming_its_own_type
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#[cfg(all(feature = "zod", feature = "typescript"))]
 #[test]
 fn a_brands_own_binding_is_typed_by_what_it_parses_to_too() {
     let zod = CorrelationId::zod_schema();
@@ -540,7 +540,7 @@ fn a_javascript_build_annotates_a_republished_binding_no_more_than_any_other() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn the_typescript_surface_of_a_republished_binding_is_unchanged() {
     assert!(

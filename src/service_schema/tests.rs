@@ -4,8 +4,6 @@
 //! an assertion compares the text the compiler shows against the text the design specifies,
 //! character for character, with no token-rendering escapes in between.
 
-#![cfg(feature = "serde")]
-
 use super::parse::{
     BodyKind, HttpMethod, HttpShape, OperationDef, OperationInputs, OperationOutcome, PathSegment,
     ServiceDef, parse_service,

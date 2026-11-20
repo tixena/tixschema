@@ -42,7 +42,6 @@ fn steps(written: &[&[&str]]) -> Vec<Vec<String>> {
 }
 
 /// An enum with a variant of each shape that holds a value, under no attribute.
-#[cfg(feature = "serde")]
 fn freight() -> syn::ItemEnum {
     syn::parse_quote! {
         enum Freight {
@@ -78,7 +77,6 @@ fn each_member_is_listed_beside_its_place_among_the_ones_declared() {
     assert_eq!(placed, [0, 1]);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_named_field_is_under_the_key_serde_writes() {
     let parcel: syn::ItemStruct = syn::parse_quote! {
@@ -99,7 +97,6 @@ fn a_named_field_is_under_the_key_serde_writes() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_flattened_member_adds_no_step() {
     let manifest: syn::ItemStruct = syn::parse_quote! {
@@ -121,7 +118,6 @@ fn a_flattened_member_adds_no_step() {
     assert_eq!(of_variant(&dispatch, "ByRoad", None), steps(&[&["ByRoad"]]));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_slot_serde_does_not_read_has_no_position_and_the_next_one_takes_it() {
     let measured: syn::ItemStruct = syn::parse_quote! {
@@ -137,7 +133,6 @@ fn a_slot_serde_does_not_read_has_no_position_and_the_next_one_takes_it() {
     assert_eq!(of_struct(&stamped, None), steps(&[&["stamped_at"]]));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_with_no_tag_attribute_is_under_its_name() {
     let freight = freight();
@@ -152,7 +147,6 @@ fn a_variant_with_no_tag_attribute_is_under_its_name() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_under_a_tag_and_a_content_key_is_under_the_content_key() {
     let mut haul = freight();
@@ -169,7 +163,6 @@ fn a_variant_under_a_tag_and_a_content_key_is_under_the_content_key() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variant_under_a_tag_alone_and_an_untagged_one_add_no_step() {
     for attribute in [
@@ -187,7 +180,6 @@ fn a_variant_under_a_tag_alone_and_an_untagged_one_add_no_step() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_variants_step_is_the_name_serde_writes_it_under() {
     let mooring: syn::ItemEnum = syn::parse_quote! {
@@ -210,7 +202,6 @@ fn a_variants_step_is_the_name_serde_writes_it_under() {
     assert_eq!(of_variant(&mooring, "Final", None), steps(&[&["final"]]));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn an_enum_no_variant_of_which_holds_a_value_writes_nothing_ahead_of_a_member() {
     let grade: syn::ItemEnum = syn::parse_quote! {
@@ -221,48 +212,4 @@ fn an_enum_no_variant_of_which_holds_a_value_writes_nothing_ahead_of_a_member() 
     };
     let express = grade.variants.first().unwrap();
     assert_eq!(variant_steps(&grade, express), Vec::<String>::new());
-}
-
-/// Without `serde` no attribute is read: a variant is under its own name and a member is as it
-/// is declared.
-#[cfg(not(feature = "serde"))]
-#[test]
-fn a_member_is_as_it_is_declared_and_a_variant_under_its_own_name() {
-    let waybill: syn::ItemStruct = syn::parse_quote! {
-        struct Waybill {
-            #[serde(flatten)]
-            carriage: Carriage,
-            #[serde(rename = "codes")]
-            listed_codes: Vec<String>,
-        }
-    };
-    assert_eq!(
-        of_struct(&waybill, Some("camelCase")),
-        steps(&[&["carriage"], &["listed_codes"]])
-    );
-    let measured: syn::ItemStruct = syn::parse_quote! {
-        struct Measured(#[serde(skip)] u8, String);
-    };
-    assert_eq!(of_struct(&measured, None), steps(&[&["0"], &["1"]]));
-    let dispatch: syn::ItemEnum = syn::parse_quote! {
-        #[serde(tag = "kind", content = "detail", rename_all = "snake_case")]
-        enum Dispatch {
-            ByRoad { road_stops: Vec<String> },
-            #[serde(rename = "sea")]
-            BySea(String, Vec<String>),
-            Carried(String),
-        }
-    };
-    assert_eq!(
-        of_variant(&dispatch, "ByRoad", None),
-        steps(&[&["ByRoad", "road_stops"]])
-    );
-    assert_eq!(
-        of_variant(&dispatch, "BySea", None),
-        steps(&[&["BySea", "0"], &["BySea", "1"]])
-    );
-    assert_eq!(
-        of_variant(&dispatch, "Carried", None),
-        steps(&[&["Carried"]])
-    );
 }

@@ -1,8 +1,6 @@
 //! The constants a valid type holds for its unit variants and its unit struct, and the infallible
 //! `From` of a draft that declares no rule.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};

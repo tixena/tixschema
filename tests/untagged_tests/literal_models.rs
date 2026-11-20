@@ -2,8 +2,6 @@
 //! look like them and are not, and [`ROWS`]: the payloads, the model each is read as, whether serde
 //! reads it, and the Zod text each enum is written as.
 
-#![cfg(feature = "serde")]
-
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;

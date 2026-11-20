@@ -7,27 +7,25 @@
 use super::Bound;
 #[cfg(feature = "dart")]
 use super::dart_violation;
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 use super::kotlin_violation;
-#[cfg(feature = "serde")]
 use super::rust_violation;
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 use super::swift_violation;
 #[cfg(feature = "zod")]
 use super::zod_error_arg;
 use crate::features::model_schema_prop::LiteralValue;
 
-#[cfg(feature = "serde")]
 use quote::quote;
-#[cfg(all(feature = "serde", any(feature = "kotlin", feature = "swift")))]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
 use syn::Token;
-#[cfg(all(feature = "serde", any(feature = "kotlin", feature = "swift")))]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
 use syn::punctuated::Punctuated;
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 use syn::{Expr, ExprLit, ExprMacro, ExprMethodCall, Lit};
 
 /// A literal of each kind, the string one holding what each spelling escapes.
-#[cfg(all(feature = "serde", any(feature = "kotlin", feature = "swift")))]
+#[cfg(any(feature = "kotlin", feature = "swift"))]
 fn literals() -> [LiteralValue; 4] {
     [
         LiteralValue::Bool(true),
@@ -38,12 +36,10 @@ fn literals() -> [LiteralValue; 4] {
 }
 
 /// The tokens `rust_violation` builds, as one line with the spacing `quote!` prints.
-#[cfg(feature = "serde")]
 fn rendered(bound: Bound<'_>, field: Option<&str>, observed: &proc_macro2::TokenStream) -> String {
     rust_violation(bound, field, observed).to_string()
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bound_that_quotes_the_value_back_names_the_field_and_the_measure() {
     assert_eq!(
@@ -60,7 +56,6 @@ fn a_bound_that_quotes_the_value_back_names_the_field_and_the_measure() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bound_that_quotes_nothing_back_states_only_itself() {
     assert_eq!(
@@ -73,7 +68,6 @@ fn a_bound_that_quotes_nothing_back_states_only_itself() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_report_with_no_field_to_name_names_none() {
     assert_eq!(
@@ -112,7 +106,6 @@ fn a_bound_on_a_list_counts_the_items_the_issue_holds() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_bound_on_a_list_is_reported_in_a_strings_words() {
     assert_eq!(
@@ -157,7 +150,7 @@ fn a_pattern_reaches_the_quoted_string_escaped() {
 }
 
 /// The text of a string literal, or `None` for any other expression.
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 fn literal_text(written: &Expr) -> Option<String> {
     if let Expr::Lit(ExprLit {
         lit: Lit::Str(text),
@@ -172,7 +165,7 @@ fn literal_text(written: &Expr) -> Option<String> {
 
 /// The sentence the `format!` `rust_violation` builds writes at run time, with `<observed>` where
 /// it quotes the measured value back.
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 fn rust_sentence(bound: Bound<'_>, field: Option<&str>) -> String {
     let tokens = rust_violation(bound, field, &quote! { observed });
     let Ok(formatted) = syn::parse2::<ExprMacro>(tokens.clone()) else {
@@ -196,7 +189,7 @@ fn rust_sentence(bound: Bound<'_>, field: Option<&str>) -> String {
 }
 
 /// The sentence the Kotlin string `kotlin_violation` builds writes at run time, read the same way.
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 fn kotlin_sentence(bound: Bound<'_>, place: Option<&str>) -> String {
     let literal = kotlin_violation(bound, place, "observed");
     literal
@@ -211,7 +204,7 @@ fn kotlin_sentence(bound: Bound<'_>, place: Option<&str>) -> String {
 
 /// Each bound is reported in Kotlin in the sentence Rust reports it in, under a name and under
 /// none.
-#[cfg(all(feature = "serde", feature = "kotlin"))]
+#[cfg(feature = "kotlin")]
 #[test]
 fn kotlin_reports_each_bound_in_the_sentence_rust_reports_it_in() {
     let written = [
@@ -269,7 +262,7 @@ fn a_pattern_reaches_the_dart_string_escaped() {
 }
 
 /// Each bound is stated once, and every rendering holds that one sentence.
-#[cfg(all(feature = "serde", feature = "zod", feature = "dart"))]
+#[cfg(all(feature = "zod", feature = "dart"))]
 #[test]
 fn the_three_renderings_of_a_bound_hold_one_sentence() {
     let written = [
@@ -305,7 +298,7 @@ fn the_three_renderings_of_a_bound_hold_one_sentence() {
 }
 
 /// The text of `argument` where it is a string literal, and its tokens where it is anything else.
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 fn written(argument: &syn::Expr) -> String {
     if let syn::Expr::Lit(syn::ExprLit {
         lit: syn::Lit::Str(text),
@@ -320,7 +313,7 @@ fn written(argument: &syn::Expr) -> String {
 
 /// The sentence `rust_violation` writes for `bound` under `place`, read off the tokens it builds:
 /// the template with each argument written into it, the observed value as `observed`.
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 fn rust_sentence_with_observed(bound: Bound<'_>, place: Option<&str>) -> String {
     let built = rust_violation(bound, place, &quote! { observed });
     if let Ok(owned) = syn::parse2::<syn::ExprMethodCall>(built.clone()) {
@@ -339,7 +332,7 @@ fn rust_sentence_with_observed(bound: Bound<'_>, place: Option<&str>) -> String 
 }
 
 /// The sentence a Swift literal `swift_violation` wrote holds, the observed value as `observed`.
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 fn swift_sentence(literal: &str) -> String {
     literal
         .trim_matches('"')
@@ -348,7 +341,7 @@ fn swift_sentence(literal: &str) -> String {
         .replace("\\\\", "\\")
 }
 
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 #[test]
 fn the_swift_sentence_is_the_one_rust_writes_for_each_bound() {
     let held = literals();
@@ -374,7 +367,7 @@ fn the_swift_sentence_is_the_one_rust_writes_for_each_bound() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "swift"))]
+#[cfg(feature = "swift")]
 #[test]
 fn a_swift_sentence_is_one_string_literal() {
     assert_eq!(
@@ -395,7 +388,6 @@ fn a_swift_sentence_is_one_string_literal() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_literal_is_stated_as_the_zod_schema_writes_it_and_quotes_the_value_back() {
     let fixed = LiteralValue::Str("fixed".to_owned());

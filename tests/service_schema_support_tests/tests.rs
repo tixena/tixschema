@@ -1,8 +1,6 @@
 //! Two services declared through the macro, one transport serving both, and the call error a
 //! client hands back.
 
-#![cfg(feature = "serde")]
-
 use crate::{amqp_transport, billing_amqp_transport};
 use core::future::{Future, ready};
 use core::pin::pin;

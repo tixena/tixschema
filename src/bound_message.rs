@@ -285,5 +285,4 @@ pub fn swift_violation(bound: Bound<'_>, place: Option<&str>, observed: &str) ->
 }
 
 #[cfg(test)]
-#[cfg(any(feature = "serde", feature = "zod", feature = "dart"))]
 mod tests;

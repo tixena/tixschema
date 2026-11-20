@@ -3,7 +3,6 @@
 
 /// The same brand declared both ways. serde writes both as the string alone, so every surface
 /// describes both the same way.
-#[cfg(feature = "serde")]
 mod beside_the_tuple_form {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;

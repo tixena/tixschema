@@ -4,7 +4,7 @@
 //! and in a variant. Each payload is written back as serde writes it back, under the name serde
 //! writes, and a member read under two of its names is refused, as serde refuses it.
 
-#![cfg(all(feature = "kotlin", feature = "serde"))]
+#![cfg(feature = "kotlin")]
 
 use core::fmt::Write as _;
 

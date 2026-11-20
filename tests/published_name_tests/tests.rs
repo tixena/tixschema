@@ -56,7 +56,6 @@ pub struct NamesOverriddenItems {
 }
 
 // A member key reaches the same seam a type name does, and is spelled from what serde writes.
-#[cfg(feature = "serde")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KeyEndingInTheSuffix {
@@ -66,7 +65,7 @@ pub struct KeyEndingInTheSuffix {
 
 // An untagged member naming the union itself is read through a thunk rather than written into the
 // `const` that declares the name, and the thunk has to reach the union under the name it published.
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[model_schema(name = "PublishedBranch")]
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
@@ -239,7 +238,7 @@ fn an_overridden_struct_and_enum_key_their_json_definitions_by_the_override() {
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_self_naming_untagged_member_defers_to_the_overridden_name() {
     let zod = BranchUnderRustName::zod_schema();
@@ -249,21 +248,20 @@ fn a_self_naming_untagged_member_defers_to_the_overridden_name() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn a_typescript_member_key_is_written_exactly_as_serde_writes_it() {
     let ts = KeyEndingInTheSuffix::ts_definition();
     assert!(ts.contains("payloadData: string;"), "got: {ts}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn a_zod_member_key_is_written_exactly_as_serde_writes_it() {
     let zod = KeyEndingInTheSuffix::zod_schema();
     assert!(zod.contains("payloadData: z.string(),"), "got: {zod}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_json_member_key_is_written_exactly_as_serde_writes_it() {
     let schema = KeyEndingInTheSuffix::json_schema();

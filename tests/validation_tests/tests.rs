@@ -7,7 +7,6 @@
 /// The types live in a module rather than in the test bodies because a reference to a sibling type
 /// is written against that type's schema module, which a type declared inside a `fn` does not
 /// publish anywhere a sibling can name.
-#[cfg(feature = "serde")]
 mod a_bound_the_fields_own_type_declares {
     use alloc::borrow::Cow;
     use alloc::sync::Arc;
@@ -470,7 +469,6 @@ mod a_bound_the_fields_own_type_declares {
 
 /// What a message's own validator does about a bound reached through an `#[serde(untagged)]` enum
 /// — one it holds as a field, and one the message itself is.
-#[cfg(feature = "serde")]
 mod a_bound_inside_an_untagged_variant {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -752,7 +750,6 @@ mod a_bound_inside_an_untagged_variant {
 
 /// What a check written on an enum holds: each string the enum carries, where that string's own
 /// check is held, and nothing a list, a named type, a number or a type parameter carries.
-#[cfg(feature = "serde")]
 mod a_check_the_enum_declares {
     use alloc::borrow::Cow;
     use alloc::sync::Arc;
@@ -1333,16 +1330,12 @@ mod a_check_the_enum_declares {
     }
 }
 
-#[cfg(feature = "serde")]
 use alloc::borrow::Cow;
-#[cfg(feature = "serde")]
 use alloc::sync::Arc;
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "serde")]
 use tixschema::model_schema;
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_max_length_zod() {
     #[model_schema()]
@@ -1359,7 +1352,7 @@ fn test_max_length_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_min_length_zod() {
     #[model_schema()]
@@ -1376,7 +1369,7 @@ fn test_min_length_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_min_and_max_length_zod() {
     #[model_schema()]
@@ -1397,7 +1390,6 @@ fn test_min_and_max_length_zod() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_max_length_json_schema() {
     #[model_schema(enable = ["jsonschema"])]
@@ -1415,7 +1407,6 @@ fn test_max_length_json_schema() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_min_and_max_length_json_schema() {
     #[model_schema(enable = ["jsonschema"])]
@@ -1437,7 +1428,6 @@ fn test_min_and_max_length_json_schema() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_max_length_rust_valid() {
     #[model_schema()]
@@ -1456,7 +1446,6 @@ fn test_max_length_rust_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_max_length_rust_invalid() {
     #[model_schema()]
@@ -1477,7 +1466,6 @@ fn test_max_length_rust_invalid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_min_length_rust_valid() {
     #[model_schema()]
@@ -1496,7 +1484,6 @@ fn test_min_length_rust_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_min_length_rust_invalid() {
     #[model_schema()]
@@ -1517,7 +1504,6 @@ fn test_min_length_rust_invalid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_combined_string_constraints_valid() {
     #[model_schema()]
@@ -1536,7 +1522,6 @@ fn test_combined_string_constraints_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_combined_string_constraints_too_short() {
     #[model_schema()]
@@ -1557,7 +1542,6 @@ fn test_combined_string_constraints_too_short() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_combined_string_constraints_pattern_fail() {
     #[model_schema()]
@@ -1578,7 +1562,6 @@ fn test_combined_string_constraints_pattern_fail() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_ok() {
     #[model_schema()]
@@ -1599,7 +1582,6 @@ fn test_validate_method_ok() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_err() {
     #[model_schema()]
@@ -1625,7 +1607,6 @@ fn test_validate_method_err() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_multiple_errors() {
     #[model_schema()]
@@ -1650,7 +1631,7 @@ fn test_validate_method_multiple_errors() {
     assert_eq!(errors.len(), 2, "Should have 2 errors, got: {errors:?}");
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_minimum_zod() {
     #[model_schema()]
@@ -1667,7 +1648,7 @@ fn test_minimum_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_maximum_zod() {
     #[model_schema()]
@@ -1684,7 +1665,7 @@ fn test_maximum_zod() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_float_minimum_maximum_zod() {
     #[model_schema()]
@@ -1705,7 +1686,6 @@ fn test_float_minimum_maximum_zod() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_json_schema() {
     #[model_schema(enable = ["jsonschema"])]
@@ -1723,7 +1703,6 @@ fn test_minimum_json_schema() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_json_schema() {
     #[model_schema(enable = ["jsonschema"])]
@@ -1741,7 +1720,6 @@ fn test_maximum_json_schema() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_rust_valid() {
     #[model_schema()]
@@ -1760,7 +1738,6 @@ fn test_minimum_rust_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_rust_invalid() {
     #[model_schema()]
@@ -1781,7 +1758,6 @@ fn test_minimum_rust_invalid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_rust_valid() {
     #[model_schema()]
@@ -1800,7 +1776,6 @@ fn test_maximum_rust_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_rust_invalid() {
     #[model_schema()]
@@ -1821,7 +1796,6 @@ fn test_maximum_rust_invalid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_at_boundary() {
     #[model_schema()]
@@ -1840,7 +1814,6 @@ fn test_minimum_at_boundary() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_at_boundary() {
     #[model_schema()]
@@ -1859,7 +1832,6 @@ fn test_maximum_at_boundary() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_numeric_ok() {
     #[model_schema()]
@@ -1878,7 +1850,6 @@ fn test_validate_method_numeric_ok() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_numeric_err() {
     #[model_schema()]
@@ -1902,7 +1873,6 @@ fn test_validate_method_numeric_err() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_pattern_ok() {
     #[model_schema()]
@@ -1923,7 +1893,6 @@ fn test_validate_method_pattern_ok() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_pattern_err() {
     #[model_schema()]
@@ -1949,7 +1918,6 @@ fn test_validate_method_pattern_err() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_pattern_and_length() {
     #[model_schema()]
@@ -1995,7 +1963,6 @@ fn test_validate_method_pattern_and_length() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_max_length_ok() {
     #[model_schema()]
@@ -2016,7 +1983,6 @@ fn test_validate_method_max_length_ok() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_max_length_err() {
     #[model_schema()]
@@ -2042,7 +2008,6 @@ fn test_validate_method_max_length_err() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_mixed_string_numeric() {
     #[model_schema()]
@@ -2079,7 +2044,6 @@ fn test_validate_method_mixed_string_numeric() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_float_rust_valid() {
     #[model_schema()]
@@ -2098,7 +2062,6 @@ fn test_minimum_float_rust_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_minimum_float_rust_invalid() {
     #[model_schema()]
@@ -2119,7 +2082,6 @@ fn test_minimum_float_rust_invalid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_float_rust_valid() {
     #[model_schema()]
@@ -2138,7 +2100,6 @@ fn test_maximum_float_rust_valid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_maximum_float_rust_invalid() {
     #[model_schema()]
@@ -2159,7 +2120,6 @@ fn test_maximum_float_rust_invalid() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_method_float_err() {
     #[model_schema()]
@@ -2183,7 +2143,7 @@ fn test_validate_method_float_err() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_min_max_numeric_zod() {
     #[model_schema()]
@@ -2204,7 +2164,6 @@ fn test_min_max_numeric_zod() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_min_max_numeric_json_schema() {
     #[model_schema(enable = ["jsonschema"])]
@@ -2226,7 +2185,7 @@ fn test_min_max_numeric_json_schema() {
     );
 }
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 #[test]
 fn test_constraints_dont_affect_typescript() {
     #[model_schema()]
@@ -2281,7 +2240,6 @@ fn test_constraints_dont_affect_typescript() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_boundary_min_length_zero() {
     #[model_schema()]
@@ -2308,7 +2266,6 @@ fn test_boundary_min_length_zero() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_empty_string_match() {
     #[model_schema()]
@@ -2343,7 +2300,6 @@ fn test_pattern_empty_string_match() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_anchored_single_character_prefix() {
     #[model_schema()]
@@ -2376,7 +2332,6 @@ fn test_pattern_anchored_single_character_prefix() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_pinning_both_ends_to_one_position() {
     #[model_schema()]
@@ -2403,7 +2358,6 @@ fn test_pattern_pinning_both_ends_to_one_position() {
 }
 
 /// The rewrite a lone `\b` is refused in favour of.
-#[cfg(feature = "serde")]
 #[test]
 fn test_pattern_boundary_with_a_word_beside_it() {
     #[model_schema()]
@@ -2429,7 +2383,6 @@ fn test_pattern_boundary_with_a_word_beside_it() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_string_some_too_short() {
     #[model_schema()]
@@ -2456,7 +2409,6 @@ fn test_validate_optional_string_some_too_short() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_string_none_is_ok() {
     #[model_schema()]
@@ -2476,7 +2428,6 @@ fn test_validate_optional_string_none_is_ok() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_boxed_string_too_short() {
     #[model_schema()]
@@ -2500,7 +2451,6 @@ fn test_validate_boxed_string_too_short() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_vec_string_counts_its_items() {
     #[model_schema()]
@@ -2529,7 +2479,6 @@ fn test_validate_vec_string_counts_its_items() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_vec_string() {
     #[model_schema()]
@@ -2564,7 +2513,6 @@ fn test_validate_optional_vec_string() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_nested_vec_counts_the_outer_list() {
     #[model_schema()]
@@ -2593,7 +2541,6 @@ fn test_validate_nested_vec_counts_the_outer_list() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_optional_numeric_minimum() {
     #[model_schema()]
@@ -2620,7 +2567,6 @@ fn test_validate_optional_numeric_minimum() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_arc_slice_mixed_wrappers() {
     #[model_schema()]
@@ -2651,7 +2597,6 @@ fn test_validate_arc_slice_mixed_wrappers() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_validate_boxed_option_string() {
     #[model_schema()]
@@ -2682,7 +2627,6 @@ fn test_validate_boxed_option_string() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2707,7 +2651,6 @@ fn test_an_optional_string_is_held_to_its_bound_as_it_is_read() {
 }
 
 /// A `None` puts no string on the wire, so neither spelling of its absence has anything to reject.
-#[cfg(feature = "serde")]
 #[test]
 fn test_deserialize_optional_string_still_admits_an_absent_key() {
     #[model_schema()]
@@ -2735,7 +2678,6 @@ fn test_deserialize_optional_string_still_admits_an_absent_key() {
 }
 
 /// A field that writes its own default keeps it, nothing being injected beside it.
-#[cfg(feature = "serde")]
 #[test]
 fn test_deserialize_optional_string_keeps_a_written_default() {
     fn preset() -> Option<String> {
@@ -2760,7 +2702,6 @@ fn test_deserialize_optional_string_keeps_a_written_default() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_boxed_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2785,7 +2726,6 @@ fn test_a_boxed_string_is_held_to_its_bound_as_it_is_read() {
 }
 
 /// A `Cow` is reached as the `Box` is, its lifetime being no part of what it holds.
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_cow_string_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2809,7 +2749,6 @@ fn test_a_cow_string_is_held_to_its_bound_as_it_is_read() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_vec_of_strings_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2842,7 +2781,6 @@ fn test_a_vec_of_strings_is_held_to_its_bound_as_it_is_read() {
 }
 
 /// The wrappers compose in the order they were written, and the walk goes through them in it.
-#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_vec_is_held_to_its_bound_as_it_is_read() {
     #[model_schema()]
@@ -2868,7 +2806,6 @@ fn test_an_optional_vec_is_held_to_its_bound_as_it_is_read() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_an_optional_number_is_held_to_its_range_as_it_is_read() {
     #[model_schema()]
@@ -2900,7 +2837,6 @@ fn test_an_optional_number_is_held_to_its_range_as_it_is_read() {
     assert_eq!(accepted.validation_issues(), Vec::<String>::new());
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_every_wrapped_shape_is_refused_as_it_is_read() {
     #[model_schema()]
@@ -2951,7 +2887,6 @@ fn test_every_wrapped_shape_is_refused_as_it_is_read() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     #[model_schema()]
@@ -2999,7 +2934,6 @@ fn test_two_variants_naming_one_field_keep_their_own_constraints() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_tagged_enum_validate_answers_in_the_struct_twins_words() {
     #[model_schema()]
@@ -3043,7 +2977,6 @@ fn test_tagged_enum_validate_answers_in_the_struct_twins_words() {
     .unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
     #[model_schema()]
@@ -3102,7 +3035,6 @@ fn test_every_tagged_flavor_publishes_validate_for_its_constrained_members() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_enum_validate_runs_only_the_held_variants_checks() {
     #[model_schema()]
@@ -3137,7 +3069,6 @@ fn test_enum_validate_runs_only_the_held_variants_checks() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_enum_validate_collects_every_violation_of_the_held_variant() {
     #[model_schema()]
@@ -3176,7 +3107,6 @@ fn test_enum_validate_collects_every_violation_of_the_held_variant() {
     MixedDraft::Nothing.validate().unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_enum_validate_reaches_through_a_members_wrappers() {
     #[model_schema()]
@@ -3215,7 +3145,6 @@ fn test_enum_validate_reaches_through_a_members_wrappers() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
     #[model_schema()]
@@ -3265,7 +3194,6 @@ fn test_a_constraint_free_enum_publishes_no_validate_just_as_a_struct_does() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_member_named_like_the_walks_own_bindings_is_still_checked() {
     #[model_schema()]
@@ -3294,7 +3222,6 @@ fn test_a_member_named_like_the_walks_own_bindings_is_still_checked() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_every_variant_shape_reaches_the_accessor() {
     #[model_schema()]
@@ -3332,7 +3259,6 @@ fn test_every_variant_shape_reaches_the_accessor() {
     EveryShapeDraft::Nothing.validate().unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_tuple_variants_slot_is_checked_where_serde_writes_it() {
     #[model_schema()]
@@ -3417,7 +3343,6 @@ fn test_a_tagged_tuple_variants_slot_is_checked_where_serde_writes_it() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_tuple_variants_checked_slot_is_written_as_before_and_read_as_validate_judges_it() {
     #[model_schema()]
@@ -3513,7 +3438,7 @@ fn test_a_tagged_tuple_variants_checked_slot_is_written_as_before_and_read_as_va
     }
 }
 
-#[cfg(all(feature = "serde", feature = "zod"))]
+#[cfg(feature = "zod")]
 #[test]
 fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
     #[model_schema()]
@@ -3554,7 +3479,6 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_zod() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
     #[model_schema(enable = ["jsonschema"])]
@@ -3608,7 +3532,6 @@ fn test_a_tagged_tuple_variants_slot_check_reaches_the_json_schema() {
     assert_eq!(adjacent["oneOf"][2]["properties"]["data"], tags);
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_a_tagged_slot_is_reached_through_its_wrappers() {
     #[model_schema()]
@@ -3637,7 +3560,6 @@ fn test_a_tagged_slot_is_reached_through_its_wrappers() {
     SlotWrappedDraft::Note(None).validate().unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
     #[model_schema()]
@@ -3689,7 +3611,6 @@ fn test_readme_slot_validate_example_prints_what_the_generator_writes() {
     entry_schema::validate_pair_1_value(&1).unwrap();
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
     // The README declares `username` first; source here is ordered alphabetically, as this crate's
@@ -3727,7 +3648,6 @@ fn test_readme_struct_validate_example_prints_what_the_generator_writes() {
 }
 
 /// The same holding for the branded newtype's `validate()` example.
-#[cfg(feature = "serde")]
 #[test]
 fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
     #[model_schema(pattern = "^[a-z0-9_]+$", minLength = 3, maxLength = 50)]
@@ -3752,7 +3672,6 @@ fn test_readme_branded_validate_example_prints_what_the_generator_writes() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_crate_rustdoc_quotes_the_messages_the_generator_writes() {
     #[model_schema()]

@@ -9,20 +9,12 @@ use syn::Attribute;
 
 use super::read::{PATHED, read_at};
 use super::{KotlinField, kotlin_quoted};
-#[cfg(feature = "serde")]
 use crate::features::serde::parse_serde_field_attributes;
 use crate::field_type::EXPECTED_VALUE;
 
 /// The names `#[serde(alias = "...")]` writes on a variant or a field, in the order written.
-#[cfg(feature = "serde")]
 pub fn written_on(attrs: &[Attribute]) -> Vec<String> {
     parse_serde_field_attributes(attrs).aliases
-}
-
-/// Without `serde` no attribute is read, so nothing is read under an alias.
-#[cfg(not(feature = "serde"))]
-pub const fn written_on(_attrs: &[Attribute]) -> Vec<String> {
-    Vec::new()
 }
 
 /// Each alias of a member of `fields`, beside the name the member is written under.

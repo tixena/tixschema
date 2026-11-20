@@ -12,13 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::corrected_options_models::{
     marled_kotlin, moused_kotlin, reeved_kotlin, seized_kotlin, served_kotlin, wormed_kotlin,
 };
 #[cfg(feature = "zod")]
 use super::flattened_models::Ensign;
-#[cfg(feature = "serde")]
 use super::flattened_models::{
     BELTING, BOWLINING, BROACHING, Belting, Bowlining, Broaching, CHAFING, CLEATING, Chafing,
     Cleating, FRAYING, Fraying, GAFFING, Gaffing, HEAVING, JibingDraft, SWAYING, Swaying,
@@ -33,7 +31,6 @@ use super::flattened_models::{
     Snubbing, SplicingDraft, Stowing, StowingDraft, Striking, Stropping, Tacking, TackingDraft,
     UNDER_AN_ALIAS, UNWRITTEN, Whipping, YawingDraft, read_of,
 };
-#[cfg(feature = "serde")]
 use super::flattened_models::{
     belting_kotlin, bending_kotlin, bowlining_kotlin, brailing_kotlin, broaching_kotlin,
     cathead_kotlin, chafing_kotlin, cleating_kotlin, corrected_locker_kotlin, dipping_kotlin,
@@ -44,12 +41,10 @@ use super::flattened_models::{
     stowing_kotlin, striking_kotlin, swaying_kotlin, whelping_kotlin, whipping_kotlin,
     yawing_kotlin,
 };
-#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::read::plain_enum;
 use super::read::{NO_ISSUES, drafted_serializers, kept_draft, refusal, to_valid_free};
 use super::tuple_variants_models::LabellingDraft;
-#[cfg(feature = "serde")]
 use super::unrecorded_options_models::{
     bridling_kotlin, clapping_kotlin, fiddling_kotlin, grommeting_kotlin, slipping_kotlin,
     snagging_kotlin,
@@ -605,7 +600,6 @@ fn test_width_table() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_plain_enum() {
     let kotlin = renumbered(&status_kotlin::kotlin_definition());
     assert!(
@@ -625,7 +619,6 @@ fn test_plain_enum() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_internal_tagged_enum() {
     let kotlin = without_number_readers(&renumbered(&window_error_kotlin::kotlin_definition()));
     assert!(
@@ -656,7 +649,6 @@ fn test_internal_tagged_enum() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_adjacent_tagged_enum() {
     let kotlin = renumbered(&dynamic_value_kotlin::kotlin_definition());
     assert!(
@@ -723,7 +715,6 @@ fn test_external_tagged_unit_variant_round_trip_source() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_untagged_enum() {
     let kotlin = without_number_readers(&renumbered(&date_value_kotlin::kotlin_definition()));
     assert!(
@@ -800,7 +791,6 @@ fn test_object_id_bare() {
     assert!(kotlin.contains("val id: ObjectId"), "got: {kotlin}");
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_branded_newtype() {
     let kotlin = renumbered(&correlation_id_kotlin::kotlin_definition());
@@ -861,7 +851,6 @@ fn test_generic_enum_unit_variant() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_flatten_struct() {
     let kotlin = renumbered(&audit_kotlin::kotlin_definition());
     assert!(
@@ -876,7 +865,6 @@ fn test_flatten_struct() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_flatten_optional_struct() {
     let kotlin = renumbered(&optional_audit_kotlin::kotlin_definition());
     assert!(
@@ -892,7 +880,6 @@ fn test_flatten_optional_struct() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_flatten_map() {
     let kotlin = renumbered(&tagged_record_kotlin::kotlin_definition());
     assert!(
@@ -1041,7 +1028,6 @@ fn zod_holds_a_structs_own_tag_as_the_literal_of_its_name() {
 }
 
 /// The statement that refuses `object` where it holds no tag `kind` of the value `named`.
-#[cfg(feature = "serde")]
 fn tag_held(object: &str, named: &str) -> String {
     format!(
         "when ({object}[\"kind\"]) {{ JsonPrimitive(\"{named}\") -> {{}}; null -> throw \
@@ -1056,7 +1042,6 @@ fn tag_held(object: &str, named: &str) -> String {
 /// tixschema writes checks the object it reads every member from, and writes the tag first, and a
 /// holder merges what the unjudged serializer writes ahead of its own members.
 #[test]
-#[cfg(feature = "serde")]
 fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead() {
     let moved = "private fun transformSerialize(element: JsonElement): JsonElement = \
                  JsonObject(mapOf(\"kind\" to element.jsonObject.getValue(\"kind\")) + \
@@ -1143,7 +1128,6 @@ fn a_struct_under_its_own_tag_is_read_by_its_tag_and_written_with_the_tag_ahead(
 /// A flattened map, the one member of its struct, is read from every key of the object and written
 /// entry by entry.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_map_is_read_from_every_key_and_written_entry_by_entry() {
     let netting = renumbered(&netting_kotlin::kotlin_definition());
     for held in [
@@ -1180,7 +1164,6 @@ fn serde_reads_an_optional_flattened_map_under_a_function_from_what_it_answers()
 /// An optional map, the one member, under a function is read from what the function answers, and
 /// as `null` where that is `null`.
 #[test]
-#[cfg(feature = "serde")]
 fn an_optional_flattened_map_under_a_function_is_read_from_what_it_answers() {
     let entries = "mapValues { (k, v) -> kotlinSchemaDecoded(input.json, KotlinNumber1, v, k, \
                    \".\" + k) }";
@@ -1238,7 +1221,6 @@ fn serde_reads_a_flattened_map_keyed_by_an_enum_under_the_names_its_variants_are
 /// A flattened map keyed by a plain enum, the one member, writes each key as the text the key's
 /// serializer writes and reads it back through that serializer.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serializer() {
     let entry_written = "forEach { (k, v) -> put(output.json.encodeToJsonElement(\
                          serializer<Chock>(), k).jsonPrimitive.content, \
@@ -1266,7 +1248,6 @@ fn a_flattened_map_keyed_by_an_enum_writes_and_reads_each_key_through_its_serial
 /// An optional member beside a flattened one is written only where it holds a value, and one
 /// under `nullable` always. A member that is not optional is written as it was.
 #[test]
-#[cfg(feature = "serde")]
 fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_value() {
     let splicing = renumbered(&splicing_kotlin::kotlin_definition());
     assert!(
@@ -1303,7 +1284,6 @@ fn an_optional_member_beside_a_flattened_one_is_written_only_where_it_holds_a_va
 /// its holder reads, as TypeScript and Zod read it: after a struct that reads the same key, beside
 /// a member of its holder's own, and optional, its own keys looked for in that object.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
     let labelling = "val labellingKeys = setOf(\"label\"); val labelling = kotlinSchemaFlattened { \
                      input.json.decodeFromString(KotlinHeld1, JsonObject(obj.filterKeys { \
@@ -1352,7 +1332,6 @@ fn a_flattened_member_is_read_without_the_keys_taken_ahead_of_it() {
 /// of its own. Neither its own tag nor a member serde never reads is among them, and an optional
 /// one is looked for by them.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_struct_takes_the_keys_serde_takes_of_it() {
     let hauled = "val hauledKeys = setOf(\"hidden\", \"label\"); val hauled = \
                   kotlinSchemaFlattened { \
@@ -1429,7 +1408,6 @@ fn serde_reads_an_optional_struct_with_a_flattened_member_wherever_it_reads() {
 /// looked for by: it is read wherever its read succeeds and is `null` wherever that read throws,
 /// as serde reads it.
 #[test]
-#[cfg(feature = "serde")]
 fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
     let scarfing = renumbered(&scarfing_kotlin::kotlin_definition());
     let decoded = "val sheetingKeys = setOf<String>(); val sheeting = kotlinSchemaFlattened { \
@@ -1445,7 +1423,6 @@ fn an_optional_struct_that_takes_no_key_is_read_wherever_its_read_succeeds() {
 /// on itself. Each holder is `nonstrict`, so where one of those elements is there the member is
 /// `null` where its read throws as well.
 #[test]
-#[cfg(feature = "serde")]
 fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_element() {
     let read = |prop: &str, serializer: &str, rest: &str, flat: bool| {
         let handed = if flat {
@@ -1492,7 +1469,6 @@ fn an_optional_type_of_no_recorded_key_is_read_where_its_descriptor_names_no_ele
 /// a tag alone takes the keys its descriptor names, and one under a tag and a content key takes
 /// both.
 #[test]
-#[cfg(feature = "serde")]
 fn an_optional_enum_under_a_tag_key_is_looked_for_by_its_tag_and_its_content_key() {
     let read = |prop: &str, serializer: &str, taken: &str, keys: &str| {
         let decoded = format!("lenient.decodeFromString({serializer}, obj.toString())");
@@ -1536,7 +1512,6 @@ fn an_optional_enum_under_a_tag_key_is_looked_for_by_its_tag_and_its_content_key
 /// read that throws, a key its type does not declare among them, refuses the payload, as serde
 /// reads it. A member flattened with no `Option` is read from the whole answer the same way.
 #[test]
-#[cfg(feature = "serde")]
 fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does() {
     let read = |prop: &str, keys: &str, (function, serializer): (&str, &str)| {
         format!(
@@ -1586,7 +1561,6 @@ fn a_nonstrict_holder_reads_an_optional_type_that_names_a_function_as_serde_does
 }
 
 /// Asserts that serde refused each payload of `read` at the place held beside the key it names.
-#[cfg(feature = "serde")]
 fn assert_refused_keys<T>(read: &[Result<T, serde_json::Error>], refused: &[(usize, &str)])
 where
     T: Debug,
@@ -1602,7 +1576,6 @@ where
 
 /// What serde reads of each payload of [`Belting`]: the enum's entry, a refusal of a key no member
 /// reads, and no value where no entry is under a variant's name.
-#[cfg(feature = "serde")]
 fn assert_belted(bay: &Tacking) {
     let belted = BELTING.map(|payload| {
         serde_json::from_str::<Belting>(payload)
@@ -1624,7 +1597,6 @@ fn assert_belted(bay: &Tacking) {
 /// every other entry is left to the members after it. A holder with no such entry is refused, and
 /// so is one of no member that reads every key with a key none of its members reads, a second
 /// variant's entry among them; an optional enum reads no value.
-#[cfg(feature = "serde")]
 #[test]
 fn serde_hands_a_flattened_enum_the_first_entry_under_a_variants_name() {
     let stowed: Vec<_> = STOWING
@@ -1728,7 +1700,6 @@ fn serde_hands_a_flattened_enum_under_an_alias_and_a_holder_its_entry() {
 /// of the two keys: a function after it is handed every other key, and a struct after it reads its
 /// own. A holder of only members that take their own keys refuses a key none of them reads, and
 /// so refuses entries under two names of a flattened externally tagged enum.
-#[cfg(feature = "serde")]
 #[test]
 fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_of_two_entries() {
     let chafing: Chafing = serde_json::from_str(CHAFING).unwrap();
@@ -1757,7 +1728,6 @@ fn serde_takes_both_keys_of_a_flattened_enum_under_a_content_key_and_the_first_o
 /// A flattened enum under a tag and a content key takes both keys: a function after it is handed
 /// the object without them, and a struct after it reads the whole object.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_enum_under_a_content_key_takes_both_keys_in_kotlin() {
     for (kotlin, held) in [
         (
@@ -1785,7 +1755,6 @@ fn a_flattened_enum_under_a_content_key_takes_both_keys_in_kotlin() {
 /// The read of the one entry of `rest` under one of `variants`' names, which a flattened enum
 /// `named` held by `prop` is read from: entries under two names are refused, naming each variant
 /// once.
-#[cfg(feature = "serde")]
 fn one_entry(rest: &str, prop: &str, named: &str, variants: &[&[&str]]) -> String {
     let quoted = |names: &[&str]| {
         names
@@ -1820,7 +1789,6 @@ fn one_entry(rest: &str, prop: &str, named: &str, variants: &[&[&str]]) -> Strin
 /// flattened after it but a struct is handed the object without that entry. An enum declared below
 /// its holder is read from the object without the holder's own keys, as before.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_enum_is_read_from_the_one_entry_under_a_variants_name() {
     let tacking: &[&[&str]] = &[&["Bay"], &["Calm"], &["Dock", "Quay"], &["Held"]];
     let beside_a_note = one_entry(
@@ -1942,7 +1910,6 @@ fn serde_writes_a_flattened_enums_unit_variant_as_its_name_over_null() {
 /// it: an object's entry as it is, and a bare name as that name over `null`, the enum optional and
 /// under a function too. An enum with no unit variant merges its object as before.
 #[test]
-#[cfg(feature = "serde")]
 fn a_flattened_enum_merges_a_unit_variant_as_its_name_over_null() {
     for (kotlin, merged) in [
         (
@@ -1978,7 +1945,6 @@ fn a_flattened_enum_merges_a_unit_variant_as_its_name_over_null() {
 /// entries and a struct's keys at the variant's own level, under every tagging that builds one,
 /// each written back where serde writes the variant's own members. A variant whose flattened
 /// members all take their own keys refuses a key none of its members reads.
-#[cfg(feature = "serde")]
 #[test]
 fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
     let read = [
@@ -2031,7 +1997,6 @@ fn serde_reads_a_variants_flattened_member_at_the_variants_own_level() {
 /// it reads each alias and calls each function of a member itself. A variant with no flattened
 /// member keeps the plugin's serializer.
 #[test]
-#[cfg(feature = "serde")]
 fn a_variant_with_a_flattened_member_is_read_by_a_serializer_of_its_own() {
     for (kotlin, written) in [
         (
@@ -2152,7 +2117,6 @@ fn test_generic_dispatched_enum_serializer_class() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_generic_adjacent_tagged_enum() {
     let kotlin = renumbered(&adjacent_choice_kotlin::kotlin_definition());
     assert!(
@@ -2171,7 +2135,6 @@ fn test_generic_adjacent_tagged_enum() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_generic_untagged_enum() {
     let kotlin = renumbered(&untagged_choice_kotlin::kotlin_definition());
     assert!(
@@ -2268,7 +2231,6 @@ fn test_generic_tuple_struct_serializer_class() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_generic_flatten_own_field() {
     let kotlin = renumbered(&tagged_kotlin::kotlin_definition());
     assert!(
@@ -2303,7 +2265,6 @@ fn test_generic_flatten_own_field() {
 }
 
 #[test]
-#[cfg(feature = "serde")]
 fn test_generic_flatten_generic_sibling() {
     let kotlin = renumbered(&envelope_kotlin::kotlin_definition());
     assert!(
@@ -2409,22 +2370,10 @@ fn north() -> Vec<String> {
     vec!["north".to_owned()]
 }
 
-#[cfg(feature = "serde")]
 fn correlation_id(text: &str) -> CorrelationId {
     CorrelationId::new(text.to_owned()).unwrap()
 }
 
-#[cfg(not(feature = "serde"))]
-fn correlation_id(text: &str) -> CorrelationId {
-    CorrelationIdDraft(text.to_owned()).into()
-}
-
-#[cfg(feature = "serde")]
 const fn correlation_id_text(held: &CorrelationId) -> &str {
     held.as_inner().as_str()
-}
-
-#[cfg(not(feature = "serde"))]
-fn correlation_id_text(held: &CorrelationId) -> &str {
-    held.0.as_str()
 }

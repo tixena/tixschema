@@ -2,8 +2,6 @@
 //! `validate()`, in the read, in the JSON Schema and in the text of each other surface, a float
 //! limit writes what it always wrote, and a limit on a float is compared as a float of its type.
 
-#![cfg(feature = "serde")]
-
 #[cfg(not(any(feature = "swift", feature = "kotlin")))]
 mod the_top_of_a_u64 {
     use super::{ScaleTop, ScaleTopDraft, written};

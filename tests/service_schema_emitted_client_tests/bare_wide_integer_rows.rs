@@ -3,10 +3,7 @@
 //! Rust client sends of the same call, and what the client answers of the response the Rust
 //! dispatcher answers it with.
 
-#![cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#![cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 
 /// Each call of a run, in the order each run makes it: `shift(9223372036854775806, 1)`,
 /// `shift(4611686018427387903, none)`, `total([9223372036854775807, 1])`,

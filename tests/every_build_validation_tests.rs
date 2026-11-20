@@ -6,7 +6,6 @@ extern crate alloc;
 // library.
 extern crate bson2 as bson;
 
-#[cfg(feature = "serde")]
 tixschema::decode_with_foundation!();
 
 #[cfg(test)]
@@ -18,6 +17,5 @@ mod models;
 mod validate;
 
 #[cfg(test)]
-#[cfg(feature = "serde")]
 #[path = "every_build_validation_tests/read.rs"]
 mod read;

@@ -7,23 +7,19 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
-#[cfg(feature = "serde")]
 use super::fixed_arrays_models::{
     bitter_kotlin, bunt_kotlin, buntline_kotlin, cringling_kotlin, fishing_kotlin, reefband_kotlin,
     sheaving_kotlin, shroud_kotlin, shrouding_kotlin,
 };
-#[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
 use super::kotlin_thrown::{THROWN, held_refusal};
 
 /// The function that names the place of a map key a brand's check refused: the steps of the path
 /// kotlinx states, then the key.
-#[cfg(feature = "serde")]
 const PLACE: &str = r#"@OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaPlace(input: Decoder, key: String): String { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path }; return (Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at.orEmpty()).map { step -> step.groupValues.drop(1).joinToString("") }.toList() + key).joinToString(".") }; "#;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element
 /// itself, each part from its text, placed under its step.
-#[cfg(feature = "serde")]
 pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: DeserializationStrategy<*>, \
      element: JsonElement, at: String): JsonElement { var held = serializer.descriptor; \
      while (held.isInline && held.elementsCount == 1) held = held.getElementDescriptor(0); \
@@ -37,7 +33,6 @@ pub const DECODED: &str = "private fun kotlinSchemaKinded(serializer: Deserializ
      kotlinSchemaKinded(serializer, element, at).toString()) }; ";
 
 /// What a type with no rule answers.
-#[cfg(feature = "serde")]
 const NO_RULE: &str = "fun validate(): List<String> = emptyList(); fun validationIssues(): \
      List<String> = validate()";
 
@@ -388,7 +383,6 @@ pub fn drafted_serializers_with(named: &str, forwards: &str, statics: &str) -> S
 }
 
 /// The annotations of a brand's value class, which keeps the plugin's serializer.
-#[cfg(feature = "serde")]
 pub fn kept_inline(named: &str) -> String {
     format!(
         "@OptIn(ExperimentalSerializationApi::class) @JvmInline @Serializable(with = \
@@ -397,7 +391,6 @@ pub fn kept_inline(named: &str) -> String {
 }
 
 /// The two serializers of the brand `named`, whose unjudged read is private to the file.
-#[cfg(feature = "serde")]
 pub fn brand_serializers(named: &str) -> String {
     format!(
         "{} {}",
@@ -407,7 +400,6 @@ pub fn brand_serializers(named: &str) -> String {
 }
 
 /// The companion of the brand `named` over `value`, which builds a value only through `of`.
-#[cfg(feature = "serde")]
 pub fn brand_companion(named: &str, value: &str) -> String {
     format!(
         "companion object {{ fun of(value: {value}): {named} {{ val read = {named}(value); val \
@@ -420,7 +412,6 @@ pub fn brand_companion(named: &str, value: &str) -> String {
 /// The serializer of a map keyed by the brand `named`, a brand over a text: each key read
 /// unjudged from its text at the map's path, then judged, each message under the key's text, and
 /// each value from its text under the key's text.
-#[cfg(feature = "serde")]
 pub fn mapped(named: &str) -> String {
     mapped_reading(
         named,
@@ -433,7 +424,6 @@ pub fn mapped(named: &str) -> String {
 
 /// [`mapped`] of a brand over the brand `inner` over a text, which throws the refusal of the brand
 /// it holds under the key's text as well.
-#[cfg(feature = "serde")]
 pub fn mapped_over_a_brand(named: &str, inner: &str) -> String {
     mapped_reading(
         named,
@@ -448,7 +438,6 @@ pub fn mapped_over_a_brand(named: &str, inner: &str) -> String {
 
 /// The serializer of a map keyed by the brand `named`, which reads each key with `key` and then
 /// judges it.
-#[cfg(feature = "serde")]
 fn mapped_reading(named: &str, key: &str) -> String {
     format!(
         "class {named}MapSerializer<KotlinSchemaValue>(private val keySerializer: \
@@ -626,7 +615,6 @@ fn a_type_with_a_parameter_takes_one_serializer_per_parameter() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_is_read_by_the_plugins_serializer_and_judged_by_its_own() {
     assert_eq!(
@@ -680,7 +668,6 @@ fn an_enum_reads_what_a_variant_holds_unjudged_and_judges_the_variant() {
 }
 
 /// The class `kotlin` declares that reads a list of `length` items, and refuses one of any other.
-#[cfg(feature = "serde")]
 fn array_class(kotlin: &str, length: usize) -> String {
     let declared = |named: &str| {
         format!(
@@ -713,7 +700,6 @@ fn array_class(kotlin: &str, length: usize) -> String {
 /// the type an alias names and inside a map's value and a type argument, and composed where the
 /// emitter writes the read, beside a flattened member, in a tuple's position and in a variant's
 /// slot. A list of any length is read as it was.
-#[cfg(feature = "serde")]
 #[test]
 fn a_fixed_array_is_read_through_the_class_of_its_length() {
     let bunt = super::tests::renumbered(&bunt_kotlin::kotlin_definition());
@@ -806,14 +792,8 @@ fn a_fixed_array_is_read_through_the_class_of_its_length() {
     }
 }
 
-#[cfg(feature = "serde")]
 fn seal(text: &str) -> Seal {
     Seal::new(text.to_owned()).unwrap()
-}
-
-#[cfg(not(feature = "serde"))]
-fn seal(text: &str) -> Seal {
-    SealDraft(text.to_owned()).into()
 }
 
 /// The plain enum `named` that names no check: declared as written with its members and

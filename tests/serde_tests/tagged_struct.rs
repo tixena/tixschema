@@ -1,7 +1,7 @@
 //! A struct that carries its own `#[serde(tag = "...")]` writes its serde name under that key, and
 //! every surface describes the key.
 
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 mod on_a_schema_surface {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -136,10 +136,7 @@ mod on_a_schema_surface {
 
 /// Each of the three languages writes the key with the struct's name, and reads the struct's name
 /// alone under it, as TypeScript and Zod do.
-#[cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#[cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 mod on_a_mobile_surface {
     #[cfg(feature = "kotlin")]
     use super::super::kotlin_pathed::PATHED;

@@ -4,11 +4,9 @@ Branded newtypes, generic types and Zod factories, declared defaults, and the st
 
 ### 8. Branded Newtypes
 
-A brand exists with tixschema's `serde` feature, and its rule then holds whatever the other
-features. Without it `has_serde_transparent` reads no attribute (`serde_attributes`), `brand_slot`
-answers `None` and a `#[serde(transparent)]` struct is a struct like any other: a `pattern`,
-`minLength` or `maxLength` written on it is refused by `string_check_refusal_output`, whose message
-(`no_brand_string_check_refusal`) names the feature.
+A brand's rule holds whatever the features. A `pattern`, `minLength` or `maxLength` written on a
+struct that is no brand is refused by `string_check_refusal_output`, whose message is
+`no_brand_string_check_refusal`.
 
 Single-field tuple structs with `#[serde(transparent)]` are treated as branded/opaque types, and so is any other `#[serde(transparent)]` struct, with named fields or with several slots, over the one field serde writes and reads it as: `brand_field` in `src/features/serde.rs` is the one seam every surface asks, the web three and Dart, Swift and Kotlin alike, and `transparent_field` beside it is the rule of serde's derive in a `Direction` for which field that is. A struct that derives `Serialize` alone is described over the field serde writes (not under `skip` or `skip_serializing`, which `has_serde_skip_serializing` reads, and not `PhantomData`), and any other over the field it reads (not skipped for reading, no `default`, not `PhantomData`). A struct that derives both, whose two derives take two different fields, is refused at `exec_model_schema`, in every build with `serde`, with a message naming both (`transparent_direction_errors`, which `serde_attribute_guard_errors` joins to the rename guard): one schema cannot describe two wire forms, as with a rename whose two directions differ. A tuple struct of one slot is a brand over that slot whatever its attributes say. `brand_slot` answers the field with its place among the struct's fields, and every reader of the value on the Rust side (`validate()`, `Display`, the text a bound on a holder's field measures) reaches a slot by that place, through `brand_member`, so `struct Tagged(#[serde(skip)] PhantomData<u8>, String)` is read at `self.1`. The brand publishes under its Rust ident unless `#[model_schema(name = "...")]` names another, and that name reaches the surface twice: as the exported type and as the brand tag the values carry.
 

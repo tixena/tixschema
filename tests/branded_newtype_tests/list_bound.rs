@@ -1,6 +1,5 @@
 //! A brand over a list takes `minLength` and `maxLength` on the type, where they count its items.
 
-#[cfg(feature = "serde")]
 mod a_length_on_a_brand_over_a_list {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -210,7 +209,6 @@ mod a_length_on_a_brand_over_a_list {
 
 /// A length written where a list is named, not written: a brand over a list at a field, a brand
 /// over a brand over a list, and a generic brand whose declared default is a list.
-#[cfg(feature = "serde")]
 mod a_length_through_a_name {
     use serde::{Deserialize, Serialize};
     use tixschema::model_schema;
@@ -386,11 +384,7 @@ mod a_length_through_a_name {
 }
 
 /// A length written where an alias of an `IndexSet` is named, and on a brand over that alias.
-#[cfg(all(
-    feature = "serde",
-    feature = "indexmap",
-    any(feature = "typescript", feature = "zod")
-))]
+#[cfg(all(feature = "indexmap", any(feature = "typescript", feature = "zod")))]
 mod a_length_through_an_alias_of_an_index_set {
     use indexmap::IndexSet;
     use serde::{Deserialize, Serialize};
@@ -480,7 +474,7 @@ mod a_length_through_an_alias_of_an_index_set {
         );
     }
 
-    #[cfg(all(feature = "serde", feature = "zod"))]
+    #[cfg(feature = "zod")]
     #[test]
     fn the_zod_schema_counts_the_items() {
         let said =
@@ -500,7 +494,6 @@ mod a_length_through_an_alias_of_an_index_set {
         );
     }
 
-    #[cfg(feature = "serde")]
     #[test]
     fn the_json_schema_writes_the_count_beside_the_name() {
         let narrowing = &Roster::json_schema()["properties"]["queue"]["allOf"][1];

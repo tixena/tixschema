@@ -5,8 +5,6 @@
 //! Gated on the `serde` feature, which `#[service_schema]` requires: a build without it is
 //! refused at the declaration, so a harness declaring a service would not compile at all.
 
-#![cfg(feature = "serde")]
-
 extern crate alloc;
 
 #[cfg(test)]
@@ -14,17 +12,17 @@ extern crate alloc;
 #[path = "service_schema_ws_rpc_tests/tests.rs"]
 mod tests;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_tests/ws_transport.rs"]
 mod ws_transport;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_tests/ws_client.rs"]
 mod ws_client;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 #[path = "service_schema_ws_rpc_tests/events_client.rs"]
 mod events_client;
 
-#[cfg(all(test, feature = "serde"))]
+#[cfg(test)]
 use tests::{DocumentSession, SessionEvents, document_session_schema, session_events_schema};

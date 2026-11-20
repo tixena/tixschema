@@ -22,13 +22,13 @@ mod tests;
 
 /// What the emitter writes into a type whose reads read a fixed-width integer.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "support/swift_fitted.rs"]
 mod swift_fitted;
 
 /// What the emitter writes into the wrapper of a map keyed by a number.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "support/swift_key_number.rs"]
 mod swift_key_number;
 
@@ -40,7 +40,7 @@ mod swift_valid;
 
 /// The `validate()` a draft declares.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "support/swift_validating.rs"]
 mod swift_validating;
 
@@ -56,130 +56,130 @@ mod valid_types;
 mod swift_plain_enum;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/validate.rs"]
 mod validate;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/read.rs"]
 mod read;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/preprocess.rs"]
 mod preprocess;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/sequences.rs"]
 mod sequences;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/generic_variants.rs"]
 mod generic_variants;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/generic_helpers.rs"]
 mod generic_helpers;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/generic_dates.rs"]
 mod generic_dates;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/brand_reads.rs"]
 mod brand_reads;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/brand_date_reads.rs"]
 mod brand_date_reads;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys_models.rs"]
 mod text_map_keys_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys.rs"]
 mod text_map_keys;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/date_map_keys_models.rs"]
 mod date_map_keys_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/date_map_keys.rs"]
 mod date_map_keys;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/renamed_generics_models.rs"]
 mod renamed_generics_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/renamed_generics.rs"]
 mod renamed_generics;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/held_dates_models.rs"]
 mod held_dates_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/held_dates.rs"]
 mod held_dates;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/wrapped_maps_models.rs"]
 mod wrapped_maps_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/wrapped_maps.rs"]
 mod wrapped_maps;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/lone_slots_models.rs"]
 mod lone_slots_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/lone_slots.rs"]
 mod lone_slots;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/listed_maps_models.rs"]
 mod listed_maps_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/listed_maps.rs"]
 mod listed_maps;
 
 /// A member serde reads and never writes, in a struct of its own, beside a flattened member and in
 /// an enum's variant under each tagging that writes a variant's named members.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "service_schema_emitted_client_tests/unwritten_models.rs"]
 mod unwritten_models;
 
 /// What the Swift emitter writes and reads of a member serde never writes.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/unwritten.rs"]
 mod unwritten;
 
@@ -187,13 +187,13 @@ mod unwritten;
 /// naming a function, and a member that names a function at each place a member can be handed
 /// fewer keys than its object holds.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/flattened_models.rs"]
 mod flattened_models;
 
 /// What the Swift emitter reads and writes of a flattened member.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/flattened.rs"]
 mod flattened;
 
@@ -203,75 +203,75 @@ mod flattened;
 /// function answers, and of an enum of each tagging and one declared below its holder, and a
 /// struct flattened bare beside a member of its holder's own.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/flattened_options_models.rs"]
 mod flattened_options_models;
 
 /// An optional flattened member that names a function: a struct under a function that answers the
 /// payload as it was handed and under one that answers `null`, and an enum under a tag alone.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "kotlin_tests/corrected_options_models.rs"]
 mod corrected_options_models;
 
 /// What the Swift emitter writes and reads of a flattened `Option`.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/flattened_options.rs"]
 mod flattened_options;
 
 /// The models a name serde reads beside the one it writes is read under.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "kotlin_tests/aliased_models.rs"]
 mod aliased_models;
 
 /// A member under an alias in each way the Swift read reads a member under its key.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/aliased_members_models.rs"]
 mod aliased_members_models;
 
 /// What the Swift emitter reads of a variant and a member under the `alias` serde reads them
 /// under.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/aliased.rs"]
 mod aliased;
 
 /// Models whose names on the wire hold a character a Swift string literal reads apart from text.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "dart_tests/quoted_models.rs"]
 mod quoted_models;
 
 /// What the Swift emitter writes of a name on the wire that holds such a character.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/quoted.rs"]
 mod quoted;
 
 /// `()` held in each place a value is, and a tuple struct of no slot beside it.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "service_schema_emitted_client_tests/unit_models.rs"]
 mod unit_models;
 
 /// What the Swift emitter reads and writes of `()`.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/units.rs"]
 mod units;
 
 /// A member, and a variant, serde neither writes nor reads, typed with a width no client maps.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/unwired_models.rs"]
 mod unwired_models;
 
 /// What the Swift emitter declares of a member, and a variant, serde neither writes nor reads.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "serde"))]
+#[cfg(feature = "swift")]
 #[path = "swift_tests/unwired.rs"]
 mod unwired;
 

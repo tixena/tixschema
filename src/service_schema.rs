@@ -1,47 +1,24 @@
 //! `#[service_schema]`: a service declared once as a trait, read once, and handed to the emitters.
 
-#[cfg(feature = "serde")]
 mod mcp_refusals;
-#[cfg(feature = "serde")]
 pub mod mcp_tools;
-#[cfg(feature = "serde")]
 pub mod message_shape;
-#[cfg(feature = "serde")]
 mod messages;
-#[cfg(feature = "serde")]
 pub mod parse;
-#[cfg(feature = "serde")]
 pub mod skills;
-#[cfg(feature = "serde")]
 pub mod support;
-#[cfg(feature = "serde")]
 pub mod transport;
 
-#[cfg(feature = "serde")]
 use crate::features::service_schema::emit as emit_generated_clients;
-#[cfg(feature = "serde")]
 use crate::features::service_schema::{mcp_seam, openapi_seam};
 use proc_macro2::TokenStream;
-#[cfg(feature = "serde")]
 use quote::quote;
 use syn::ItemTrait;
-#[cfg(feature = "serde")]
 use syn::{Ident, ReturnType, TraitItem};
 
 /// The `header_out` name `amqp_rpc`'s own reply handle already writes on every failed reply.
-#[cfg(feature = "serde")]
 const RESERVED_AMQP_HEADER_OUT_NAME: &str = "is_error";
 
-/// A build without the `serde` feature answers a declaration with refusals and nothing else.
-#[cfg(not(feature = "serde"))]
-pub fn exec_service_schema(_args: TokenStream, input: TokenStream) -> TokenStream {
-    match syn::parse2::<ItemTrait>(input) {
-        Ok(declared) => serde_feature_refusal(&declared),
-        Err(rejection) => rejection.to_compile_error(),
-    }
-}
-
-#[cfg(feature = "serde")]
 pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let asked = transport::parse_arguments(args);
     let declared = match syn::parse2::<ItemTrait>(input) {
@@ -150,7 +127,6 @@ pub fn exec_service_schema(args: TokenStream, input: TokenStream) -> TokenStream
 
 /// Reads the skills folder `mcp(skills = "...")` names into `service`, or refuses it: unreadable,
 /// holding no skill, or written on a service that does not ask for `mcp`.
-#[cfg(feature = "serde")]
 fn read_skills(
     service: &mut parse::ServiceDef,
     wanted: &transport::ServiceArguments,
@@ -289,7 +265,6 @@ fn read_skills(
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
-#[cfg(feature = "serde")]
 fn multipart_envelope_refusal(
     service: &parse::ServiceDef,
     wanted: &[transport::Transport],
@@ -314,7 +289,6 @@ fn multipart_envelope_refusal(
         })
 }
 
-#[cfg(feature = "serde")]
 fn multipart_envelope_message(operation: &Ident, envelopes: &[transport::Transport]) -> String {
     let named = envelopes
         .iter()
@@ -332,7 +306,6 @@ fn multipart_envelope_message(operation: &Ident, envelopes: &[transport::Transpo
 
 /// What each refused transport answers with: the `{ ok, value, error }` envelope of `amqp_rpc` and
 /// `ws_rpc`, and the tool result of `mcp`.
-#[cfg(feature = "serde")]
 fn carriers(refused: &[transport::Transport]) -> String {
     let envelope = refused
         .iter()
@@ -359,7 +332,6 @@ fn carriers(refused: &[transport::Transport]) -> String {
 /// the order the service wrote them — the ones [`multipart_envelope_refusal`] and
 /// [`stream_envelope_refusal`] read, since a streamed or multipart body has no carrier inside it
 /// whichever of them the service asked for.
-#[cfg(feature = "serde")]
 fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transport> {
     wanted
         .iter()
@@ -474,7 +446,6 @@ fn envelope_transports(wanted: &[transport::Transport]) -> Vec<transport::Transp
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
-#[cfg(feature = "serde")]
 fn stream_envelope_refusal(
     service: &parse::ServiceDef,
     wanted: &[transport::Transport],
@@ -499,7 +470,6 @@ fn stream_envelope_refusal(
         })
 }
 
-#[cfg(feature = "serde")]
 fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]) -> String {
     let named = envelopes
         .iter()
@@ -552,7 +522,6 @@ fn stream_envelope_message(operation: &Ident, envelopes: &[transport::Transport]
 ///
 /// error: could not compile `tixschema` (test "zz_probe") due to 1 previous error
 /// ```
-#[cfg(feature = "serde")]
 fn reserved_header_out_refusal(
     service: &parse::ServiceDef,
     wanted: &[transport::Transport],
@@ -584,7 +553,6 @@ fn reserved_header_out_refusal(
         })
 }
 
-#[cfg(feature = "serde")]
 fn reserved_header_out_message(operation: &Ident) -> String {
     format!(
         "service_schema: operation `{operation}` binds the reserved name \"is_error\" on \
@@ -596,7 +564,6 @@ fn reserved_header_out_message(operation: &Ident) -> String {
 
 /// Refuses `openapi` on a service whose `transports` lacks `http_rest`, the one transport whose
 /// methods, paths, statuses and headers the document describes.
-#[cfg(feature = "serde")]
 fn openapi_transport_refusal(wanted: &transport::ServiceArguments) -> Option<syn::Error> {
     let asked = wanted.openapi.as_ref()?;
     if wanted.transports.contains(&transport::Transport::HttpRest) {
@@ -612,7 +579,6 @@ fn openapi_transport_refusal(wanted: &transport::ServiceArguments) -> Option<syn
 
 /// Refuses the path `openapi` answers its document at where an operation already answers `GET`
 /// there, spanned on the `path` literal, or on `openapi` where none is written.
-#[cfg(feature = "serde")]
 fn openapi_path_refusal(
     service: &parse::ServiceDef,
     openapi: Option<&transport::OpenApiArguments>,
@@ -647,25 +613,8 @@ fn openapi_path_refusal(
         })
 }
 
-/// What a build without the `serde` feature is told, and why it is told rather than worked around.
-#[cfg(not(feature = "serde"))]
-fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
-    syn::Error::new(
-        declared.ident.span(),
-        "service_schema: a service needs tixschema's `serde` feature, and this build does not \
-         have it\n       without it the TypeScript a service publishes names Rust fields rather \
-         than the camelCase\n       and kebab-case keys its own dispatcher writes, so the two \
-         halves disagree about the wire\n       add `features = [\"serde\"]` to the tixschema \
-         dependency in Cargo.toml",
-    )
-    .to_compile_error()
-}
-
 /// The trait as the author declared it, less the per-operation directives, with every `async fn`
 /// desugared to the `-> impl Future + Send` the `async_fn_in_trait` warning recommends writing.
-///
-/// Gated with the rest of the construct: a build without the `serde` feature answers a declaration
-/// with the refusal alone, so there is no trait to emit and no example here that could compile.
 ///
 /// # Adding an operation breaks every implementation, which is the whole reason for a trait
 ///
@@ -782,7 +731,6 @@ fn serde_feature_refusal(declared: &ItemTrait) -> TokenStream {
 /// which is what the unit test
 /// `the_emitted_trait_names_the_operation_a_missing_implementation_is_refused_for` reads back off
 /// the expansion.
-#[cfg(feature = "serde")]
 fn emitted_trait(declared: &ItemTrait) -> ItemTrait {
     let mut emitted = declared.clone();
     for member in &mut emitted.items {
@@ -807,7 +755,6 @@ fn emitted_trait(declared: &ItemTrait) -> ItemTrait {
 
 /// `typescript`, `dart`, `swift` and `kotlin` each gate their own accessors independently inside
 /// [`emit_generated_clients`], so this wrapper needs only `serde`.
-#[cfg(feature = "serde")]
 fn generated_clients(
     service: &parse::ServiceDef,
     non_exhaustive: bool,
@@ -815,9 +762,6 @@ fn generated_clients(
 ) -> TokenStream {
     emit_generated_clients(service, non_exhaustive, openapi)
 }
-
-#[cfg(test)]
-mod feature_tests;
 
 #[cfg(test)]
 mod mcp_tests;

@@ -265,7 +265,6 @@ const EQUALISED_PATTERNS: [(&str, &str); 10] = [
     (r"^\d{3}\.\d{3}-\d{2}$", r"^[0-9]{3}\.[0-9]{3}-[0-9]{2}$"),
 ];
 
-#[cfg(feature = "serde")]
 /// Patterns a regex engine is avoidable work for, in every shape `clippy::trivial_regex` proves
 /// one is — a bare literal, and a literal run under a leading `^`, a trailing `$`, or both.
 const TRIVIAL_PATTERNS: [&str; 10] = [
@@ -281,7 +280,6 @@ const TRIVIAL_PATTERNS: [&str; 10] = [
     "abc",
 ];
 
-#[cfg(feature = "serde")]
 /// Patterns that keep their regex.
 const NON_TRIVIAL_PATTERNS: [&str; 16] = [
     "^[a-z]+$",
@@ -345,7 +343,6 @@ fn classification_haystacks() -> Vec<&'static str> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 /// The haystacks a classified pattern is held to, in the two senses that matter: every character
 /// the equalised classes are compared over, and the strings the rewrite tests use, which carry the
 /// delimiters and the near-miss prefixes a `^/` sort of pattern turns on.
@@ -375,7 +372,6 @@ fn trivial_haystacks() -> Vec<String> {
         .collect()
 }
 
-#[cfg(feature = "serde")]
 /// What a classified pattern says about one haystack — the verdict the emitted call reaches,
 /// reached here instead so it can be held against the regex the call replaced.
 fn accepts(trivial: &TrivialPattern, haystack: &str) -> bool {
@@ -1239,7 +1235,6 @@ fn test_portable_pattern_quotes_the_regex_crate_on_a_pattern_it_refuses() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_trivial_pattern_names_the_call_the_lint_names() {
     let expected = [
@@ -1271,7 +1266,6 @@ fn test_trivial_pattern_names_the_call_the_lint_names() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_trivial_pattern_leaves_every_other_pattern_its_regex() {
     for pattern in NON_TRIVIAL_PATTERNS {
@@ -1282,7 +1276,6 @@ fn test_trivial_pattern_leaves_every_other_pattern_its_regex() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_trivial_pattern_accepts_exactly_what_its_regex_accepts() {
     let haystacks = trivial_haystacks();
@@ -1387,7 +1380,6 @@ fn test_a_boundary_beside_something_clears_the_guard() {
     }
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn test_the_shapes_already_classified_still_clear_the_guard() {
     for pattern in TRIVIAL_PATTERNS.into_iter().chain(PORTABLE_PATTERNS) {

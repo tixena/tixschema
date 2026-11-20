@@ -131,11 +131,8 @@ asserts, with `serde`, the read that refuses a broken rule, `from_value_with` ha
 the `Invalid` issue, and `{service}_schema::validated_{operation}` refusing a broken request. Each
 expected text is what a `web` build answers.
 
-`serde` is the binary's only feature gate, on `read.rs` and on the decode and service declarations,
-which need it. Without `serde` no `#[serde(...)]` attribute is read: `validate()` names a field as
-Rust spells it and every enum as externally tagged, so `validate.rs` holds those names in one
-`#[cfg(feature = "serde")]` / `#[cfg(not(feature = "serde"))]` pair of constants. A new shape, or a
-new place a rule is held, gets a model and a test here, under no other gate. `just check-mix` runs
+The binary has no feature gate. A new shape, or a new place a rule is held, gets a model and a
+test here, under no gate. `just check-mix` runs
 the binary with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`.
 
 ### Testing the `mcp` Transport
@@ -172,7 +169,7 @@ there by its `$defs` name before any test compares its bytes.
   and for the `amqp_rpc` server, each exported, linted by the package's own clippy table.
 - `tests/crates_apart/sealed_parcel_desk/` and `tests/sealed_parcel_desk_tests.rs`: a crate that
   places the transports of a `non_exhaustive` service, and the test binary that builds what they
-  seal from another crate. The root's `serde` feature turns the crate's `service` feature on.
+  seal from another crate. The root lists it with its `service` feature on.
 
 ### Running Single Tests During Development
 
@@ -296,7 +293,7 @@ A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci
 The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
 
 1. `just check` (cargo check of this package and of the tests of `bson3/`, then clippy)
-2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature without `serde`, alone and in `typescript,zod` and `dart,swift,kotlin`)
+2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature alone and in `typescript,zod` and `dart,swift,kotlin`)
 3. `cargo test --verbose` (basic tests)
 4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
 5. `just typecheck-ts` (the emitted TypeScript through a real `tsc` under `strict` and every other type-checking flag it has, `isolatedDeclarations` with `declaration` among them, and a second package compiled against the declarations emitted for it)
@@ -304,7 +301,7 @@ The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is st
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 8. Discord notification with build status
 
-The gate lints and tests one feature selection of one package. `just check-mix` compiles the library, and the tests of `bson3/`, the package that tests against version 3 of the `bson` library, under every feature by itself, so a declaration and its use that carry different features fail on the next push, and runs the every-build validation tests in five builds, so a rule that one of them stops holding fails there too. What only the full run reaches: the lints of each combination of the `web`, `mobile` and `mongo` sets, every other test in those combinations, the lints of `bson3/`, and the run of its tests. A break there is found at the next full run. A build without `serde` is compiled by `just check-mix`, and only the full run lints it, through `just lint-sets`.
+The gate lints and tests one feature selection of one package. `just check-mix` compiles the library, and the tests of `bson3/`, the package that tests against version 3 of the `bson` library, under every feature by itself, so a declaration and its use that carry different features fail on the next push, and runs the every-build validation tests in five builds, so a rule that one of them stops holding fails there too. What only the full run reaches: the lints of each combination of the `web`, `mobile` and `mongo` sets, every other test in those combinations, the lints of `bson3/`, and the run of its tests. A break there is found at the next full run.
 
 `just check-all` builds what the first two lines of `just check-mix` build, over every combination of the features in place of each feature by itself: this package's library, then the tests of `bson3/` and tixschema. `just ci` runs it, and neither workflow does.
 

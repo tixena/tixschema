@@ -6,15 +6,11 @@ use crate::models::{
     AdjacentContactDraft, ContactDraft, PairDraft, RosterDraft, SignupDraft, TaggedContactDraft,
     UntaggedContactDraft,
 };
-#[cfg(feature = "serde")]
 use crate::models::{ProfileDraft, Username};
 
 /// The path `validate()` names `address` by in `Contact`, `TaggedContact`, `AdjacentContact` and
 /// `UntaggedContact`.
-#[cfg(feature = "serde")]
 const ADDRESS_PATHS: [&str; 4] = ["Email.address", "address", "contact.address", "address"];
-#[cfg(not(feature = "serde"))]
-const ADDRESS_PATHS: [&str; 4] = ["Email.address"; 4];
 
 #[test]
 fn a_named_struct_reports_its_broken_rule() {
@@ -46,7 +42,6 @@ fn a_tuple_struct_reports_each_broken_slot() {
     );
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_brand_reports_its_broken_rule() {
     assert_eq!(
@@ -56,7 +51,6 @@ fn a_brand_reports_its_broken_rule() {
     assert_eq!(Username::new("abc".to_owned()).map(|_| ()), Ok(()));
 }
 
-#[cfg(feature = "serde")]
 #[test]
 fn a_field_typed_with_an_alias_of_a_brand_reports_the_brands_rule() {
     let broken = ProfileDraft {

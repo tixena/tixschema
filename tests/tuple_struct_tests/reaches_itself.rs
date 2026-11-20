@@ -4,7 +4,7 @@
 //! behind `z.lazy`: read as it stands, it names a binding that is still being built and the
 //! generated module throws as it is imported.
 
-#![cfg(all(feature = "serde", feature = "zod", feature = "typescript"))]
+#![cfg(all(feature = "zod", feature = "typescript"))]
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 

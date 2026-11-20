@@ -79,12 +79,6 @@ fn serde_writes_and_reads_each_usize_of_placed() {
     );
 }
 
-#[cfg(feature = "serde")]
 fn slot_index(value: usize) -> SlotIndex {
     SlotIndex::new(value).unwrap()
-}
-
-#[cfg(not(feature = "serde"))]
-fn slot_index(value: usize) -> SlotIndex {
-    SlotIndexDraft(value).into()
 }

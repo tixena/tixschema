@@ -2,7 +2,7 @@
 //! warnings as errors, against serde, in each place a member holds one, and each payload serde
 //! refuses refused.
 
-#![cfg(all(feature = "swift", feature = "serde"))]
+#![cfg(feature = "swift")]
 
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;

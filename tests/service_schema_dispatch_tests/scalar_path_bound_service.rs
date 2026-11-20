@@ -1,8 +1,6 @@
 //! A single scalar argument that already is the whole message, bound whole by the path's one
 //! placeholder of its own name - driven through the `http_rest` dispatcher by hand, no server.
 
-#![cfg(feature = "serde")]
-
 use core::future::{Future, ready};
 use core::pin::pin;
 use core::task::{Context as PollContext, Poll, Waker};

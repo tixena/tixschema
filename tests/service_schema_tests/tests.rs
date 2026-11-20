@@ -3,8 +3,6 @@
 //! operation, `async fn` is gone in favour of a returned future, a one-way operation answers with
 //! nothing, and a wire-name override changes nothing about the Rust the author writes.
 
-#![cfg(feature = "serde")]
-
 use crate::amqp_transport;
 use core::future::{Future, ready};
 use core::pin::pin;

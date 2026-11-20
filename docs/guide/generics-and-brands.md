@@ -305,10 +305,10 @@ Remove `#[derive(Default)]` from the brand and write `#[serde(default = "...")]`
 
 The seal is for immutability, not for security: `model_schema_read_unjudged` and `decode_with_read_unjudged` stay public on every brand, and a holder reads the brands it holds through them. The TypeScript side cannot be sealed: `value as LabelText` is a cast the compiler accepts for any string, so only a read through the brand's Zod schema checks a value there.
 
-A brand exists with tixschema's `serde` feature, and its rules then hold whatever the other features. Without the feature no `#[serde(...)]` attribute is read, so a `#[serde(transparent)]` struct is a struct like any other, and a `pattern`, `minLength` or `maxLength` written on it is refused, naming the feature:
+A brand's rules hold whatever the features. A `pattern`, `minLength` or `maxLength` written on a struct that is no brand is refused:
 
 ```text
-error: model_schema: type `Username`: `minLength` is supported only on a branded newtype: a `#[serde(transparent)]` struct serde writes as the value of one field. A branded newtype is read with tixschema's `serde` feature, which this build has off. On a field, write it in `#[model_schema_prop(...)]`.
+error: model_schema: type `Username`: `minLength` is supported only on a branded newtype: a `#[serde(transparent)]` struct serde writes as the value of one field. On a field, write it in `#[model_schema_prop(...)]`.
 ```
 
 A `#[serde(transparent)]` struct with named fields is the same brand, over the one field serde reads it as -- the one that is not skipped for reading, carries no `default` and is not written `PhantomData`. serde writes `struct Slug { text: String }` as the string alone, exactly as it writes `struct Slug(String)`, so the two publish the same thing on every surface, and everything this section says of the slot holds for that field: the `Display` requirement and `no_display`, the checks written on the type, and no `#[model_schema_prop(...)]` on the field itself. A key on any other field of the struct, one serde neither reads nor writes (a skipped field, a `PhantomData` marker), is refused too.

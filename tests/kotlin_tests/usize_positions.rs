@@ -27,11 +27,7 @@ fn a_usize_is_a_ulong_in_each_place_a_member_holds_one() {
     for expected in [
         "val at: ULong,",
         // A `#[serde(default)]` is read only where tixschema reads serde attributes.
-        if cfg!(feature = "serde") {
-            "val defaulted: ULong = "
-        } else {
-            "val defaulted: ULong,"
-        },
+        "val defaulted: ULong = ",
         "val held: Holding<ULong>,",
         "val indexed: Map<ULong, String>,",
         "val keyed: Map<String, ULong>,",
@@ -72,7 +68,6 @@ fn a_literal_and_a_default_of_a_usize_are_written_as_its_digits() {
                    18446744073709551615, got ${pinned}\")";
     assert!(placed.contains(literal), "no `{literal}` in: {placed}");
     // A `#[serde(default)]` is read only where tixschema reads serde attributes.
-    #[cfg(feature = "serde")]
     assert!(
         placed.contains(", \"18446744073709551615\"),"),
         "no default in: {placed}"

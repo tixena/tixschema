@@ -4,8 +4,6 @@
 //! `206` range answer coming back as `StreamedAnswer::Partial` with its own `content-range`, both
 //! answers carrying their `content-type`.
 
-#![cfg(feature = "serde")]
-
 use crate::stream_http_rest_client;
 use core::future::{Future, ready};
 use core::pin::pin;

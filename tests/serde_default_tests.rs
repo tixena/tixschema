@@ -25,7 +25,7 @@ mod dart_integer_read;
 mod tests;
 
 #[cfg(test)]
-#[cfg(all(feature = "serde", feature = "typescript"))]
+#[cfg(feature = "typescript")]
 #[path = "support/typescript_brand.rs"]
 mod typescript_brand;
 
@@ -63,7 +63,7 @@ mod variants;
 mod kotlin_numbers;
 
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_pathed.rs"]
 mod kotlin_pathed;
 

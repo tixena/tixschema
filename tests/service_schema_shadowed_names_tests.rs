@@ -4,8 +4,6 @@
 //! held to the same in `service_schema_dual_transport_proof_tests` and
 //! `service_schema_ws_rpc_proof_tests`, where they are also run.
 
-#![cfg(feature = "serde")]
-
 #[cfg(test)]
 #[path = "service_schema_shadowed_names_tests/tests.rs"]
 mod tests;

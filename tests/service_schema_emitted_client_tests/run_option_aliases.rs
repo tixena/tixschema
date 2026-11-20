@@ -4,10 +4,7 @@
 //! a tuple struct and the slot of a variant. Beside it, a field of the alias, its key left out for
 //! `None` or, under `nullable`, written as `null`.
 
-#![cfg(all(
-    feature = "serde",
-    any(feature = "dart", feature = "swift", feature = "kotlin")
-))]
+#![cfg(any(feature = "dart", feature = "swift", feature = "kotlin"))]
 
 use core::fmt::Write as _;
 
