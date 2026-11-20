@@ -640,6 +640,9 @@ fn test_untagged_wire_shape_matches_serde() {
     );
 }
 
+/// A brand is a `#[serde(transparent)]` newtype, which only a build that reads serde attributes
+/// sees.
+#[cfg(feature = "serde")]
 #[test]
 fn test_branded_newtype_wraps_the_inner_value() {
     let dart = sku_dart::dart_definition();

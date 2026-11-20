@@ -22998,7 +22998,9 @@ fn a_parenthesis_inside_a_quoted_text_does_not_end_a_map() {
 }
 
 /// A brand that carries no bound and names no function keeps the read serde's derive writes it:
-/// its item is emitted as it was written, and nothing beside it is a read of the macro's.
+/// its item is emitted as it was written, and nothing beside it is a read of the macro's. A brand
+/// is a `#[serde(transparent)]` newtype, which only a build that reads serde attributes sees.
+#[cfg(feature = "serde")]
 #[test]
 fn a_brand_with_no_rule_gains_no_read_of_the_macros() {
     for (args, source, emitted) in [

@@ -127,10 +127,14 @@ fn a_member_named_validation_issues_keeps_its_key() {
         draft.contains("public var validationIssues_: [String]; "),
         "got: {swift}"
     );
-    assert!(
-        draft.contains("case validationIssues_ = \"validationIssues\"; "),
-        "got: {swift}"
-    );
+    // The key is the `rename_all` one where tixschema reads serde attributes, and the Rust name
+    // where it reads none.
+    let key = if cfg!(feature = "serde") {
+        "case validationIssues_ = \"validationIssues\"; "
+    } else {
+        "case validationIssues_ = \"validation_issues\"; "
+    };
+    assert!(draft.contains(key), "got: {swift}");
     assert_eq!(
         serde_json::to_string(&AuditDraft {
             validation_issues: Vec::new()

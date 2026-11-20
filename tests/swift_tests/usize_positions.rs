@@ -1,7 +1,9 @@
 //! A `usize` is a `UInt64` in each place a member holds one, read through the fitted read of a
 //! fixed-width integer, and a `literal` and a default of one are written as its digits.
 
-use super::usize_positions_models::{placed_swift, slot_index_swift};
+use super::usize_positions_models::placed_swift;
+#[cfg(feature = "serde")]
+use super::usize_positions_models::slot_index_swift;
 
 #[test]
 fn a_usize_is_a_uint64_in_each_place_a_member_holds_one() {
@@ -28,11 +30,17 @@ fn a_usize_is_a_uint64_in_each_place_a_member_holds_one() {
     ] {
         assert!(placed.contains(expected), "no `{expected}` in: {placed}");
     }
-    let brand = slot_index_swift::swift_definition();
-    assert!(
-        brand.contains("public struct SlotIndex: Codable, Sendable { public let value: UInt64;"),
-        "got: {brand}"
-    );
+    // A brand is a `#[serde(transparent)]` newtype, which only a build that reads serde attributes
+    // sees.
+    #[cfg(feature = "serde")]
+    {
+        let brand = slot_index_swift::swift_definition();
+        assert!(
+            brand
+                .contains("public struct SlotIndex: Codable, Sendable { public let value: UInt64;"),
+            "got: {brand}"
+        );
+    }
 }
 
 /// The fitted read names a `UInt64` `usize`, in serde's words.
@@ -48,11 +56,13 @@ fn the_fitted_read_names_a_uint64_usize() {
 #[test]
 fn a_literal_and_a_default_of_a_usize_are_written_as_its_digits() {
     let placed = placed_swift::swift_definition();
-    for expected in [
-        "if pinned != 18446744073709551615 { errors.append(\"'pinned': not the literal \
-         18446744073709551615, got \\(pinned)\") }",
-        "Data(\"18446744073709551615\".utf8)",
-    ] {
-        assert!(placed.contains(expected), "no `{expected}` in: {placed}");
-    }
+    let literal = "if pinned != 18446744073709551615 { errors.append(\"'pinned': not the literal \
+                   18446744073709551615, got \\(pinned)\") }";
+    assert!(placed.contains(literal), "no `{literal}` in: {placed}");
+    // A `#[serde(default)]` is read only where tixschema reads serde attributes.
+    #[cfg(feature = "serde")]
+    assert!(
+        placed.contains("Data(\"18446744073709551615\".utf8)"),
+        "no default in: {placed}"
+    );
 }

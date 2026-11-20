@@ -479,6 +479,7 @@ fn serde_still_reads_its_own_attributes() {
         serde_json::to_string(&LooseDraft::Unnamed)
             .unwrap_err()
             .to_string(),
-        "the enum variant Loose::Unnamed cannot be serialized"
+        // serde names the type it derives on by its Rust ident, which is the draft's.
+        "the enum variant LooseDraft::Unnamed cannot be serialized"
     );
 }

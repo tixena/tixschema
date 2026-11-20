@@ -347,6 +347,9 @@ fn an_untagged_enum_tries_each_member_in_turn() {
     assert!(swift.contains("no untagged member matched"), "got: {swift}");
 }
 
+/// A brand is a `#[serde(transparent)]` newtype, which only a build that reads serde attributes
+/// sees.
+#[cfg(feature = "serde")]
 #[test]
 fn a_branded_newtype_is_read_from_a_single_value_and_written_as_its_value() {
     let swift = correlation_id_swift::swift_definition();
