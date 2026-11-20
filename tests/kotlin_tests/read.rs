@@ -14,11 +14,11 @@ use super::fixed_arrays_models::{
 };
 #[cfg(feature = "serde")]
 use super::kotlin_pathed::PATHED;
-#[cfg(feature = "serde")]
 use super::kotlin_thrown::{THROWN, held_refusal};
 
 /// The function that names the place of a map key a brand's check refused: the steps of the path
 /// kotlinx states, then the key.
+#[cfg(feature = "serde")]
 const PLACE: &str = r#"@OptIn(ExperimentalSerializationApi::class) private fun kotlinSchemaPlace(input: Decoder, key: String): String { val at = try { (input as? JsonDecoder)?.decodeJsonElement(); null } catch (probe: JsonDecodingException) { probe.path }; return (Regex("""\.([^.\[]+)|\[(\d+)]|\['(.*?)']""").findAll(at.orEmpty()).map { step -> step.groupValues.drop(1).joinToString("") }.toList() + key).joinToString(".") }; "#;
 
 /// The private functions a serializer holds ahead of its `deserialize` where it reads an element

@@ -58,6 +58,7 @@ pub const STOWING: [&str; 7] = [
 /// What [`Stowing`] is read from with entries under two names: two variants' names in each order,
 /// and a variant's name beside its alias. serde reads the first entry in the object's order, and
 /// TypeScript and Zod refuse each.
+#[cfg(feature = "serde")]
 pub const UNDER_TWO_NAMES: [&str; 3] = [
     r#"{"note":"a","Bay":{"label":"n"},"Dock":{"label":"s"}}"#,
     r#"{"note":"a","Dock":{"label":"s"},"Bay":{"label":"n"}}"#,
@@ -65,10 +66,12 @@ pub const UNDER_TWO_NAMES: [&str; 3] = [
 ];
 
 /// What [`Chafing`] is read from.
+#[cfg(feature = "serde")]
 pub const CHAFING: &str = r#"{"kind":"Rope","held":{"label":"n"},"north":2}"#;
 
 /// What [`Fraying`] is read from: a key its struct reads beside the tag and the content, and a key
 /// no member reads as well.
+#[cfg(feature = "serde")]
 pub const FRAYING: [&str; 2] = [
     r#"{"kind":"Rope","held":{"label":"n"},"label":"m"}"#,
     r#"{"kind":"Rope","held":{"label":"n"},"label":"m","north":2}"#,
@@ -76,6 +79,7 @@ pub const FRAYING: [&str; 2] = [
 
 /// What [`Belting`] is read from: a variant's entry, and no variant's entry, of a key no variant is
 /// read under and of none, where serde reads no value.
+#[cfg(feature = "serde")]
 pub const BELTING: [&str; 3] = [
     r#"{"Bay":{"label":"n"},"note":"a"}"#,
     r#"{"Other":1,"note":"a"}"#,
@@ -84,6 +88,7 @@ pub const BELTING: [&str; 3] = [
 
 /// What [`Heaving`] is read from: one variant's entry, two variants' entries in each order, and an
 /// alias after a variant's entry.
+#[cfg(feature = "serde")]
 pub const HEAVING: [&str; 4] = [
     r#"{"Bay":{"label":"n"},"north":2}"#,
     r#"{"Bay":{"label":"n"},"Dock":{"label":"s"},"north":2}"#,
@@ -93,6 +98,7 @@ pub const HEAVING: [&str; 4] = [
 
 /// What [`Cleating`] is read from: a variant under its `rename`, one under the enum's `rename_all`,
 /// and one under its Rust name, which serde reads no variant under.
+#[cfg(feature = "serde")]
 pub const CLEATING: [&str; 3] = [
     r#"{"pier":{"label":"n"},"north":2}"#,
     r#"{"open_bay":{"label":"n"},"north":2}"#,
@@ -192,6 +198,7 @@ pub const SCARFING: [&str; 3] = [r#"{"label":"n","north":2}"#, "{}", r#"{"label"
 /// does not, a struct beside a member of the variant's own, in the
 /// order serde writes them and in another, the member under its alias and under both of its
 /// names, and the struct's key absent.
+#[cfg(feature = "serde")]
 pub const GAFFING: [&str; 8] = [
     r#"{"Counted":{}}"#,
     r#"{"Counted":{"north":2}}"#,
@@ -205,6 +212,7 @@ pub const GAFFING: [&str; 8] = [
 
 /// What [`Bowlining`] is read from: [`GAFFING`]'s variants under a tag and a content key, and a
 /// member that names a function flattened after a struct.
+#[cfg(feature = "serde")]
 pub const BOWLINING: [&str; 7] = [
     r#"{"kind":"Counted","held":{}}"#,
     r#"{"kind":"Counted","held":{"north":2}}"#,
@@ -218,6 +226,7 @@ pub const BOWLINING: [&str; 7] = [
 /// What [`Swaying`] is read from: the keys of its struct beside a member of the variant's own, a
 /// count, a count of text, no key, the struct's key alone, which neither the struct nor a count
 /// reads, and the keys of the struct and the member beside a key neither reads.
+#[cfg(feature = "serde")]
 pub const SWAYING: [&str; 6] = [
     r#"{"note":"a","label":"n"}"#,
     r#"{"north":2}"#,
@@ -230,6 +239,7 @@ pub const SWAYING: [&str; 6] = [
 /// What [`Whelping`] is read from: a struct beside a member of the variant's own beside the tag,
 /// in the order serde writes them and in another, a struct alone beside the tag and beside a key
 /// no member reads, and the tag alone.
+#[cfg(feature = "serde")]
 pub const WHELPING: [&str; 5] = [
     r#"{"kind":"Labelled","label":"n","note":"a"}"#,
     r#"{"note":"a","label":"n","kind":"Labelled"}"#,
@@ -239,6 +249,7 @@ pub const WHELPING: [&str; 5] = [
 ];
 
 /// What [`Broaching`] is read from at `u8`: no entry, a count, and a count of text.
+#[cfg(feature = "serde")]
 pub const BROACHING: [&str; 3] = [
     r#"{"Counted":{}}"#,
     r#"{"Counted":{"north":2}}"#,
@@ -634,6 +645,7 @@ pub enum Snubber {
 
 /// [`Snubber`] flattened ahead of a member that names a function: serde hands the function every
 /// key but the tag and the content.
+#[cfg(feature = "serde")]
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Chafing {
@@ -646,6 +658,7 @@ pub struct Chafing {
 
 /// [`Snubber`] flattened ahead of a struct, which serde hands every key but the tag and the
 /// content.
+#[cfg(feature = "serde")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fraying {
@@ -671,6 +684,7 @@ pub enum Jibing {
 }
 
 /// A member that names a function flattened after [`Jibing`].
+#[cfg(feature = "serde")]
 #[model_schema(nonstrict)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Cleating {
@@ -788,6 +802,7 @@ pub enum Whelping {
 }
 
 /// A map of the enum's own parameter flattened alone in a variant written under its name.
+#[cfg(feature = "serde")]
 #[model_schema(default_types(Count = u8))]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Broaching<Count> {

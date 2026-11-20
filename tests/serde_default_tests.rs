@@ -47,6 +47,12 @@ mod swift_valid;
 #[path = "support/swift_valid_free.rs"]
 mod swift_valid_free;
 
+/// The `validate()` a draft declares.
+#[cfg(test)]
+#[cfg(feature = "swift")]
+#[path = "support/swift_validating.rs"]
+mod swift_validating;
+
 #[cfg(test)]
 #[path = "serde_default_tests/variants.rs"]
 mod variants;
@@ -62,6 +68,6 @@ mod kotlin_numbers;
 mod kotlin_pathed;
 
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_thrown.rs"]
 mod kotlin_thrown;

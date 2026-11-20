@@ -14,7 +14,7 @@ mod tests;
 mod kotlin_pathed;
 
 #[cfg(test)]
-#[cfg(all(feature = "kotlin", feature = "serde"))]
+#[cfg(feature = "kotlin")]
 #[path = "support/kotlin_thrown.rs"]
 mod kotlin_thrown;
 
@@ -94,7 +94,7 @@ mod unrecorded_options_models;
 /// under a function that answers the payload as it was handed and under one that answers `null`,
 /// and an enum under a tag alone.
 #[cfg(test)]
-#[cfg(feature = "kotlin")]
+#[cfg(all(feature = "kotlin", feature = "serde"))]
 #[path = "kotlin_tests/corrected_options_models.rs"]
 mod corrected_options_models;
 

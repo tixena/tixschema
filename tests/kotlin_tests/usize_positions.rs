@@ -26,7 +26,12 @@ fn a_usize_is_a_ulong_in_each_place_a_member_holds_one() {
     let declared = unannotated(&placed);
     for expected in [
         "val at: ULong,",
-        "val defaulted: ULong = ",
+        // A `#[serde(default)]` is read only where tixschema reads serde attributes.
+        if cfg!(feature = "serde") {
+            "val defaulted: ULong = "
+        } else {
+            "val defaulted: ULong,"
+        },
         "val held: Holding<ULong>,",
         "val indexed: Map<ULong, String>,",
         "val keyed: Map<String, ULong>,",
@@ -63,13 +68,15 @@ fn a_usize_is_a_ulong_in_each_place_a_member_holds_one() {
 #[test]
 fn a_literal_and_a_default_of_a_usize_are_written_as_its_digits() {
     let placed = placed_kotlin::kotlin_definition();
-    for expected in [
-        "if (pinned != 18446744073709551615uL) violations.add(\"'pinned': not the literal \
-         18446744073709551615, got ${pinned}\")",
-        ", \"18446744073709551615\"),",
-    ] {
-        assert!(placed.contains(expected), "no `{expected}` in: {placed}");
-    }
+    let literal = "if (pinned != 18446744073709551615uL) violations.add(\"'pinned': not the literal \
+                   18446744073709551615, got ${pinned}\")";
+    assert!(placed.contains(literal), "no `{literal}` in: {placed}");
+    // A `#[serde(default)]` is read only where tixschema reads serde attributes.
+    #[cfg(feature = "serde")]
+    assert!(
+        placed.contains(", \"18446744073709551615\"),"),
+        "no default in: {placed}"
+    );
 }
 
 /// A `usize`'s serializer refuses a fraction and the string of its digits in serde's words.

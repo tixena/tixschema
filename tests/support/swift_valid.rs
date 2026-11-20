@@ -13,12 +13,3 @@ pub fn draft_of(swift: &str) -> &str {
         .split_once("\n\n@dynamicMemberLookup")
         .map_or(after_the_refusal, |(draft, _)| draft.trim_end())
 }
-
-/// The `validate()` a draft declares, which makes the valid type `valid` or throws what the draft
-/// lists.
-pub fn validating(valid: &str) -> String {
-    format!(
-        "public func validate() throws -> {valid} {{ let found = validationIssues(); if \
-         !found.isEmpty {{ throw {valid}Refusal(issues: found) }}; return {valid}(draft: self) }}"
-    )
-}
