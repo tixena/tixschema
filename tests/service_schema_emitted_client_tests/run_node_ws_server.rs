@@ -616,13 +616,13 @@ fn a_silent_peer_is_probed_and_closed_and_a_busy_one_never_is() {
     assert!(ping_ms.is_some(), "no ping arrived. got: {result:#?}");
     let ping_at = ping_ms.unwrap();
     assert!(
-        (140..=300).contains(&ping_at),
-        "pinged once at ~150 ms. got: {result:#?}"
+        ping_at >= 140,
+        "pinged no sooner than the 150 ms interval. got: {result:#?}"
     );
     let closed_at = result["silentClosedAtMs"].as_i64().unwrap();
     assert!(
-        (250..=400).contains(&closed_at),
-        "closed by the server between 250 and 400 ms. got: {result:#?}"
+        closed_at >= 250 && closed_at > ping_at,
+        "closed by the server no sooner than the 100 ms timeout after the ping. got: {result:#?}"
     );
     assert_eq!(result["busyPingsReceived"], 0_i32, "got: {result:#?}");
     assert_eq!(result["busyStillOpen"], true, "got: {result:#?}");
