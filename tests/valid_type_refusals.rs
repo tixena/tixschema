@@ -9,6 +9,7 @@
     feature = "dart",
     feature = "swift",
     feature = "kotlin",
+    feature = "python",
     feature = "mongodb",
     any(feature = "chrono", feature = "jiff"),
     feature = "indexmap"

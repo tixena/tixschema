@@ -52,7 +52,7 @@ jobs:
           ${{ runner.os }}-cargo-
 
     # The emitted-client runs and the tsc type check stand down when their toolchain is missing, so CI
-    # installs each one; the runner image already carries Swift, Kotlin and a JRE.
+    # installs each one; the runner image already carries Swift, Kotlin, a JRE and Python.
     - name: Setup Node
       uses: actions/setup-node@v4
       with:
@@ -61,11 +61,12 @@ jobs:
     - name: Setup Dart
       uses: dart-lang/setup-dart@v1
 
-    - name: Install zod, ws and tsc for the emitted TypeScript
+    - name: Install zod, ws and tsc for the emitted TypeScript, and pyright for the emitted Python
       run: |
-        npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/node" zod@4.6.5 ws@8.21.3 typescript@5.9.3
+        npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/node" zod@4.6.5 ws@8.21.3 typescript@5.9.3 pyright@1.1.407
         echo "TIXSCHEMA_NODE_MODULES=$RUNNER_TEMP/node" >> "$GITHUB_ENV"
         echo "TIXSCHEMA_TSC=$RUNNER_TEMP/node/node_modules/.bin/tsc" >> "$GITHUB_ENV"
+        echo "TIXSCHEMA_PYRIGHT=$RUNNER_TEMP/node/node_modules/.bin/pyright" >> "$GITHUB_ENV"
 
     - name: Install the Kotlin jars the emitted Kotlin compiles against
       run: just kotlin-libs
@@ -79,6 +80,8 @@ jobs:
         swift --version
         kotlinc -version
         java -version
+        python3 --version
+        "$TIXSCHEMA_PYRIGHT" --version
 
     - name: Lint with every feature on but one date feature
       id: lint
@@ -86,8 +89,8 @@ jobs:
         RUSTUP_TOOLCHAIN: beta
       run: |
         echo "🧹 Linting with every feature on but chrono, then but jiff..."
-        cargo clippy --all-targets --no-default-features --features web,mobile,mongo,jiff -- -D warnings
-        cargo clippy --all-targets --no-default-features --features web,mobile,mongo,chrono -- -D warnings
+        cargo clippy --all-targets --no-default-features --features web,mobile,mongo,scripting,jiff -- -D warnings
+        cargo clippy --all-targets --no-default-features --features web,mobile,mongo,scripting,chrono -- -D warnings
 
     - name: Test with every feature on but one date feature
       id: test
@@ -95,8 +98,8 @@ jobs:
         RUSTUP_TOOLCHAIN: beta
       run: |
         echo "🧪 Testing with every feature on but chrono, then but jiff..."
-        cargo test --no-default-features --features web,mobile,mongo,jiff
-        cargo test --no-default-features --features web,mobile,mongo,chrono
+        cargo test --no-default-features --features web,mobile,mongo,scripting,jiff
+        cargo test --no-default-features --features web,mobile,mongo,scripting,chrono
 
     - name: Check every feature by itself, and the feature mix
       id: mix

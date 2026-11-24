@@ -13,6 +13,7 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](models.md#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](preprocess.md#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](dart.md#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](dart.md#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](swift.md#validate-in-the-swift-client) on every type, which [the read of each calls](swift.md#a-swift-read-refuses-what-validate-refuses) |
+| `python` | No | Python type generation via `python_definition()`: a frozen dataclass and a valid type per struct, or an `enum.Enum`, with type hints and a JSON codec of the standard library that reads and writes what serde does, for Python 3.12 or later. Some shapes so far: see [The Python target](python.md#the-python-target) |
 | `arky` | No | `TryFrom` conversions to and from arky's frontmatter `Value` on types whose [`enable` list](recovering-decode.md#opting-in) holds `"arky"`. See [arky Frontmatter Conversions](arky.md#arky-frontmatter-conversions-arky) |
 | `kotlin` | No | Kotlin type generation via `kotlin_definition()`, with `kotlinx.serialization` annotations, a [`validate()`](kotlin.md#validate-in-the-kotlin-client) on every type and [a read that refuses what it refuses](kotlin.md#the-read-in-the-kotlin-client). A consuming Kotlin build declares two runtime dependencies the emitted code names -- `org.jetbrains.kotlinx:kotlinx-serialization-json` for the JSON codec and `org.jetbrains.kotlinx:kotlinx-coroutines-core` for the transport's own reply correlation and heartbeat -- plus the Kotlin Gradle plugin `kotlin("plugin.serialization")`, on Kotlin 2.0.20 or later (a model's valid class is `@ConsistentCopyVisibility`) |
 
@@ -23,10 +24,10 @@ Common configurations:
 tixschema = "0.7"
 
 # All features including optional ones, with jiff's dates
-tixschema = { version = "0.7", features = ["zod", "typescript", "mongodb", "bson", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.7", features = ["zod", "typescript", "mongodb", "bson", "indexmap", "dart", "swift", "kotlin", "python", "arky"] }
 
 # All features including optional ones, with chrono's dates in place of jiff's
-tixschema = { version = "0.7", default-features = false, features = ["zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+tixschema = { version = "0.7", default-features = false, features = ["zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "python", "arky"] }
 
 # Minimal (TypeScript only, no Zod)
 tixschema = { version = "0.7", default-features = false, features = ["typescript"] }
@@ -35,13 +36,13 @@ tixschema = { version = "0.7", default-features = false, features = ["typescript
 tixschema = { version = "0.7", default-features = false, features = ["zod", "typescript"] }
 ```
 
-CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
+CI tests every combination of the feature sets (`web`, `mobile`, `mongo`, `scripting`) via `cargo-hack`; `just test` runs every combination of the plain features locally.
 
 The features say what tixschema can generate, and a type's [`enable` list](recovering-decode.md#opting-in) says what it generates for that type: the recovering decode for `"decode_with"`, from BSON as well under `bson`, the MongoDB layer for `"mongodb"`, under `mongodb`, and the conversions to arky's frontmatter `Value` for `"arky"`, under `arky`. A crate whose types write the list writes [the initializers](recovering-decode.md#the-support-libraries) at its root, `tixschema::decode_with_foundation!();`, and `tixschema::mongodb_foundation!();` where a type lists `"mongodb"`. `mongodb_foundation!()` writes nothing in a build without `mongodb`, so both calls stay whatever features the crate builds with.
 
 ### A member named after a word the client language reserves
 
-A Rust field or variant may carry a name Dart, Swift or Kotlin keeps for itself: `class` and `is` are ordinary Rust field names, `r#in` and `r#for` are legal ones, and a variant named `Default` becomes the member `default` wherever the client lower-cases it. Each emitter writes such a member in the form its language accepts, and the key on the wire stays the one serde writes:
+A Rust field or variant may carry a name Dart, Swift, Kotlin or Python keeps for itself: `class` and `is` are ordinary Rust field names, `r#in` and `r#for` are legal ones, and a variant named `Default` becomes the member `default` wherever the client lower-cases it. Each emitter writes such a member in the form its language accepts, and the key on the wire stays the one serde writes:
 
 ```rust
 #[model_schema()]
@@ -57,8 +58,9 @@ pub struct Reserved {
 | Dart | `final String class_; final String in_;` -- Dart has no escape for a reserved word, so the member takes a trailing underscore: `Reserved(class_: ..., in_: ...)` | `json['class']`, `json['in']` |
 | Swift | ``public let `class`: String; public let `in`: String;`` and ``case `class`; case `in`;`` in `CodingKeys` | `class`, `in` |
 | Kotlin | ``val `class`: String, val `in`: String`` | `class`, `in`, with no `@SerialName` |
+| Python | `class_: str` and `in_: str` -- Python has no escape for a keyword, so the member takes the trailing underscore PEP 8 spells: `ReservedDraft(class_=..., in_=...)` | `"class"`, `"in"` |
 
-The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, and Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords). A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, a field and a plain enum's member named `validate`, the method every emitted type has, and a plain enum's member named `index`, `values`, `wireValue` or `fromJsonUnjudged`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
+The words are each language's own: Dart's [reserved words](https://dart.dev/language/keywords), Swift's [keywords](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure/#Keywords-and-Punctuation) reserved in a declaration, a statement or an expression, Kotlin's [hard keywords](https://kotlinlang.org/docs/keyword-reference.html#hard-keywords), and Python's [keywords](https://docs.python.org/3/reference/lexical_analysis.html#keywords), its soft keywords aside. A word a language reserves in one context only -- `type` in Swift, `value` in Kotlin, `get` in Dart -- names a member as it is. Dart also moves a field named `dynamic`, the type every emitted `fromJson` and `toJson` is written with, a field and a plain enum's member named `validate`, the method every emitted type has, and a plain enum's member named `index`, `values`, `wireValue` or `fromJsonUnjudged`, each of which a Dart enum or the emitted one already holds. Where the moved name is one the type writes itself (`class` beside `class_`), it takes a second underscore.
 
 A plain enum's members are lower-cased by Dart and Swift, so the same rule reaches a variant: `Default` is `default_` in Dart and `` `default` `` in Swift. Kotlin keeps a variant's spelling, which no keyword matches.
 

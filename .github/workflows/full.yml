@@ -50,7 +50,7 @@ jobs:
           ${{ runner.os }}-cargo-
 
     # The emitted-client runs and the tsc type check stand down when their toolchain is missing, so CI
-    # installs each one; the runner image already carries Swift, Kotlin and a JRE.
+    # installs each one; the runner image already carries Swift, Kotlin, a JRE and Python.
     - name: Setup Node
       uses: actions/setup-node@v4
       with:
@@ -59,11 +59,12 @@ jobs:
     - name: Setup Dart
       uses: dart-lang/setup-dart@v1
 
-    - name: Install zod, ws and tsc for the emitted TypeScript
+    - name: Install zod, ws and tsc for the emitted TypeScript, and pyright for the emitted Python
       run: |
-        npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/node" zod@4.6.5 ws@8.21.3 typescript@5.9.3
+        npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/node" zod@4.6.5 ws@8.21.3 typescript@5.9.3 pyright@1.1.407
         echo "TIXSCHEMA_NODE_MODULES=$RUNNER_TEMP/node" >> "$GITHUB_ENV"
         echo "TIXSCHEMA_TSC=$RUNNER_TEMP/node/node_modules/.bin/tsc" >> "$GITHUB_ENV"
+        echo "TIXSCHEMA_PYRIGHT=$RUNNER_TEMP/node/node_modules/.bin/pyright" >> "$GITHUB_ENV"
 
     - name: Install the Kotlin jars the emitted Kotlin compiles against
       run: just kotlin-libs
@@ -77,6 +78,8 @@ jobs:
         swift --version
         kotlinc -version
         java -version
+        python3 --version
+        "$TIXSCHEMA_PYRIGHT" --version
 
     - name: Run code checks
       id: check
@@ -131,7 +134,7 @@ jobs:
       env:
         RUSTUP_TOOLCHAIN: beta
       run: |
-        echo "🌐 Running the emitted Node, Dart, Swift and Kotlin clients, and the tests that wait on a real clock..."
+        echo "🌐 Running the emitted Node, Dart, Swift, Kotlin and Python clients, and the tests that wait on a real clock..."
         just run-slow
 
     - name: Run security audit
