@@ -12,6 +12,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -25,7 +28,7 @@ use super::lone_slots_models::{
     StropDraft, TaggedStowDraft, Tote, ToteDraft, Twine, TwineDraft, Twined, UnskippedDraft,
     UntaggedStowDraft,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::lone_slots_models::{StowedStampDraft, TickedDraft, TickedMillisDraft};
 
 /// The payload serde writes for the value `$held`, which breaks a rule, held to what the Rust
@@ -203,6 +206,12 @@ fn date() -> DateTime<Utc> {
     DateTime::from_timestamp_millis(1_760_329_020_250).unwrap()
 }
 
+/// A date with a fraction of a second.
+#[cfg(feature = "jiff")]
+fn date() -> Timestamp {
+    Timestamp::from_millisecond(1_760_329_020_250).unwrap()
+}
+
 /// The payloads of each struct of one slot that declares no parameter.
 fn plain_rows() -> Vec<Row> {
     vec![
@@ -272,9 +281,9 @@ fn plain_rows() -> Vec<Row> {
             "Clipped",
             ClippedDraft(String::new(), 0)
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row("a date", "Ticked", &TickedDraft(date())),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row(
             "a date as a number",
             "TickedMillis",
@@ -351,7 +360,7 @@ fn generic_rows() -> Vec<Row> {
             "StowedPair<String>",
             StowedPairDraft((bale(""), "a".to_owned()))
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row(
             "a date beside the parameter",
             "StowedStamp<String>",

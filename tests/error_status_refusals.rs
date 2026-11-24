@@ -1,7 +1,7 @@
 //! What rustc prints for an `error_status` that names no status for a variant of its fault, or a name no variant has. Each case in
 //! `error_status_refusals/` is a crate of its own, held to the `.stderr` file beside it.
 
-// Every `.stderr` was written with every feature on, the build the gate runs.
+// Every `.stderr` was written with every feature on but one date feature, as the gate builds.
 #![cfg(all(
     feature = "zod",
     feature = "typescript",
@@ -9,7 +9,7 @@
     feature = "swift",
     feature = "kotlin",
     feature = "mongodb",
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     feature = "indexmap"
 ))]
 

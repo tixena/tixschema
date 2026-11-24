@@ -27,7 +27,7 @@ use super::listed_maps_models::{
     stowed_larder_swift, stowed_pantry_swift, stowed_sideboard_swift, tagged_galley_swift,
     tagged_stowed_galley_swift, trug_swift, untagged_galley_swift, untagged_stowed_galley_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::listed_maps_models::{
     DatelineDraft, PlankDraft, TimelineDraft, dateline_swift, timeline_swift,
 };
@@ -739,6 +739,38 @@ fn a_conversion_that_parses_a_date_keeps_its_try() {
     );
 }
 
+/// A list of maps of dates Swift keys natively parses each date in the conversion, which keeps
+/// its `try`; a list of maps of dates under a key Swift wraps hands on each wrapper's storage,
+/// the wrapper parsing the dates.
+#[cfg(feature = "jiff")]
+#[test]
+fn a_conversion_that_parses_a_date_keeps_its_try() {
+    let date = jiff::Timestamp::from_millisecond(1_704_164_645_678).unwrap();
+    assert_eq!(
+        read_back(&TimelineDraft {
+            by_name_lists: vec![HashMap::from([("n".to_owned(), date)])],
+            by_number_lists: vec![at_one(date)],
+            maybe_by_name: None,
+        }),
+        r#"{"by_name_lists":[{"n":"2024-01-02T03:04:05.678Z"}],"by_number_lists":[{"1":"2024-01-02T03:04:05.678Z"}]}"#
+    );
+    holds(
+        &timeline_swift::swift_definition(),
+        "",
+        "",
+        &[
+            "self.byNameLists = try wireByNameLists.map { try $0.mapValues { \
+             try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) } }; ",
+            "self.byNumberLists = wireByNumberLists.map { $0.storage }; ",
+            "self.maybeByName = try wireMaybeByName.map { try $0.mapValues { \
+             try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath) } } }",
+            "let wireValue = try container.decode(String.self, forKey: codingKey); \
+             result[key] = try Self.swiftSchemaParseIso8601Date(wireValue, \
+             codingPath: decoder.codingPath) }",
+        ],
+    );
+}
+
 /// A map whose value is an optional is stored through `updateValue`, as assigning a `nil` through
 /// the subscript removes the entry: under a key Swift wraps, where the value is converted, and
 /// under a key Swift keys natively, where `validate()` walks the value.
@@ -746,6 +778,48 @@ fn a_conversion_that_parses_a_date_keeps_its_try() {
 #[test]
 fn an_optional_value_is_stored_with_update_value_so_a_null_entry_is_kept() {
     let date = chrono::DateTime::from_timestamp_millis(1_704_164_645_678).unwrap();
+    assert_eq!(
+        read_back(&DatelineDraft {
+            maybe_by_name: HashMap::from([("n".to_owned(), None)]),
+            maybe_by_number: HashMap::from([(1, Some(date))]),
+        }),
+        r#"{"maybe_by_name":{"n":null},"maybe_by_number":{"1":"2024-01-02T03:04:05.678Z"}}"#
+    );
+    assert_eq!(
+        read_back(&DatelineDraft {
+            maybe_by_name: HashMap::from([(
+                "m".to_owned(),
+                Some(
+                    PlankDraft {
+                        label: "a".to_owned()
+                    }
+                    .validate()
+                    .unwrap()
+                )
+            )]),
+            maybe_by_number: HashMap::new(),
+        }),
+        r#"{"maybe_by_name":{"m":{"label":"a"}},"maybe_by_number":{}}"#
+    );
+    holds(
+        &dateline_swift::swift_definition(),
+        "",
+        "",
+        &[
+            "_ = result.updateValue(try wireValue.map { try Self.swiftSchemaParseIso8601Date($0, \
+             codingPath: decoder.codingPath) }, forKey: key) }",
+            "_ = entries.updateValue(nil, forKey: entry.stringValue) }",
+        ],
+    );
+}
+
+/// A map whose value is an optional is stored through `updateValue`, as assigning a `nil` through
+/// the subscript removes the entry: under a key Swift wraps, where the value is converted, and
+/// under a key Swift keys natively, where `validate()` walks the value.
+#[cfg(feature = "jiff")]
+#[test]
+fn an_optional_value_is_stored_with_update_value_so_a_null_entry_is_kept() {
+    let date = jiff::Timestamp::from_millisecond(1_704_164_645_678).unwrap();
     assert_eq!(
         read_back(&DatelineDraft {
             maybe_by_name: HashMap::from([("n".to_owned(), None)]),

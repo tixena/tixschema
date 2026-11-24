@@ -38,13 +38,45 @@ mod optional_date_hook {
     }
 }
 
+/// Version 3's hook that stores a jiff `Timestamp` as a BSON date, over an `Option` of one,
+/// written here over the hook itself, as the chrono one above.
 #[cfg(test)]
-#[cfg(all(feature = "chrono", feature = "mongodb"))]
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+mod optional_date_hook {
+    use jiff::Timestamp;
+    use serde::{Deserialize as _, Deserializer, Serializer};
+
+    use super::date_hook;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Timestamp>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let stored = Option::<bson::DateTime>::deserialize(deserializer)?;
+        Ok(stored.map(bson::DateTime::to_jiff))
+    }
+
+    /// serde hands a hook its field by reference, here an `Option`: read as the date it may hold.
+    pub fn serialize<'held, S, T>(value: &'held T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        &'held T: Into<Option<&'held Timestamp>>,
+    {
+        let held: Option<&Timestamp> = value.into();
+        match held {
+            Some(at) => date_hook::serialize(at, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
+#[cfg(test)]
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
 #[path = "../../tests/mongodb_query_tests/tests.rs"]
 mod tests;
 
 // Outside `cfg(test)`, where clippy's `large_stack_frames` reports what a type generates.
-#[cfg(all(feature = "chrono", feature = "mongodb"))]
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
 #[path = "../../tests/mongodb_query_tests/wide.rs"]
 mod wide;
 
@@ -53,3 +85,9 @@ mod wide;
 #[cfg(test)]
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 use bson::serde_helpers::datetime::FromChrono04DateTime as date_hook;
+
+// Version 3's hook that stores a jiff `Timestamp` as a BSON date, under the name the shared
+// sources write as a field's `with`.
+#[cfg(test)]
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+use bson::serde_helpers::datetime::FromJiff02Timestamp as date_hook;

@@ -55,6 +55,60 @@ mod dated {
     }
 }
 
+/// A range of dates, and the date it holds written alone.
+#[cfg(feature = "jiff")]
+mod dated {
+    use core::ops::Range;
+
+    use jiff::Timestamp;
+    use serde::{Deserialize, Serialize};
+    use tixschema::model_schema;
+
+    use super::member_text;
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct Timesheet {
+        pub at: Timestamp,
+        pub shift: Range<Timestamp>,
+    }
+
+    #[test]
+    fn a_range_of_dates_holds_the_date_as_a_date_field_writes_it() {
+        let typescript = Timesheet::ts_definition();
+        let typed = member_text(&typescript, "at").trim_end_matches(';');
+        assert!(
+            typescript.contains(&format!("shift: {{ start: {typed}; end: {typed} }};")),
+            "{typescript}"
+        );
+        let zod = Timesheet::zod_schema();
+        let parsed = member_text(&zod, "at").trim_end_matches(',');
+        assert!(
+            zod.contains(&format!(
+                "shift: z.strictObject({{ start: {parsed}, end: {parsed} }}),"
+            )),
+            "{zod}"
+        );
+        let document = Timesheet::json_schema();
+        assert_eq!(
+            document["properties"]["shift"]["properties"]["start"],
+            document["properties"]["at"]
+        );
+        assert_eq!(
+            document["properties"]["shift"]["properties"]["end"],
+            document["properties"]["at"]
+        );
+        let shift = super::super::models::rostered().shift.clone();
+        let timesheet = TimesheetDraft {
+            at: shift.start,
+            shift,
+        };
+        let read: Timesheet =
+            serde_json::from_str(&serde_json::to_string(&timesheet).unwrap()).unwrap();
+        assert_eq!(read, timesheet.validate().unwrap());
+    }
+}
+
 /// A range of ids, and the id it holds written alone.
 #[cfg(feature = "mongodb")]
 mod identified {
@@ -149,7 +203,7 @@ fn described() -> Vec<Described> {
         ("Excursion", Excursion::json_schema, reads::<Excursion>),
         ("Frontier", Frontier::json_schema, reads::<Frontier>),
         ("Positioned", Positioned::json_schema, reads::<Positioned>),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         (
             "Rostered",
             super::models::Rostered::json_schema,
@@ -383,7 +437,7 @@ fn the_json_schema_admits_what_serde_writes_and_refuses_what_serde_refuses() {
 }
 
 /// The text `field` is written with in the members of `written`, up to the end of its line.
-#[cfg(any(feature = "chrono", feature = "mongodb"))]
+#[cfg(any(feature = "chrono", feature = "jiff", feature = "mongodb"))]
 fn member_text<'written>(written: &'written str, field: &str) -> &'written str {
     written
         .lines()

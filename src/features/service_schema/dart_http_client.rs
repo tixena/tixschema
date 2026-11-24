@@ -1362,8 +1362,15 @@ fn dart_header_out_decode(ty: &Type, raw: &str) -> (String, bool) {
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
             (raw.to_owned(), false)
         }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => (raw.to_owned(), false),
         // The `DateTime` the result declares, off the RFC 3339 text the dispatcher writes.
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => (format!("DateTime.tryParse({raw})"), true),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => (format!("DateTime.tryParse({raw})"), true),
     }
 }

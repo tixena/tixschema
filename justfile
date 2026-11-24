@@ -10,6 +10,11 @@ typescript_version := "5.9.3"
 node_modules := env("TIXSCHEMA_NODE_MODULES", home_directory() / ".local/share/tixschema/node-modules")
 node_tsc := node_modules / "node_modules/.bin/tsc"
 
+# Every feature but one date feature: `chrono` and `jiff` are never on together, so each build that
+# turns every feature on is two builds, one without each. `bson3/` names its features the same.
+every_but_chrono := "--no-default-features --features web,mobile,mongo,jiff"
+every_but_jiff := "--no-default-features --features web,mobile,mongo,chrono"
+
 # Every recipe reads the modules `just node-libs` installs, as CI reads its own, unless the
 # environment names others.
 export TIXSCHEMA_NODE_MODULES := node_modules
@@ -33,22 +38,22 @@ install-tools:
 # `test-sets` is what CI runs.
 test:
     @echo "Testing all feature combinations..."
-    cargo hack test --feature-powerset --exclude-features web,mobile,mongo
-    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo
+    cargo hack test --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff
     @echo "✅ All feature combinations passed!"
 
 # Test all combinations with verbose output
 test-verbose:
     @echo "Testing all feature combinations (verbose)..."
-    cargo hack test --feature-powerset --exclude-features web,mobile,mongo --verbose
-    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --verbose
+    cargo hack test --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --verbose
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --verbose
     @echo "✅ All feature combinations passed!"
 
 # Test the powerset of the feature sets (`web`, `mobile`, `mongo`), plus the default set.
 test-sets:
     @echo "Testing every combination of the feature sets..."
-    cargo hack test --feature-powerset --include-features web,mobile,mongo
-    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo
+    cargo hack test --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff
     @echo "✅ All feature-set combinations passed!"
 
 # Test specific feature combinations manually
@@ -60,14 +65,16 @@ test-named-features:
     cargo test --no-default-features --features "typescript,zod"
     cargo test --no-default-features --features "zod,mongodb"
     cargo test --no-default-features --features "bson"
-    cargo test --all-features
+    cargo test {{every_but_chrono}}
+    cargo test {{every_but_jiff}}
     cargo test --manifest-path bson3/Cargo.toml --no-default-features
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "typescript,zod"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "zod,mongodb"
     cargo test --manifest-path bson3/Cargo.toml --no-default-features --features "bson"
-    cargo test --manifest-path bson3/Cargo.toml --all-features
+    cargo test --manifest-path bson3/Cargo.toml {{every_but_chrono}}
+    cargo test --manifest-path bson3/Cargo.toml {{every_but_jiff}}
     @echo "✅ Key feature combinations passed!"
 
 # Test with default features
@@ -116,15 +123,15 @@ lint:
 # warning in any toggle, including feature-gated test code that `lint` (default features) misses.
 lint-all:
     @echo "Linting all feature combinations..."
-    cargo hack clippy --feature-powerset --exclude-features web,mobile,mongo --all-targets -- -D warnings
-    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --all-targets -- -D warnings
+    cargo hack clippy --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
+    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
     @echo "✅ All feature combinations lint passed!"
 
 # Lint the powerset of the feature sets, the counterpart of `test-sets`; what CI runs.
 lint-sets:
     @echo "Linting every combination of the feature sets..."
-    cargo hack clippy --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
-    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo --all-targets -- -D warnings
+    cargo hack clippy --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
+    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
     cargo hack clippy --each-feature --include-features typescript,zod,dart,swift,kotlin --exclude-no-default-features --exclude-all-features --all-targets -- -D warnings
     cargo clippy --all-targets --no-default-features --features typescript,zod -- -D warnings
     cargo clippy --all-targets --no-default-features --features dart,swift,kotlin -- -D warnings
@@ -193,23 +200,28 @@ test-emitted cfg="":
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_http_service
     @command -v "${TIXSCHEMA_TSC:-tsc}" >/dev/null 2>&1 || { echo "No TypeScript compiler: run \`just node-libs\`, put \`tsc\` on PATH, or set TIXSCHEMA_TSC to one." >&2; exit 1; }
     @echo "Running the emitted TypeScript MCP server and client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
-    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_node_mcp
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests run_node_mcp
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_TSC="$(command -v "${TIXSCHEMA_TSC:-tsc}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests run_node_mcp
     @echo "Running the emitted TypeScript services whose names hold a quote against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_quoted
     @echo "Running the emitted ws_rpc headers against the Rust twins with $(command -v "${TIXSCHEMA_NODE:-node}")..."
     TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --test service_schema_emitted_client_tests run_node_ws_headers
     @echo "Running the emitted TypeScript client's text positions against the Rust twin with $(command -v "${TIXSCHEMA_NODE:-node}")..."
-    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_node_text_positions
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests run_node_text_positions
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests run_node_text_positions
     @command -v "${TIXSCHEMA_DART:-dart}" >/dev/null 2>&1 || { echo "No Dart SDK: put \`dart\` on PATH, or set TIXSCHEMA_DART to one." >&2; exit 1; }
     @echo "Running the emitted Dart client with $(command -v "${TIXSCHEMA_DART:-dart}")..."
-    TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_dart
+    TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests run_dart
+    TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests run_dart
     @command -v "${TIXSCHEMA_SWIFT:-swift}" >/dev/null 2>&1 || { echo "No Swift toolchain: put \`swift\` on PATH, or set TIXSCHEMA_SWIFT to one." >&2; exit 1; }
     @echo "Running the emitted Swift client with $(command -v "${TIXSCHEMA_SWIFT:-swift}")..."
-    TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests run_swift
+    TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests run_swift
+    TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests run_swift
     @command -v "${TIXSCHEMA_KOTLINC:-kotlinc}" >/dev/null 2>&1 || { echo "No kotlinc: put \`kotlinc\` on PATH, or set TIXSCHEMA_KOTLINC to one." >&2; exit 1; }
     @[ -d "{{kotlin_libs}}" ] || { echo "No Kotlin jars at {{kotlin_libs}}: run \`just kotlin-libs\`, or set TIXSCHEMA_KOTLIN_LIBS to a directory holding them." >&2; exit 1; }
     @echo "Running every test of the emitted-client binary, with the TypeScript, Dart, Swift and Kotlin toolchains set (Kotlin with $(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}"))..."
-    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} --all-features --test service_schema_emitted_client_tests
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests
     @echo "✅ The emitted clients build the URLs they claim to!"
 
 # The tests that wait on a real clock compile only under `cfg(slow_tests)`, which no other
@@ -225,16 +237,21 @@ run-slow: (test-emitted slow_tests)
 
 # Lint the tests that wait on a real clock, under the cfg that compiles them.
 lint-slow:
-    cargo clippy --all-targets --all-features {{slow_tests}} -- -D warnings
+    cargo clippy --all-targets {{every_but_chrono}} {{slow_tests}} -- -D warnings
+    cargo clippy --all-targets {{every_but_jiff}} {{slow_tests}} -- -D warnings
 
 # Run the generated MongoDB operations against the server TIXSCHEMA_MONGODB_URI names, under both
 # bson majors; refuses to stand down.
 test-mongodb:
     @test -n "${TIXSCHEMA_MONGODB_URI:-}" || { echo "No MongoDB server: set TIXSCHEMA_MONGODB_URI to one's address, as in mongodb://127.0.0.1:27017." >&2; exit 1; }
-    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 2..."
-    cargo test --features mongo --test mongodb_operation_bson2_tests -- --nocapture --test-threads=1
-    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 3..."
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 2 with chrono..."
+    cargo test --no-default-features --features mongo,chrono --test mongodb_operation_bson2_tests -- --nocapture --test-threads=1
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 2 with jiff..."
+    cargo test --no-default-features --features mongo,jiff --test mongodb_operation_bson2_tests -- --nocapture --test-threads=1
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 3 with jiff..."
     cargo test --manifest-path bson3/Cargo.toml --features mongo --test mongodb_operation_bson3_tests -- --nocapture --test-threads=1
+    @echo "Running the operations against the server TIXSCHEMA_MONGODB_URI names, bson 3 with chrono..."
+    cargo test --manifest-path bson3/Cargo.toml --no-default-features --features mongo,chrono --test mongodb_operation_bson3_tests -- --nocapture --test-threads=1
     @echo "✅ The operations ran against a real collection under both bson majors!"
 
 # Check code without running tests
@@ -248,16 +265,16 @@ check:
 # Check all feature combinations without running tests
 check-all:
     @echo "Checking all feature combinations..."
-    cargo hack check --feature-powerset
-    cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset --tests
+    cargo hack check --feature-powerset --mutually-exclusive-features chrono,jiff
+    cargo hack check --manifest-path bson3/Cargo.toml --feature-powerset --mutually-exclusive-features chrono,jiff --tests
     @echo "✅ All feature combinations check passed!"
 
 # A check of about five minutes, run by the CI on every push: every feature builds by itself, then
 # the `bson3/` tests build under each, then the every-build validation tests run in a few
 # combinations. Not part of `all`.
 check-mix:
-    cargo hack check --each-feature
-    cargo hack check --manifest-path bson3/Cargo.toml --each-feature --tests
+    cargo hack check --each-feature --exclude-all-features
+    cargo hack check --manifest-path bson3/Cargo.toml --each-feature --exclude-all-features --tests
     cargo test --no-default-features --test every_build_validation_tests
     cargo test --no-default-features --features web --test every_build_validation_tests
     cargo test --no-default-features --features mobile --test every_build_validation_tests
@@ -266,11 +283,13 @@ check-mix:
 
 # Check the library on the floor, `rust-version` in Cargo.toml.
 check-msrv:
-    cargo +1.91.1 check --all-features
+    cargo +1.91.1 check {{every_but_chrono}}
+    cargo +1.91.1 check {{every_but_jiff}}
 
 # Run the tests on the floor, which no CI step does: CI lints and tests on beta. No lint here.
 test-floor:
-    cargo +1.91.1 test --all-features
+    cargo +1.91.1 test {{every_but_chrono}}
+    cargo +1.91.1 test {{every_but_jiff}}
 
 # Audit the dependencies each package resolves, with cargo-audit; what CI runs. Each package's lock
 # file is generated afresh and scanned on its own.
@@ -296,18 +315,21 @@ clean:
     cargo clean --manifest-path bson3/Cargo.toml
     @echo "✅ Build artifacts cleaned!"
 
-# The gate (standardized `all` entry point across tixena repos): every feature on, one lint and one
-# test run. It is what a change is held to, here and in CI.
+# The gate (standardized `all` entry point across tixena repos): one lint and one test run with every
+# feature but chrono, and the same with every feature but jiff. It is what a change is held to, here
+# and in CI.
 all:
-    cargo clippy --all-targets --all-features -- -D warnings
-    cargo test --all-features
+    cargo clippy --all-targets {{every_but_chrono}} -- -D warnings
+    cargo clippy --all-targets {{every_but_jiff}} -- -D warnings
+    cargo test {{every_but_chrono}}
+    cargo test {{every_but_jiff}}
     @echo "All checks completed successfully!"
 
 # What CI runs: the gate, every feature by itself and the feature mix, and the emitted clients
 # under their own toolchains. It runs on master after a merge and blocks no merge.
 premerge: all check-mix test-emitted
 
-# The longer run over both packages: default and all-features lints, the format check and the
+# The longer run over both packages: default and every-feature lints, the format check and the
 # named feature lists (what `all` ran before). Run every few days, with the feature sets.
 all-named: lint lint-all-features test-named-features
     @echo "All named checks completed successfully!"
@@ -317,11 +339,14 @@ all-named: lint lint-all-features test-named-features
 all-powerset: lint lint-all test
     @echo "All powerset checks completed successfully!"
 
-# Lint with every feature on at once - one build that reaches the feature-gated code (dart,
-# chrono, mongodb) the default-features `lint` misses, without the powerset's build per combination.
+# Lint with every feature on but one date feature - two builds that reach the feature-gated code
+# (dart, chrono, jiff, mongodb) the default-features `lint` misses, without the powerset's build per
+# combination.
 lint-all-features:
-    cargo clippy --all-targets --all-features -- -D warnings
-    cargo clippy --manifest-path bson3/Cargo.toml --all-targets --all-features -- -D warnings
+    cargo clippy --all-targets {{every_but_chrono}} -- -D warnings
+    cargo clippy --all-targets {{every_but_jiff}} -- -D warnings
+    cargo clippy --manifest-path bson3/Cargo.toml --all-targets {{every_but_chrono}} -- -D warnings
+    cargo clippy --manifest-path bson3/Cargo.toml --all-targets {{every_but_jiff}} -- -D warnings
 
 # Full CI pipeline - what CI would run
 ci: clean check-all lint-all test fmt
@@ -330,13 +355,14 @@ ci: clean check-all lint-all test fmt
 # Build documentation
 docs:
     @echo "Building documentation..."
-    cargo doc --no-deps --all-features
+    cargo doc --no-deps {{every_but_chrono}}
+    cargo doc --no-deps {{every_but_jiff}}
     @echo "✅ Documentation built!"
 
 # Open documentation in browser
 docs-open: docs
     @echo "Opening documentation..."
-    cargo doc --no-deps --all-features --open
+    cargo doc --no-deps {{every_but_chrono}} --open
 
 # Run specific tests by name
 test-name TEST_NAME:
@@ -347,12 +373,14 @@ test-name TEST_NAME:
 # Generate code coverage report (requires cargo-llvm-cov)
 test-coverage:
     @echo "Generating code coverage report..."
-    cargo llvm-cov --workspace --all-features
+    cargo llvm-cov --workspace {{every_but_chrono}}
+    cargo llvm-cov --workspace {{every_but_jiff}}
 
 # Generate code coverage HTML report (requires cargo-llvm-cov)
 test-coverage-html:
     @echo "Generating code coverage HTML report..."
-    cargo llvm-cov --workspace --all-features --html
+    cargo llvm-cov --workspace {{every_but_chrono}} --html
+    cargo llvm-cov --workspace {{every_but_jiff}} --html
     @echo "Coverage report generated in target/llvm-cov/html/"
 
 # Benchmark tests

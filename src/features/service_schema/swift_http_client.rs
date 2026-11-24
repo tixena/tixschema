@@ -2,7 +2,7 @@
 //! operation, mirroring the Dart client's request grammar statement for statement.
 
 use crate::features::swift::{
-    forms, swift_field_member, swift_member, swift_quoted, swift_reference_type,
+    SERDE_FRACTION, forms, swift_field_member, swift_member, swift_quoted, swift_reference_type,
 };
 use crate::features::text_forms::TextForm;
 use crate::field_type::{FieldDefType, get_field_def};
@@ -1080,8 +1080,7 @@ fn header_value_read_stmts(
 fn header_read_is_fallible(bare_ty: &Type) -> bool {
     let leaf = vec_inner(bare_ty).unwrap_or(bare_ty);
     let read = get_field_def("value", leaf, "");
-    #[cfg(feature = "chrono")]
-    if matches!(read.field_type, FieldDefType::DateTime) {
+    if read.field_type.is_instant() {
         return true;
     }
     matches!(
@@ -1516,7 +1515,7 @@ fn dated_encoder_fn(fn_prefix: &str) -> String {
          let formatter = ISO8601DateFormatter()\n    \
          formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
          var container = encoder.singleValueContainer()\n    \
-         try container.encode(formatter.string(from: date).replacingOccurrences(of: \".000Z\", with: \"Z\"))\n  \
+         try container.encode(formatter.string(from: date){SERDE_FRACTION})\n  \
          }}\n  \
          return encoder\n\
          }}"
@@ -1787,6 +1786,10 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
         FieldDefType::DateTime => format!(
             "(try? {fn_prefix}DatedDecoder().decode(Date.self, from: JSONEncoder().encode({raw})))"
         ),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => format!(
+            "(try? {fn_prefix}DatedDecoder().decode(Date.self, from: JSONEncoder().encode({raw})))"
+        ),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
         | FieldDefType::Map(_, _)
@@ -1804,5 +1807,10 @@ fn swift_header_out_decode(fn_prefix: &str, ty: &Type, raw: &str) -> String {
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
             raw.to_owned()
         }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => raw.to_owned(),
     }
 }

@@ -270,7 +270,7 @@ mod declared_default_bounds {
 
 #[cfg(feature = "zod")]
 mod zod {
-    #[cfg(all(feature = "chrono", feature = "mongodb"))]
+    #[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
     use super::MixedArguments;
     use super::keyed_alias_schema;
     use super::{
@@ -841,7 +841,7 @@ mod zod {
         assert!(!zod.contains("HashSet$SchemaFactory"), "Got: {zod}");
     }
 
-    #[cfg(all(feature = "chrono", feature = "mongodb"))]
+    #[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
     #[test]
     fn an_argument_renders_through_the_renderer_that_already_answers_for_it() {
         let zod = MixedArguments::zod_schema();
@@ -908,7 +908,7 @@ mod jsonschema {
         }
     }
 
-    #[cfg(all(feature = "chrono", feature = "mongodb"))]
+    #[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
     use super::StoredFolder;
     use super::{
         Branch, CountedFolder, EcmDocument, Envelope, Grove, KeyedByParameter, Pair, Perch, Roost,
@@ -1073,7 +1073,7 @@ mod jsonschema {
         );
     }
 
-    #[cfg(all(feature = "chrono", feature = "mongodb"))]
+    #[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
     #[test]
     fn an_argument_is_described_by_whatever_already_answers_for_it() {
         let stored = StoredFolder::json_schema()["properties"]["doc"]["properties"].clone();
@@ -1199,7 +1199,10 @@ use std::collections::{HashMap, HashSet};
 
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 use chrono::{DateTime, Utc};
-#[cfg(all(feature = "chrono", feature = "mongodb"))]
+
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+use jiff::Timestamp;
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "mongodb"))]
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -1491,6 +1494,16 @@ pub struct StoredFolder {
     pub doc: EcmDocument<ObjectId, DateTime<Utc>>,
 }
 
+/// The stored shape of the same document: a database identifier and a date where the wire shape
+/// carries a string and a number. Each argument reaches the document through whatever already
+/// describes its type, so neither is reached by a rule of its own.
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredFolder {
+    pub doc: EcmDocument<ObjectId, Timestamp>,
+}
+
 /// A date, a database identifier and a number in argument position. Each is rendered by whatever
 /// already answers for it everywhere else, so none of the three is reached by a rule of its own.
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
@@ -1500,6 +1513,17 @@ pub struct MixedArguments {
     pub keyed: Inner<ObjectId>,
     pub sized: Inner<u32>,
     pub stamped: Inner<DateTime<Utc>>,
+}
+
+/// A date, a database identifier and a number in argument position. Each is rendered by whatever
+/// already answers for it everywhere else, so none of the three is reached by a rule of its own.
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MixedArguments {
+    pub keyed: Inner<ObjectId>,
+    pub sized: Inner<u32>,
+    pub stamped: Inner<Timestamp>,
 }
 
 /// An alias and a branded newtype, named from a field that supplies each of them a concrete
@@ -1878,6 +1902,36 @@ fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
         .into(),
     };
     assert_eq!(stored.doc.created_at.timestamp(), 0);
+    assert_ne!(stored.doc.document_id.to_hex(), String::new());
+}
+
+/// The two argument kinds no build reaches without their own feature, named the same way.
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+#[test]
+fn a_dated_and_an_identified_argument_expand_to_rust_that_compiles() {
+    let mixed = MixedArgumentsDraft {
+        keyed: InnerDraft {
+            value: ObjectId::new(),
+        }
+        .into(),
+        sized: InnerDraft { value: 1_u32 }.into(),
+        stamped: InnerDraft {
+            value: Timestamp::from_second(0).unwrap(),
+        }
+        .into(),
+    };
+    assert_eq!(mixed.sized.value, 1);
+    assert_eq!(mixed.stamped.value.as_second(), 0);
+    assert_ne!(mixed.keyed.value.to_hex(), String::new());
+
+    let stored = StoredFolderDraft {
+        doc: EcmDocumentDraft {
+            created_at: Timestamp::from_second(0).unwrap(),
+            document_id: ObjectId::new(),
+        }
+        .into(),
+    };
+    assert_eq!(stored.doc.created_at.as_second(), 0);
     assert_ne!(stored.doc.document_id.to_hex(), String::new());
 }
 

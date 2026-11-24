@@ -3,7 +3,7 @@
 //! crate of its own, held to the code of each error, which rustc words differently from one
 //! release to the next.
 
-// The case is built with every feature on, the build the gate runs.
+// The case is built with every feature on but one date feature, as the gate builds.
 #![cfg(all(
     feature = "zod",
     feature = "typescript",
@@ -11,7 +11,7 @@
     feature = "swift",
     feature = "kotlin",
     feature = "mongodb",
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     feature = "indexmap"
 ))]
 
@@ -25,8 +25,13 @@ mod tests {
     use serde_json::Value;
 
     /// The features the case is built with: the ones this file is compiled under.
+    #[cfg(feature = "chrono")]
     const FEATURES: &str =
         r#""zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    /// The features the case is built with: the ones this file is compiled under.
+    #[cfg(feature = "jiff")]
+    const FEATURES: &str =
+        r#""zod", "typescript", "dart", "swift", "kotlin", "mongodb", "jiff", "indexmap""#;
 
     /// One error rustc reports for the case: its code, and the source text its first span holds.
     struct Reported {

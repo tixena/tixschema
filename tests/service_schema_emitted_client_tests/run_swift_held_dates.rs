@@ -51,6 +51,13 @@ const FIRST_WRITTEN: &str = r#""2024-01-02T03:04:05.678Z""#;
 /// What every refused payload holds in place of [`FIRST_WRITTEN`].
 const NO_DATE: &str = r#""yesterday""#;
 
+/// How serde's refusal of [`NO_DATE`] as a date starts, in the words of the date feature.
+#[cfg(feature = "chrono")]
+const SERDE_REFUSES: &str = "input contains invalid characters";
+/// How serde's refusal of [`NO_DATE`] as a date starts, in the words of the date feature.
+#[cfg(feature = "jiff")]
+const SERDE_REFUSES: &str = "failed to parse four digit integer as year";
+
 /// What the Swift read prints for a payload that holds [`NO_DATE`] as a date.
 const BAD_DATE: &str = "refused\n    bad ISO8601 date: yesterday";
 
@@ -90,9 +97,7 @@ where
     let payload = written.replacen(FIRST_WRITTEN, NO_DATE, 1);
     let refused = serde_json::from_str::<Held>(&payload).err().unwrap();
     assert!(
-        refused
-            .to_string()
-            .starts_with("input contains invalid characters"),
+        refused.to_string().starts_with(SERDE_REFUSES),
         "{refused}: {payload}"
     );
     Row {

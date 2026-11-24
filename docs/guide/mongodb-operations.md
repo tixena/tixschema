@@ -538,7 +538,7 @@ What a flagged type's own paths are follows from the shape serde writes the type
 - **No two functions of an enum's paths take one name.** `__` is in the name of an arm function and of no other, and what would break that is refused where the `enable` list is read, whether the enum lists `"mongodb"` or not, with the `mongodb` feature on and off. A variant whose Rust name holds `__` is ``model_schema: type `Transport`: variant `By__Courier` holds `__` in its name. Under a tag and `decode_with`, `__` parts the tag from the value in the function of each arm, `type__<value>()`. Rename the variant``. Two values that read as one in snake case are ``model_schema: type `Transport`: variants `ByCourier` and `Couriered` are written `by-courier` and `by_courier` under the tag `type`, and both read `by_courier` in snake case, so `type__by_courier()` would answer for both. Rename one of the two values``. An arm function that meets an `is_<variant>()`, which takes a tag key that reads `is` and a variant whose name starts with `_`, is ``model_schema: type `Transport`: the arm function `is__parcel()` of variant `Parcel` and `is__parcel()`, which asks for variant `_Parcel`, would be one function. Rename the variant `_Parcel` ``. An enum that lists `"decode_with"` alone has no arm function and is refused all the same, and an enum with no `enable` list is refused none of the three.
 - **A generic type has its paths at each filling**: with `Wrapper<T>` declaring `inner: T` and `label: String`, `Wrapper::<u32>::MONGO_FIELDS.inner()` is a `Field<Wrapper<u32>, u32>`. The arms of a generic enum are at each filling too.
 
-**A field with a serde hook is compared the way it is stored.** A `chrono` date writes text, so a date kept as a BSON date carries the `bson` library's hook, and a filter on it has to write a BSON date too. The path writes its values through the field's own hook, here bound as `date_hook`:
+**A field with a serde hook is compared the way it is stored.** A `chrono` or a `jiff` date writes text, so a date kept as a BSON date carries the `bson` library's hook, and a filter on it has to write a BSON date too. The path writes its values through the field's own hook, here bound as `date_hook`:
 
 ```rust
 // version 2 of the `bson` library
@@ -576,7 +576,7 @@ For the instant `2026-10-07T17:40:00Z`, the two filters, the hooked date as a BS
 { "opensAt": { "$lt": "2026-10-07T17:40:00Z" } }
 ```
 
-Each hook lives behind the `bson` library's `chrono-0_4` feature. The path of the attribute is called as it is written, type arguments included, so a hook written `::serde_with::As::<Option<FromChrono04DateTime>>` on an `Option` of a date is the one its path writes through. A hook on a field that holds a list writes the whole list, so that field is one whole value, a `Field<Root, Vec<T>>`.
+Each hook lives behind the `bson` library's `chrono-0_4` feature. A jiff `Timestamp` is stored as a BSON date through version 3's `bson::serde_helpers::datetime::FromJiff02Timestamp`, behind its `jiff-0_2` feature, which converts a `Timestamp` of jiff 0.2: a filter on a field written `#[serde(with = "date_hook")] pub closes_at: jiff::Timestamp`, with that hook bound as `date_hook`, writes a BSON date. Version 2 of the `bson` library has no jiff hook. The path of the attribute is called as it is written, type arguments included, so a hook written `::serde_with::As::<Option<FromChrono04DateTime>>` on an `Option` of a date is the one its path writes through. A hook on a field that holds a list writes the whole list, so that field is one whole value, a `Field<Root, Vec<T>>`.
 
 ### A type tixschema has not seen
 
@@ -931,7 +931,7 @@ error: model_schema: type `Roster`: field `by_number`: a map keyed by `u32` cann
   a value could not be written as BSON: BSON error. Kind: A serialization error occurred. Message: invalid document key type: int64.
   the row without an _id does not read as expected: undescribed: BSON error. Kind: A deserialization-related error occurred. Message: invalid type: string "8", expected u32.
   ```
-- **A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` date or time, a plain enum, and a brand over a `String`. A key the expansion cannot see into, a type of another crate or a brand declared below the type, is not refused.
+- **A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` or `jiff` date or time, a plain enum, and a brand over a `String`. A key the expansion cannot see into, a type of another crate or a brand declared below the type, is not refused.
 - **A type that lists `"decode_with"` alone builds with such a map** and reads it from JSON. Its `from_bson_piped` refuses a stored row that holds the map, with one `Undescribed` issue.
 
 ### A query the operations do not cover

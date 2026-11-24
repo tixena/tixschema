@@ -10,7 +10,7 @@
 //! Swift toolchain in `tests/service_schema_emitted_client_tests/`, in `run_swift_flattened.rs` and
 //! `run_swift_flattened_enums.rs`.
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::flattened_models::serving_swift;
 use super::flattened_models::{
     anchoring_swift, baling_swift, bowsing_swift, boxing_swift, clewing_swift, dredging_swift,
@@ -216,7 +216,7 @@ fn a_map_under_a_key_swift_wraps_is_read_by_its_wrapper_without_the_keys_taken()
 
 /// A map whose values Swift converts reads each from the text serde writes, and writes each back
 /// as that text.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_map_of_dates_is_read_and_written_through_the_text_serde_writes() {
     let serving = serving_swift::swift_definition();

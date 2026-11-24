@@ -2,7 +2,7 @@
 //! but Rust reads as serde does. Each case in `serde_default_refusals/` is a crate of its own, held
 //! to the `.stderr` file beside it.
 
-// Every `.stderr` was written with every feature on, the build the gate runs.
+// Every `.stderr` was written with every feature on but one date feature, as the gate builds.
 #![cfg(all(
     feature = "zod",
     feature = "typescript",
@@ -10,7 +10,7 @@
     feature = "swift",
     feature = "kotlin",
     feature = "mongodb",
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     feature = "indexmap"
 ))]
 

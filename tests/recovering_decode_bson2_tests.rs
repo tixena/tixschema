@@ -11,15 +11,28 @@ tixschema::mongodb_foundation!();
 #[path = "recovering_decode_bson_tests/tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[cfg(all(feature = "bson", feature = "jiff", feature = "mongodb"))]
+#[path = "recovering_decode_bson_tests/jiff_tests.rs"]
+mod tests;
+
 /// The major version of the `bson` library this binary is built against, as an example printed
 /// under it says.
 #[cfg(test)]
-#[cfg(all(feature = "bson", feature = "chrono", feature = "mongodb"))]
+#[cfg(all(
+    feature = "bson",
+    any(feature = "chrono", feature = "jiff"),
+    feature = "mongodb"
+))]
 const BSON_MAJOR: u8 = 2;
 
 /// Reads `document` with the function version 2 of the `bson` library reads a document with.
 #[cfg(test)]
-#[cfg(all(feature = "bson", feature = "chrono", feature = "mongodb"))]
+#[cfg(all(
+    feature = "bson",
+    any(feature = "chrono", feature = "jiff"),
+    feature = "mongodb"
+))]
 fn read_document<T>(document: bson::Document) -> Result<T, String>
 where
     T: for<'de> serde::Deserialize<'de>,

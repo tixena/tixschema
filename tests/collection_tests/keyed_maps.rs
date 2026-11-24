@@ -5,6 +5,8 @@
 
 use alloc::collections::BTreeMap;
 
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -260,10 +262,19 @@ pub enum Baggywrinkle {
 pub struct Futtock(char);
 
 /// A map keyed by a date under a key.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Gudgeon {
     pub days: BTreeMap<chrono::NaiveDate, u8>,
+}
+
+/// A map keyed by a date under a key.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Gudgeon {
+    pub days: BTreeMap<civil::Date, u8>,
 }
 
 /// Maps under a key, keyed by a number, a `bool`, a `char` and a brand over a `char`.

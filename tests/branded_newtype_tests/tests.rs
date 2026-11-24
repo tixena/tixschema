@@ -2442,6 +2442,157 @@ mod branded_chrono_inner_tests {
     }
 }
 
+/// The surfaces of a brand whose inner is a jiff type, pinned against what serde writes for it.
+/// `#[serde(transparent)]` puts the jiff value on the wire by itself, so the brand writes the
+/// same string and is held to the same form, by its `"format"` or by the pattern of the text serde
+/// writes — reaching it through the TypeScript name every jiff type shares with `String` is what
+/// once dropped the keyword.
+#[cfg(feature = "jiff")]
+mod branded_jiff_inner_tests {
+    use super::*;
+    use jiff::Timestamp;
+    use jiff::civil;
+    use jiff::civil::{Date, DateTime, Time};
+
+    /// The pattern a `Time` is held to: the text serde writes, its seconds written.
+    const TIME_PATTERN: &str =
+        r"^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]*[1-9])?)$";
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Stamp(Date);
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Clock(Time);
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Moment(DateTime);
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Instant(Timestamp);
+
+    #[model_schema(minLength = 10, maxLength = 10, pattern = r"^\d{4}-\d{2}-\d{2}$", enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct IsoStamp(Date);
+
+    #[model_schema(maxLength = 8, pattern = "^0", enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct EarlyClock(Time);
+
+    #[model_schema(enable = ["jsonschema"])]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct HoldsJiff {
+        pub clock: Time,
+        pub instant: Timestamp,
+        pub moment: DateTime,
+        pub stamp: Date,
+    }
+
+    #[test]
+    fn a_jiff_brand_writes_the_string_its_inner_writes() {
+        let date = civil::date(2020, 1, 2);
+        assert_eq!(
+            serde_json::to_string(&Stamp::new(date).unwrap()).unwrap(),
+            r#""2020-01-02""#
+        );
+        assert_eq!(
+            serde_json::to_string(&date).unwrap(),
+            serde_json::to_string(&Stamp::new(date).unwrap()).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_jiff_brand_is_held_to_its_form() {
+        assert_eq!(
+            Stamp::json_schema(),
+            serde_json::json!({ "type": "string", "format": "date" })
+        );
+        assert_eq!(
+            Clock::json_schema(),
+            serde_json::json!({ "type": "string", "pattern": TIME_PATTERN })
+        );
+        assert_eq!(
+            Moment::json_schema()["type"],
+            "string",
+            "a date and time with no zone is a string"
+        );
+        assert!(
+            Moment::json_schema().get("format").is_none(),
+            "no format names a date and time with no zone"
+        );
+        assert_eq!(
+            Instant::json_schema(),
+            serde_json::json!({ "type": "string", "format": "date-time" })
+        );
+    }
+
+    #[test]
+    fn a_jiff_brand_describes_what_the_field_position_describes() {
+        let holder = HoldsJiff::json_schema();
+        assert_eq!(Stamp::json_schema(), holder["properties"]["stamp"]);
+        assert_eq!(Clock::json_schema(), holder["properties"]["clock"]);
+        assert_eq!(Moment::json_schema(), holder["properties"]["moment"]);
+        assert_eq!(Instant::json_schema(), holder["properties"]["instant"]);
+    }
+
+    #[test]
+    fn a_constrained_brand_over_a_time_layers_its_own_pattern_beside_the_form() {
+        assert_eq!(
+            EarlyClock::json_schema(),
+            serde_json::json!({
+                "type": "string",
+                "pattern": TIME_PATTERN,
+                "maxLength": 8_u32,
+                "allOf": [{ "pattern": "^0" }]
+            })
+        );
+    }
+
+    #[test]
+    fn a_constrained_jiff_brand_carries_its_constraints_beside_the_format() {
+        assert_eq!(
+            IsoStamp::json_schema(),
+            serde_json::json!({
+                "type": "string",
+                "format": "date",
+                "minLength": 10_u32,
+                "maxLength": 10_u32,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            })
+        );
+    }
+
+    #[cfg(all(feature = "typescript", feature = "zod"))]
+    #[test]
+    fn the_zod_value_of_a_jiff_brand_is_the_one_a_field_writes() {
+        let zod = Stamp::zod_schema();
+        assert!(
+            zod.contains(
+                &[
+                    brand_binding("Stamp"),
+                    "z.iso.date()".to_owned(),
+                    brand_call("Stamp"),
+                ]
+                .concat()
+            ),
+            "Got:\n{zod}"
+        );
+        assert_eq!(
+            Stamp::ts_definition(),
+            r#"export type Stamp = string & $brand<"Stamp">;"#
+        );
+    }
+}
+
 /// A chrono brand's published Zod binding. None of the four constructors a chrono inner renders
 /// through produces a `ZodString`, and the ISO three extend `ZodStringFormat`, a *sibling* of
 /// `ZodString` rather than a subtype — so a binding annotated with a class read off the inner's
@@ -2608,6 +2759,190 @@ mod branded_chrono_zod_tests {
                 "Date",
                 "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
                 InstantFamily::<DateTime<Utc>>::zod_schema(),
+            ),
+        ] {
+            let line = format!(
+                "export const {name}$SchemaDefault: ZodType<{name}<{filled}>> = \
+                 {name}$SchemaFactory({argument});"
+            );
+            assert!(zod.contains(&line), "want: {line}\ngot:\n{zod}");
+        }
+    }
+}
+
+/// A jiff brand's published Zod binding. None of the four constructors a jiff inner renders
+/// through produces a `ZodString`, and the ISO three extend `ZodStringFormat`, a *sibling* of
+/// `ZodString` rather than a subtype — so a binding annotated with a class read off the inner's
+/// TypeScript name did not compile at all. Recorded verbatim on these same fixtures from tsc 5.9.3
+/// under `--strict --target ES2022 --module ESNext --moduleResolution bundler` against zod 4.4.3:
+///
+/// ```text
+/// export const UtcStamp$Schema: $ZodBranded<ZodString, "UtcStamp"> = UtcStamp$RawSchema;
+///
+/// error TS2322: Type '$ZodBranded<ZodCoercedDate<unknown>, "UtcStamp", "out">' is not assignable
+/// to type '$ZodBranded<ZodString, "UtcStamp">'.
+///   Type 'ZodCoercedDate<unknown> & { _zod: { output: Date & $brand<"UtcStamp">; }; }' is missing
+///   the following properties from type 'ZodString': email, url, jwt, emoji, and 38 more.
+///
+/// error TS2322: Type '$ZodBranded<ZodISODate, "DayStamp", "out">' is not assignable to type
+/// '$ZodBranded<ZodString, "DayStamp">'.
+///
+/// error TS2322: Type '$ZodBranded<ZodISODateTime, "MomentStamp", "out">' is not assignable to
+/// type '$ZodBranded<ZodString, "MomentStamp">'.
+///
+/// error TS2322: Type '$ZodBranded<ZodPreprocess<ZodISOTime>, "ClockStamp", "out">' is not
+/// assignable to type '$ZodBranded<ZodString, "ClockStamp">'.
+///
+/// error TS2322: Type '$ZodBranded<ZodISODate, "BoundedDay", "out">' is not assignable to type
+/// '$ZodBranded<ZodString, "BoundedDay">'.
+///
+/// error TS2322: Type '$ZodBranded<$ZodBranded<ZodISODate, "DayFamily", "out">, "BoundDay", "out">'
+/// is not assignable to type '$ZodBranded<ZodString, "BoundDay">'.
+/// ```
+///
+/// Reading the annotation back off the raw `const` clears every one of them, and `UtcStamp` then
+/// infers `Date & $brand<"UtcStamp">` where the class spelling reported
+/// `string & $brand<"UtcStamp">`.
+#[cfg(all(feature = "jiff", feature = "zod", feature = "typescript"))]
+mod branded_jiff_zod_tests {
+    use super::*;
+    use jiff::Timestamp;
+    use jiff::civil::{Date, DateTime, Time};
+
+    #[model_schema()]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct UtcStamp(Timestamp);
+
+    #[model_schema()]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct DayStamp(Date);
+
+    #[model_schema()]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct MomentStamp(DateTime);
+
+    #[model_schema()]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct ClockStamp(Time);
+
+    #[model_schema(minLength = 10, maxLength = 10)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct BoundedDay(Date);
+
+    /// A brand over a generic brand already filled at a jiff argument: the value carries two
+    /// brand markers over an ISO schema, which no single class could name.
+    #[model_schema(default_types(IdType = Date), no_display)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct DayFamily<IdType>(IdType);
+
+    #[model_schema(no_display)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct BoundDay(DayFamily<Date>);
+
+    #[model_schema(default_types(IdType = Timestamp), no_display)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct InstantFamily<IdType>(IdType);
+
+    #[test]
+    fn every_jiff_brand_is_typed_by_what_it_parses_to() {
+        for (name, value, zod) in [
+            (
+                "UtcStamp",
+                "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
+                UtcStamp::zod_schema(),
+            ),
+            ("DayStamp", "z.iso.date()", DayStamp::zod_schema()),
+            (
+                "MomentStamp",
+                concat!(
+                    r#"z.preprocess((arg) => { if (typeof arg !== "string") return arg; "#,
+                    r#"const read = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(:\d{2}(?:\.\d+)?)?$/"#,
+                    r#".exec(arg); if (!read) return arg; "#,
+                    r#"const sent = `${read[1]}T${read[2]}${read[3] ?? ":00"}`; "#,
+                    r#"return sent.replace(/\.(\d*?)0+$/, (_, kept) => kept ? `.${kept}` : ""); }, "#,
+                    r"z.string().regex(/^(?:(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|",
+                    r"[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|",
+                    r"1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|",
+                    r"(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]",
+                    r"(?:\.[0-9]*[1-9])?)$/))"
+                ),
+                MomentStamp::zod_schema(),
+            ),
+            (
+                "BoundedDay",
+                "z.iso.date().min(10, { error: (issue) => `too short: minimum length is 10, got ${[...String(issue.input)].length}` }).max(10, { error: (issue) => `too long: maximum length is 10, got ${[...String(issue.input)].length}` })",
+                BoundedDay::zod_schema(),
+            ),
+            (
+                "BoundDay",
+                "DayFamily$SchemaFactory(z.iso.date())",
+                BoundDay::zod_schema(),
+            ),
+        ] {
+            let raw = format!("const {name}$RawSchema = {value}.brand<\"{name}\">()");
+            assert!(zod.contains(&raw), "want: {raw}\ngot:\n{zod}");
+            let line = format!(
+                "export const {name}$Schema: ZodType & {{ _zod: {{ output: {name} }} }} = \
+                 {name}$RawSchema;"
+            );
+            assert!(zod.contains(&line), "want: {line}\ngot:\n{zod}");
+        }
+    }
+
+    #[test]
+    fn a_time_brand_is_typed_by_what_it_parses_to() {
+        let zod = ClockStamp::zod_schema();
+        assert!(
+            zod.contains("const ClockStamp$RawSchema = z.preprocess("),
+            "Got:\n{zod}"
+        );
+        assert!(
+            zod.contains(r#"z.iso.time()).brand<"ClockStamp">()"#),
+            "Got:\n{zod}"
+        );
+        assert!(
+            zod.contains(
+                "export const ClockStamp$Schema: ZodType & { _zod: { output: ClockStamp } } = ClockStamp$RawSchema;"
+            ),
+            "Got:\n{zod}"
+        );
+    }
+
+    /// A generic brand's `$SchemaDefault` at a jiff filling, where the same guess reached one
+    /// level up:
+    ///
+    /// ```text
+    /// export const InstantFamily$SchemaDefault: $ZodBranded<ZodString, "InstantFamily"> =
+    ///   InstantFamily$SchemaFactory(z.coerce.date());
+    ///
+    /// error TS2322: Type '$ZodBranded<ZodCoercedDate<unknown>, "InstantFamily", "out">' is not
+    /// assignable to type '$ZodBranded<ZodString, "InstantFamily">'.
+    ///   Type 'ZodCoercedDate<unknown> & { _zod: { output: Date & $brand<"InstantFamily">; }; }' is
+    ///   missing the following properties from type 'ZodString': email, url, jwt, emoji, and 38
+    ///   more.
+    /// ```
+    #[test]
+    fn a_generic_brands_default_at_a_jiff_filling_is_typed_by_what_it_parses_to() {
+        for (name, filled, argument, zod) in [
+            (
+                "DayFamily",
+                "string",
+                "z.iso.date()",
+                DayFamily::<Date>::zod_schema(),
+            ),
+            (
+                "InstantFamily",
+                "Date",
+                "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())",
+                InstantFamily::<Timestamp>::zod_schema(),
             ),
         ] {
             let line = format!(

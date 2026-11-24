@@ -11,12 +11,25 @@ tixschema::mongodb_foundation!();
 mod tests;
 
 #[cfg(test)]
-#[cfg(all(feature = "bson", feature = "chrono", feature = "mongodb"))]
+#[cfg(all(feature = "bson", feature = "jiff", feature = "mongodb"))]
+#[path = "../../tests/recovering_decode_bson_tests/jiff_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[cfg(all(
+    feature = "bson",
+    any(feature = "chrono", feature = "jiff"),
+    feature = "mongodb"
+))]
 const BSON_MAJOR: u8 = 3;
 
 /// Reads `document` with the function version 3 of the `bson` library reads a document with.
 #[cfg(test)]
-#[cfg(all(feature = "bson", feature = "chrono", feature = "mongodb"))]
+#[cfg(all(
+    feature = "bson",
+    any(feature = "chrono", feature = "jiff"),
+    feature = "mongodb"
+))]
 fn read_document<T>(document: bson::Document) -> Result<T, String>
 where
     T: for<'de> serde::Deserialize<'de>,

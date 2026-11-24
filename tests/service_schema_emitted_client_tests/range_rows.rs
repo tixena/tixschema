@@ -77,7 +77,7 @@ fn models() -> Vec<Printer> {
         ("Excursion", true, |row| printed::<Excursion>(row, true)),
         ("Frontier", true, |row| printed::<Frontier>(row, true)),
         ("Positioned", false, |row| printed::<Positioned>(row, false)),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         ("Rostered", false, |row| {
             printed::<super::range_models::Rostered>(row, false)
         }),

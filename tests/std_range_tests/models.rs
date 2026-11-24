@@ -140,6 +140,14 @@ pub struct Rostered {
     pub shift: Range<chrono::DateTime<chrono::Utc>>,
 }
 
+/// A range of dates.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Rostered {
+    pub shift: Range<jiff::Timestamp>,
+}
+
 /// One payload: its name, the type it is read as, and the JSON.
 pub struct Payload {
     pub json: String,
@@ -276,7 +284,7 @@ pub fn judged_payloads() -> Vec<Payload> {
 }
 
 /// A range of two dates, each written with its milliseconds, which every client writes back.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 pub fn rostered() -> Rostered {
     RosteredDraft {
         shift: "2026-10-16T12:00:00.125Z".parse().unwrap()
@@ -325,7 +333,7 @@ pub fn read_payloads() -> Vec<Payload> {
             "Compass",
             &CompassDraft::Plain { span: 8..13 },
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         written("a range of dates", "Rostered", &rostered()),
     ]
 }

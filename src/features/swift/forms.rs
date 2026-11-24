@@ -15,10 +15,14 @@ use crate::field_type::FieldDef;
 pub fn held_as_text(field: &FieldDef) -> Option<TextForm> {
     TextForm::of(field).filter(|form| match form {
         TextForm::Char => true,
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         TextForm::Date | TextForm::DateTime | TextForm::Time => true,
+        #[cfg(feature = "jiff")]
+        TextForm::Named => true,
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        TextForm::Zoned => false,
         #[cfg(feature = "chrono")]
-        TextForm::Zoned | TextForm::Offset => false,
+        TextForm::Offset => false,
     })
 }
 
@@ -26,14 +30,18 @@ pub fn held_as_text(field: &FieldDef) -> Option<TextForm> {
 const fn named(form: TextForm) -> &'static str {
     match form {
         TextForm::Char => "Char",
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         TextForm::Date => "Date",
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         TextForm::DateTime => "Stamp",
-        #[cfg(feature = "chrono")]
+        #[cfg(feature = "jiff")]
+        TextForm::Named => "Named",
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         TextForm::Time => "Time",
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        TextForm::Zoned => "Zoned",
         #[cfg(feature = "chrono")]
-        TextForm::Zoned | TextForm::Offset => "Zoned",
+        TextForm::Offset => "Zoned",
     }
 }
 
@@ -97,6 +105,12 @@ pub fn helpers(forms: &[TextForm]) -> String {
         if form.unzoned() {
             steps.push_str("if sent.hasSuffix(\"Z\") { sent.removeLast() }; ");
         }
+        if form.spaced() {
+            steps.push_str(
+                "if let space = sent.firstIndex(of: \" \") { sent.replaceSubrange(space...space, \
+                 with: \"T\") }; ",
+            );
+        }
         // The second group of a form Swift holds as text is empty: the seconds go at the end.
         if let Some(pattern) = form.unsecond() {
             write!(
@@ -105,6 +119,12 @@ pub fn helpers(forms: &[TextForm]) -> String {
                 whole(&pattern)
             )
             .unwrap();
+        }
+        if form.trimmed() {
+            steps.push_str(
+                "sent = sent.replacingOccurrences(of: \"(\\\\.[0-9]*?)0+$\", with: \"$1\", \
+                 options: .regularExpression); if sent.hasSuffix(\".\") { sent.removeLast() }; ",
+            );
         }
         let binding = if steps.is_empty() { "let" } else { "var" };
         write!(

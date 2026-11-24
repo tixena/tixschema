@@ -17,7 +17,7 @@ use super::held_maps_models::{
     sequencing_swift, soundings_swift, stowed_haversack_swift, stowed_pocketing_swift,
     tabulation_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::held_maps_models::{MoonlitDraft, at, moonlit_swift, moonrise_swift};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -227,9 +227,9 @@ fn alias_rows() -> Vec<Row> {
                 tabulation: numbered(&text()),
             },
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row("an alias of a date", "Moonrise", &at()),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row(
             "a field typed with an alias of a date",
             "Moonlit",
@@ -271,7 +271,7 @@ fn a_map_held_as_a_type_argument_or_named_by_an_alias_reads_and_writes_in_swift_
         pocketing_swift::swift_definition(),
         stowed_pocketing_swift::swift_definition(),
     ];
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     parts.extend([
         moonrise_swift::swift_definition(),
         moonlit_swift::swift_definition(),

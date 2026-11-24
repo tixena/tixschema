@@ -4,7 +4,7 @@
 //! text. `service_schema_emitted_client_tests/run_swift_held_maps.rs` compiles the models of
 //! `held_maps_models.rs` under a Swift toolchain and reads a payload of each.
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::held_maps_models::moonrise_swift;
 use super::held_maps_models::{
     beaconing_swift, captioning_swift, haversack_swift, plumbline_swift, pocketing_swift,
@@ -81,7 +81,7 @@ fn an_alias_of_a_map_swift_keys_natively_keeps_its_text() {
     assert!(!swift.contains("KeyedMap"), "{swift}");
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn an_alias_of_a_date_names_the_wrapper_that_reads_its_text() {
     holds(

@@ -75,7 +75,7 @@ fn definitions() -> Vec<String> {
         course_dart::dart_definition(),
         compass_dart::dart_definition(),
         waypost_dart::dart_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         super::range_models::rostered_dart::dart_definition(),
     ]
 }

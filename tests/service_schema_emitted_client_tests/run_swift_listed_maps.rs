@@ -14,6 +14,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -32,7 +35,7 @@ use super::listed_maps_models::{
     stowed_larder_swift, stowed_pantry_swift, stowed_sideboard_swift, tagged_galley_swift,
     tagged_stowed_galley_swift, trug_swift, untagged_galley_swift, untagged_stowed_galley_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::listed_maps_models::{
     DatelineDraft, PlankDraft, TimelineDraft, dateline_swift, plank_swift, timeline_swift,
 };
@@ -298,7 +301,7 @@ fn struct_rows() -> Vec<Row> {
             "Pantry",
             &pantry(false),
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row(
             "a null entry under a key Swift wraps and under one it keys natively",
             "Dateline",
@@ -313,7 +316,7 @@ fn struct_rows() -> Vec<Row> {
                 maybe_by_number: HashMap::from([(1, Some(date())), (2, None)]),
             },
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         read_row(
             "a list of maps of dates",
             "Timeline",
@@ -432,6 +435,12 @@ fn holder_rows() -> Vec<Row> {
 #[cfg(feature = "chrono")]
 fn date() -> DateTime<Utc> {
     DateTime::from_timestamp_millis(1_704_164_645_678).unwrap()
+}
+
+/// A date with a fraction of whole milliseconds, which jiff writes with three digits.
+#[cfg(feature = "jiff")]
+fn date() -> Timestamp {
+    Timestamp::from_millisecond(1_704_164_645_678).unwrap()
 }
 
 /// The payloads of each tuple struct of one slot and of each brand.
@@ -705,7 +714,7 @@ fn a_list_or_an_optional_of_maps_swift_wraps_reads_and_writes_in_swift_as_serde_
         untagged_galley_swift::swift_definition(),
         untagged_stowed_galley_swift::swift_definition(),
     ];
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     parts.extend([
         timeline_swift::swift_definition(),
         plank_swift::swift_definition(),

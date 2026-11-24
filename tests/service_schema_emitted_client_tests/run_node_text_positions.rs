@@ -4,7 +4,7 @@
 //! the value before the transport was reached, and the Rust dispatcher reads each request.
 
 #![cfg(all(
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 

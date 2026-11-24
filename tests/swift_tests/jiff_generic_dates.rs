@@ -1,0 +1,357 @@
+//! What the Swift backend writes for the formatter a `DateTime<Tz>` member is read and written
+//! through: Swift refuses a static stored property in a type that declares a parameter, so such a
+//! type computes its formatter, and a type that declares none keeps the one it stores.
+//! `service_schema_emitted_client_tests/run_swift_generic_dates.rs` compiles these shapes under a
+//! Swift toolchain and reads a payload of each the Swift read reads as serde does.
+
+use core::marker::PhantomData;
+use std::collections::HashMap;
+
+use jiff::Timestamp;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+/// The formatter a type that declares a parameter computes on each call.
+const COMPUTED: &str = "private static var swiftSchemaIso8601Formatter: ISO8601DateFormatter { \
+                        let f = ISO8601DateFormatter(); \
+                        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; \
+                        return f }; ";
+
+/// The formatter a type that declares no parameter stores.
+const STORED: &str = "private static let swiftSchemaIso8601Formatter: ISO8601DateFormatter = { \
+                      let f = ISO8601DateFormatter(); \
+                      f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; \
+                      return f }(); ";
+
+/// A date in a type that declares no parameter.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Sighting {
+    pub at: Timestamp,
+}
+
+/// A date, one under `as_number`, a list of dates and an optional date, beside the parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Voyage<Stowed> {
+    pub at: Timestamp,
+    #[model_schema_prop(as_number)]
+    pub at_millis: Timestamp,
+    pub held: Stowed,
+    pub marks: Vec<Timestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seen: Option<Timestamp>,
+}
+
+/// A brand over a date that declares a parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Landfall<Stowed> {
+    at: Timestamp,
+    marker: PhantomData<Stowed>,
+}
+
+/// A tuple struct of a date and the parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Waypoint<Stowed>(pub Timestamp, pub Stowed);
+
+/// A date in a tuple and as the value of a map, beside the parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Chart<Stowed> {
+    pub by_name: HashMap<String, Timestamp>,
+    pub by_number: HashMap<u32, Timestamp>,
+    pub pair: (Timestamp, Stowed),
+    pub paired_by_number: HashMap<u32, (Timestamp, Stowed)>,
+}
+
+/// A date in a variant with named members that name the parameter and in one whose members name
+/// none, in a variant of several slots and in a variant of one, under no tag attribute.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Tide<Stowed> {
+    Logged { at: Timestamp, held: Stowed },
+    Noted { at: Timestamp },
+    Paired(Timestamp, Stowed),
+    Stamped(Timestamp),
+}
+
+/// The variants a tag alone takes, those with named members.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind")]
+pub enum TaggedTide<Stowed> {
+    Logged { at: Timestamp, held: Stowed },
+    Noted { at: Timestamp },
+}
+
+/// [`Tide`] under a tag and a content key.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "held")]
+pub enum AdjacentTide<Stowed> {
+    Logged { at: Timestamp, held: Stowed },
+    Noted { at: Timestamp },
+    Paired(Timestamp, Stowed),
+    Stamped(Timestamp),
+}
+
+/// The variants an untagged enum takes: named members and one slot.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum UntaggedTide<Stowed> {
+    Logged { at: Timestamp, held: Stowed },
+    Noted { at: Timestamp },
+    Stamped(Timestamp),
+}
+
+/// The date `millis` milliseconds after the epoch.
+fn at(millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(millis).unwrap()
+}
+
+/// The JSON serde writes for `held`, read back by serde as it was written.
+fn read_back<Held>(held: &Held) -> String
+where
+    Held: DeserializeOwned + Serialize,
+{
+    let written = serde_json::to_string(held).unwrap();
+    let read: Held = serde_json::from_str(&written).unwrap();
+    assert_eq!(serde_json::to_string(&read).unwrap(), written);
+    written
+}
+
+/// The helpers written for `named`, opened by `formatter` and its twin with no fraction, which
+/// reads a date of whole seconds.
+fn helpers(named: &str, formatter: &str) -> String {
+    let whole = formatter
+        .replace(
+            "swiftSchemaIso8601Formatter",
+            "swiftSchemaWholeIso8601Formatter",
+        )
+        .replace(
+            "[.withInternetDateTime, .withFractionalSeconds]",
+            "[.withInternetDateTime]",
+        );
+    format!(
+        "extension {named} {{ {formatter}{whole}private static func \
+         swiftSchemaParseIso8601Date(_ text: String, codingPath: [CodingKey]) throws -> Date {{ "
+    )
+}
+
+/// Each of `written` in `swift`.
+fn holds(swift: &str, written: &[String]) {
+    for text in written {
+        assert!(swift.contains(text.as_str()), "{text}\nin: {swift}");
+    }
+}
+
+#[test]
+fn each_model_is_written_as_serde_writes_it() {
+    let first = at(1_704_164_645_678);
+    let second = at(1_709_208_000_100);
+    assert_eq!(
+        read_back(&SightingDraft { at: first }),
+        r#"{"at":"2024-01-02T03:04:05.678Z"}"#
+    );
+    assert_eq!(
+        read_back(&VoyageDraft {
+            at: first,
+            at_millis: second,
+            held: "a".to_owned(),
+            marks: vec![first, second],
+            seen: Some(second),
+        }),
+        r#"{"at":"2024-01-02T03:04:05.678Z","at_millis":1709208000100,"held":"a","marks":["2024-01-02T03:04:05.678Z","2024-02-29T12:00:00.1Z"],"seen":"2024-02-29T12:00:00.1Z"}"#
+    );
+    assert_eq!(
+        read_back(&Landfall::<String>::new(first).unwrap()),
+        r#""2024-01-02T03:04:05.678Z""#
+    );
+    assert_eq!(
+        read_back(&WaypointDraft(first, "a".to_owned())),
+        r#"["2024-01-02T03:04:05.678Z","a"]"#
+    );
+    assert_eq!(
+        read_back(&ChartDraft {
+            by_name: HashMap::from([("n".to_owned(), first)]),
+            by_number: HashMap::from([(1, first)]),
+            pair: (first, "a".to_owned()),
+            paired_by_number: HashMap::from([(2, (second, "b".to_owned()))]),
+        }),
+        r#"{"by_name":{"n":"2024-01-02T03:04:05.678Z"},"by_number":{"1":"2024-01-02T03:04:05.678Z"},"pair":["2024-01-02T03:04:05.678Z","a"],"paired_by_number":{"2":["2024-02-29T12:00:00.1Z","b"]}}"#
+    );
+}
+
+#[test]
+fn each_variant_is_written_as_its_tagging_writes_it() {
+    let first = at(1_704_164_645_678);
+    for (held, written) in [
+        (
+            TideDraft::Logged {
+                at: first,
+                held: "a".to_owned(),
+            },
+            r#"{"Logged":{"at":"2024-01-02T03:04:05.678Z","held":"a"}}"#,
+        ),
+        (
+            TideDraft::Noted { at: first },
+            r#"{"Noted":{"at":"2024-01-02T03:04:05.678Z"}}"#,
+        ),
+        (
+            TideDraft::Paired(first, "a".to_owned()),
+            r#"{"Paired":["2024-01-02T03:04:05.678Z","a"]}"#,
+        ),
+        (
+            TideDraft::Stamped(first),
+            r#"{"Stamped":"2024-01-02T03:04:05.678Z"}"#,
+        ),
+    ] {
+        assert_eq!(read_back(&held), written);
+    }
+    for (held, written) in [
+        (
+            TaggedTideDraft::Logged {
+                at: first,
+                held: "a".to_owned(),
+            },
+            r#"{"kind":"Logged","at":"2024-01-02T03:04:05.678Z","held":"a"}"#,
+        ),
+        (
+            TaggedTideDraft::Noted { at: first },
+            r#"{"kind":"Noted","at":"2024-01-02T03:04:05.678Z"}"#,
+        ),
+    ] {
+        assert_eq!(read_back(&held), written);
+    }
+    for (held, written) in [
+        (
+            AdjacentTideDraft::Logged {
+                at: first,
+                held: "a".to_owned(),
+            },
+            r#"{"kind":"Logged","held":{"at":"2024-01-02T03:04:05.678Z","held":"a"}}"#,
+        ),
+        (
+            AdjacentTideDraft::Noted { at: first },
+            r#"{"kind":"Noted","held":{"at":"2024-01-02T03:04:05.678Z"}}"#,
+        ),
+        (
+            AdjacentTideDraft::Paired(first, "a".to_owned()),
+            r#"{"kind":"Paired","held":["2024-01-02T03:04:05.678Z","a"]}"#,
+        ),
+        (
+            AdjacentTideDraft::Stamped(first),
+            r#"{"kind":"Stamped","held":"2024-01-02T03:04:05.678Z"}"#,
+        ),
+    ] {
+        assert_eq!(read_back(&held), written);
+    }
+    for (held, written) in [
+        (
+            UntaggedTideDraft::Logged {
+                at: first,
+                held: "a".to_owned(),
+            },
+            r#"{"at":"2024-01-02T03:04:05.678Z","held":"a"}"#,
+        ),
+        (
+            UntaggedTideDraft::Noted { at: first },
+            r#"{"at":"2024-01-02T03:04:05.678Z"}"#,
+        ),
+        (
+            UntaggedTideDraft::Stamped(first),
+            r#""2024-01-02T03:04:05.678Z""#,
+        ),
+    ] {
+        assert_eq!(read_back(&held), written);
+    }
+}
+
+#[test]
+fn a_type_that_declares_no_parameter_keeps_the_formatter_it_stores() {
+    let swift = sighting_swift::swift_definition();
+    holds(&swift, &[helpers("SightingDraft", STORED)]);
+    assert!(!swift.contains("static var"), "got: {swift}");
+}
+
+#[test]
+fn a_struct_that_declares_a_parameter_computes_its_formatter() {
+    holds(
+        &voyage_swift::swift_definition(),
+        &[
+            "public struct VoyageDraft<Stowed: Codable & Sendable>: Codable, Sendable { "
+                .to_owned(),
+            helpers("VoyageDraft", COMPUTED),
+            "let wireAtMillis = try container.decode(SwiftSchemaMillis.self, forKey: .atMillis); \
+             self.atMillis = wireAtMillis.value; "
+                .to_owned(),
+            "private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String { \
+             swiftSchemaIso8601Formatter.string(from: date)\
+             .replacingOccurrences(of: \"(\\\\.[0-9]*?)0+Z$\", with: \"$1Z\", options: .regularExpression).replacingOccurrences(of: \".Z\", with: \"Z\") } };"
+                .to_owned(),
+        ],
+    );
+}
+
+#[test]
+fn a_brand_that_declares_a_parameter_computes_its_formatter() {
+    holds(
+        &landfall_swift::swift_definition(),
+        &[
+            "public struct Landfall<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public let value: Date; "
+                .to_owned(),
+            helpers("Landfall", COMPUTED),
+        ],
+    );
+}
+
+#[test]
+fn the_struct_of_a_variant_computes_its_formatter_where_it_declares_a_parameter() {
+    for (named, swift) in [
+        ("Tide", tide_swift::swift_definition()),
+        ("TaggedTide", tagged_tide_swift::swift_definition()),
+        ("AdjacentTide", adjacent_tide_swift::swift_definition()),
+        ("UntaggedTide", untagged_tide_swift::swift_definition()),
+    ] {
+        holds(
+            &swift,
+            &[
+                format!(
+                    "public struct {named}LoggedPayload<Stowed: Codable & Sendable>: Codable, \
+                     Sendable {{ "
+                ),
+                helpers(&format!("{named}LoggedPayload"), COMPUTED),
+                format!("public struct {named}NotedPayload: Codable, Sendable {{ "),
+                helpers(&format!("{named}NotedPayload"), STORED),
+            ],
+        );
+    }
+}
+
+#[test]
+fn no_type_that_declares_a_parameter_stores_a_formatter() {
+    for swift in [
+        voyage_swift::swift_definition(),
+        landfall_swift::swift_definition(),
+        waypoint_swift::swift_definition(),
+        chart_swift::swift_definition(),
+        tide_swift::swift_definition(),
+        tagged_tide_swift::swift_definition(),
+        adjacent_tide_swift::swift_definition(),
+        untagged_tide_swift::swift_definition(),
+    ] {
+        for declared in swift.split("public struct ").skip(1) {
+            let ends = declared.find([':', '<']).unwrap();
+            if declared[ends..].starts_with('<') {
+                let stored = format!("extension {} {{ {STORED}", &declared[..ends]);
+                assert!(!swift.contains(&stored), "{stored}\nin: {swift}");
+            }
+        }
+    }
+}

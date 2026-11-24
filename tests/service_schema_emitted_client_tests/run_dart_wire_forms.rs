@@ -3,7 +3,7 @@
 //! payload it sends, or `refused`, as the table's Dart column states, and reads every payload any
 //! client sends. A `DateTime` of no zone is the local time of a run under `TZ=UTC`.
 
-#![cfg(all(feature = "dart", feature = "chrono"))]
+#![cfg(all(feature = "dart", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 use std::env;
@@ -195,6 +195,8 @@ fn each_value_is_sent_by_dart_in_the_form_every_target_reads() {
         conveyed_stamp_dart::dart_definition(),
         conveyed_instant_dart::dart_definition(),
         conveyed_millis_dart::dart_definition(),
+        #[cfg(feature = "jiff")]
+        super::wire_forms_models::conveyed_zoned_dart::dart_definition(),
         conveyed_slot_dart::dart_definition(),
         conveyed_slotted_dart::dart_definition(),
     ];

@@ -7,6 +7,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -66,6 +69,11 @@ pub type Captioning = HashMap<String, String>;
 #[model_schema()]
 pub type Moonrise = DateTime<Utc>;
 
+/// An alias of a date.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+pub type Moonrise = Timestamp;
+
 /// A model with a rule, the value of a map an alias names.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -98,7 +106,7 @@ pub struct Pocketing {
 }
 
 /// A field typed with the alias of a date, in the builds that declare it.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Moonlit {
@@ -116,4 +124,10 @@ pub struct StowedPocketing<Stowed> {
 #[cfg(feature = "chrono")]
 pub const fn at() -> DateTime<Utc> {
     DateTime::from_timestamp_millis(1_704_164_645_678).unwrap()
+}
+
+/// A date with a fraction of whole milliseconds, which jiff writes with three digits.
+#[cfg(feature = "jiff")]
+pub fn at() -> Timestamp {
+    Timestamp::from_millisecond(1_704_164_645_678).unwrap()
 }

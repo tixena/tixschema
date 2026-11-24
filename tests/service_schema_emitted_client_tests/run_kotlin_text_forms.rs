@@ -1,8 +1,8 @@
-//! A `char` and a chrono date, time and date and time read by the emitted Kotlin types, compiled
+//! A `char` and a date, time and date and time read by the emitted Kotlin types, compiled
 //! with `-Werror`: each payload of [`TEXT_FORMS`] is read, or refused with
 //! `SerializationException`, where the table states.
 
-#![cfg(all(feature = "kotlin", feature = "chrono"))]
+#![cfg(all(feature = "kotlin", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 
@@ -106,7 +106,16 @@ fn the_readme_shows_texts_the_run_measures() {
             "TimeLog",
             "expected a time, found \"23:59:60\"",
         ),
+        #[cfg(feature = "chrono")]
         ("\"2024-01-05T11:20:30Z\"", "StampLog", "read"),
+        #[cfg(feature = "jiff")]
+        (
+            "\"2024-01-05T11:20:30Z\"",
+            "StampLog",
+            "expected a date and time, found \"2024-01-05T11:20:30Z\"",
+        ),
+        #[cfg(feature = "jiff")]
+        ("\"2024-01-05 11:20:30\"", "StampLog", "read"),
         ("\"2024-01-05T11:20\"", "StampLog", "read"),
     ] {
         assert!(
@@ -123,6 +132,8 @@ fn the_readme_shows_texts_the_run_measures() {
     for refusal in [
         "`SerializationException: expected a character, found \"ab\"`",
         "`SerializationException: expected a date, found \"x\"`",
+        #[cfg(feature = "jiff")]
+        "`SerializationException: expected a date and time, found \"2024-01-05T11:20:30Z\"`",
     ] {
         assert!(readme.contains(refusal), "not in the README: {refusal}");
     }

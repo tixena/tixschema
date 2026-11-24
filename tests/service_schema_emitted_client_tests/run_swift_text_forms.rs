@@ -1,8 +1,8 @@
-//! A `char` and a chrono date, time and date and time read by the emitted Swift types, compiled
+//! A `char` and a date, time and date and time read by the emitted Swift types, compiled
 //! with warnings as errors: each payload of [`TEXT_FORMS`] is read, or refused with
 //! `DecodingError.dataCorrupted`, where the table states.
 
-#![cfg(all(feature = "swift", feature = "chrono"))]
+#![cfg(all(feature = "swift", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 

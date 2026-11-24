@@ -1,0 +1,874 @@
+//! The models of a text serde reads in one form alone, which a client holds as its own text or
+//! date: a `char`, a jiff `Date`, `Time`, `DateTime` and `Timestamp`, each held by a field, in a
+//! list, as a map's key, as a map's value and as the key of a map flattened alone, and
+//! [`Chronometer`], a `char` and a date held by a field and as a map's key. [`TEXT_FORMS`] holds
+//! what serde, Zod and the Kotlin, Dart and Swift reads answer of each payload: each read refuses
+//! what Zod refuses, a `Timestamp` apart, which Kotlin reads as any text and Dart and Swift as
+//! their own date. `kotlin_tests/jiff_text_forms.rs`, `dart_tests/jiff_text_forms.rs` and
+//! `swift_tests/jiff_text_forms.rs` pin each client's text,
+//! `service_schema_emitted_client_tests/run_{kotlin,dart,swift}_text_forms.rs` run it, and
+//! `generic_types_tests/declarations.rs` holds Zod to [`TEXT_FORMS`].
+
+use alloc::collections::BTreeMap;
+
+use jiff::Timestamp;
+use jiff::civil::{Date, DateTime, Time};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+/// Each payload, read as its type: one every reader reads, then a text of no form at each place,
+/// and a text serde and Zod part on.
+pub const TEXT_FORMS: [TextFormRow; 50] = [
+    TextFormRow {
+        dart: "read",
+        json: r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"2024-01-06","letter":"b"}"#,
+        kotlin: "read",
+        read_as: "Chronometer",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<Chronometer>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: concat!(
+            r#"{"by_date":{"2024-01-05":2},"by_letter":{"ab":1},"day":"2024-01-06","#,
+            r#""letter":"b"}"#
+        ),
+        kotlin: r#"expected a character, found "ab" at path: $.by_letter"#,
+        read_as: "Chronometer",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 45"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<Chronometer>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: r#"{"by_date":{"x":2},"by_letter":{"a":1},"day":"2024-01-06","letter":"b"}"#,
+        kotlin: r#"expected a date, found "x" at path: $.by_date"#,
+        read_as: "Chronometer",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 15",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<Chronometer>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: concat!(
+            r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"2024-01-06","#,
+            r#""letter":"ab"}"#
+        ),
+        kotlin: r#"expected a character, found "ab" at path: $.letter"#,
+        read_as: "Chronometer",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 80"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<Chronometer>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: r#"{"by_date":{"2024-01-05":2},"by_letter":{"a":1},"day":"x","letter":"b"}"#,
+        kotlin: r#"expected a date, found "x" at path: $.day"#,
+        read_as: "Chronometer",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 57",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<Chronometer>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: r#"{"by_letter":{"a":1},"letter":"b","letters":["c"],"to_letter":{"k":"d"}}"#,
+        kotlin: "read",
+        read_as: "LetterLog",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<LetterLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: r#"{"by_letter":{"ab":1},"letter":"b","letters":["c"],"to_letter":{"k":"d"}}"#,
+        kotlin: r#"expected a character, found "ab" at path: $.by_letter"#,
+        read_as: "LetterLog",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 18"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<LetterLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: r#"{"by_letter":{"a":1},"letter":"ab","letters":["c"],"to_letter":{"k":"d"}}"#,
+        kotlin: r#"expected a character, found "ab" at path: $.letter"#,
+        read_as: "LetterLog",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 34"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<LetterLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: r#"{"by_letter":{"a":1},"letter":"b","letters":["ab"],"to_letter":{"k":"d"}}"#,
+        kotlin: r#"expected a character, found "ab" at path: $.letters[0]"#,
+        read_as: "LetterLog",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 49"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<LetterLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: r#"{"by_letter":{"a":1},"letter":"b","letters":["c"],"to_letter":{"k":"ab"}}"#,
+        kotlin: r#"expected a character, found "ab" at path: $.to_letter['k']"#,
+        read_as: "LetterLog",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 71"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<LetterLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found """#,
+        json: r#"{"by_letter":{"a":1},"letter":"","letters":["c"],"to_letter":{"k":"d"}}"#,
+        kotlin: r#"expected a character, found "" at path: $.letter"#,
+        read_as: "LetterLog",
+        serde: r#"invalid value: string "", expected a character at line 1 column 32"#,
+        swift: r#"expected a character, found """#,
+        told: serde_told::<LetterLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_letter":{"a":1},"letter":""#,
+            "\u{1f600}",
+            r#"","letters":["c"],"to_letter":{"k":"d"}}"#
+        ),
+        kotlin: "read",
+        read_as: "LetterLog",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<LetterLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: "read",
+        json: r#"{"a":2}"#,
+        kotlin: "read",
+        read_as: "LetterLines",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<LetterLines>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a character, found "ab""#,
+        json: r#"{"ab":2}"#,
+        kotlin: r#"expected a character, found "ab" at path: $"#,
+        read_as: "LetterLines",
+        serde: r#"invalid value: string "ab", expected a character at line 1 column 8"#,
+        swift: r#"expected a character, found "ab""#,
+        told: serde_told::<LetterLines>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: "read",
+        read_as: "DayLog",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<DayLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: concat!(
+            r#"{"by_day":{"x":1},"day":"2024-01-06","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: r#"expected a date, found "x" at path: $.by_day"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 14",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"x","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: r#"expected a date, found "x" at path: $.day"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 36",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["x"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: r#"expected a date, found "x" at path: $.days[0]"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 57",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"2024-01-06","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"x"}}"#
+        ),
+        kotlin: r#"expected a date, found "x" at path: $.to_day['k']"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 85",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "2024-1-6""#,
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"2024-1-6","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: r#"expected a date, found "2024-1-6" at path: $.day"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "failed to parse two digit integer as month: invalid digit, expected 0-9 but got - ",
+            "at line 1 column 43",
+        ),
+        swift: r#"expected a date, found "2024-1-6""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "2023-02-29""#,
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"2023-02-29","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: r#"expected a date, found "2023-02-29" at path: $.day"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "parsed date is not valid: parameter 'day' for `2023-02` is invalid, must be in ",
+            "range `1..=28` at line 1 column 45",
+        ),
+        swift: r#"expected a date, found "2023-02-29""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "+12024-01-06""#,
+        json: concat!(
+            r#"{"by_day":{"2024-01-05":1},"day":"+12024-01-06","days":["2024-01-07"],"#,
+            r#""to_day":{"k":"2024-01-08"}}"#
+        ),
+        kotlin: r#"expected a date, found "+12024-01-06" at path: $.day"#,
+        read_as: "DayLog",
+        serde: concat!(
+            "failed to parse six digit integer as year: invalid digit, expected 0-9 but got - ",
+            "at line 1 column 47",
+        ),
+        swift: r#"expected a date, found "+12024-01-06""#,
+        told: serde_told::<DayLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: r#"{"2024-01-05":2}"#,
+        kotlin: "read",
+        read_as: "DayLines",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<DayLines>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a date, found "x""#,
+        json: r#"{"x":2}"#,
+        kotlin: r#"expected a date, found "x" at path: $"#,
+        read_as: "DayLines",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 7",
+        ),
+        swift: r#"expected a date, found "x""#,
+        told: serde_told::<DayLines>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["12:20:30"],"#,
+            r#""to_time":{"k":"13:20:30"}}"#
+        ),
+        kotlin: "read",
+        read_as: "TimeLog",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<TimeLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a time, found "x""#,
+        json: concat!(
+            r#"{"by_time":{"x":1},"time":"11:20:30","times":["12:20:30"],"#,
+            r#""to_time":{"k":"13:20:30"}}"#
+        ),
+        kotlin: r#"expected a time, found "x" at path: $.by_time"#,
+        read_as: "TimeLog",
+        serde: "expected two digit hour, but found end of input at line 1 column 15",
+        swift: r#"expected a time, found "x""#,
+        told: serde_told::<TimeLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a time, found "x""#,
+        json: concat!(
+            r#"{"by_time":{"10:20:30":1},"time":"x","times":["12:20:30"],"#,
+            r#""to_time":{"k":"13:20:30"}}"#
+        ),
+        kotlin: r#"expected a time, found "x" at path: $.time"#,
+        read_as: "TimeLog",
+        serde: "expected two digit hour, but found end of input at line 1 column 36",
+        swift: r#"expected a time, found "x""#,
+        told: serde_told::<TimeLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a time, found "x""#,
+        json: concat!(
+            r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["x"],"#,
+            r#""to_time":{"k":"13:20:30"}}"#
+        ),
+        kotlin: r#"expected a time, found "x" at path: $.times[0]"#,
+        read_as: "TimeLog",
+        serde: "expected two digit hour, but found end of input at line 1 column 56",
+        swift: r#"expected a time, found "x""#,
+        told: serde_told::<TimeLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a time, found "x""#,
+        json: concat!(
+            r#"{"by_time":{"10:20:30":1},"time":"11:20:30","times":["12:20:30"],"#,
+            r#""to_time":{"k":"x"}}"#
+        ),
+        kotlin: r#"expected a time, found "x" at path: $.to_time['k']"#,
+        read_as: "TimeLog",
+        serde: "expected two digit hour, but found end of input at line 1 column 83",
+        swift: r#"expected a time, found "x""#,
+        told: serde_told::<TimeLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a time, found "23:59:60""#,
+        json: concat!(
+            r#"{"by_time":{"10:20:30":1},"time":"23:59:60","times":["12:20:30"],"#,
+            r#""to_time":{"k":"13:20:30"}}"#
+        ),
+        kotlin: r#"expected a time, found "23:59:60" at path: $.time"#,
+        read_as: "TimeLog",
+        serde: concat!(
+            r#"read, written back as {"by_time":{"10:20:30":1},"time":"23:59:59","times":["12:20:"#,
+            r#"30"],"to_time":{"k":"13:20:30"}}"#,
+        ),
+        swift: r#"expected a time, found "23:59:60""#,
+        told: serde_told::<TimeLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: r#"{"10:20:30":2}"#,
+        kotlin: "read",
+        read_as: "TimeLines",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<TimeLines>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a time, found "x""#,
+        json: r#"{"x":2}"#,
+        kotlin: r#"expected a time, found "x" at path: $"#,
+        read_as: "TimeLines",
+        serde: "expected two digit hour, but found end of input at line 1 column 7",
+        swift: r#"expected a time, found "x""#,
+        told: serde_told::<TimeLines>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: "read",
+        read_as: "StampLog",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<StampLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
+        json: concat!(
+            r#"{"by_stamp":{"x":1},"stamp":"2024-01-05T11:20:30","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: r#"expected a date and time, found "x" at path: $.by_stamp"#,
+        read_as: "StampLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 16",
+        ),
+        swift: r#"expected a date and time, found "x""#,
+        told: serde_told::<StampLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"x","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: r#"expected a date and time, found "x" at path: $.stamp"#,
+        read_as: "StampLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 49",
+        ),
+        swift: r#"expected a date and time, found "x""#,
+        told: serde_told::<StampLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
+            r#""stamps":["x"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: r#"expected a date and time, found "x" at path: $.stamps[0]"#,
+        read_as: "StampLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 81",
+        ),
+        swift: r#"expected a date and time, found "x""#,
+        told: serde_told::<StampLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"x"}}"#
+        ),
+        kotlin: r#"expected a date and time, found "x" at path: $.to_stamp['k']"#,
+        read_as: "StampLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 120",
+        ),
+        swift: r#"expected a date and time, found "x""#,
+        told: serde_told::<StampLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "2024-01-05T11:20:30Z""#,
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20:30Z","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: r#"expected a date and time, found "2024-01-05T11:20:30Z" at path: $.stamp"#,
+        read_as: "StampLog",
+        serde: concat!(
+            "cannot parse civil date/time from string with a Zulu offset, parse as a `jiff::",
+            "Timestamp` first and convert to a civil date/time instead at line 1 column 68",
+        ),
+        swift: r#"expected a date and time, found "2024-01-05T11:20:30Z""#,
+        told: serde_told::<StampLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05 11:20:30","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: "read",
+        read_as: "StampLog",
+        serde: concat!(
+            r#"read, written back as {"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"#,
+            r#""2024-01-05T11:20:30","stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"#,
+            r#""2024-01-05T13:20:30"}}"#,
+        ),
+        swift: "read",
+        told: serde_told::<StampLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: "read",
+        read_as: "StampLog",
+        serde: concat!(
+            r#"read, written back as {"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"#,
+            r#""2024-01-05T11:20:00","stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"#,
+            r#""2024-01-05T13:20:30"}}"#,
+        ),
+        swift: "read",
+        told: serde_told::<StampLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "2024-01-05T11:20Z""#,
+        json: concat!(
+            r#"{"by_stamp":{"2024-01-05T10:20:30":1},"stamp":"2024-01-05T11:20Z","#,
+            r#""stamps":["2024-01-05T12:20:30"],"to_stamp":{"k":"2024-01-05T13:20:30"}}"#
+        ),
+        kotlin: r#"expected a date and time, found "2024-01-05T11:20Z" at path: $.stamp"#,
+        read_as: "StampLog",
+        serde: concat!(
+            "cannot parse civil date/time from string with a Zulu offset, parse as a `jiff::",
+            "Timestamp` first and convert to a civil date/time instead at line 1 column 65",
+        ),
+        swift: r#"expected a date and time, found "2024-01-05T11:20Z""#,
+        told: serde_told::<StampLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: r#"{"2024-01-05T10:20:30":2}"#,
+        kotlin: "read",
+        read_as: "StampLines",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<StampLines>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: r#"expected a date and time, found "x""#,
+        json: r#"{"x":2}"#,
+        kotlin: r#"expected a date and time, found "x" at path: $"#,
+        read_as: "StampLines",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 7",
+        ),
+        swift: r#"expected a date and time, found "x""#,
+        told: serde_told::<StampLines>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: concat!(
+            r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"2024-01-05T11:20:30Z","#,
+            r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
+        ),
+        kotlin: "read",
+        read_as: "InstantLog",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<InstantLog>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: "Invalid date format",
+        json: concat!(
+            r#"{"by_instant":{"x":1},"instant":"2024-01-05T11:20:30Z","#,
+            r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
+        ),
+        kotlin: "read",
+        read_as: "InstantLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 18",
+        ),
+        swift: "bad key x",
+        told: serde_told::<InstantLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "Invalid date format",
+        json: concat!(
+            r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"x","#,
+            r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
+        ),
+        kotlin: "read",
+        read_as: "InstantLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 54",
+        ),
+        swift: "bad ISO8601 date: x",
+        told: serde_told::<InstantLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "Invalid date format",
+        json: concat!(
+            r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"2024-01-05T11:20:30Z","#,
+            r#""instants":["x"],"to_instant":{"k":"2024-01-05T13:20:30Z"}}"#
+        ),
+        kotlin: "read",
+        read_as: "InstantLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 89",
+        ),
+        swift: "bad ISO8601 date: x",
+        told: serde_told::<InstantLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "Invalid date format",
+        json: concat!(
+            r#"{"by_instant":{"2024-01-05T10:20:30Z":1},"instant":"2024-01-05T11:20:30Z","#,
+            r#""instants":["2024-01-05T12:20:30Z"],"to_instant":{"k":"x"}}"#
+        ),
+        kotlin: "read",
+        read_as: "InstantLog",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 131",
+        ),
+        swift: "bad ISO8601 date: x",
+        told: serde_told::<InstantLog>,
+        zod: false,
+    },
+    TextFormRow {
+        dart: "read",
+        json: r#"{"2024-01-05T10:20:30Z":2}"#,
+        kotlin: "read",
+        read_as: "InstantLines",
+        serde: "read",
+        swift: "read",
+        told: serde_told::<InstantLines>,
+        zod: true,
+    },
+    TextFormRow {
+        dart: "Invalid date format",
+        json: r#"{"x":2}"#,
+        kotlin: "read",
+        read_as: "InstantLines",
+        serde: concat!(
+            "expected four digit year (or leading sign for six digit year), but found end of ",
+            "input at line 1 column 7",
+        ),
+        swift: "bad key x",
+        told: serde_told::<InstantLines>,
+        zod: false,
+    },
+];
+
+/// A `char` and a `Date`, each held by a field and as a map's key.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Chronometer {
+    pub by_date: BTreeMap<Date, u8>,
+    pub by_letter: BTreeMap<char, u8>,
+    pub day: Date,
+    pub letter: char,
+}
+
+/// A `Date` as the key of a map flattened alone.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DayLines {
+    #[serde(flatten)]
+    pub lines: BTreeMap<Date, u8>,
+}
+
+/// A `Date` held by a field, in a list, as a map's key and as a map's value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DayLog {
+    pub by_day: BTreeMap<Date, u8>,
+    pub day: Date,
+    pub days: Vec<Date>,
+    pub to_day: BTreeMap<String, Date>,
+}
+
+/// A `Timestamp` as the key of a map flattened alone.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct InstantLines {
+    #[serde(flatten)]
+    pub lines: BTreeMap<Timestamp, u8>,
+}
+
+/// A `Timestamp` held by a field, in a list, as a map's key and as a map's value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct InstantLog {
+    pub by_instant: BTreeMap<Timestamp, u8>,
+    pub instant: Timestamp,
+    pub instants: Vec<Timestamp>,
+    pub to_instant: BTreeMap<String, Timestamp>,
+}
+
+/// A `char` as the key of a map flattened alone.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LetterLines {
+    #[serde(flatten)]
+    pub lines: BTreeMap<char, u8>,
+}
+
+/// A `char` held by a field, in a list, as a map's key and as a map's value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LetterLog {
+    pub by_letter: BTreeMap<char, u8>,
+    pub letter: char,
+    pub letters: Vec<char>,
+    pub to_letter: BTreeMap<String, char>,
+}
+
+/// A `DateTime` as the key of a map flattened alone.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StampLines {
+    #[serde(flatten)]
+    pub lines: BTreeMap<DateTime, u8>,
+}
+
+/// A `DateTime` held by a field, in a list, as a map's key and as a map's value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StampLog {
+    pub by_stamp: BTreeMap<DateTime, u8>,
+    pub stamp: DateTime,
+    pub stamps: Vec<DateTime>,
+    pub to_stamp: BTreeMap<String, DateTime>,
+}
+
+/// One payload of [`TEXT_FORMS`], the type it is read as, and what each reader answers of it.
+pub struct TextFormRow {
+    /// What the Dart read answers: `read`, or the message of what it throws.
+    pub dart: &'static str,
+    pub json: &'static str,
+    /// What the Kotlin read answers: `read`, or the message of the `SerializationException` it
+    /// throws.
+    pub kotlin: &'static str,
+    pub read_as: &'static str,
+    /// What serde answers: `read` where it writes the payload back as it was, what it writes back
+    /// otherwise, or its refusal.
+    pub serde: &'static str,
+    /// What the Swift read answers: `read`, or the description of what it throws.
+    pub swift: &'static str,
+    /// serde's read of the payload as the type.
+    pub told: fn(&str) -> String,
+    /// Whether the Zod schema of the type reads the payload.
+    pub zod: bool,
+}
+
+/// A `Time` as the key of a map flattened alone.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TimeLines {
+    #[serde(flatten)]
+    pub lines: BTreeMap<Time, u8>,
+}
+
+/// A `Time` held by a field, in a list, as a map's key and as a map's value.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TimeLog {
+    pub by_time: BTreeMap<Time, u8>,
+    pub time: Time,
+    pub times: Vec<Time>,
+    pub to_time: BTreeMap<String, Time>,
+}
+
+/// What serde answers of `json` as a `T`: `read` where it writes the payload back as it was, what
+/// it writes back otherwise, or its refusal.
+fn serde_told<T>(json: &str) -> String
+where
+    T: DeserializeOwned + Serialize,
+{
+    serde_json::from_str::<T>(json).map_or_else(
+        |refused| refused.to_string(),
+        |read| {
+            let written = serde_json::to_string(&read).unwrap();
+            if written == json {
+                "read".to_owned()
+            } else {
+                format!("read, written back as {written}")
+            }
+        },
+    )
+}
+
+/// serde answers each payload as [`TEXT_FORMS`] states.
+#[test]
+fn serde_answers_each_text_as_the_table_states() {
+    let told: Vec<String> = TEXT_FORMS.iter().map(|row| (row.told)(row.json)).collect();
+    let pinned: Vec<&str> = TEXT_FORMS.iter().map(|row| row.serde).collect();
+    assert_eq!(
+        told, pinned,
+        "serde no longer answers each payload as it did"
+    );
+}
+
+/// Each client's read refuses a payload exactly where Zod refuses it, where serde does too and
+/// where the two part, in the one sentence of its form, which Kotlin follows with the path. A
+/// `Timestamp` apart: Kotlin reads it as any text, and Dart and Swift read a text serde reads.
+#[test]
+fn each_client_read_refuses_what_zod_refuses_but_a_date_and_time_with_its_zone() {
+    for row in &TEXT_FORMS {
+        let zoned = row.read_as.starts_with("Instant");
+        let serde_reads = row.serde.starts_with("read");
+        for (client, answer, reads_zoned) in [
+            ("Kotlin", row.kotlin, true),
+            ("Dart", row.dart, serde_reads),
+            ("Swift", row.swift, serde_reads),
+        ] {
+            assert_eq!(
+                answer == "read",
+                if zoned { reads_zoned } else { row.zod },
+                "the {client} read parts from Zod on `{}` as {}",
+                row.json,
+                row.read_as
+            );
+        }
+        let words = row.kotlin.split(" at path: ").next();
+        assert!(
+            zoned || (Some(row.dart) == words && Some(row.swift) == words),
+            "the clients refuse `{}` in other words",
+            row.json
+        );
+    }
+}

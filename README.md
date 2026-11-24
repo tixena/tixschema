@@ -10,7 +10,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tixschema = "0.6"
+tixschema = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 ```
 
@@ -122,7 +122,8 @@ The guide is one file per topic, under `docs/guide/`, in the order a crate meets
 - [Optional and nullable keys](docs/guide/optional-and-nullable-keys.md): `ts_optional` and `nullable`.
 - [Compiler-validated examples](docs/guide/examples.md): Examples the compiler checks against the type they describe.
 - [MongoDB `ObjectId`](docs/guide/object-id.md): `ObjectId` on every surface.
-- [Chrono dates and times](docs/guide/chrono.md): Dates and times, and `as_number`.
+- [jiff dates and times](docs/guide/jiff.md): jiff's dates, times, instants and zoned dates and times, the default, and `as_number`.
+- [Chrono dates and times](docs/guide/chrono.md): chrono's dates and times, never on with jiff, and `as_number`.
 - [Recovering decode](docs/guide/recovering-decode.md): `decode_with`: reading stored or received values that may not match their model.
 - [arky frontmatter](docs/guide/arky.md): Converting to and from arky's frontmatter `Value`.
 - [MongoDB operations and typed filters](docs/guide/mongodb-operations.md): Reading and writing a model's own rows through typed filters, updates and operations.

@@ -158,7 +158,7 @@ pub enum MapKeyWire {
     /// serde writes the digits of an `i64`, which TypeScript holds as a `bigint`.
     Signed64,
     /// serde writes an RFC 3339 timestamp carrying an offset.
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     Timestamp,
     /// serde writes the digits of a `u64`, which TypeScript holds as a `bigint`.
     Unsigned64,

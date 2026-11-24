@@ -12,17 +12,18 @@ publish = false
 [features]
 # One for one with tixschema's own, under the same names: the shared test sources read
 # `cfg(feature = "...")`, and this package is where they read it from.
-default = ["web"]
+default = ["web", "jiff"]
 
 web = ["tixschema/web", "zod", "typescript"]
 mobile = ["tixschema/mobile", "dart", "swift", "kotlin"]
-mongo = ["tixschema/mongo", "mongodb", "chrono", "indexmap", "arky"]
+mongo = ["tixschema/mongo", "mongodb", "indexmap", "arky"]
 
 zod = ["tixschema/zod"]
 mongodb = ["tixschema/mongodb", "bson"]
 bson = ["tixschema/bson"]
 typescript = ["tixschema/typescript"]
 chrono = ["tixschema/chrono"]
+jiff = ["tixschema/jiff"]
 indexmap = ["tixschema/indexmap"]
 dart = ["tixschema/dart"]
 swift = ["tixschema/swift"]
@@ -31,14 +32,17 @@ arky = ["tixschema/arky"]
 
 [dev-dependencies]
 tixschema = { path = "..", default-features = false }
-# `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on. `chrono-0_4` is
-# the feature its date hook sits behind.
-bson = { version = "3.1", features = ["serde", "chrono-0_4"] }
+# `bson-3` in place of the driver's default `compat-3-0-0`, which turns `bson-2` on. `chrono-0_4` and
+# `jiff-0_2` are the features its date hooks sit behind.
+bson = { version = "3.1", features = ["serde", "chrono-0_4", "jiff-0_2"] }
 mongodb = { version = "3.9", default-features = false, features = ["bson-3", "compat-3-3-0", "rustls-tls", "dns-resolver"] }
 # As tixschema's own manifest lists them.
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 chrono = { version = ">=0.4.40", features = ["serde"] }
+# jiff 0.2: bson 3.1 converts a `Timestamp` of that line alone (`FromJiff02Timestamp`). Named `jiff`,
+# as the `as_number` hook writes `jiff::fmt::serde::timestamp::millisecond::…`.
+jiff = { version = "0.2", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 regex = ">=1.10"
 tokio = { version = ">=1.53.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }

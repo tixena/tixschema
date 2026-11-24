@@ -1,9 +1,10 @@
-//! A `DateTime<Tz>` read and written back by the emitted Dart types under the Dart VM, against
-//! serde: a date of whole seconds is written with no fraction, as chrono writes it, a fraction of
-//! milliseconds or microseconds is kept, and a date finer than a microsecond is read at the
-//! microsecond Dart's `DateTime` holds. A map keyed by dates that read as one key is refused.
+//! A `DateTime<Tz>` or a `Timestamp` read and written back by the emitted Dart types under the
+//! Dart VM, against serde: a date of whole seconds is written with no fraction, as serde writes
+//! it, a fraction of milliseconds or microseconds is kept, its trailing zeros dropped under jiff,
+//! and a date finer than a microsecond is read at the microsecond Dart's `DateTime` holds. A map
+//! keyed by dates that read as one key is refused.
 
-#![cfg(all(feature = "dart", feature = "chrono"))]
+#![cfg(all(feature = "dart", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 
@@ -46,10 +47,17 @@ const ROWS: [(&str, &str, &str); 7] = [
         r#"{"at":"2025-09-16T05:20:00Z","by_at":{"2025-09-16T05:20:00Z":1}}"#,
         r#"{"at":"2025-09-16T05:20:00Z","by_at":{"2025-09-16T05:20:00Z":1}}"#,
     ),
+    #[cfg(feature = "chrono")]
     (
         "milliseconds",
         r#"{"at":"2025-09-16T05:20:00.500Z","by_at":{"2025-09-16T05:20:00.500Z":1}}"#,
         r#"{"at":"2025-09-16T05:20:00.500Z","by_at":{"2025-09-16T05:20:00.500Z":1}}"#,
+    ),
+    #[cfg(feature = "jiff")]
+    (
+        "milliseconds",
+        r#"{"at":"2025-09-16T05:20:00.5Z","by_at":{"2025-09-16T05:20:00.5Z":1}}"#,
+        r#"{"at":"2025-09-16T05:20:00.5Z","by_at":{"2025-09-16T05:20:00.5Z":1}}"#,
     ),
     (
         "microseconds",
@@ -85,7 +93,7 @@ fn serde_told(json: &str) -> String {
 
 /// Each payload is read by serde, and written back by Dart in the text of the table.
 #[test]
-fn a_date_is_read_and_written_back_by_dart_in_the_text_chrono_writes() {
+fn a_date_is_read_and_written_back_by_dart_in_the_text_serde_writes() {
     let mut main = String::from("void main() {\n");
     let mut expected = String::new();
     for (name, json, dart_writes) in ROWS {
@@ -113,7 +121,7 @@ fn a_date_is_read_and_written_back_by_dart_in_the_text_chrono_writes() {
         return;
     };
     assert!(ran, "{printed}");
-    assert_eq!(printed, expected, "the Dart write is not chrono's");
+    assert_eq!(printed, expected, "the Dart write is not serde's");
 }
 
 /// A date of whole seconds and of milliseconds, in a list, as a map's value, in a tuple's slot, in

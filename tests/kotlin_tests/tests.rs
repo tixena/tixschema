@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use tixschema::model_schema;
 
 use super::corrected_options_models::{
@@ -162,6 +164,15 @@ pub struct Dates {
     pub plain_date: chrono::NaiveDate,
     #[model_schema_prop(as_number)]
     pub zoned_ms: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dates {
+    pub plain_date: civil::Date,
+    #[model_schema_prop(as_number)]
+    pub zoned_ms: jiff::Timestamp,
 }
 
 #[cfg(feature = "mongodb")]
@@ -477,6 +488,16 @@ fn test_chrono_type_is_constructible() {
 }
 
 #[test]
+#[cfg(feature = "jiff")]
+fn test_jiff_type_is_constructible() {
+    let dates = DatesDraft {
+        plain_date: civil::date(2026, 9, 21),
+        zoned_ms: jiff::Timestamp::from_second(0).unwrap(),
+    };
+    assert_eq!(dates.plain_date.to_string(), "2026-09-21");
+}
+
+#[test]
 #[cfg(feature = "mongodb")]
 fn test_object_id_type_is_constructible() {
     let has_id = HasIdDraft {
@@ -771,7 +792,7 @@ fn test_alias() {
 }
 
 #[test]
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn test_dates() {
     let kotlin = renumbered(&dates_kotlin::kotlin_definition());
     assert!(

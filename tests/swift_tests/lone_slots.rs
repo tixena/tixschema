@@ -10,6 +10,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::DateTime;
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -26,7 +29,7 @@ use super::lone_slots_models::{
     stowed_by_name_swift, stowed_by_number_swift, stowed_list_swift, stowed_maybe_swift,
     stowed_pair_swift, strop_swift, twined_swift, unskipped_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::lone_slots_models::{
     StowedStampDraft, TickedDraft, TickedMillisDraft, stowed_stamp_swift, ticked_millis_swift,
     ticked_swift,
@@ -145,6 +148,21 @@ fn serde_writes_a_date_in_one_slot_as_the_slots_value() {
     assert_eq!(
         read_back(&StowedStampDraft((date, "a".to_owned()))),
         r#"["2025-10-13T04:17:00.250Z","a"]"#
+    );
+}
+
+#[cfg(feature = "jiff")]
+#[test]
+fn serde_writes_a_date_in_one_slot_as_the_slots_value() {
+    let date = Timestamp::from_millisecond(1_760_329_020_250).unwrap();
+    assert_eq!(
+        read_back(&TickedDraft(date)),
+        r#""2025-10-13T04:17:00.25Z""#
+    );
+    assert_eq!(read_back(&TickedMillisDraft(date)), "1760329020250");
+    assert_eq!(
+        read_back(&StowedStampDraft((date, "a".to_owned()))),
+        r#"["2025-10-13T04:17:00.25Z","a"]"#
     );
 }
 
@@ -526,7 +544,7 @@ fn a_slot_swift_converts_is_read_and_written_as_the_type_serde_writes() {
 
 /// A date is read and written as the text serde writes, and a date under `as_number` as the
 /// number it writes, as a slot of several is.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_date_in_one_slot_is_read_and_written_as_serde_writes_it() {
     holds(

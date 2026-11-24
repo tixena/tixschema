@@ -9,10 +9,23 @@ extern crate alloc;
 #[path = "kotlin_tests/text_forms_models.rs"]
 mod text_forms_models;
 
+/// A `char` and a jiff date, time and date and time held in each place, and what serde, Zod and
+/// each client's read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "kotlin_tests/jiff_text_forms_models.rs"]
+mod text_forms_models;
+
 /// What the Swift emitter writes for a `char` and a chrono date, time and date and time.
 #[cfg(test)]
 #[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_forms.rs"]
+mod text_forms;
+
+/// What the Swift emitter writes for a `char` and a jiff date, time and date and time.
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_text_forms.rs"]
 mod text_forms;
 
 #[cfg(test)]
@@ -22,7 +35,7 @@ mod tests;
 
 /// What the emitter writes into a type whose reads read a fixed-width integer.
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "chrono"))]
+#[cfg(all(feature = "swift", any(feature = "chrono", feature = "jiff")))]
 #[path = "support/swift_fitted.rs"]
 mod swift_fitted;
 
@@ -91,6 +104,11 @@ mod generic_helpers;
 mod generic_dates;
 
 #[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_generic_dates.rs"]
+mod generic_dates;
+
+#[cfg(test)]
 #[cfg(feature = "swift")]
 #[path = "swift_tests/brand_reads.rs"]
 mod brand_reads;
@@ -101,8 +119,18 @@ mod brand_reads;
 mod brand_date_reads;
 
 #[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_brand_date_reads.rs"]
+mod brand_date_reads;
+
+#[cfg(test)]
 #[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/text_map_keys_models.rs"]
+mod text_map_keys_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_text_map_keys_models.rs"]
 mod text_map_keys_models;
 
 #[cfg(test)]
@@ -111,13 +139,28 @@ mod text_map_keys_models;
 mod text_map_keys;
 
 #[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_text_map_keys.rs"]
+mod text_map_keys;
+
+#[cfg(test)]
 #[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/date_map_keys_models.rs"]
 mod date_map_keys_models;
 
 #[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_date_map_keys_models.rs"]
+mod date_map_keys_models;
+
+#[cfg(test)]
 #[cfg(all(feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/date_map_keys.rs"]
+mod date_map_keys;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_date_map_keys.rs"]
 mod date_map_keys;
 
 #[cfg(test)]
@@ -136,7 +179,12 @@ mod renamed_generics;
 mod held_dates_models;
 
 #[cfg(test)]
-#[cfg(all(feature = "swift", feature = "chrono"))]
+#[cfg(all(feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_held_dates_models.rs"]
+mod held_dates_models;
+
+#[cfg(test)]
+#[cfg(all(feature = "swift", any(feature = "chrono", feature = "jiff")))]
 #[path = "swift_tests/held_dates.rs"]
 mod held_dates;
 

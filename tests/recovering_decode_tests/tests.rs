@@ -55,6 +55,9 @@ mod preprocessed;
 mod shadowing;
 #[cfg(all(feature = "chrono", feature = "mongodb"))]
 mod stored_record;
+#[cfg(all(feature = "jiff", feature = "mongodb"))]
+#[path = "jiff_stored_record.rs"]
+mod stored_record;
 mod struct_shapes;
 mod wide_integers;
 
@@ -296,6 +299,14 @@ struct Lettered {
 struct Stamped {
     #[model_schema_prop(as_number)]
     at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["decode_with"])]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+struct Stamped {
+    #[model_schema_prop(as_number)]
+    at: jiff::Timestamp,
 }
 
 /// The read hook of [`Counted::number`]: the field type's own reader, counted.
@@ -654,6 +665,24 @@ fn an_as_number_field_is_read_through_the_hook_as_number_hangs() {
     let stamped =
         Stamped::from_value_with(stored, |_raw, _found| stamped_schema::Verdict::Reject).unwrap();
     assert_eq!(stamped.at.timestamp_millis(), 1_759_600_000_000);
+}
+
+#[cfg(feature = "jiff")]
+#[test]
+fn an_as_number_field_is_read_through_the_hook_as_number_hangs() {
+    let read = Stamped::from_value_with(json!({ "at": "2025-10-04T17:46:40Z" }), |_raw, _found| {
+        stamped_schema::Verdict::Reject
+    });
+    assert_eq!(
+        lines(&read.unwrap_err()),
+        [
+            "at: invalid: expected Timestamp, found String(\"2025-10-04T17:46:40Z\"): invalid type: string \"2025-10-04T17:46:40Z\", expected an integer number of milliseconds from the Unix epoch"
+        ]
+    );
+    let stored = json!({ "at": 1_759_600_000_000_i64 });
+    let stamped =
+        Stamped::from_value_with(stored, |_raw, _found| stamped_schema::Verdict::Reject).unwrap();
+    assert_eq!(stamped.at.as_millisecond(), 1_759_600_000_000);
 }
 
 #[test]
@@ -1174,6 +1203,9 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
         Expected::Boolean,
         Expected::BooleanLiteral(true),
         Expected::Char,
+        Expected::CivilDate,
+        Expected::CivilDateTime,
+        Expected::CivilTime,
         Expected::DateTime,
         Expected::F32,
         Expected::F64,
@@ -1193,6 +1225,7 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
         Expected::Range("Range", Box::new(Expected::U32)),
         Expected::String,
         Expected::StringLiteral("Tixena"),
+        Expected::Timestamp,
         Expected::Tuple(vec![Expected::String, Expected::U32]),
         Expected::TypeParam("T"),
         Expected::Unknown,
@@ -1202,6 +1235,7 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
         Expected::U64,
         Expected::Usize,
         Expected::Variants(&["Circle", "Label"]),
+        Expected::ZonedDateTime,
     ];
     for member in &members {
         let name = match member {
@@ -1209,6 +1243,9 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
             Expected::Boolean => "Boolean",
             Expected::BooleanLiteral(_) => "BooleanLiteral",
             Expected::Char => "Char",
+            Expected::CivilDate => "CivilDate",
+            Expected::CivilDateTime => "CivilDateTime",
+            Expected::CivilTime => "CivilTime",
             Expected::DateTime => "DateTime",
             Expected::F32 => "F32",
             Expected::F64 => "F64",
@@ -1228,6 +1265,7 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
             Expected::Range(_, _) => "Range",
             Expected::String => "String",
             Expected::StringLiteral(_) => "StringLiteral",
+            Expected::Timestamp => "Timestamp",
             Expected::Tuple(_) => "Tuple",
             Expected::TypeParam(_) => "TypeParam",
             Expected::Unknown => "Unknown",
@@ -1237,10 +1275,11 @@ fn expected_has_exactly_the_members_a_field_category_can_take() {
             Expected::U64 => "U64",
             Expected::Usize => "Usize",
             Expected::Variants(_) => "Variants",
+            Expected::ZonedDateTime => "ZonedDateTime",
         };
         assert!(format!("{member:?}").starts_with(name), "for {name}");
     }
-    assert_eq!(members.len(), 32);
+    assert_eq!(members.len(), 37);
 }
 
 #[test]

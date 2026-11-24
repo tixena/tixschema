@@ -3,7 +3,7 @@
 //! each call prints the request the transport was handed, or `refused` where the client refused
 //! the value before the transport was reached, and the Rust dispatcher reads each request.
 
-#![cfg(all(feature = "swift", feature = "chrono"))]
+#![cfg(all(feature = "swift", any(feature = "chrono", feature = "jiff")))]
 
 use super::run_swift_wire_forms::swift_value;
 use super::runtime::judged;

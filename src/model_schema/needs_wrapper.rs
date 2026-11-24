@@ -238,6 +238,12 @@ fn shape_of_field(def: &FieldDef) -> Shape {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => Shape::Settled(true),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => Shape::Settled(true),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => Shape::Settled(true),
     }

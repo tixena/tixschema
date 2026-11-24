@@ -9,6 +9,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
@@ -366,6 +369,18 @@ pub struct Timeline {
     pub maybe_by_name: Option<HashMap<String, DateTime<Utc>>>,
 }
 
+/// A list of maps of dates Swift keys natively, whose conversion parses each date, beside a list
+/// of maps of dates under a key Swift wraps, whose wrapper parses them.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Timeline {
+    pub by_name_lists: Vec<HashMap<String, Timestamp>>,
+    pub by_number_lists: Vec<HashMap<u32, Timestamp>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maybe_by_name: Option<HashMap<String, Timestamp>>,
+}
+
 /// A map of optional dates under a key Swift wraps, and one under a key Swift keys natively, whose
 /// values `validate()` walks.
 #[cfg(feature = "chrono")]
@@ -376,8 +391,18 @@ pub struct Dateline {
     pub maybe_by_number: HashMap<u32, Option<DateTime<Utc>>>,
 }
 
+/// A map of optional dates under a key Swift wraps, and one under a key Swift keys natively, whose
+/// values `validate()` walks.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Dateline {
+    pub maybe_by_name: HashMap<String, Option<Plank>>,
+    pub maybe_by_number: HashMap<u32, Option<Timestamp>>,
+}
+
 /// A model with a rule, the value of a map that holds none.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Plank {

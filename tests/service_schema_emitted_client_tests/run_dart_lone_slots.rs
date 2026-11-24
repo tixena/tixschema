@@ -15,7 +15,7 @@ use super::lone_slots_models::{
     stowed_by_number_dart, stowed_list_dart, stowed_maybe_dart, stowed_pair_dart, strop_dart,
     tagged_stow_dart, tote_dart, twine_dart, twined_dart, unskipped_dart, untagged_stow_dart,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::lone_slots_models::{stowed_stamp_dart, ticked_dart, ticked_millis_dart};
 use super::run_dart_validate::{ISSUES_OF, dart, module};
 
@@ -92,11 +92,11 @@ fn definitions() -> Vec<String> {
         adjacent_stow_dart::dart_definition(),
         untagged_stow_dart::dart_definition(),
         tagged_stow_dart::dart_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         ticked_dart::dart_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         ticked_millis_dart::dart_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         stowed_stamp_dart::dart_definition(),
     ]
 }

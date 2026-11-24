@@ -3,11 +3,14 @@
 //! transport each send what the message's Zod check gives back, a date and time with no zone in
 //! the form serde reads, and none of them sends a number outside its type's range.
 
-#![cfg(feature = "chrono")]
+#![cfg(any(feature = "chrono", feature = "jiff"))]
 
 use core::future::ready;
 
+#[cfg(feature = "chrono")]
 use chrono::NaiveDateTime;
+#[cfg(feature = "jiff")]
+use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::{model_schema, service_schema};
@@ -60,12 +63,7 @@ const overSocket = (parcel) => through(async (carry) => {
   transport.close();
 });
 
-const parcels = [
-  { at: "2024-01-05T10:20:30.000Z", count: 214, letter: "a" },
-  { at: "2024-01-05T10:20", count: 214, letter: "a" },
-  { at: "2024-01-05T10:20:30", count: 300, letter: "a" },
-  { at: "2024-01-05T10:20:30", count: 214, letter: "ab" },
-];
+const parcels = PARCELS;
 const sent = [];
 for (const parcel of parcels) {
   sent.push({
@@ -77,11 +75,32 @@ for (const parcel of parcels) {
 console.log(JSON.stringify(sent));
 "#;
 
+/// The parcels the driver sends: a date and time in a form the date feature reads beside the one
+/// it writes, and a count and a letter no form holds.
+const PARCELS: &str = r#"[
+  { at: "2024-01-05T10:20:30.000Z", count: 214, letter: "a" },
+  { at: "2024-01-05T10:20", count: 214, letter: "a" },
+  { at: "2024-01-05 10:20:30.500", count: 214, letter: "a" },
+  { at: "2024-01-05T10:20:30", count: 300, letter: "a" },
+  { at: "2024-01-05T10:20:30", count: 214, letter: "ab" },
+]"#;
+
 /// A message whose members each client holds in a wider form than the Rust type.
+#[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ConveyedParcel {
     pub at: NaiveDateTime,
+    pub count: u8,
+    pub letter: char,
+}
+
+/// A message whose members each client holds in a wider form than the Rust type.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ConveyedParcel {
+    pub at: DateTime,
     pub count: u8,
     pub letter: char,
 }
@@ -123,7 +142,7 @@ fn each_typescript_client_sends_the_form_serde_reads_over_every_transport() {
         stand_down_modules(REQUIRED_PACKAGES, "the emitted clients' wire forms");
         return;
     };
-    let module = format!("{}\n\n{DRIVER}", emitted());
+    let module = format!("{}\n\n{}", emitted(), DRIVER.replace("PARCELS", PARCELS));
     let Some(wrote) = ran_with_modules(
         "wire-forms",
         RUNTIME_VAR,
@@ -139,15 +158,15 @@ fn each_typescript_client_sends_the_form_serde_reads_over_every_transport() {
         |payload: &Value| json!({ "http": payload, "bus": payload, "socket": payload });
     assert_eq!(
         sent,
-        json!([
-            everywhere(&json!({ "at": "2024-01-05T10:20:30.000", "count": 214_u8, "letter": "a" })),
-            everywhere(&json!({ "at": "2024-01-05T10:20:00", "count": 214_u8, "letter": "a" })),
-            everywhere(&json!("refused")),
-            everywhere(&json!("refused")),
-        ]),
+        sent_forms(everywhere),
         "a TypeScript client sends a value in another form than serde reads"
     );
-    for parcel in sent.as_array().unwrap().iter().take(2) {
+    for parcel in sent
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|parcel| parcel["http"] != "refused")
+    {
         let read = serde_json::from_value::<ConveyedParcel>(parcel["http"].clone());
         assert!(read.is_ok(), "serde refuses {parcel}: {read:?}");
         assert_eq!(
@@ -156,4 +175,30 @@ fn each_typescript_client_sends_the_form_serde_reads_over_every_transport() {
             "the backend takes what serde read of {parcel}"
         );
     }
+}
+
+/// What each transport is handed of each parcel under chrono: the `Z` dropped, the seconds
+/// written, and a space between the date and the time refused, as Zod refuses it.
+#[cfg(feature = "chrono")]
+fn sent_forms(everywhere: impl Fn(&Value) -> Value) -> Value {
+    json!([
+        everywhere(&json!({ "at": "2024-01-05T10:20:30.000", "count": 214_u8, "letter": "a" })),
+        everywhere(&json!({ "at": "2024-01-05T10:20:00", "count": 214_u8, "letter": "a" })),
+        everywhere(&json!("refused")),
+        everywhere(&json!("refused")),
+        everywhere(&json!("refused")),
+    ])
+}
+
+/// What each transport is handed of each parcel under jiff: the `Z` jiff refuses refused, the
+/// seconds written, a space written as the `T` jiff writes and the fraction in its fewest digits.
+#[cfg(feature = "jiff")]
+fn sent_forms(everywhere: impl Fn(&Value) -> Value) -> Value {
+    json!([
+        everywhere(&json!("refused")),
+        everywhere(&json!({ "at": "2024-01-05T10:20:00", "count": 214_u8, "letter": "a" })),
+        everywhere(&json!({ "at": "2024-01-05T10:20:30.5", "count": 214_u8, "letter": "a" })),
+        everywhere(&json!("refused")),
+        everywhere(&json!("refused")),
+    ])
 }

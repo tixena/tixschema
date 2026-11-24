@@ -21,11 +21,15 @@ pub mod object_id;
 #[cfg(feature = "chrono")]
 pub mod chrono;
 
+#[cfg(feature = "jiff")]
+pub mod jiff;
+
 #[cfg(any(
     feature = "dart",
     feature = "swift",
     feature = "kotlin",
-    feature = "chrono"
+    feature = "chrono",
+    feature = "jiff"
 ))]
 pub mod text_forms;
 

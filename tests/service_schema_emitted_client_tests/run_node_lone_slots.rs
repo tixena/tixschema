@@ -12,18 +12,35 @@ use super::lone_slots_models::{
     Stow, StowedByName, StowedByNumber, StowedList, StowedMaybe, StowedPair, Strop, TaggedStow,
     Tote, Twine, Twined, Unskipped, UntaggedStow,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::lone_slots_models::{StowedStamp, Ticked, TickedMillis};
 use super::runtime::{node_modules, ran_with_modules, stand_down_modules};
 
-/// What the run reads a payload with, and prints the answer with: the value the schema reads, or
-/// that it refuses it.
+/// What the run reads a payload with, and prints the answer with: the value the schema reads, a
+/// date in the text serde writes of it, or that it refuses it.
 const HARNESS: &str = "
+function written(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString()SERDE_FRACTION;
+  if (Array.isArray(value)) return value.map(written);
+  if (typeof value === \"object\" && value !== null) {
+    return Object.fromEntries(Object.entries(value).map(([key, held]) => [key, written(held)]));
+  }
+  return value;
+}
 function row(name: string, schema: ZodType, payload: string): void {
   const parsed = schema.safeParse(JSON.parse(payload));
-  console.log(parsed.success ? `${name}: read ${JSON.stringify(parsed.data)}` : `${name}: refused`);
+  console.log(parsed.success ? `${name}: read ${JSON.stringify(written(parsed.data))}` : `${name}: refused`);
 }
 ";
+
+/// What the harness appends to `toISOString()`, as the date feature's serde writes the fraction of
+/// an instant: no `.000` on whole seconds under chrono, and the fewest digits under jiff.
+#[cfg(not(feature = "jiff"))]
+const SERDE_FRACTION: &str = ".replace(\".000Z\", \"Z\")";
+/// What the harness appends to `toISOString()`, as the date feature's serde writes the fraction of
+/// an instant: no `.000` on whole seconds under chrono, and the fewest digits under jiff.
+#[cfg(feature = "jiff")]
+const SERDE_FRACTION: &str = ".replace(/\\.(\\d*?)0+Z$/, (_, kept) => kept ? `.${kept}Z` : \"Z\")";
 
 /// The Zod schema that reads `read_as`, a type as Swift writes it: a factory called at the schema
 /// of its type argument.
@@ -110,17 +127,17 @@ fn definitions() -> Vec<String> {
         UntaggedStow::zod_schema(),
         TaggedStow::ts_definition(),
         TaggedStow::zod_schema(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         Ticked::ts_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         Ticked::zod_schema(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         TickedMillis::ts_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         TickedMillis::zod_schema(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         StowedStamp::<String>::ts_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         StowedStamp::<String>::zod_schema(),
     ]
 }
@@ -143,7 +160,7 @@ fn a_struct_of_one_slot_reads_under_zod_as_serde_does_wherever_it_is_held() {
          \"zod/v4/core\";\n\n",
     );
     source.push_str(&definitions().join("\n\n"));
-    source.push_str(HARNESS);
+    source.push_str(&HARNESS.replace("SERDE_FRACTION", SERDE_FRACTION));
     for row in &rows {
         let _ = writeln!(
             source,

@@ -52,6 +52,8 @@ use crate::utils::{FlattenVariant, parameter_placeholder};
 
 #[cfg(feature = "chrono")]
 use crate::features::chrono;
+#[cfg(feature = "jiff")]
+use crate::features::jiff;
 #[cfg(feature = "mongodb")]
 use crate::features::object_id;
 
@@ -83,9 +85,45 @@ pub const ZOD_SCHEMA_BOUND: &str = "SomeType";
 #[cfg(feature = "zod")]
 const WIDE_KEY_ZOD: &str = "z.custom<number>((key) => typeof key === \"string\")";
 
-/// A `DateTime<Tz>` key is the RFC 3339 string chrono renders it into, offset always written.
-#[cfg(all(feature = "chrono", feature = "zod"))]
+/// A `DateTime<Tz>` or `Timestamp` key is the RFC 3339 string serde renders it into, offset always
+/// written.
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
+
+/// What serde names the epoch milliseconds `as_number` reads as, where it refuses another value:
+/// chrono's `ts_milliseconds` words it one way and jiff's `millisecond::required` another.
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+pub const EPOCH_EXPECTED: &str = "a unix timestamp in milliseconds";
+/// What serde names the epoch milliseconds `as_number` reads as, where it refuses another value:
+/// chrono's `ts_milliseconds` words it one way and jiff's `millisecond::required` another.
+#[cfg(all(
+    feature = "jiff",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+pub const EPOCH_EXPECTED: &str = "an integer number of milliseconds from the Unix epoch";
+
+/// What serde writes before and after the digits of epoch milliseconds above an `i64`, where
+/// `as_number` refuses them: chrono's `ts_milliseconds` words it one way and jiff's
+/// `millisecond::required` another.
+#[cfg(all(
+    feature = "chrono",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+pub const EPOCH_BEYOND: (&str, &str) = ("value is not a legal timestamp: ", "");
+/// What serde writes before and after the digits of epoch milliseconds above an `i64`, where
+/// `as_number` refuses them: chrono's `ts_milliseconds` words it one way and jiff's
+/// `millisecond::required` another.
+#[cfg(all(
+    feature = "jiff",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+pub const EPOCH_BEYOND: (&str, &str) = (
+    "got unsigned integer ",
+    " milliseconds, which is too big to fit in a Jiff `Timestamp`",
+);
 
 /// The magnitude every `f32` serde reads stays below: a larger one is read as an infinity, which
 /// serde then writes as `null`. The midpoint between `f32::MAX` and the next power of two.
@@ -323,6 +361,15 @@ pub enum FieldDefType {
     /// `char`: serde writes a one-character string and reads only that back, so it is described as
     /// one.
     Char,
+    #[cfg(feature = "jiff")]
+    /// jiff `civil::Date` type - requires the "`jiff`" feature.
+    CivilDate,
+    #[cfg(feature = "jiff")]
+    /// jiff `civil::DateTime` type - requires the "`jiff`" feature.
+    CivilDateTime,
+    #[cfg(feature = "jiff")]
+    /// jiff `civil::Time` type - requires the "`jiff`" feature.
+    CivilTime,
     #[cfg(feature = "chrono")]
     /// Chrono `DateTime<Tz>` type - requires "`chrono`" feature.
     DateTime,
@@ -360,6 +407,9 @@ pub enum FieldDefType {
     /// String literal type - for fixed string values Added via `model_schema_prop(literal` =
     /// "value") Maps to "value" in TS, z.literal("value") in Zod.
     StringLiteral(String),
+    #[cfg(feature = "jiff")]
+    /// jiff `Timestamp` type - requires the "`jiff`" feature.
+    Timestamp,
     /// Tuple type - generates anonymous object in TS/Zod.
     Tuple(Vec<FieldDef>),
     /// One of the enclosing item's own type parameters — `IdType` in `struct Wrapper<IdType>`.
@@ -374,6 +424,9 @@ pub enum FieldDefType {
     /// opaque type parameter.
     Unknown,
     Usize,
+    #[cfg(feature = "jiff")]
+    /// jiff `Zoned` type - requires the "`jiff`" feature.
+    ZonedDateTime,
 }
 
 impl FieldDefType {
@@ -426,6 +479,12 @@ impl FieldDefType {
             Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => {
                 (None, None)
             }
+            #[cfg(feature = "jiff")]
+            Self::Timestamp
+            | Self::CivilDate
+            | Self::CivilTime
+            | Self::CivilDateTime
+            | Self::ZonedDateTime => (None, None),
         }
     }
 
@@ -463,7 +522,34 @@ impl FieldDefType {
             Self::ObjectId => None,
             #[cfg(feature = "chrono")]
             Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => None,
+            #[cfg(feature = "jiff")]
+            Self::Timestamp
+            | Self::CivilDate
+            | Self::CivilTime
+            | Self::CivilDateTime
+            | Self::ZonedDateTime => None,
         }
+    }
+
+    /// Whether the type is the instant of the date feature that is on, the one `as_number`
+    /// writes as its epoch milliseconds: chrono's `DateTime<Tz>`, or jiff's `Timestamp`.
+    #[cfg(feature = "chrono")]
+    pub const fn is_instant(&self) -> bool {
+        matches!(self, Self::DateTime)
+    }
+
+    /// Whether the type is the instant of the date feature that is on, the one `as_number`
+    /// writes as its epoch milliseconds: chrono's `DateTime<Tz>`, or jiff's `Timestamp`.
+    #[cfg(feature = "jiff")]
+    pub const fn is_instant(&self) -> bool {
+        matches!(self, Self::Timestamp)
+    }
+
+    /// No type is an instant without a date feature.
+    #[cfg(not(any(feature = "chrono", feature = "jiff")))]
+    pub const fn is_instant(&self) -> bool {
+        let _: &Self = self;
+        false
     }
 
     /// Whether this is one of the integer primitives.
@@ -536,6 +622,12 @@ impl FieldDefType {
             Self::ObjectId => None,
             #[cfg(feature = "chrono")]
             Self::DateTime | Self::NaiveDate | Self::NaiveDateTime | Self::NaiveTime => None,
+            #[cfg(feature = "jiff")]
+            Self::Timestamp
+            | Self::CivilDate
+            | Self::CivilTime
+            | Self::CivilDateTime
+            | Self::ZonedDateTime => None,
         }
     }
 }
@@ -736,6 +828,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => None,
         }
     }
 
@@ -789,6 +887,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => None,
             FieldDefType::SiblingType(_, _)
             | FieldDefType::TypeParam(_)
             | FieldDefType::Unknown
@@ -876,6 +980,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => false,
         }
     }
 
@@ -913,6 +1023,16 @@ impl FieldDef {
             FieldDefType::Char => ("Char", Vec::new(), &[]),
             #[cfg(feature = "chrono")]
             FieldDefType::DateTime => ("DateTime", Vec::new(), &[]),
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp => ("Timestamp", Vec::new(), &[]),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDate => ("CivilDate", Vec::new(), &[]),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilTime => ("CivilTime", Vec::new(), &[]),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDateTime => ("CivilDateTime", Vec::new(), &[]),
+            #[cfg(feature = "jiff")]
+            FieldDefType::ZonedDateTime => ("ZonedDateTime", Vec::new(), &[]),
             FieldDefType::F32 => ("F32", Vec::new(), &[]),
             FieldDefType::F64 => ("F64", Vec::new(), &[]),
             FieldDefType::I16 => ("I16", Vec::new(), &[]),
@@ -1005,6 +1125,16 @@ impl FieldDef {
             FieldDefType::NaiveDateTime => Some("chrono::NaiveDateTime"),
             #[cfg(feature = "chrono")]
             FieldDefType::DateTime => Some("chrono::DateTime"),
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp => Some("jiff::Timestamp"),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDate => Some("jiff::civil::Date"),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilTime => Some("jiff::civil::Time"),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDateTime => Some("jiff::civil::DateTime"),
+            #[cfg(feature = "jiff")]
+            FieldDefType::ZonedDateTime => Some("jiff::ZonedDateTime"),
             FieldDefType::SiblingType(_, _)
             | FieldDefType::Map(_, _)
             | FieldDefType::Range(_, _)
@@ -1056,9 +1186,9 @@ impl FieldDef {
         self.recorded_flatten_variants()
     }
 
-    /// Whether `#[model_schema_prop(as_number)]` was written on this field: a `DateTime<Tz>` serde
-    /// writes as the integer of its epoch milliseconds.
-    #[cfg(feature = "chrono")]
+    /// Whether `#[model_schema_prop(as_number)]` was written on this field: a `DateTime<Tz>` or
+    /// a `Timestamp` serde writes as the integer of its epoch milliseconds.
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     pub fn has_as_number(&self) -> bool {
         self.model_schema_prop_meta
             .as_ref()
@@ -1226,6 +1356,10 @@ impl FieldDef {
         if matches!(self.field_type, FieldDefType::DateTime) {
             return MapKeyWire::Timestamp;
         }
+        #[cfg(feature = "jiff")]
+        if matches!(self.field_type, FieldDefType::Timestamp) {
+            return MapKeyWire::Timestamp;
+        }
         let FieldDefType::SiblingType(name, arguments) = &self.field_type else {
             return MapKeyWire::Named;
         };
@@ -1355,6 +1489,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => false,
         }
     }
 
@@ -1415,6 +1555,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => Vec::new(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => Vec::new(),
         }
     }
 
@@ -1551,6 +1697,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => None,
         }
     }
 
@@ -1612,6 +1764,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => Vec::new(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => Vec::new(),
         };
         for held in nested {
             held.reach_type_parameters(reached);
@@ -1671,6 +1829,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => None,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => None,
         }
     }
 
@@ -1724,6 +1888,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => false,
         }
     }
 
@@ -1773,6 +1943,12 @@ impl FieldDef {
             | FieldDefType::NaiveDate
             | FieldDefType::NaiveDateTime
             | FieldDefType::NaiveTime => false,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => false,
         }
     }
 
@@ -1886,6 +2062,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => {}
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => {}
         }
     }
 
@@ -2009,6 +2191,22 @@ impl FieldDef {
                     chrono::get_datetime_typescript_type()
                 }
             }
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp => {
+                if self.has_as_number() {
+                    jiff::get_timestamp_number_typescript_type()
+                } else {
+                    jiff::get_timestamp_typescript_type()
+                }
+            }
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDate => jiff::get_civil_date_typescript_type(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilTime => jiff::get_civil_time_typescript_type(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDateTime => jiff::get_civil_datetime_typescript_type(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::ZonedDateTime => jiff::get_zoned_datetime_typescript_type(),
         };
         (0..self.array_depth).fold(result, |wrapped, level| {
             if level == 0 && self.writes_bytes() {
@@ -2034,7 +2232,7 @@ impl FieldDef {
         match self.map_key_wire() {
             MapKeyWire::Boolean => BOOLEAN_KEY_TYPESCRIPT.to_owned(),
             MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => "number".to_owned(),
-            #[cfg(feature = "chrono")]
+            #[cfg(any(feature = "chrono", feature = "jiff"))]
             MapKeyWire::Timestamp => "string".to_owned(),
             MapKeyWire::Enumerated | MapKeyWire::Named => self.typescript_typename(),
         }
@@ -2245,6 +2443,12 @@ impl FieldDef {
             | FieldDefType::NaiveTime
             | FieldDefType::NaiveDateTime
             | FieldDefType::DateTime => false,
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => false,
         }
     }
 
@@ -2285,18 +2489,7 @@ impl FieldDef {
                 let members = range_object(*kind, |member| format!("{member}: {held}"), ", ");
                 format!("z.strictObject({members})")
             }
-            FieldDefType::Result(ok, err) => {
-                let arms = result_union(ok, err, |arm, held| {
-                    format!("z.strictObject({{ {arm}: {} }})", held.zod_slot_type())
-                });
-                let carrying: Vec<(String, &str)> = RESULT_ARMS
-                    .into_iter()
-                    .zip([ok, err])
-                    .filter(|(_, def)| !def.is_unit())
-                    .map(|(arm, _)| (arm.to_owned(), "newtype variant"))
-                    .collect();
-                zod_one_key_union(&arms.join(", "), &carrying)
-            }
+            FieldDefType::Result(ok, err) => zod_result_type(ok, err),
             FieldDefType::Tuple(lst) if lst.is_empty() => "z.null()".to_owned(),
             FieldDefType::Tuple(lst) => {
                 let elements = lst
@@ -2312,21 +2505,8 @@ impl FieldDef {
                 {
                     // The element carries this field's own array levels, so it applies the wrap.
                     return self.collection_element_field(element).zod_array_base();
-                } else if let Some(info) = lookup_alias_info(name) {
-                    // What the named type published is what this can name: a factory where the type
-                    // declares parameters, and the one schema it has where it declares none.
-                    if publishes_zod_factory(name) {
-                        zod_factory_call(&info.export_name, lst)
-                    } else {
-                        format!("{}$Schema{}", info.export_name, self.zod_named_checks())
-                    }
-                } else if lst.is_empty() {
-                    format!("{name}$Schema{}", self.zod_named_checks())
-                } else {
-                    // A name the registry does not hold yet, written with arguments, is a generic
-                    // type expanded after this one: only a factory can take them.
-                    zod_factory_call(name, lst)
                 }
+                self.zod_named_type(name, lst)
             }
             FieldDefType::Map(k, v) => k.zod_map_record_call(&v.zod_slot_type()),
             FieldDefType::Boolean => "z.boolean()".to_owned(),
@@ -2372,6 +2552,22 @@ impl FieldDef {
                     chrono::get_datetime_native_zod_schema()
                 }
             }
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp => {
+                if self.has_as_number() {
+                    jiff::get_timestamp_number_zod_schema()
+                } else {
+                    jiff::get_timestamp_native_zod_schema()
+                }
+            }
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDate => jiff::get_civil_date_zod_schema(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilTime => jiff::get_civil_time_zod_schema(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::CivilDateTime => jiff::get_civil_datetime_zod_schema(),
+            #[cfg(feature = "jiff")]
+            FieldDefType::ZonedDateTime => jiff::get_zoned_datetime_zod_schema(),
         };
         (0..self.array_depth).fold(result, |wrapped, level| {
             self.zod_array_level(wrapped, level)
@@ -2684,7 +2880,7 @@ impl FieldDef {
             MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => {
                 format!("z.record({WIDE_KEY_ZOD}, {value_schema})")
             }
-            #[cfg(feature = "chrono")]
+            #[cfg(any(feature = "chrono", feature = "jiff"))]
             MapKeyWire::Timestamp => format!("z.record({TIMESTAMP_KEY_ZOD}, {value_schema})"),
             MapKeyWire::Named => format!("z.record({}, {value_schema})", self.zod_type()),
         }
@@ -2812,6 +3008,26 @@ impl FieldDef {
             String::new()
         } else {
             format!(".check({})", checks.join(", "))
+        }
+    }
+
+    /// The schema of a type the field names, `name` written with the arguments `lst`.
+    #[cfg(feature = "zod")]
+    fn zod_named_type(&self, name: &str, lst: &[Self]) -> String {
+        if let Some(info) = lookup_alias_info(name) {
+            // What the named type published is what this can name: a factory where the type
+            // declares parameters, and the one schema it has where it declares none.
+            if publishes_zod_factory(name) {
+                zod_factory_call(&info.export_name, lst)
+            } else {
+                format!("{}$Schema{}", info.export_name, self.zod_named_checks())
+            }
+        } else if lst.is_empty() {
+            format!("{name}$Schema{}", self.zod_named_checks())
+        } else {
+            // A name the registry does not hold yet, written with arguments, is a generic type
+            // expanded after this one: only a factory can take them.
+            zod_factory_call(name, lst)
         }
     }
 
@@ -3533,6 +3749,21 @@ fn replace_call(schema: &str, call: &str, name: &str) -> String {
     replaced
 }
 
+/// The schema of a `Result` of `ok` and `err`: the union of the two one-key objects serde writes.
+#[cfg(feature = "zod")]
+fn zod_result_type(ok: &FieldDef, err: &FieldDef) -> String {
+    let arms = result_union(ok, err, |arm, held| {
+        format!("z.strictObject({{ {arm}: {} }})", held.zod_slot_type())
+    });
+    let carrying: Vec<(String, &str)> = RESULT_ARMS
+        .into_iter()
+        .zip([ok, err])
+        .filter(|(_, def)| !def.is_unit())
+        .map(|(arm, _)| (arm.to_owned(), "newtype variant"))
+        .collect();
+    zod_one_key_union(&arms.join(", "), &carrying)
+}
+
 /// A reference to a type that publishes a factory, as the call it has to be. Each argument is
 /// rendered by the renderer that renders the reference itself, so an argument that is a forwarded
 /// parameter, a primitive, a date, or another generic reference all reach the call the same way —
@@ -4124,6 +4355,17 @@ fn get_field_def_type_or_sibling(t_name: &str) -> FieldDefType {
         "NaiveTime" => FieldDefType::NaiveTime,
         #[cfg(feature = "chrono")]
         "NaiveDateTime" => FieldDefType::NaiveDateTime,
+        // A bare name is jiff's unless this crate declared a type of its own under it.
+        #[cfg(feature = "jiff")]
+        "Timestamp" if !is_declared_ident(t_name) => FieldDefType::Timestamp,
+        #[cfg(feature = "jiff")]
+        "Date" if !is_declared_ident(t_name) => FieldDefType::CivilDate,
+        #[cfg(feature = "jiff")]
+        "Time" if !is_declared_ident(t_name) => FieldDefType::CivilTime,
+        #[cfg(feature = "jiff")]
+        "DateTime" if !is_declared_ident(t_name) => FieldDefType::CivilDateTime,
+        #[cfg(feature = "jiff")]
+        "ZonedDateTime" | "Zoned" if !is_declared_ident(t_name) => FieldDefType::ZonedDateTime,
         type_name => FieldDefType::SiblingType(type_name.to_owned(), vec![]),
     }
 }

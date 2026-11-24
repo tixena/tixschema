@@ -6,6 +6,8 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
     use alloc::sync::Arc;
     use core::fmt;
     use core::fmt::Write as _;
+    #[cfg(feature = "jiff")]
+    use jiff::civil;
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use tixschema::model_schema;
@@ -248,6 +250,15 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
         pub schedule_parcel: Parcel,
     }
 
+    #[cfg(feature = "jiff")]
+    #[model_schema()]
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Schedule {
+        pub by_arrival: BTreeMap<civil::DateTime, Parcel>,
+        pub schedule_parcel: Parcel,
+    }
+
     fn sound() -> Parcel {
         ParcelDraft {
             item_label: "A".to_owned(),
@@ -460,6 +471,26 @@ mod a_model_held_in_a_map_a_slot_or_a_tuple {
             include_str!("../../docs/guide/validation.md")
                 .contains("`2026-10-13T04:17:00`, where the type prints `2026-10-13 04:17:00`"),
             "the README no longer shows the key of a date and time"
+        );
+    }
+
+    /// A jiff date and time prints as serde writes it, and a key is named in that text.
+    #[cfg(feature = "jiff")]
+    #[test]
+    fn a_key_is_the_text_serde_writes() {
+        let arrival = civil::date(2026, 10, 13).at(4, 17, 0, 0);
+        assert_eq!(arrival.to_string(), "2026-10-13T04:17:00");
+        let schedule = ScheduleDraft {
+            by_arrival: BTreeMap::from([(arrival, unlabelled())]),
+            schedule_parcel: sound(),
+        };
+        assert_eq!(
+            schedule.validation_issues(),
+            vec![unlabelled_at("byArrival.2026-10-13T04:17:00.itemLabel")]
+        );
+        assert_eq!(
+            serde_json::to_value(&schedule).unwrap()["byArrival"]["2026-10-13T04:17:00"]["itemLabel"],
+            ""
         );
     }
 

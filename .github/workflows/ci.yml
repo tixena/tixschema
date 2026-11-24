@@ -80,21 +80,23 @@ jobs:
         kotlinc -version
         java -version
 
-    - name: Lint with every feature on
+    - name: Lint with every feature on but one date feature
       id: lint
       env:
         RUSTUP_TOOLCHAIN: beta
       run: |
-        echo "🧹 Linting with every feature on..."
-        cargo clippy --all-targets --all-features -- -D warnings
+        echo "🧹 Linting with every feature on but chrono, then but jiff..."
+        cargo clippy --all-targets --no-default-features --features web,mobile,mongo,jiff -- -D warnings
+        cargo clippy --all-targets --no-default-features --features web,mobile,mongo,chrono -- -D warnings
 
-    - name: Test with every feature on
+    - name: Test with every feature on but one date feature
       id: test
       env:
         RUSTUP_TOOLCHAIN: beta
       run: |
-        echo "🧪 Testing with every feature on..."
-        cargo test --all-features
+        echo "🧪 Testing with every feature on but chrono, then but jiff..."
+        cargo test --no-default-features --features web,mobile,mongo,jiff
+        cargo test --no-default-features --features web,mobile,mongo,chrono
 
     - name: Check every feature by itself, and the feature mix
       id: mix
@@ -137,8 +139,8 @@ jobs:
         # Overall status + which step failed
         JOB_STATUS="success"
         FAILED_STEP="None"
-        if [[ "$LINT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint (cargo clippy --all-features)";
-        elif [[ "$TEST" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Tests (cargo test --all-features)";
+        if [[ "$LINT" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Lint (cargo clippy, every feature but one date feature)";
+        elif [[ "$TEST" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Tests (cargo test, every feature but one date feature)";
         elif [[ "$MIX" == "failure" ]]; then JOB_STATUS="failure"; FAILED_STEP="Every feature by itself (just check-mix)";
         elif [[ "$JOB" == "cancelled" ]]; then JOB_STATUS="failure"; FAILED_STEP="The run was cancelled";
         elif [[ "$JOB" != "success" ]]; then JOB_STATUS="failure"; FAILED_STEP="A setup step (see the run)";

@@ -89,7 +89,7 @@ fn each_range_reads_and_writes_in_kotlin_as_serde_does() {
         stride_kotlin::kotlin_definition(),
         signposted_kotlin::kotlin_definition(),
         frontier_kotlin::kotlin_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         super::range_models::rostered_kotlin::kotlin_definition(),
         TOLD.to_owned(),
         main,

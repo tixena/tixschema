@@ -3,6 +3,9 @@
 use alloc::collections::{BTreeSet, VecDeque};
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 use chrono::{DateTime, Utc};
+
+#[cfg(all(feature = "jiff", feature = "typescript"))]
+use jiff::Timestamp;
 #[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 use serde::de::Error as _;
@@ -211,6 +214,15 @@ enum FlagTreeUnion {
 enum StampTreeUnion {
     Leaf(String),
     Nested(HashMap<DateTime<Utc>, Self>),
+}
+
+#[cfg(all(feature = "jiff", feature = "typescript"))]
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum StampTreeUnion {
+    Leaf(String),
+    Nested(HashMap<Timestamp, Self>),
 }
 
 // An enumerated key on a map member naming nothing recursive: no cycle to break, so the member
@@ -848,7 +860,7 @@ fn test_recursive_flag_keyed_map_member_typescript_uses_mapped_type() {
 }
 
 #[test]
-#[cfg(all(feature = "chrono", feature = "typescript"))]
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "typescript"))]
 fn test_recursive_date_time_keyed_map_member_typescript_keeps_index_signature() {
     let ts = StampTreeUnion::ts_definition();
     assert!(
@@ -883,6 +895,22 @@ fn test_recursive_flag_keyed_map_member_writes_and_reads_the_two_string_keys() {
 #[cfg(all(feature = "chrono", feature = "typescript"))]
 fn test_recursive_date_time_keyed_map_member_round_trips() {
     let stamp = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
+    let stamps = StampTreeUnionDraft::Nested(HashMap::from([(
+        stamp,
+        StampTreeUnionDraft::Leaf("x".to_owned()).into(),
+    )]));
+    let written = serde_json::to_string(&stamps).unwrap();
+    assert_eq!(written, r#"{"2023-11-14T22:13:20Z":"x"}"#);
+    assert_eq!(
+        serde_json::from_str::<StampTreeUnion>(&written).unwrap(),
+        stamps.validate().unwrap()
+    );
+}
+
+#[test]
+#[cfg(all(feature = "jiff", feature = "typescript"))]
+fn test_recursive_date_time_keyed_map_member_round_trips() {
+    let stamp = Timestamp::from_second(1_700_000_000).unwrap();
     let stamps = StampTreeUnionDraft::Nested(HashMap::from([(
         stamp,
         StampTreeUnionDraft::Leaf("x".to_owned()).into(),

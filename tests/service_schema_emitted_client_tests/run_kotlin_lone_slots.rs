@@ -20,7 +20,7 @@ use super::lone_slots_models::{
     stowed_maybe_kotlin, stowed_pair_kotlin, strop_kotlin, tagged_stow_kotlin, tote_kotlin,
     twine_kotlin, twined_kotlin, unskipped_kotlin, untagged_stow_kotlin,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::lone_slots_models::{stowed_stamp_kotlin, ticked_kotlin, ticked_millis_kotlin};
 use super::runtime::ran_kotlin;
 
@@ -123,7 +123,7 @@ fn a_struct_of_one_slot_reads_and_writes_in_kotlin_as_serde_does_wherever_it_is_
         untagged_stow_kotlin::kotlin_definition(),
         tagged_stow_kotlin::kotlin_definition(),
     ];
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     source.extend([
         ticked_kotlin::kotlin_definition(),
         ticked_millis_kotlin::kotlin_definition(),

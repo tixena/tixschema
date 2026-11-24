@@ -1,6 +1,6 @@
 ## Feature Flags
 
-The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with one exception: `mongodb` turns on `bson`.
+The crate uses optional features to control code generation and dependencies. Each feature is enabled or disabled on its own, with two exceptions: `mongodb` turns on `bson`, and `chrono` and `jiff` are never on together.
 
 | Feature | Default | Description |
 |---------|---------|-------------|
@@ -8,7 +8,8 @@ The crate uses optional features to control code generation and dependencies. Ea
 | `typescript` | Yes | TypeScript type generation via `ts_definition()` method |
 | `mongodb` | No | MongoDB support: the ObjectId type, with validation, and on types whose [`enable` list](recovering-decode.md#opting-in) holds `"mongodb"` the [typed field paths, filters, updates and operations](mongodb-operations.md#mongodb-operations-and-typed-filters) over a collection of their rows; turns on `bson` |
 | `bson` | No | BSON support: `from_bson_with` and `from_bson_piped` on every type whose [`enable` list](recovering-decode.md#opting-in) holds `"decode_with"` |
-| `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) |
+| `jiff` | Yes | jiff date/time type support (`civil::Date`, `civil::Time`, `civil::DateTime`, `Timestamp`, `ZonedDateTime`). See [jiff dates and times](jiff.md#jiff-datetime-types) |
+| `chrono` | No | Chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`). Never on with `jiff`: a build with both stops at a `compile_error!` |
 | `indexmap` | No | `indexmap` type support: `IndexMap` as a map and `IndexSet` as a list. See [The order of a map's keys](models.md#the-order-of-a-maps-keys) |
 | `dart` | No | Dart type generation via `dart_definition()`, with a JSON `fromJson`/`toJson` codec whose read [calls each `preprocess`](preprocess.md#a-preprocess-in-the-dart-client) and [refuses what `validate()` refuses](dart.md#the-dart-read-refuses-what-validate-refuses), and a [`validate()`](dart.md#validate-in-dart) on every type |
 | `swift` | No | Swift type generation with a `Codable` codec, and a [`validate()`](swift.md#validate-in-the-swift-client) on every type, which [the read of each calls](swift.md#a-swift-read-refuses-what-validate-refuses) |
@@ -18,17 +19,20 @@ The crate uses optional features to control code generation and dependencies. Ea
 Common configurations:
 
 ```toml
-# Default (zod + typescript)
-tixschema = "0.6"
+# Default (zod + typescript + jiff)
+tixschema = "0.7"
 
-# All features including optional ones
-tixschema = { version = "0.6", features = ["zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
+# All features including optional ones, with jiff's dates
+tixschema = { version = "0.7", features = ["zod", "typescript", "mongodb", "bson", "indexmap", "dart", "swift", "kotlin", "arky"] }
+
+# All features including optional ones, with chrono's dates in place of jiff's
+tixschema = { version = "0.7", default-features = false, features = ["zod", "typescript", "mongodb", "bson", "chrono", "indexmap", "dart", "swift", "kotlin", "arky"] }
 
 # Minimal (TypeScript only, no Zod)
-tixschema = { version = "0.6", default-features = false, features = ["typescript"] }
+tixschema = { version = "0.7", default-features = false, features = ["typescript"] }
 
 # TypeScript + Zod: the default `web` set, written out
-tixschema = { version = "0.6", default-features = false, features = ["zod", "typescript"] }
+tixschema = { version = "0.7", default-features = false, features = ["zod", "typescript"] }
 ```
 
 CI tests every combination of the feature sets (`web`, `mobile`, `mongo`) via `cargo-hack`; `just test` runs every combination of the plain features locally.

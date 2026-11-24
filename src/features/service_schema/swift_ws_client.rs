@@ -4,7 +4,9 @@
 //! closes — the TypeScript client's feature set, item for item, read at [`super::ws_client`].
 
 use crate::features::refusals;
-use crate::features::swift::{forms, swift_quoted, swift_reference_type, swift_refusals_of};
+use crate::features::swift::{
+    SERDE_FRACTION, forms, swift_quoted, swift_reference_type, swift_refusals_of,
+};
 use crate::features::text_forms::TextForm;
 use crate::field_type::{NOT_A_DOCUMENT, get_field_def};
 use crate::rename_rule::RenameRule;
@@ -266,7 +268,7 @@ fn dated_encoder_helper(prefix: &str) -> String {
          let formatter = ISO8601DateFormatter()\n    \
          formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]\n    \
          var container = encoder.singleValueContainer()\n    \
-         try container.encode(formatter.string(from: date).replacingOccurrences(of: \".000Z\", with: \"Z\"))\n  \
+         try container.encode(formatter.string(from: date){SERDE_FRACTION})\n  \
          }}\n  \
          return encoder\n\
          }}"

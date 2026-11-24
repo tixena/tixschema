@@ -35,7 +35,7 @@ use super::swift_preprocess_models::{
     spared_swift, spotted_swift, stamped_swift, sticker_swift, stowed_swift, strapped_swift,
     tallied_calls, tallied_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::swift_preprocess_models::{Timed, timed_swift};
 use super::tests::poll_once;
 
@@ -928,12 +928,15 @@ fn a_member_names_a_function_in_every_position_a_type_reads_one_in() {
 }
 
 /// A date is read from what its function answers through the text chrono writes it as.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_date_is_read_from_what_its_function_answers() {
     let payload = r#"{"at":{"payload":"2023-11-14T22:13:20.500Z"}}"#;
     let read: Timed = serde_json::from_str(payload).unwrap();
+    #[cfg(feature = "chrono")]
     assert_eq!(read.at.timestamp(), 1_700_000_000);
+    #[cfg(feature = "jiff")]
+    assert_eq!(read.at.as_second(), 1_700_000_000);
     let mut declared = definitions();
     declared.push(timed_swift::swift_definition());
     let lines = format!(

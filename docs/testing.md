@@ -104,6 +104,21 @@ fn test_my_feature() {
 }
 ```
 
+### Dates Under Both Date Features
+
+The gate builds the tests twice, once under `jiff` and once under `chrono`, and a test that names
+a date type runs in the build of its feature alone. Each such test has its counterpart in the other
+build: an item gated on `chrono` sits beside the same item gated on `jiff`, its types and expected
+texts jiff's, and a file whose code names chrono's types has a `jiff_` copy beside it, declared
+under the same module name with `#[path]` and the other feature's gate
+(`kotlin_tests/jiff_text_forms_models.rs` beside `kotlin_tests/text_forms_models.rs`). An item
+that names no date
+type, the runs that read a table and the shared helpers among them, is gated on
+`any(feature = "chrono", feature = "jiff")` and serves both. A text that differs between the two
+features, the fraction serde writes or the words of its refusal, is a constant gated on each:
+`SERDE_FRACTION` in `generic_types_tests/declarations.rs`. `DateTime<FixedOffset>` has no jiff
+counterpart, and `run_kotlin_offset_instants.rs` runs under `chrono` alone.
+
 ### Flattened Members
 
 `src/model_schema/flatten_order/tests.rs` holds the decision table of flattened members to every
@@ -280,12 +295,12 @@ fn test_complex_nested() {
 
 Each workflow installs beta, which `rust-toolchain.toml` pins and the code is developed on, and runs every lint step and every test step on it. No step runs on the floor, `rust-version` in `Cargo.toml` (1.91.1): the tests' `arky` dev-dependency needs a newer rustc than the floor. The setup action is given `rustflags: ""`, so `RUSTFLAGS` stays unset: only a lint step, which passes `-D warnings` itself, fails on a warning.
 
-A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, two lines with every feature on, then `just check-mix`:
+A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, a lint and a test run with every feature on but one date feature, then `just check-mix`. `chrono` and `jiff` are never on together, and a build with both stops at a `compile_error!`, so `--all-features` builds nothing and each run is two builds, one with every feature but `chrono` and one with every feature but `jiff`:
 
-1. `cargo clippy --all-targets --all-features -- -D warnings`, on beta
-2. `cargo test --all-features`, on beta
+1. `cargo clippy --all-targets --no-default-features --features web,mobile,mongo,jiff -- -D warnings`, then the same with `chrono` in place of `jiff`, on beta
+2. `cargo test --no-default-features --features web,mobile,mongo,jiff`, then the same with `chrono`, on beta
 3. `just check-mix`, not part of `just all`, on beta, in three steps:
-   - `cargo hack check --each-feature` compiles this package's library, no test, once with no feature, once with the default, once with every feature, and once with each feature by itself
+   - `cargo hack check --each-feature --exclude-all-features` compiles this package's library, no test, once with no feature, once with the default, and once with each feature by itself
    - the same line over `bson3/`, with `--tests`, compiles that package's tests, against version 3 of the `bson` library, and tixschema, a dev-dependency there, under the same features; no test runs
    - `tests/every_build_validation_tests.rs` runs with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`
 4. Discord notification with build status
@@ -295,7 +310,7 @@ The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is st
 1. `just check` (cargo check of this package and of the tests of `bson3/`, then clippy)
 2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature alone and in `typescript,zod` and `dart,swift,kotlin`)
 3. `cargo test --verbose` (basic tests)
-4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets via cargo-hack, in this package and in `bson3/`)
+4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets, each with no date feature, with `chrono` and with `jiff`, via cargo-hack's `--mutually-exclusive-features chrono,jiff`, in this package and in `bson3/`)
 5. `just typecheck-ts` (the emitted TypeScript through a real `tsc` under `strict` and every other type-checking flag it has, `isolatedDeclarations` with `declaration` among them, and a second package compiled against the declarations emitted for it)
 6. `just lint-slow`, then `just run-slow`, both on beta (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)

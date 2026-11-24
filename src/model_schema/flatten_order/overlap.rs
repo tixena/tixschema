@@ -250,6 +250,12 @@ fn wire_of(def: &FieldDef, depth: usize) -> Wire {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => Wire::Narrowed(Box::new(Wire::Unseen)),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => Wire::Narrowed(Box::new(Wire::Unseen)),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => Wire::Narrowed(Box::new(Wire::Unseen)),
         FieldDefType::NumberLiteral(_)

@@ -3,6 +3,9 @@
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, TimeZone as _, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;
@@ -62,6 +65,12 @@ struct GenericBrand<IdType>(IdType);
 #[serde(transparent)]
 struct StampBrand(DateTime<Utc>);
 
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+struct StampBrand(Timestamp);
+
 #[model_schema()]
 type CorrelationRef = CorrelationId;
 
@@ -83,7 +92,7 @@ type StructBrandRef = StructBrand;
 #[model_schema()]
 type PlainStructRef = PlainStruct;
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema()]
 type StampBrandRef = StampBrand;
 
@@ -272,7 +281,11 @@ fn an_alias_of_a_brand_is_typed_by_what_it_parses_to() {
     }
 }
 
-#[cfg(all(feature = "chrono", feature = "zod", feature = "typescript"))]
+#[cfg(all(
+    any(feature = "chrono", feature = "jiff"),
+    feature = "zod",
+    feature = "typescript"
+))]
 #[test]
 fn an_alias_of_a_datetime_brand_is_typed_by_what_it_parses_to() {
     let zod = stamp_brand_ref_schema::Schema::zod_schema();
@@ -661,6 +674,20 @@ fn an_alias_of_a_built_expression_writes_its_targets_wire_form() {
 #[test]
 fn a_datetime_brand_writes_the_timestamp_its_target_writes() {
     let stamped = StampBrand::new(Utc.with_ymd_and_hms(2020, 1, 2, 3, 4, 5).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::to_string(&stamped).unwrap(),
+        "\"2020-01-02T03:04:05Z\""
+    );
+    assert_eq!(
+        serde_json::from_str::<StampBrandRef>("\"2020-01-02T03:04:05Z\"").unwrap(),
+        stamped
+    );
+}
+
+#[cfg(feature = "jiff")]
+#[test]
+fn a_datetime_brand_writes_the_timestamp_its_target_writes() {
+    let stamped = StampBrand::new("2020-01-02T03:04:05Z".parse::<Timestamp>().unwrap()).unwrap();
     assert_eq!(
         serde_json::to_string(&stamped).unwrap(),
         "\"2020-01-02T03:04:05Z\""

@@ -359,7 +359,7 @@ below is the entry `"decode_with"`, and a flagged type is one that lists it.
 - **A type that lists `"mongodb"` holds no map whose key the `bson` library refuses.** serde
   writes a key of a number or a `bool` as text into JSON only, and the `bson` library refuses to
   write one and reads a stored one back as text, which the key's type refuses. Measured under
-  both majors: a `char`, a `chrono` date or time, a plain enum and a brand over a `String` are
+  both majors: a `char`, a `chrono` or `jiff` date or time, a plain enum and a brand over a `String` are
   stored as their text and read back, and are not refused. `mongodb_map_key_refusals`, which
   `decode_with_guard_errors` chains where `args.enable.mongodb` holds, raises one error per such
   map, in every build, spanned on the member's ident (a slot's type) and naming the member, behind

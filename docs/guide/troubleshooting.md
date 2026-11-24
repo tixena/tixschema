@@ -14,7 +14,7 @@
 
 7. **Doc Comments**: Rust doc comments on types and fields are carried through to the generated TypeScript as JSDoc comments. A member with no doc comment is documented by the name serde writes for it. A `*/` in a doc comment or in such a name is written `*\/`, so the comment runs on past it.
 
-8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`). MongoDB `ObjectId` and the `chrono` date/time types are supported behind their respective feature flags. A member that holds `serde_json::Value` or `serde_json::Map` stops the build, and so does a service operation that takes or answers one: see [A JSON value is no member](models.md#a-json-value-is-no-member).
+8. **Built-in Type Mappings**: Besides the primitives, `String` and `std::path::PathBuf` both map to `string` (`z.string()`). MongoDB `ObjectId` and the date and time types of `jiff` (the default) or `chrono` are supported behind their respective feature flags. A member that holds `serde_json::Value` or `serde_json::Map` stops the build, and so does a service operation that takes or answers one: see [A JSON value is no member](models.md#a-json-value-is-no-member).
 
 ## Error Handling & Troubleshooting
 
@@ -36,28 +36,29 @@ error: `ObjectId` is read as a MongoDB ObjectId under tixschema's `mongodb` feat
 
 **Solution:**
 ```toml
-tixschema = { version = "0.6", features = ["mongodb"] }
+tixschema = { version = "0.7", features = ["mongodb"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `ObjectId`, above the type that holds it, is not refused: the name is that type.
 
-#### `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` Without the Feature
+#### A chrono Type Under `jiff`, or a jiff Type Under `chrono`
 
 **Error:**
 
 ```
-error: `NaiveDate` is read as a date or a time under tixschema's `chrono` feature: add `features = ["chrono"]` to the `tixschema` dependency
+error: `NaiveDate` is read as a date under tixschema's `chrono` feature, and `jiff` is on: declare `jiff::civil::Date`, or turn `jiff` off and `chrono` on
  --> src/main.rs:8:14
   |
 8 |     pub day: NaiveDate,
   |              ^^^^^^^^^
 ```
 
-**Cause:** A type written `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` with the `chrono` feature off. It is refused wherever the item writes it, as `IndexMap` is below.
+**Cause:** `jiff` is a default feature, and `chrono` and `jiff` are never on together. Under `jiff`, a type written `NaiveDate`, `NaiveTime`, `NaiveDateTime` or `DateTime<Tz>` is refused, naming the jiff type that takes its place: `jiff::civil::Date`, `jiff::civil::Time`, `jiff::civil::DateTime` and `jiff::Timestamp`. Under `chrono`, `Timestamp` is refused naming `chrono::DateTime<Utc>`, and `ZonedDateTime` and `Zoned` are refused with no type in their place. With neither feature on, each is refused naming the feature that reads it: ``error: `NaiveDate` is read as a date under tixschema's `chrono` feature: add `features = ["chrono"]` to the `tixschema` dependency``. It is refused wherever the item writes it, as `IndexMap` is below.
 
-**Solution:**
+**Solution:** Declare the jiff type, or keep chrono with the default features off:
+
 ```toml
-tixschema = { version = "0.6", features = ["chrono"] }
+tixschema = { version = "0.7", default-features = false, features = ["web", "chrono"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own under one of these names, above the type that holds it, is not refused: the name is that type.
@@ -78,7 +79,7 @@ error: `IndexMap` is read as a map under tixschema's `indexmap` feature: add `fe
 
 **Solution:**
 ```toml
-tixschema = { version = "0.6", features = ["indexmap"] }
+tixschema = { version = "0.7", features = ["indexmap"] }
 ```
 
 A crate that declares a `#[model_schema()]` type of its own named `IndexMap` or `IndexSet`, above the type that holds it, is not refused: the name is that type.
@@ -117,7 +118,7 @@ Every model type the type holds lists the entry too: the type's document calls e
 
 **Solution:**
 ```toml
-tixschema = { version = "0.6", features = ["zod"] }
+tixschema = { version = "0.7", features = ["zod"] }
 ```
 
 ### Compilation Errors

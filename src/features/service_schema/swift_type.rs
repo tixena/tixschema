@@ -100,8 +100,15 @@ fn swift_base(field: &FieldDef) -> String {
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
             "String".to_owned()
         }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => "String".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => "Date".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => "Date".to_owned(),
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
         let item = if field.is_nullable_at(level) {

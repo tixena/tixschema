@@ -374,11 +374,24 @@ mod run_swift_generic_helpers;
 #[path = "service_schema_emitted_client_tests/run_swift_generic_dates.rs"]
 mod run_swift_generic_dates;
 
+/// A date held by a type that declares a parameter, read and written by the emitted Swift types.
+#[cfg(test)]
+#[cfg(feature = "jiff")]
+#[path = "service_schema_emitted_client_tests/jiff_run_swift_generic_dates.rs"]
+mod run_swift_generic_dates;
+
 /// A brand whose value Swift converts, a map under a key Swift wraps or a date, read and written by
 /// the emitted Swift types.
 #[cfg(test)]
 #[cfg(feature = "chrono")]
 #[path = "service_schema_emitted_client_tests/run_swift_brand_reads.rs"]
+mod run_swift_brand_reads;
+
+/// A brand whose value Swift converts, a map under a key Swift wraps or a date, read and written by
+/// the emitted Swift types.
+#[cfg(test)]
+#[cfg(feature = "jiff")]
+#[path = "service_schema_emitted_client_tests/jiff_run_swift_brand_reads.rs"]
 mod run_swift_brand_reads;
 
 /// A Swift brand is built through `init(validating:)` alone, and a second file of the module reaches
@@ -415,6 +428,11 @@ mod run_swift_valid_constants;
 #[path = "swift_tests/text_map_keys_models.rs"]
 mod text_map_keys_models;
 
+/// The models a map under a key Swift holds as its text is written on.
+#[cfg(all(test, feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_text_map_keys_models.rs"]
+mod text_map_keys_models;
+
 /// A map under a key Swift holds as the text serde writes for it, read and written by the emitted
 /// Swift types.
 #[cfg(test)]
@@ -422,9 +440,21 @@ mod text_map_keys_models;
 #[path = "service_schema_emitted_client_tests/run_swift_text_map_keys.rs"]
 mod run_swift_text_map_keys;
 
+/// A map under a key Swift holds as the text serde writes for it, read and written by the emitted
+/// Swift types.
+#[cfg(test)]
+#[cfg(feature = "jiff")]
+#[path = "service_schema_emitted_client_tests/jiff_run_swift_text_map_keys.rs"]
+mod run_swift_text_map_keys;
+
 /// The models a map keyed by a date is written on.
 #[cfg(all(test, feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/date_map_keys_models.rs"]
+mod date_map_keys_models;
+
+/// The models a map keyed by a date is written on.
+#[cfg(all(test, feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_date_map_keys_models.rs"]
 mod date_map_keys_models;
 
 /// A map keyed by a date, read and written by the emitted Swift types.
@@ -433,15 +463,26 @@ mod date_map_keys_models;
 #[path = "service_schema_emitted_client_tests/run_swift_date_map_keys.rs"]
 mod run_swift_date_map_keys;
 
+/// A map keyed by a date, read and written by the emitted Swift types.
+#[cfg(test)]
+#[cfg(feature = "jiff")]
+#[path = "service_schema_emitted_client_tests/jiff_run_swift_date_map_keys.rs"]
+mod run_swift_date_map_keys;
+
 /// The models a date held in a slot, as a map's value and as a type argument is written on.
 #[cfg(all(test, feature = "swift", feature = "chrono"))]
 #[path = "swift_tests/held_dates_models.rs"]
 mod held_dates_models;
 
+/// The models a date held in a slot, as a map's value and as a type argument is written on.
+#[cfg(all(test, feature = "swift", feature = "jiff"))]
+#[path = "swift_tests/jiff_held_dates_models.rs"]
+mod held_dates_models;
+
 /// A date held in a slot, as a map's value and as a type argument, read and written by the emitted
 /// Swift types.
 #[cfg(test)]
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[path = "service_schema_emitted_client_tests/run_swift_held_dates.rs"]
 mod run_swift_held_dates;
 
@@ -884,6 +925,15 @@ mod run_dart_no_needless_casts;
 #[path = "service_schema_emitted_client_tests/dates_models.rs"]
 mod dates_models;
 
+/// The models of the date runs of the emitted Dart, Kotlin and Swift types.
+#[cfg(all(
+    test,
+    feature = "jiff",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[path = "service_schema_emitted_client_tests/jiff_dates_models.rs"]
+mod dates_models;
+
 /// A date read and written back by the emitted Dart types against serde, at each precision.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_dart_dates.rs"]
@@ -1017,6 +1067,16 @@ mod run_kotlin_refusals;
 #[path = "kotlin_tests/text_forms_models.rs"]
 mod text_forms_models;
 
+/// A `char` and a jiff date, time and date and time held in each place, and what serde, Zod and
+/// each client's read answer of each payload.
+#[cfg(test)]
+#[cfg(all(
+    feature = "jiff",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[path = "kotlin_tests/jiff_text_forms_models.rs"]
+mod text_forms_models;
+
 /// Those payloads, read by the emitted Kotlin types where the table states.
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/run_kotlin_text_forms.rs"]
@@ -1036,7 +1096,7 @@ mod run_swift_text_forms;
 /// each value a caller hands it.
 #[cfg(test)]
 #[cfg(all(
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 #[path = "wire_forms_tests/models.rs"]
@@ -1045,7 +1105,7 @@ mod wire_forms_models;
 /// What each client is handed of those values, and what it prints of them.
 #[cfg(test)]
 #[cfg(all(
-    feature = "chrono",
+    any(any(feature = "chrono", feature = "jiff"), feature = "jiff"),
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 #[path = "service_schema_emitted_client_tests/wire_form_rows.rs"]
@@ -1077,6 +1137,17 @@ mod run_swift_wire_forms;
 #[path = "service_schema_emitted_client_tests/text_position_rows.rs"]
 mod text_position_rows;
 
+/// A service that takes each type of the table in a path, a query, a header and a part, and what
+/// each client is held to of each row handed there.
+#[cfg(test)]
+#[cfg(all(
+    feature = "jiff",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/jiff_text_position_rows.rs"]
+mod text_position_rows;
+
 /// The `http_rest` dispatcher for `TextPlacingClientService`, which reads each request the runs
 /// below record.
 #[cfg(test)]
@@ -1085,6 +1156,16 @@ mod text_position_rows;
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 #[path = "service_schema_emitted_client_tests/text_placing_http_rest_transport.rs"]
+mod text_placing_http_rest_transport;
+
+/// The `http_rest` dispatcher for `TextPlacingClientService`, which reads each request the runs
+/// below record.
+#[cfg(test)]
+#[cfg(all(
+    feature = "jiff",
+    any(feature = "dart", feature = "kotlin", feature = "swift")
+))]
+#[path = "service_schema_emitted_client_tests/jiff_text_placing_http_rest_transport.rs"]
 mod text_placing_http_rest_transport;
 
 /// A service of a date message, a `char` and a date header in, and a date reply and header out.
@@ -1102,6 +1183,21 @@ mod text_placing_http_rest_transport;
 #[path = "service_schema_emitted_client_tests/sundial_service.rs"]
 mod sundial_service;
 
+/// A service of a date message, a `char` and a date header in, and a date reply and header out.
+#[cfg(test)]
+#[cfg(all(
+    feature = "jiff",
+    any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[macro_use]
+#[path = "service_schema_emitted_client_tests/jiff_sundial_service.rs"]
+mod sundial_service;
+
 /// The `http_rest` dispatcher for `SundialClientService`.
 #[cfg(test)]
 #[cfg(all(
@@ -1116,10 +1212,24 @@ mod sundial_service;
 #[path = "service_schema_emitted_client_tests/sundial_http_rest_transport.rs"]
 mod sundial_http_rest_transport;
 
+/// The `http_rest` dispatcher for `SundialClientService`.
+#[cfg(test)]
+#[cfg(all(
+    feature = "jiff",
+    any(
+        all(feature = "typescript", feature = "zod"),
+        feature = "dart",
+        feature = "swift",
+        feature = "kotlin"
+    )
+))]
+#[path = "service_schema_emitted_client_tests/jiff_sundial_http_rest_transport.rs"]
+mod sundial_http_rest_transport;
+
 /// The `ws_rpc` dispatcher for `SundialClientService`.
 #[cfg(test)]
 #[cfg(all(
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     any(
         all(feature = "typescript", feature = "zod"),
         feature = "dart",
@@ -1159,7 +1269,15 @@ mod run_kotlin_text_positions;
 /// A bare date reply and a `char` header, read in their one form by the emitted Kotlin clients and
 /// dispatcher.
 #[cfg(test)]
+#[cfg(feature = "chrono")]
 #[path = "service_schema_emitted_client_tests/run_kotlin_service_forms.rs"]
+mod run_kotlin_service_forms;
+
+/// A bare jiff date reply and a `char` header, read in their one form by the emitted Kotlin clients
+/// and dispatcher.
+#[cfg(test)]
+#[cfg(feature = "jiff")]
+#[path = "service_schema_emitted_client_tests/jiff_run_kotlin_service_forms.rs"]
 mod run_kotlin_service_forms;
 
 /// The models a name serde reads beside the one it writes is read under.
@@ -1701,9 +1819,18 @@ mod run_skipped_slots;
 #[path = "chrono_tests/untagged_millis_models.rs"]
 mod untagged_millis_models;
 
+/// A date under `as_number` in a member of an untagged enum.
+#[cfg(test)]
+#[cfg(all(
+    feature = "jiff",
+    any(feature = "dart", feature = "swift", feature = "kotlin")
+))]
+#[path = "jiff_tests/untagged_millis_models.rs"]
+mod untagged_millis_models;
+
 /// That date, read and written back by each client beside serde.
 #[cfg(test)]
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[path = "service_schema_emitted_client_tests/run_untagged_millis.rs"]
 mod run_untagged_millis;
 
@@ -1843,7 +1970,7 @@ use run_quoted_service::{
 use run_renamed_paths::{KeyedPathClientService, keyed_path_client_service_schema};
 #[cfg(all(
     test,
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     any(
         all(feature = "typescript", feature = "zod"),
         feature = "dart",
@@ -1872,7 +1999,7 @@ use tests::{
 };
 #[cfg(all(
     test,
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 use text_position_rows::{TextPlacingClientService, text_placing_client_service_schema};

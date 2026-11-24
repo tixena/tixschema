@@ -13,7 +13,7 @@ use super::lone_slots_models::{
     stowed_by_number_swift, stowed_list_swift, stowed_maybe_swift, stowed_pair_swift, strop_swift,
     tagged_stow_swift, tote_swift, twine_swift, twined_swift, unskipped_swift, untagged_stow_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::lone_slots_models::{stowed_stamp_swift, ticked_millis_swift, ticked_swift};
 use super::run_swift_read::normalized;
 use super::runtime::judged;
@@ -99,7 +99,7 @@ fn a_struct_of_one_slot_reads_and_writes_in_swift_as_serde_does_wherever_it_is_h
         untagged_stow_swift::swift_definition(),
         tagged_stow_swift::swift_definition(),
     ];
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     parts.extend([
         ticked_swift::swift_definition(),
         ticked_millis_swift::swift_definition(),

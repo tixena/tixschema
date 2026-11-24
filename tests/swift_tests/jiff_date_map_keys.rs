@@ -1,0 +1,645 @@
+//! What the Swift backend writes for a map keyed by a date: the wrapper the map is read through
+//! computes its two formatters in static properties, binds each key one of them reads with
+//! `guard`, and writes each key with the one that writes a fraction of a second. A wrapper of any
+//! other key declares no formatter.
+//! A list or an optional of such maps is read as one of the wrapper and handed on as each
+//! wrapper's storage, with no `try`: the wrapper's own read is what parses a key.
+//! `service_schema_emitted_client_tests/run_swift_date_map_keys.rs` compiles the models of
+//! `date_map_keys_models.rs` under a Swift toolchain and reads a payload of each.
+
+use std::collections::HashMap;
+
+use jiff::Timestamp;
+use jiff::civil::Date;
+use jiff::tz;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+use super::date_map_keys_models::{
+    AdjacentShiftDraft, AdjacentWatchDraft, Chronicle, ConvoyDraft, Daybook, Daybooks, Diary,
+    LogbookDraft, MomentDraft, ReminderDraft, Sailing, SailingDraft, ShiftDraft,
+    StowedLogbookDraft, TaggedShiftDraft, TaggedWatchDraft, TidetableDraft, TimetableDraft,
+    UntaggedShiftDraft, UntaggedWatchDraft, WatchDraft, adjacent_shift_swift, adjacent_watch_swift,
+    chronicle_swift, daybook_swift, daybooks_swift, diary_swift, first, logbook_swift, second,
+    shift_swift, stowed_logbook_swift, tagged_shift_swift, tagged_watch_swift, tidetable_swift,
+    timetable_swift, untagged_shift_swift, untagged_watch_swift, watch_swift,
+};
+use super::swift_fitted::FITTED;
+use super::swift_key_number::{KEY_NUMBER, integer_key_bound};
+use super::text_map_keys_models::{almanac_swift, ephemeris_swift, gazetteer_swift};
+
+/// The two formatters a wrapper of a date key declares ahead of its coding key: one reads and
+/// writes a fraction of a second, the other reads a date of whole seconds.
+const FORMATTER: &str = "private static var isoFormatterForKeys: ISO8601DateFormatter { \
+                         let f = ISO8601DateFormatter(); \
+                         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; \
+                         return f }; \
+                         private static var isoWholeFormatterForKeys: ISO8601DateFormatter { \
+                         let f = ISO8601DateFormatter(); \
+                         f.formatOptions = [.withInternetDateTime]; return f }; ";
+
+/// How a wrapper binds a date key, ahead of the entry it reads.
+const DATE_KEY: &str = "let wireKey = codingKey.stringValue; \
+                        guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
+                        Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
+                        throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                        debugDescription: \"bad key \\(wireKey)\") }; \
+                        if result.keys.contains(key) { \
+                        throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                        debugDescription: \"repeated key \\(wireKey)\") }; result[key] = ";
+
+/// How a wrapper writes a date key.
+const WRITTEN_DATE_KEY: &str = "let wireKey = Self.isoFormatterForKeys.string(from: key)\
+                                .replacingOccurrences(of: \"(\\\\.[0-9]*?)0+Z$\", with: \"$1Z\", options: .regularExpression).replacingOccurrences(of: \".Z\", with: \"Z\"); ";
+
+/// A map under a key Swift parses, a key it holds as its text and a key `Bool` reads.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Roll {
+    pub by_count: HashMap<u32, Sailing>,
+    pub by_day: HashMap<Date, String>,
+    pub flags: HashMap<bool, u8>,
+}
+
+/// A map under a key Swift parses, in a type that declares a parameter.
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Muster<Stowed> {
+    pub by_count: HashMap<u32, Stowed>,
+}
+
+/// The JSON serde writes for `held`, read back by serde as it was written.
+fn read_back<Held>(held: &Held) -> String
+where
+    Held: DeserializeOwned + Serialize,
+{
+    let written = serde_json::to_string(held).unwrap();
+    let read: Held = serde_json::from_str(&written).unwrap();
+    assert_eq!(serde_json::to_string(&read).unwrap(), written);
+    written
+}
+
+/// Each of `written` in `swift`.
+fn holds(swift: &str, written: &[&str]) {
+    for text in written {
+        assert!(swift.contains(text), "{text}\nin: {swift}");
+    }
+}
+
+/// A map keyed by [`first`] alone, holding `held`.
+fn once<Held>(held: Held) -> HashMap<Timestamp, Held> {
+    HashMap::from([(first(), held)])
+}
+
+/// The text of each wrapper of a map's keys in `swift`, up to the next type.
+fn wrappers(swift: &str) -> Vec<&str> {
+    swift
+        .split("public struct ")
+        .filter(|declared| {
+            declared
+                .split_once([':', '<'])
+                .is_some_and(|(name, _)| name.ends_with("KeyedMap"))
+        })
+        .collect()
+}
+
+#[test]
+fn each_model_is_written_as_serde_writes_it() {
+    let sailing = || SailingDraft {
+        label: "s".to_owned(),
+    };
+    let logged = r#"{"by_at":{"2024-01-02T03:04:05.678Z":1},"sailings":{"2024-01-02T03:04:05.678Z":{"label":"s"}}}"#;
+    let shifted =
+        r#"{"by_at":{"2024-01-02T03:04:05.678Z":"t"},"counts":{"2024-01-02T03:04:05.678Z":2}}"#;
+    for (written, expected) in [
+        (
+            read_back(&TimetableDraft {
+                by_at: once(1),
+                sailings: once(sailing().validate().unwrap()),
+            }),
+            logged.to_owned(),
+        ),
+        (
+            read_back(&TidetableDraft {
+                by_at: once("t".to_owned()),
+                counts: once(2),
+            }),
+            shifted.to_owned(),
+        ),
+        (
+            read_back(&WatchDraft::Logged {
+                by_at: once(1),
+                sailings: once(sailing().validate().unwrap()),
+            }),
+            format!(r#"{{"Logged":{logged}}}"#),
+        ),
+        (
+            read_back(&TaggedWatchDraft::Logged {
+                by_at: once(1),
+                sailings: once(sailing().validate().unwrap()),
+            }),
+            format!(r#"{{"kind":"Logged",{}"#, &logged[1..]),
+        ),
+        (
+            read_back(&AdjacentWatchDraft::Logged {
+                by_at: once(1),
+                sailings: once(sailing().validate().unwrap()),
+            }),
+            format!(r#"{{"kind":"Logged","body":{logged}}}"#),
+        ),
+        (
+            read_back(&UntaggedWatchDraft::Logged {
+                by_at: once(1),
+                sailings: once(sailing().validate().unwrap()),
+            }),
+            logged.to_owned(),
+        ),
+        (
+            read_back(&ShiftDraft::Logged {
+                by_at: once("t".to_owned()),
+                counts: once(2),
+            }),
+            format!(r#"{{"Logged":{shifted}}}"#),
+        ),
+        (
+            read_back(&TaggedShiftDraft::Logged {
+                by_at: once("t".to_owned()),
+                counts: once(2),
+            }),
+            format!(r#"{{"kind":"Logged",{}"#, &shifted[1..]),
+        ),
+        (
+            read_back(&AdjacentShiftDraft::Logged {
+                by_at: once("t".to_owned()),
+                counts: once(2),
+            }),
+            format!(r#"{{"kind":"Logged","body":{shifted}}}"#),
+        ),
+        (
+            read_back(&UntaggedShiftDraft::Logged {
+                by_at: once("t".to_owned()),
+                counts: once(2),
+            }),
+            shifted.to_owned(),
+        ),
+        (
+            read_back(&Daybook::new(once("d".to_owned())).unwrap()),
+            r#"{"2024-01-02T03:04:05.678Z":"d"}"#.to_owned(),
+        ),
+        (
+            read_back(&Chronicle::new(once(3)).unwrap()),
+            r#"{"2024-01-02T03:04:05.678Z":3}"#.to_owned(),
+        ),
+        (
+            read_back(&Diary::new(HashMap::from([(second(), "d".to_owned())])).unwrap()),
+            r#"{"2024-02-29T12:00:00.1Z":"d"}"#.to_owned(),
+        ),
+    ] {
+        assert_eq!(written, expected);
+    }
+}
+
+/// jiff writes no fraction for a date of whole seconds, and six or nine digits for a finer one:
+/// the wrapper reads a text of whole seconds through its second formatter, and keeps three digits
+/// of a longer fraction, so no key of the run is finer than a millisecond.
+#[test]
+fn a_date_of_whole_seconds_or_finer_than_milliseconds_is_written_as_jiff_writes_it() {
+    let whole = Timestamp::from_second(1_704_164_645).unwrap();
+    let finer = Timestamp::new(1_704_164_645, 678_901_000).unwrap();
+    assert_eq!(
+        read_back(&Daybook::new(HashMap::from([(whole, "d".to_owned())])).unwrap()),
+        r#"{"2024-01-02T03:04:05Z":"d"}"#
+    );
+    assert_eq!(
+        read_back(&Daybook::new(HashMap::from([(finer, "d".to_owned())])).unwrap()),
+        r#"{"2024-01-02T03:04:05.678901Z":"d"}"#
+    );
+}
+
+#[test]
+fn a_date_is_written_as_jiff_writes_it_by_the_models_the_swift_runs_read() {
+    let whole = Timestamp::from_second(1_704_164_645).unwrap();
+    assert_eq!(
+        read_back(&MomentDraft { at: whole }),
+        r#"{"at":"2024-01-02T03:04:05Z"}"#
+    );
+    assert_eq!(
+        read_back(&ReminderDraft { due: Some(first()) }),
+        r#"{"due":1704164645678}"#
+    );
+    assert_eq!(read_back(&ReminderDraft { due: None }), "{}");
+    let convoy = ConvoyDraft {
+        held: "h".to_owned(),
+        sailings: once(
+            SailingDraft {
+                label: "s".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        ),
+    };
+    assert_eq!(
+        read_back(&convoy),
+        r#"{"held":"h","sailings":{"2024-01-02T03:04:05.678Z":{"label":"s"}}}"#
+    );
+}
+
+/// Every wrapper of a date key computes its formatter, binds each key it reads with `guard`, one
+/// read per wrapper and two for the wrapper of a map whose value is a model, and writes each key
+/// with the formatter.
+#[test]
+fn each_wrapper_of_a_date_key_computes_its_formatter_and_reads_an_optional_key() {
+    for (swift, wrapped, reads) in [
+        (timetable_swift::swift_definition(), 2, 3),
+        (tidetable_swift::swift_definition(), 2, 3),
+        (watch_swift::swift_definition(), 2, 3),
+        (tagged_watch_swift::swift_definition(), 2, 3),
+        (adjacent_watch_swift::swift_definition(), 2, 3),
+        (untagged_watch_swift::swift_definition(), 2, 3),
+        (shift_swift::swift_definition(), 2, 3),
+        (tagged_shift_swift::swift_definition(), 2, 3),
+        (adjacent_shift_swift::swift_definition(), 2, 3),
+        (untagged_shift_swift::swift_definition(), 2, 3),
+        (daybook_swift::swift_definition(), 1, 1),
+        (chronicle_swift::swift_definition(), 1, 1),
+        (diary_swift::swift_definition(), 1, 2),
+        (logbook_swift::swift_definition(), 5, 6),
+        (stowed_logbook_swift::swift_definition(), 4, 8),
+        (daybooks_swift::swift_definition(), 1, 1),
+    ] {
+        assert_eq!(wrappers(&swift).len(), wrapped, "{swift}");
+        assert_eq!(swift.matches(FORMATTER).count(), wrapped, "{swift}");
+        assert_eq!(swift.matches(DATE_KEY).count(), reads, "{swift}");
+        assert_eq!(swift.matches(WRITTEN_DATE_KEY).count(), wrapped, "{swift}");
+        assert!(
+            !swift.contains("private let isoFormatterForKeys"),
+            "{swift}"
+        );
+        assert!(!swift.contains("timeIntervalSince1970: 0"), "{swift}");
+    }
+}
+
+#[test]
+fn the_wrapper_of_a_date_key_is_written_whole() {
+    holds(
+        &timetable_swift::swift_definition(),
+        &[
+            "public struct TimetableSailingsKeyedMap: Codable, Sendable { \
+           public var storage: [Date: Sailing]; \
+           private static var isoFormatterForKeys: ISO8601DateFormatter { \
+           let f = ISO8601DateFormatter(); \
+           f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; \
+           private static var isoWholeFormatterForKeys: ISO8601DateFormatter { \
+           let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; \
+           return f }; \
+           private struct DynamicCodingKey: CodingKey { var stringValue: String; \
+           init?(stringValue: String) { self.stringValue = stringValue }; \
+           var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
+           public init(storage: [Date: Sailing]) { self.storage = storage }; \
+           init(swiftSchemaUnjudged decoder: Decoder) throws { \
+           let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+           var result: [Date: Sailing] = [:]; for codingKey in container.allKeys { \
+           let wireKey = codingKey.stringValue; \
+           guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
+           Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
+           throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+           debugDescription: \"bad key \\(wireKey)\") }; \
+           if result.keys.contains(key) { \
+           throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+           debugDescription: \"repeated key \\(wireKey)\") }; \
+           result[key] = try Sailing(swiftSchemaUnjudged: \
+           container.superDecoder(forKey: codingKey)) }; \
+           storage = result }; \
+           public init(from decoder: Decoder) throws { \
+           let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+           var result: [Date: Sailing] = [:]; for codingKey in container.allKeys { \
+           let wireKey = codingKey.stringValue; \
+           guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
+           Self.isoWholeFormatterForKeys.date(from: wireKey) else { \
+           throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+           debugDescription: \"bad key \\(wireKey)\") }; \
+           if result.keys.contains(key) { \
+           throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+           debugDescription: \"repeated key \\(wireKey)\") }; \
+           result[key] = try container.decode(Sailing.self, forKey: codingKey) }; \
+           storage = result }; \
+           public func encode(to encoder: Encoder) throws { \
+           var container = encoder.container(keyedBy: DynamicCodingKey.self); \
+           for (key, value) in storage { \
+           let wireKey = Self.isoFormatterForKeys.string(from: key)\
+           .replacingOccurrences(of: \"(\\\\.[0-9]*?)0+Z$\", with: \"$1Z\", options: .regularExpression).replacingOccurrences(of: \".Z\", with: \"Z\"); \
+           guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
+           try container.encode(value, forKey: codingKey) } } }; ",
+        ],
+    );
+    holds(
+        &tidetable_swift::swift_definition(),
+        &[
+            "public struct TidetableByAtKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable { \
+             public var storage: [Date: Stowed]; \
+             private static var isoFormatterForKeys: ISO8601DateFormatter { \
+             let f = ISO8601DateFormatter(); \
+             f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }; ",
+            "public var byAt: [Date: Stowed]; ",
+        ],
+    );
+}
+
+/// A wrapper of a key Swift parses from its text declares no formatter, and is written as it was.
+#[test]
+fn a_wrapper_of_a_parsed_key_is_written_as_it_was() {
+    let bound = integer_key_bound("UInt32(number)", "u32");
+    assert_eq!(
+        read_back(&MusterDraft {
+            by_count: HashMap::from([(7, "m".to_owned())]),
+        }),
+        r#"{"by_count":{"7":"m"}}"#
+    );
+    holds(
+        &roll_swift::swift_definition(),
+        &[&format!(
+            "public struct RollByCountKeyedMap: Codable, Sendable {{ \
+             public var storage: [UInt32: Sailing];  {KEY_NUMBER}\
+             private struct DynamicCodingKey: CodingKey {{ var stringValue: String; \
+             init?(stringValue: String) {{ self.stringValue = stringValue }}; \
+             var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
+             public init(storage: [UInt32: Sailing]) {{ self.storage = storage }}; \
+             init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
+             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+             var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
+             result[key] = try Sailing(swiftSchemaUnjudged: \
+             container.superDecoder(forKey: codingKey)) }}; \
+             storage = result }}; \
+             public init(from decoder: Decoder) throws {{ \
+             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+             var result: [UInt32: Sailing] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
+             result[key] = try container.decode(Sailing.self, forKey: codingKey) }}; \
+             storage = result }}; \
+             public func encode(to encoder: Encoder) throws {{ \
+             var container = encoder.container(keyedBy: DynamicCodingKey.self); \
+             for (key, value) in storage {{ let wireKey = String(key); \
+             guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
+             try container.encode(value, forKey: codingKey) }} }} }}; "
+        )],
+    );
+    holds(
+        &muster_swift::swift_definition(),
+        &[&format!(
+            "public struct MusterByCountKeyedMap<Stowed: Codable & Sendable>: Codable, Sendable {{ \
+             public var storage: [UInt32: Stowed];  {FITTED}; {KEY_NUMBER}\
+             private struct DynamicCodingKey: CodingKey {{ var stringValue: String; \
+             init?(stringValue: String) {{ self.stringValue = stringValue }}; \
+             var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
+             public init(storage: [UInt32: Stowed]) {{ self.storage = storage }}; \
+             init(swiftSchemaUnjudged decoder: Decoder, \
+             _ swiftSchemaReaderOfStowed: (Decoder) throws -> Stowed) throws {{ \
+             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+             var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
+             result[key] = try swiftSchemaReaderOfStowed(container.superDecoder(forKey: codingKey)) }}; \
+             storage = result }}; \
+             init(swiftSchemaUnjudged decoder: Decoder) throws {{ \
+             try self.init(swiftSchemaUnjudged: decoder, {{ try SwiftSchemaFit<Stowed>(from: $0).value }}) }}; \
+             public init(from decoder: Decoder) throws {{ \
+             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+             var result: [UInt32: Stowed] = [:]; for codingKey in container.allKeys {{ \
+             let wireKey = codingKey.stringValue; {bound}\
+             result[key] = try container.decode(SwiftSchemaFit<Stowed>.self, forKey: codingKey).value }}; \
+             storage = result }}; \
+             public func encode(to encoder: Encoder) throws {{ \
+             var container = encoder.container(keyedBy: DynamicCodingKey.self); \
+             for (key, value) in storage {{ let wireKey = String(key); \
+             guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
+             try container.encode(value, forKey: codingKey) }} }} }}; "
+        )],
+    );
+}
+
+/// A wrapper of a key Swift holds as its text, and of a flag, declares no formatter: a date's text
+/// is read and sent through the functions of its form.
+#[test]
+fn a_wrapper_of_a_text_key_or_a_flag_declares_no_formatter() {
+    assert_eq!(
+        read_back(&RollDraft {
+            by_count: HashMap::from([(
+                7,
+                SailingDraft {
+                    label: "s".to_owned()
+                }
+                .validate()
+                .unwrap()
+            )]),
+            by_day: HashMap::from([(
+                first().to_zoned_datetime(tz::TimeZone::UTC).date(),
+                "d".to_owned()
+            )]),
+            flags: HashMap::from([(true, 1)]),
+        }),
+        r#"{"by_count":{"7":{"label":"s"}},"by_day":{"2024-01-02":"d"},"flags":{"true":1}}"#
+    );
+    holds(
+        &roll_swift::swift_definition(),
+        &[
+            "public struct RollByDayKeyedMap: Codable, Sendable { \
+             public var storage: [String: String];  \
+             private struct DynamicCodingKey: CodingKey { var stringValue: String; \
+             init?(stringValue: String) { self.stringValue = stringValue }; \
+             var intValue: Int? { nil }; init?(intValue: Int) { nil } }; \
+             public init(storage: [String: String]) { self.storage = storage }; \
+             public init(from decoder: Decoder) throws { \
+             let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+             var result: [String: String] = [:]; for codingKey in container.allKeys { \
+             let wireKey = codingKey.stringValue; \
+             let key = try Self.swiftSchemaReadDate(wireKey, \
+             codingPath: container.codingPath + [codingKey]); \
+             result[key] = try container.decode(String.self, forKey: codingKey) }; \
+             storage = result }; \
+             public func encode(to encoder: Encoder) throws { \
+             var container = encoder.container(keyedBy: DynamicCodingKey.self); \
+             for (key, value) in storage { \
+             let wireKey = (try Self.swiftSchemaSentDate(key, codingPath: encoder.codingPath)); \
+             guard let codingKey = DynamicCodingKey(stringValue: wireKey) else { continue }; \
+             try container.encode(value, forKey: codingKey) } } }; ",
+            &format!(
+                "public struct RollFlagsKeyedMap: Codable, Sendable {{ \
+                 public var storage: [Bool: UInt8];  {FITTED}; \
+                 private struct DynamicCodingKey: CodingKey {{ var stringValue: String; \
+                 init?(stringValue: String) {{ self.stringValue = stringValue }}; \
+                 var intValue: Int? {{ nil }}; init?(intValue: Int) {{ nil }} }}; \
+                 public init(storage: [Bool: UInt8]) {{ self.storage = storage }}; \
+                 public init(from decoder: Decoder) throws {{ \
+                 let container = try decoder.container(keyedBy: DynamicCodingKey.self); \
+                 var result: [Bool: UInt8] = [:]; for codingKey in container.allKeys {{ \
+                 let wireKey = codingKey.stringValue; \
+                 guard let key = (wireKey == \"true\" ? true : wireKey == \"false\" ? false : nil) \
+                 else {{ \
+                 throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, \
+                 debugDescription: \"bad key \\(wireKey)\") }}; \
+                 result[key] = try container.decode(SwiftSchemaFit<UInt8>.self, forKey: codingKey).value }}; \
+                 storage = result }}; \
+                 public func encode(to encoder: Encoder) throws {{ \
+                 var container = encoder.container(keyedBy: DynamicCodingKey.self); \
+                 for (key, value) in storage {{ let wireKey = (key ? \"true\" : \"false\"); \
+                 guard let codingKey = DynamicCodingKey(stringValue: wireKey) else {{ continue }}; \
+                 try container.encode(value, forKey: codingKey) }} }} }}; "
+            ),
+        ],
+    );
+}
+
+/// A wrapper declares the formatter exactly where its key is a date.
+#[test]
+fn only_a_wrapper_of_a_date_key_declares_the_formatter() {
+    let mut seen = 0_usize;
+    for swift in [
+        roll_swift::swift_definition(),
+        muster_swift::swift_definition(),
+        almanac_swift::swift_definition(),
+        ephemeris_swift::swift_definition(),
+        gazetteer_swift::swift_definition(),
+        timetable_swift::swift_definition(),
+        tidetable_swift::swift_definition(),
+        watch_swift::swift_definition(),
+        tagged_shift_swift::swift_definition(),
+        diary_swift::swift_definition(),
+    ] {
+        for wrapper in wrappers(&swift) {
+            seen += 1;
+            assert_eq!(
+                wrapper.contains("isoFormatterForKeys"),
+                wrapper.contains("public var storage: [Date: "),
+                "{wrapper}"
+            );
+        }
+    }
+    assert_eq!(seen, 21);
+}
+
+/// Each list and optional of a map keyed by a date, in a type that declares a parameter, is read
+/// through the wrapper handed the reader of the parameter, and its storage handed on.
+fn holds_with_readers(swift: &str, held: &str, parameter: &str) {
+    holds(
+        swift,
+        &[
+            &format!(
+                "var listed = try container.nestedUnkeyedContainer(forKey: .listed); \
+                 var items: [[Date: Stowed]] = []; while !listed.isAtEnd {{ \
+                 items.append(try {held}ListedKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 listed.superDecoder(), swiftSchemaReaderOfStowed).storage) }}; \
+                 self.listed = items; "
+            ),
+            &format!(
+                "var listed1 = try container.nestedUnkeyedContainer(forKey: .listedOrNone); \
+                 var items1: [[Date: Stowed]?] = []; while !listed1.isAtEnd {{ \
+                 if try !listed1.decodeNil() {{ \
+                 items1.append(try {held}ListedOrNoneKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 listed1.superDecoder(), swiftSchemaReaderOfStowed).storage) }} else {{ \
+                 items1.append(nil) }} }}; self.listedOrNone = items1; "
+            ),
+            &format!(
+                "if container.contains(.maybe), try !container.decodeNil(forKey: .maybe) {{ \
+                 self.maybe = try {held}MaybeKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 container.superDecoder(forKey: .maybe), swiftSchemaReaderOfStowed).storage \
+                 }} else {{ self.maybe = nil }}; "
+            ),
+            &format!(
+                "if container.contains(.maybeListed), try !container.decodeNil(forKey: \
+                 .maybeListed) {{ var listed2 = try \
+                 container.nestedUnkeyedContainer(forKey: .maybeListed); var items2: \
+                 [[Date: Stowed]] = []; while !listed2.isAtEnd {{ \
+                 items2.append(try {held}MaybeListedKeyedMap{parameter}(swiftSchemaUnjudged: \
+                 listed2.superDecoder(), swiftSchemaReaderOfStowed).storage) }}; \
+                 self.maybeListed = items2 }} else {{ self.maybeListed = nil }}"
+            ),
+        ],
+    );
+}
+
+/// A list or an optional of maps keyed by a date is read as one of the wrapper, whose own read
+/// parses each key, and handed on as each wrapper's storage, with no `try` around a conversion
+/// that throws nothing.
+#[test]
+fn a_list_or_an_optional_of_maps_keyed_by_a_date_hands_on_each_storage_with_no_try() {
+    let sailing = SailingDraft {
+        label: "s".to_owned(),
+    };
+    assert_eq!(
+        read_back(&LogbookDraft {
+            listed: vec![once(1)],
+            listed_or_none: vec![None, Some(once(2))],
+            maybe: Some(once(3)),
+            maybe_listed: None,
+            sailing_lists: vec![once(sailing.validate().unwrap())],
+        }),
+        r#"{"listed":[{"2024-01-02T03:04:05.678Z":1}],"listed_or_none":[null,{"2024-01-02T03:04:05.678Z":2}],"maybe":{"2024-01-02T03:04:05.678Z":3},"sailing_lists":[{"2024-01-02T03:04:05.678Z":{"label":"s"}}]}"#
+    );
+    assert_eq!(
+        read_back(&StowedLogbookDraft {
+            listed: Vec::new(),
+            listed_or_none: Vec::new(),
+            maybe: None,
+            maybe_listed: Some(vec![once("t".to_owned())]),
+        }),
+        r#"{"listed":[],"listed_or_none":[],"maybe_listed":[{"2024-01-02T03:04:05.678Z":"t"}]}"#
+    );
+    assert_eq!(
+        read_back(&Daybooks::new(vec![once("d".to_owned())]).unwrap()),
+        r#"[{"2024-01-02T03:04:05.678Z":"d"}]"#
+    );
+    for (swift, held, parameter) in [
+        (logbook_swift::swift_definition(), "Logbook", ""),
+        (
+            stowed_logbook_swift::swift_definition(),
+            "StowedLogbook",
+            "<Stowed>",
+        ),
+    ] {
+        if parameter.is_empty() {
+            holds(
+                &swift,
+                &[
+                    &format!(
+                        "let wireListed = try container.decode([{held}ListedKeyedMap{parameter}].self, \
+                         forKey: .listed); self.listed = wireListed.map {{ $0.storage }}; "
+                    ),
+                    &format!(
+                        "let wireListedOrNone = try \
+                         container.decode([{held}ListedOrNoneKeyedMap{parameter}?].self, \
+                         forKey: .listedOrNone); \
+                         self.listedOrNone = wireListedOrNone.map {{ $0.map {{ $0.storage }} }}; "
+                    ),
+                    &format!(
+                        "let wireMaybe = try \
+                         container.decodeIfPresent({held}MaybeKeyedMap{parameter}.self, \
+                         forKey: .maybe); self.maybe = wireMaybe.map {{ $0.storage }}; "
+                    ),
+                    &format!(
+                        "let wireMaybeListed = try \
+                         container.decodeIfPresent([{held}MaybeListedKeyedMap{parameter}].self, \
+                         forKey: .maybeListed); \
+                         self.maybeListed = wireMaybeListed.map {{ $0.map {{ $0.storage }} }}"
+                    ),
+                ],
+            );
+        } else {
+            holds_with_readers(&swift, held, parameter);
+        }
+    }
+    holds(
+        &logbook_swift::swift_definition(),
+        &[
+            "items.append(try LogbookSailingListsKeyedMap(swiftSchemaUnjudged: \
+             listed.superDecoder()).storage) }; self.sailingLists = items",
+        ],
+    );
+    holds(
+        &daybooks_swift::swift_definition(),
+        &[
+            "self.value = try { let wireValue = try container.decode([DaybooksKeyedMap].self); \
+             return wireValue.map { $0.storage } }() }; ",
+        ],
+    );
+}

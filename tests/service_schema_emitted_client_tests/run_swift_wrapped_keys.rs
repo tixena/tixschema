@@ -13,6 +13,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -29,7 +32,7 @@ use super::wrapped_keys_models::{
     stowed_taskforce_swift, tagged_convoy_swift, tagged_squadron_swift, taskforce_swift,
     unhashed_swift, untagged_convoy_swift, untagged_squadron_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::wrapped_keys_models::{
     Postmark, Regatta, RegattaDraft, StowedRegattaDraft, first, postmark_key_swift, postmark_swift,
     regatta_swift, stowed_regatta_swift,
@@ -337,6 +340,53 @@ fn date_rows() -> Vec<Row> {
     ]
 }
 
+/// The payloads of a map keyed by a date through a brand and through an alias.
+#[cfg(feature = "jiff")]
+fn date_rows() -> Vec<Row> {
+    let later = Timestamp::from_millisecond(1_709_208_000_100).unwrap();
+    let held = RegattaDraft {
+        aliased: under(first(), later, &1),
+        branded: under(
+            Postmark::new(first()).unwrap(),
+            Postmark::new(later).unwrap(),
+            &2,
+        ),
+    };
+    let stowed = StowedRegattaDraft {
+        aliased: under(first(), later, &"t".to_owned()),
+        branded: under(
+            Postmark::new(first()).unwrap(),
+            Postmark::new(later).unwrap(),
+            &"u".to_owned(),
+        ),
+    };
+    vec![
+        read_row("a date brand and a date alias", "Regatta", &held),
+        read_row(
+            "a date brand and a date alias that declare a parameter",
+            "StowedRegatta<String>",
+            &stowed,
+        ),
+        {
+            let written = serde_json::to_string(&RegattaDraft {
+                aliased: HashMap::from([(first(), 1)]),
+                branded: HashMap::new(),
+            })
+            .unwrap();
+            let payload = written.replacen("2024-01-02T03:04:05.678Z", "yesterday", 1);
+            serde_json::from_str::<Regatta>(&payload).unwrap_err();
+            Row {
+                expected:
+                    "a date alias under a key that is no date: refused\n    bad key yesterday\n"
+                        .to_owned(),
+                name: "a date alias under a key that is no date",
+                payload,
+                read_as: "Regatta",
+            }
+        },
+    ]
+}
+
 /// The payload of a [`Dockage`] with an empty label under each key, which the Swift read refuses
 /// with the messages the Rust `validate()` answers, each key named as it is written.
 fn refused_by_rule_row() -> Row {
@@ -451,7 +501,7 @@ fn variant_rows() -> Vec<Row> {
 #[test]
 fn each_map_keyed_by_a_brand_or_an_alias_reads_and_writes_in_swift_as_serde_does() {
     let mut rows = struct_rows();
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     rows.extend(date_rows());
     rows.push(refused_by_rule_row());
     rows.extend(variant_rows());
@@ -493,7 +543,7 @@ fn each_map_keyed_by_a_brand_or_an_alias_reads_and_writes_in_swift_as_serde_does
         logroll_swift::swift_definition(),
         logroster_swift::swift_definition(),
     ];
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     parts.extend([
         postmark_swift::swift_definition(),
         postmark_key_swift::swift_definition(),

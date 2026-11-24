@@ -3,7 +3,7 @@
 
 /// `swiftSchemaKeyNumber`, which reads the number of a key's text as serde reads the text between
 /// a key's quotes.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 pub const KEY_NUMBER: &str = "private static func swiftSchemaKeyNumber(_ text: String, at \
      codingPath: [CodingKey]) throws -> (String, Bool) { let bytes = Array(text.utf8); func \
      refused(_ said: String) -> DecodingError { DecodingError.dataCorrupted(DecodingError.Context(\

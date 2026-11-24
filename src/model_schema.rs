@@ -66,7 +66,9 @@ use crate::{
 
 use crate::field_type::is_undescribable_primitive;
 
-#[cfg(feature = "chrono")]
+#[cfg(feature = "jiff")]
+use crate::features::text_forms::zoned_text;
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use crate::{
     features::text_forms::{DATE, TIME_SENT},
     utils::js_spelling,
@@ -141,7 +143,7 @@ use crate::utils::{
 };
 
 use crate::features::serde::brand_slot;
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use crate::features::serde::parse_serde_field_hooks;
 #[cfg(any(
     feature = "typescript",
@@ -431,6 +433,7 @@ const UNREAD_BRAND_FIELD_PROP_MESSAGE: &str = "`#[model_schema_prop]` is unread 
 const GATED_NAMES: &[GatedName] = &[
     #[cfg(not(feature = "indexmap"))]
     GatedName {
+        counterpart: None,
         feature: "indexmap",
         least_arguments: 2,
         name: "IndexMap",
@@ -438,6 +441,7 @@ const GATED_NAMES: &[GatedName] = &[
     },
     #[cfg(not(feature = "indexmap"))]
     GatedName {
+        counterpart: None,
         feature: "indexmap",
         least_arguments: 1,
         name: "IndexSet",
@@ -445,34 +449,63 @@ const GATED_NAMES: &[GatedName] = &[
     },
     #[cfg(not(feature = "chrono"))]
     GatedName {
+        counterpart: Some("jiff::civil::Date"),
         feature: "chrono",
         least_arguments: 0,
         name: "NaiveDate",
-        read_as: "a date or a time",
+        read_as: "a date",
     },
     #[cfg(not(feature = "chrono"))]
     GatedName {
+        counterpart: Some("jiff::civil::Time"),
         feature: "chrono",
         least_arguments: 0,
         name: "NaiveTime",
-        read_as: "a date or a time",
+        read_as: "a time",
     },
     #[cfg(not(feature = "chrono"))]
     GatedName {
+        counterpart: Some("jiff::civil::DateTime"),
         feature: "chrono",
         least_arguments: 0,
         name: "NaiveDateTime",
-        read_as: "a date or a time",
+        read_as: "a date and time",
     },
     #[cfg(not(feature = "chrono"))]
     GatedName {
+        counterpart: Some("jiff::Timestamp"),
         feature: "chrono",
         least_arguments: 1,
         name: "DateTime",
-        read_as: "a date or a time",
+        read_as: "an instant",
+    },
+    #[cfg(not(feature = "jiff"))]
+    GatedName {
+        counterpart: Some("chrono::DateTime<Utc>"),
+        feature: "jiff",
+        least_arguments: 0,
+        name: "Timestamp",
+        read_as: "an instant",
+    },
+    #[cfg(not(feature = "jiff"))]
+    GatedName {
+        counterpart: None,
+        feature: "jiff",
+        least_arguments: 0,
+        name: "ZonedDateTime",
+        read_as: "a date and time with its time zone",
+    },
+    #[cfg(not(feature = "jiff"))]
+    GatedName {
+        counterpart: None,
+        feature: "jiff",
+        least_arguments: 0,
+        name: "Zoned",
+        read_as: "a date and time with its time zone",
     },
     #[cfg(not(feature = "mongodb"))]
     GatedName {
+        counterpart: None,
         feature: "mongodb",
         least_arguments: 0,
         name: "ObjectId",
@@ -492,6 +525,8 @@ const ZOD_DROPPED_ENTRIES: &str = "z.record(z.string(), z.unknown()).transform((
 /// A name a Cargo feature of this crate reads: the feature, what the name is read as under it, and
 /// the fewest type arguments it is read with.
 struct GatedName {
+    /// The type of the date feature that is on which takes this name's place, where one does.
+    counterpart: Option<&'static str>,
     feature: &'static str,
     least_arguments: usize,
     name: &'static str,
@@ -655,10 +690,6 @@ enum UnprovenDefault {
 
 /// The JSON schema shape a branded newtype's inner field describes.
 enum BrandedJsonInner {
-    /// The string a chrono type writes, held to its form as the field position holds the same
-    /// type.
-    #[cfg(feature = "chrono")]
-    Chrono(ChronoText),
     /// The `$oid` object an `ObjectId` writes, whose hex member carries the brand's string
     /// constraints.
     #[cfg(feature = "mongodb")]
@@ -668,11 +699,16 @@ enum BrandedJsonInner {
     /// An inner no one keyword names, carried by the dispatch that describes the same type wherever
     /// else it is written.
     Slot(Box<FieldDef>),
+    /// The string a date or time type writes, held to its form as the field position holds the
+    /// same type.
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
+    Text(TextSchema),
 }
 
-/// What the text of a chrono type is held to in a JSON schema, beside `"type": "string"`.
-#[cfg(feature = "chrono")]
-enum ChronoText {
+/// What the text of a date, time, date and time or zoned date and time type is held to in a
+/// JSON schema, beside `"type": "string"`.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+enum TextSchema {
     /// The `"format"` keyword that names its form: a date, and a date and time with its zone.
     Format(&'static str),
     /// The `"pattern"` of the text serde writes, whole: a time and a date and time with no zone,
@@ -685,7 +721,7 @@ enum ChronoText {
 enum BasePattern {
     /// The base states none, so the brand's is the schema's own `pattern` keyword.
     Absent,
-    #[cfg(any(feature = "mongodb", feature = "chrono"))]
+    #[cfg(any(feature = "mongodb", feature = "chrono", feature = "jiff"))]
     Stated,
 }
 
@@ -6637,11 +6673,7 @@ fn gated_name_errors_in(item: &Item, table: &'static [GatedName]) -> Vec<proc_ma
             own.is_none_or(|ident| ident != *named) && !is_declared_ident(&named.to_string())
         })
         .map(|(named, gated)| {
-            syn::Error::new_spanned(
-                named,
-                gated_name_message(gated.name, gated.feature, gated.read_as),
-            )
-            .to_compile_error()
+            syn::Error::new_spanned(named, gated_name_message(gated)).to_compile_error()
         })
         .collect()
 }
@@ -6876,12 +6908,33 @@ fn collect_gated_names<'ty>(
     }
 }
 
-/// The refusal of a name a feature reads, written where the feature is off.
-fn gated_name_message(name: &str, feature: &str, read_as: &str) -> String {
-    format!(
-        "`{name}` is read as {read_as} under tixschema's `{feature}` feature: add `features = \
-         [\"{feature}\"]` to the `tixschema` dependency"
-    )
+/// The refusal of a name a feature reads, written where the feature is off. A date name of the
+/// other date feature names the type that takes its place, the two features never being on
+/// together.
+fn gated_name_message(gated: &GatedName) -> String {
+    #[cfg(feature = "chrono")]
+    const DATES_ON: Option<&str> = Some("chrono");
+    #[cfg(feature = "jiff")]
+    const DATES_ON: Option<&str> = Some("jiff");
+    #[cfg(not(any(feature = "chrono", feature = "jiff")))]
+    const DATES_ON: Option<&str> = None;
+    let feature = gated.feature;
+    let read = format!(
+        "`{}` is read as {} under tixschema's `{feature}` feature",
+        gated.name, gated.read_as
+    );
+    DATES_ON
+        .filter(|_| matches!(feature, "chrono" | "jiff"))
+        .map_or_else(
+            || format!("{read}: add `features = [\"{feature}\"]` to the `tixschema` dependency"),
+            |on| {
+                let instead = gated.counterpart.map_or_else(
+                    || format!("`{on}` has no type that takes its place, so"),
+                    |held| format!("declare `{held}`, or"),
+                );
+                format!("{read}, and `{on}` is on: {instead} turn `{on}` off and `{feature}` on")
+            },
+        )
 }
 
 /// The `compile_error!` tokens an item earns for each `#[model_schema_prop]` written on a field of
@@ -7285,6 +7338,12 @@ fn swift_refused_primitive_name(field_def: &FieldDef) -> Option<&'static str> {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => None,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => None,
     }
 }
 
@@ -7363,6 +7422,12 @@ fn non_string_inner_shape(inner: &FieldDef) -> Option<&'static str> {
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => None,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => None,
     }
 }
 
@@ -7426,6 +7491,12 @@ const fn scalar_json_type_keyword(field_type: &FieldDefType) -> Option<&'static 
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => Some("string"),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => Some("string"),
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => None,
         FieldDefType::Map(..)
@@ -10860,7 +10931,7 @@ fn branded_schema_obj_over(
             BasePattern::Absent => quote! {
                 schema_obj.insert("pattern".to_string(), serde_json::Value::String(#pattern.to_string()));
             },
-            #[cfg(any(feature = "mongodb", feature = "chrono"))]
+            #[cfg(any(feature = "mongodb", feature = "chrono", feature = "jiff"))]
             BasePattern::Stated => quote! {
                 schema_obj.insert("allOf".to_string(), serde_json::json!([{ "pattern": #pattern }]));
             },
@@ -10896,11 +10967,11 @@ fn branded_constrained_schema_obj(
 /// narrowed by the brand's own constraints, which sit beside `type` the way they sit beside `type`
 /// alone. A form held by a pattern is the base's own `pattern`, so the brand's is layered beside
 /// it — see [`BasePattern`].
-#[cfg(feature = "chrono")]
-fn branded_chrono_schema(args: &ModelSchemaArgs, text: &ChronoText) -> proc_macro2::TokenStream {
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn branded_text_schema(args: &ModelSchemaArgs, text: &TextSchema) -> proc_macro2::TokenStream {
     let (keyword, value, base_pattern) = match text {
-        ChronoText::Format(format) => ("format", *format, BasePattern::Absent),
-        ChronoText::Pattern(pattern) => ("pattern", pattern.as_str(), BasePattern::Stated),
+        TextSchema::Format(format) => ("format", *format, BasePattern::Absent),
+        TextSchema::Pattern(pattern) => ("pattern", pattern.as_str(), BasePattern::Stated),
     };
     branded_schema_obj_over(
         args,
@@ -11020,8 +11091,8 @@ fn build_branded_json_schema_method(
     examples: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let body = match json_inner {
-        #[cfg(feature = "chrono")]
-        BrandedJsonInner::Chrono(text) => branded_chrono_schema(args, text),
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        BrandedJsonInner::Text(text) => branded_text_schema(args, text),
         BrandedJsonInner::Scalar(type_name) => branded_constrained_schema_obj(args, type_name),
         #[cfg(feature = "mongodb")]
         BrandedJsonInner::ObjectId => {
@@ -11108,9 +11179,9 @@ fn branded_json_inner(inner: &FieldDef) -> BrandedJsonInner {
     if branded_inner_is_composite(inner) {
         return BrandedJsonInner::Slot(Box::new(inner.clone()));
     }
-    #[cfg(feature = "chrono")]
-    if let Some(text) = chrono_json_schema_text(&inner.field_type) {
-        return BrandedJsonInner::Chrono(text);
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
+    if let Some(text) = text_schema_text(&inner.field_type) {
+        return BrandedJsonInner::Text(text);
     }
     // A name is not a shape, so it is deferred to the type it names, through the reference every
     // other position defers it through. A `char` is the one-character string it is everywhere.
@@ -11245,6 +11316,12 @@ fn branded_inner_is_composite(inner: &FieldDef) -> bool {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => false,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => false,
     }
 }
 
@@ -14173,6 +14250,14 @@ fn tagged_content(inner: &FieldDef, written: &syn::Type) -> TaggedContent {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => refused_as("a string"),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp if inner.has_as_number() => refused_as("an integer"),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => refused_as("a string"),
         FieldDefType::Tuple(_) => refused_as("a tuple"),
         FieldDefType::Map(..) => TaggedContent::Unnameable("a map"),
         FieldDefType::Range(..) => TaggedContent::WrittenBeside("a range", "its bounds"),
@@ -15196,7 +15281,17 @@ fn field_json_schema_value(fld: &FieldDef) -> proc_macro2::TokenStream {
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => {
             // The arm has matched exactly the types the mapping answers for.
-            let item = chrono_json_schema_item(fld).unwrap();
+            let item = text_schema_json_schema_value(fld).unwrap();
+            quote! { serde_json::json!(#item) }
+        }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::Timestamp
+        | FieldDefType::ZonedDateTime => {
+            // The arm has matched exactly the types the mapping answers for.
+            let item = text_schema_json_schema_value(fld).unwrap();
             quote! { serde_json::json!(#item) }
         }
         FieldDefType::Map(key, value) => match map_json_schema_value(key, value) {
@@ -15725,8 +15820,8 @@ fn written_non_object_wire(fld: &FieldDef, leaves_of: LeavesOf) -> Option<&'stat
             .then_some("array")
             .or_else(|| registered_non_object_wire(name, leaves_of));
     }
-    #[cfg(feature = "chrono")]
-    if matches!(fld.field_type, FieldDefType::DateTime) && fld.has_as_number() {
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
+    if fld.field_type.is_instant() && fld.has_as_number() {
         return Some("integer");
     }
     // Everything the two structural questions above leave is a value one keyword describes or
@@ -16472,17 +16567,33 @@ fn array_length_json_schema_bounds(fld: &FieldDef, level: u8) -> proc_macro2::To
     quote! { #min_items #max_items }
 }
 
-/// What a chrono type's text is held to in a JSON schema, and `None` for every type that writes no
-/// such text.
-#[cfg(feature = "chrono")]
-fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
+/// What a date, time, date and time or zoned date and time type's text is held to in a JSON
+/// schema, and `None` for every type that writes no such text.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn text_schema_text(field_type: &FieldDefType) -> Option<TextSchema> {
     match *field_type {
-        FieldDefType::NaiveDate => Some(ChronoText::Format("date")),
-        FieldDefType::DateTime => Some(ChronoText::Format("date-time")),
-        FieldDefType::NaiveTime => Some(ChronoText::Pattern(whole_text_pattern(TIME_SENT))),
-        FieldDefType::NaiveDateTime => Some(ChronoText::Pattern(whole_text_pattern(&format!(
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveDate => Some(TextSchema::Format("date")),
+        #[cfg(feature = "chrono")]
+        FieldDefType::DateTime => Some(TextSchema::Format("date-time")),
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveTime => Some(TextSchema::Pattern(whole_text_pattern(TIME_SENT))),
+        #[cfg(feature = "chrono")]
+        FieldDefType::NaiveDateTime => Some(TextSchema::Pattern(whole_text_pattern(&format!(
             "{DATE}T{TIME_SENT}"
         )))),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate => Some(TextSchema::Format("date")),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => Some(TextSchema::Format("date-time")),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilTime => Some(TextSchema::Pattern(whole_text_pattern(TIME_SENT))),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDateTime => Some(TextSchema::Pattern(whole_text_pattern(&format!(
+            "{DATE}T{TIME_SENT}"
+        )))),
+        #[cfg(feature = "jiff")]
+        FieldDefType::ZonedDateTime => Some(TextSchema::Pattern(whole_text_pattern(&zoned_text()))),
         FieldDefType::Boolean
         | FieldDefType::BooleanLiteral(_)
         | FieldDefType::Char
@@ -16515,31 +16626,32 @@ fn chrono_json_schema_text(field_type: &FieldDefType) -> Option<ChronoText> {
 
 /// The pattern a text of the form `form` matches whole, spelled as every engine reads it: a `\d` as
 /// `[0-9]`, which is all ECMA-262 reads it as.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn whole_text_pattern(form: &str) -> String {
     // The forms are written in constructs both engines read, which the spelling never refuses.
     js_spelling(&format!("^(?:{form})$")).unwrap()
 }
 
-/// The JSON schema literal the text of a chrono type describes as, the string held to its form,
-/// and `None` for every type that writes no such text.
-#[cfg(feature = "chrono")]
-fn chrono_text_json_schema_item(field_type: &FieldDefType) -> Option<proc_macro2::TokenStream> {
-    Some(match chrono_json_schema_text(field_type)? {
-        ChronoText::Format(format) => quote! { { "type": "string", "format": #format } },
-        ChronoText::Pattern(pattern) => quote! { { "type": "string", "pattern": #pattern } },
+/// The JSON schema literal the text of a date, time, date and time or zoned date and time type
+/// describes as, the string held to its form, and `None` for every type that writes no such text.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn text_schema_json_schema_item(field_type: &FieldDefType) -> Option<proc_macro2::TokenStream> {
+    Some(match text_schema_text(field_type)? {
+        TextSchema::Format(format) => quote! { { "type": "string", "format": #format } },
+        TextSchema::Pattern(pattern) => quote! { { "type": "string", "pattern": #pattern } },
     })
 }
 
-/// The JSON schema literal a chrono value describes as: the integer of epoch milliseconds serde
-/// writes for a `DateTime<Tz>` under `as_number`, and the text of every other one. `None` for every
-/// type that writes neither.
-#[cfg(feature = "chrono")]
-fn chrono_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
-    if matches!(fld.field_type, FieldDefType::DateTime) && fld.has_as_number() {
+/// The JSON schema literal a date, time, date and time or zoned date and time value describes
+/// as: the integer of epoch milliseconds serde writes for a `DateTime<Tz>` or a `Timestamp`
+/// under `as_number`, and the text of every other one. `None` for every type that writes
+/// neither.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn text_schema_json_schema_value(fld: &FieldDef) -> Option<proc_macro2::TokenStream> {
+    if fld.field_type.is_instant() && fld.has_as_number() {
         return Some(quote! { { "type": "integer" } });
     }
-    chrono_text_json_schema_item(&fld.field_type)
+    text_schema_json_schema_item(&fld.field_type)
 }
 
 /// The JSON schema literal for a type that renders inline as a scalar — the object body itself,
@@ -16587,7 +16699,13 @@ fn scalar_field_json_schema_item(fld: &FieldDef) -> Option<proc_macro2::TokenStr
         FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => chrono_json_schema_item(fld)?,
+        | FieldDefType::DateTime => text_schema_json_schema_value(fld)?,
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::Timestamp
+        | FieldDefType::ZonedDateTime => text_schema_json_schema_value(fld)?,
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => object_id_json_schema_item(&object_id_hex_json_schema()),
         FieldDefType::TypeParam(_)
@@ -16781,6 +16899,12 @@ pub fn named_json_schema_modules(
             | FieldDefType::NaiveDate
             | FieldDefType::NaiveDateTime
             | FieldDefType::NaiveTime => {}
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+            | FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime => {}
             #[cfg(feature = "mongodb")]
             FieldDefType::ObjectId => {}
         }
@@ -17086,6 +17210,12 @@ fn map_key_path(key: &FieldDef) -> MapKeyPath<'_> {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => MapKeyPath::Unnarrowed,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => MapKeyPath::Unnarrowed,
     }
 }
 
@@ -17152,6 +17282,16 @@ fn map_key_element_name(key: &FieldDef) -> String {
         FieldDefType::NaiveDateTime => "NaiveDateTime".to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::NaiveTime => "NaiveTime".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => "Timestamp".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate => "CivilDate".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilTime => "CivilTime".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDateTime => "CivilDateTime".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::ZonedDateTime => "ZonedDateTime".to_owned(),
     }
 }
 
@@ -17210,6 +17350,12 @@ fn map_key_rejection(fld: &FieldDef) -> Option<MapKeyRejection> {
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => None,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => None,
     }
 }
 
@@ -17445,6 +17591,12 @@ fn build_map_member_item(value: &FieldDef) -> Result<MapMemberItem, MapMemberRej
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => MapMemberItem::Fragment(scalar_slot_item(value)),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => MapMemberItem::Fragment(scalar_slot_item(value)),
     })
 }
 
@@ -17830,11 +17982,12 @@ fn build_object_id_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_ma
     }
 }
 
-/// Builds the JSON schema for a chrono field: what [`chrono_json_schema_item`] answers for it.
-#[cfg(feature = "chrono")]
-fn build_chrono_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
+/// Builds the JSON schema for a date, time, date and time or zoned date and time field: what
+/// [`text_schema_json_schema_value`] answers for it.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn build_text_field_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2::TokenStream {
     // The arm calling this has matched exactly the types the mapping answers for.
-    let item = chrono_json_schema_item(fld).unwrap();
+    let item = text_schema_json_schema_value(fld).unwrap();
     let schema = nullable_slot_json_schema_value(
         fld,
         arrayed_json_schema_value(fld, quote! { serde_json::json!(#item) }),
@@ -17955,7 +18108,13 @@ fn build_field_type_schema(fld: &FieldDef, field_name_str: &str) -> proc_macro2:
         FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
-        | FieldDefType::DateTime => build_chrono_field_schema(fld, field_name_str),
+        | FieldDefType::DateTime => build_text_field_schema(fld, field_name_str),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::Timestamp
+        | FieldDefType::ZonedDateTime => build_text_field_schema(fld, field_name_str),
         FieldDefType::SiblingType(name, lst) => {
             build_sibling_type_field_schema(fld, field_name_str, name, lst)
         }
@@ -19900,50 +20059,59 @@ fn leaf_for_ident(ident: &str) -> Option<ConstraintLeaf> {
 }
 
 fn validate_as_number_flag(field_type: &FieldDefType, flag_set: bool) -> Result<(), String> {
-    #[cfg(not(feature = "chrono"))]
-    let _: &FieldDefType = field_type;
-
     #[cfg(feature = "chrono")]
-    let is_datetime = matches!(field_type, FieldDefType::DateTime);
-    #[cfg(not(feature = "chrono"))]
-    let is_datetime = false;
-
-    if flag_set && !is_datetime {
-        return Err("#[model_schema_prop(as_number)] requires a chrono DateTime<Tz> field".into());
+    const REFUSAL: &str = "#[model_schema_prop(as_number)] requires a chrono DateTime<Tz> field";
+    #[cfg(feature = "jiff")]
+    const REFUSAL: &str = "#[model_schema_prop(as_number)] requires a jiff Timestamp field";
+    #[cfg(not(any(feature = "chrono", feature = "jiff")))]
+    const REFUSAL: &str = "#[model_schema_prop(as_number)] requires a chrono DateTime<Tz> field";
+    if flag_set && !field_type.is_instant() {
+        return Err(REFUSAL.into());
     }
     Ok(())
 }
 
 /// The refusal of `as_number` on a member the hook it hangs reads no value of: chrono's
 /// `ts_milliseconds` reads a `DateTime<Utc>`, and `ts_milliseconds_option` an `Option` of one.
-/// A member its author reads and writes through functions of their own takes no hook.
-#[cfg(feature = "chrono")]
+/// jiff's `millisecond::required` reads a `jiff::Timestamp`, and `millisecond::optional` an
+/// `Option` of one. A member its author reads and writes through functions of their own takes no
+/// hook.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn as_number_hook_refusal(
     field: &Field,
     field_type: &FieldDefType,
     flag_set: bool,
 ) -> Option<String> {
-    if !flag_set || !matches!(field_type, FieldDefType::DateTime) {
+    #[cfg(feature = "chrono")]
+    const HOOKS: &str = "chrono's `ts_milliseconds` hook, which takes a `DateTime<Utc>`, or an \
+                         `Option<DateTime<Utc>>` through `ts_milliseconds_option`";
+    #[cfg(feature = "jiff")]
+    const HOOKS: &str = "jiff's `millisecond::required` hook, which takes a `jiff::Timestamp`, or \
+                         an `Option<jiff::Timestamp>` through `millisecond::optional`";
+    if !flag_set || !field_type.is_instant() {
         return None;
     }
     let hooks = parse_serde_field_hooks(&field.attrs);
     let authored = hooks.with.is_some()
         || (hooks.serialize_with.is_some() && hooks.deserialize_with.is_some());
-    if authored || names_a_utc_date(&field.ty) || names_an_optional_utc_date(&field.ty) {
+    #[cfg(feature = "chrono")]
+    let reads_hook_value = names_a_utc_date(&field.ty) || names_an_optional_utc_date(&field.ty);
+    #[cfg(feature = "jiff")]
+    let reads_hook_value =
+        names_a_jiff_timestamp(&field.ty) || names_an_optional_jiff_timestamp(&field.ty);
+    if authored || reads_hook_value {
         return None;
     }
     Some(format!(
-        "`#[model_schema_prop(as_number)]` writes and reads the field through chrono's \
-         `ts_milliseconds` hook, which takes a `DateTime<Utc>`, or an `Option<DateTime<Utc>>` \
-         through `ts_milliseconds_option`, and the field is a `{}`. Declare the field as one of \
-         those two, or write and read it through functions of your own: a `with`, or a \
-         `serialize_with` beside a `deserialize_with`.",
+        "`#[model_schema_prop(as_number)]` writes and reads the field through {HOOKS}, and the \
+         field is a `{}`. Declare the field as one of those two, or write and read it through \
+         functions of your own: a `with`, or a `serialize_with` beside a `deserialize_with`.",
         written_spelling(&field.ty)
     ))
 }
 
 /// No hook is hung where serde reads no attribute, or where no date is described.
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn as_number_hook_refusal(
     _field: &Field,
     _field_type: &FieldDefType,
@@ -19964,6 +20132,25 @@ fn names_a_utc_date(ty: &syn::Type) -> bool {
     })
 }
 
+/// Whether `ty` is written as a jiff `Timestamp`: the bare `Timestamp` the hook reads.
+#[cfg(feature = "jiff")]
+fn names_a_jiff_timestamp(ty: &syn::Type) -> bool {
+    last_segment(ty).is_some_and(|last| {
+        last.ident == "Timestamp" && type_arguments_of(&last.arguments).next().is_none()
+    })
+}
+
+/// Whether `ty` is written as an `Option` of a jiff `Timestamp`.
+#[cfg(feature = "jiff")]
+fn names_an_optional_jiff_timestamp(ty: &syn::Type) -> bool {
+    last_segment(ty).is_some_and(|last| {
+        last.ident == "Option"
+            && type_arguments_of(&last.arguments)
+                .next()
+                .is_some_and(names_a_jiff_timestamp)
+    })
+}
+
 /// Whether `ty` is written as an `Option` of a `DateTime` in `Utc`.
 #[cfg(feature = "chrono")]
 fn names_an_optional_utc_date(ty: &syn::Type) -> bool {
@@ -19976,7 +20163,7 @@ fn names_an_optional_utc_date(ty: &syn::Type) -> bool {
 }
 
 /// The last segment of the path `ty` is written as, and `None` for a type that is no path.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn last_segment(ty: &syn::Type) -> Option<&syn::PathSegment> {
     let syn::Type::Path(path) = written_type(ty) else {
         return None;
@@ -19985,20 +20172,27 @@ fn last_segment(ty: &syn::Type) -> Option<&syn::PathSegment> {
 }
 
 /// The serde hooks `as_number` hangs on a member, so serde writes and reads the epoch milliseconds
-/// every surface describes: chrono's hook in each direction its author writes or reads it through
-/// no function of their own, the one serde admits beside the author's. An `Option` under a key
-/// read through the hook takes the `default` a bound's hook takes, so an absent key is `None`.
-#[cfg(feature = "chrono")]
+/// every surface describes: the date feature's millisecond hook in each direction its author
+/// writes or reads it through no function of their own, the one serde admits beside the author's.
+/// An `Option` under a key read through the hook takes the `default` a bound's hook takes, so an
+/// absent key is `None`.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn as_number_serde_hooks(field: &Field, field_def: &FieldDef) -> Vec<syn::Attribute> {
+    #[cfg(feature = "chrono")]
+    const MODULES: [&str; 2] = [
+        "chrono::serde::ts_milliseconds_option",
+        "chrono::serde::ts_milliseconds",
+    ];
+    #[cfg(feature = "jiff")]
+    const MODULES: [&str; 2] = [
+        "jiff::fmt::serde::timestamp::millisecond::optional",
+        "jiff::fmt::serde::timestamp::millisecond::required",
+    ];
     let hooks = parse_serde_field_hooks(&field.attrs);
     if !field_def.has_as_number() || hooks.with.is_some() {
         return Vec::new();
     }
-    let module = if field_def.is_optional() {
-        "chrono::serde::ts_milliseconds_option"
-    } else {
-        "chrono::serde::ts_milliseconds"
-    };
+    let module = MODULES[usize::from(!field_def.is_optional())];
     let named = |path: &str| syn::LitStr::new(path, proc_macro2::Span::call_site());
     let mut hung: Vec<syn::Attribute> = match (hooks.serialize_with, hooks.deserialize_with) {
         (None, None) => {
@@ -20021,7 +20215,7 @@ fn as_number_serde_hooks(field: &Field, field_def: &FieldDef) -> Vec<syn::Attrib
     hung
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn as_number_serde_hooks(_field: &Field, _field_def: &FieldDef) -> Vec<syn::Attribute> {
     Vec::new()
 }
@@ -20808,11 +21002,7 @@ fn check_fixed_shape_constraints(
         return Ok(());
     }
     let keys = written.join("`, `");
-    #[cfg(feature = "chrono")]
-    let under_as_number =
-        prop_meta.as_number && matches!(field_def.field_type, FieldDefType::DateTime);
-    #[cfg(not(feature = "chrono"))]
-    let under_as_number = false;
+    let under_as_number = prop_meta.as_number && field_def.field_type.is_instant();
     if let Some(name) = field_def.fixed_shape_name()
         && under_as_number
     {
@@ -22237,7 +22427,16 @@ fn text_key_names(key: &FieldDef) -> Option<proc_macro2::TokenStream> {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => {
-            return chrono_text_json_schema_item(&key.field_type)
+            return text_schema_json_schema_item(&key.field_type)
+                .map(|item| quote! { serde_json::json!(#item) });
+        }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::Timestamp
+        | FieldDefType::ZonedDateTime => {
+            return text_schema_json_schema_item(&key.field_type)
                 .map(|item| quote! { serde_json::json!(#item) });
         }
         FieldDefType::SiblingType(name, arguments) => {

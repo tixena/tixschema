@@ -12,7 +12,7 @@ use super::bigint_models::{
     Defaulted, EitherMany, EitherOne, Entry, Extremes, FarLines, FarPlain, Ledger, Lines, Narrow,
     NoLines, Positions, Sizes,
 };
-#[cfg(all(feature = "zod", feature = "chrono"))]
+#[cfg(all(feature = "zod", any(feature = "chrono", feature = "jiff")))]
 use super::bigint_models::{Hooked, Stamped};
 #[cfg(all(feature = "zod", not(any(feature = "swift", feature = "kotlin"))))]
 use super::bigint_u64_models::{AccountNumber, Greatest, Keyed, UnsignedDefault};
@@ -100,7 +100,7 @@ fn a_number_that_is_not_a_u64_or_an_i64_is_written_as_it_was() {
     holds(&defaulted, ".prefault([12n,240n])");
 }
 
-#[cfg(all(feature = "zod", feature = "chrono"))]
+#[cfg(all(feature = "zod", any(feature = "chrono", feature = "jiff")))]
 #[test]
 fn a_date_stays_a_number_under_as_number_and_under_a_function_of_its_authors() {
     holds(
