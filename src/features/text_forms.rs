@@ -47,7 +47,7 @@ pub const TIME: &str = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?";
 pub const TIME_SENT: &str = r"(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?";
 
 /// A time as jiff writes it, its seconds written and its fraction in the fewest digits it needs.
-#[cfg(feature = "jiff")]
+#[cfg(all(feature = "jiff", not(feature = "chrono")))]
 pub const TIME_SENT: &str = r"(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d*[1-9])?";
 
 /// A time with its seconds, its fraction in any number of digits: what a client holds of an
@@ -216,7 +216,7 @@ impl TextForm {
             Self::Date => Some(DATE.to_owned()),
             #[cfg(feature = "chrono")]
             Self::DateTime => Some(format!("{DATE}T{TIME}Z?")),
-            #[cfg(feature = "jiff")]
+            #[cfg(all(feature = "jiff", not(feature = "chrono")))]
             Self::DateTime => Some(format!("{DATE}[T ]{TIME}")),
             #[cfg(feature = "jiff")]
             Self::Named => Some(zoned_text()),

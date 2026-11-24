@@ -1,6 +1,6 @@
 //! `chrono` and `jiff` are never on together: a crate that names `chrono` with tixschema's default
-//! features on, `jiff` among them, stops at a `compile_error!` that says how to keep `chrono`,
-//! beside the errors of the items each feature declares under one name.
+//! features on, `jiff` among them, stops at a `compile_error!` that says how to keep `chrono`, and
+//! at no other error.
 //! The case is a crate of its own, built once, in the build that has `jiff` on.
 
 #![cfg(feature = "jiff")]
@@ -20,7 +20,7 @@ mod tests {
                            `default-features = false` on the `tixschema` dependency";
 
     #[test]
-    fn a_crate_that_names_chrono_with_the_default_features_on_stops_at_the_refusal() {
+    fn a_crate_that_names_chrono_with_the_default_features_on_stops_at_the_refusal_alone() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let at = Path::new(env!("CARGO_TARGET_TMPDIR")).join("both_date_features");
         fs::create_dir_all(at.join("src")).unwrap();
@@ -57,9 +57,6 @@ mod tests {
             .filter_map(|read| read["message"]["message"].as_str().map(str::to_owned))
             .filter(|message| !message.starts_with("aborting due to"))
             .collect();
-        assert!(
-            errors.iter().any(|error| error == REFUSED),
-            "the build did not refuse the two features: {errors:?}"
-        );
+        assert_eq!(errors, [REFUSED], "the build with both date features answered otherwise");
     }
 }

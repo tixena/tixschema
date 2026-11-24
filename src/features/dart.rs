@@ -59,7 +59,7 @@ const SERDE_FRACTION: &str = ".replaceFirst('.000Z', 'Z')";
 
 /// Appended to a UTC date's text under `jiff`: the fraction is written in the fewest digits it
 /// needs, the way serde writes a `jiff::Timestamp`, and whole seconds carry none.
-#[cfg(feature = "jiff")]
+#[cfg(all(feature = "jiff", not(feature = "chrono")))]
 const SERDE_FRACTION: &str = ".replaceFirstMapped(RegExp(r'\\.(\\d*?)0+Z$'), (found) => found[1]!.isEmpty ? 'Z' : '.${found[1]}Z')";
 
 /// The core types a class member can take the name of.

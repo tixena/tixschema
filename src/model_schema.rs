@@ -6914,7 +6914,7 @@ fn collect_gated_names<'ty>(
 fn gated_name_message(gated: &GatedName) -> String {
     #[cfg(feature = "chrono")]
     const DATES_ON: Option<&str> = Some("chrono");
-    #[cfg(feature = "jiff")]
+    #[cfg(all(feature = "jiff", not(feature = "chrono")))]
     const DATES_ON: Option<&str> = Some("jiff");
     #[cfg(not(any(feature = "chrono", feature = "jiff")))]
     const DATES_ON: Option<&str> = None;
@@ -20061,7 +20061,7 @@ fn leaf_for_ident(ident: &str) -> Option<ConstraintLeaf> {
 fn validate_as_number_flag(field_type: &FieldDefType, flag_set: bool) -> Result<(), String> {
     #[cfg(feature = "chrono")]
     const REFUSAL: &str = "#[model_schema_prop(as_number)] requires a chrono DateTime<Tz> field";
-    #[cfg(feature = "jiff")]
+    #[cfg(all(feature = "jiff", not(feature = "chrono")))]
     const REFUSAL: &str = "#[model_schema_prop(as_number)] requires a jiff Timestamp field";
     #[cfg(not(any(feature = "chrono", feature = "jiff")))]
     const REFUSAL: &str = "#[model_schema_prop(as_number)] requires a chrono DateTime<Tz> field";
@@ -20085,7 +20085,7 @@ fn as_number_hook_refusal(
     #[cfg(feature = "chrono")]
     const HOOKS: &str = "chrono's `ts_milliseconds` hook, which takes a `DateTime<Utc>`, or an \
                          `Option<DateTime<Utc>>` through `ts_milliseconds_option`";
-    #[cfg(feature = "jiff")]
+    #[cfg(all(feature = "jiff", not(feature = "chrono")))]
     const HOOKS: &str = "jiff's `millisecond::required` hook, which takes a `jiff::Timestamp`, or \
                          an `Option<jiff::Timestamp>` through `millisecond::optional`";
     if !flag_set || !field_type.is_instant() {
@@ -20096,7 +20096,7 @@ fn as_number_hook_refusal(
         || (hooks.serialize_with.is_some() && hooks.deserialize_with.is_some());
     #[cfg(feature = "chrono")]
     let reads_hook_value = names_a_utc_date(&field.ty) || names_an_optional_utc_date(&field.ty);
-    #[cfg(feature = "jiff")]
+    #[cfg(all(feature = "jiff", not(feature = "chrono")))]
     let reads_hook_value =
         names_a_jiff_timestamp(&field.ty) || names_an_optional_jiff_timestamp(&field.ty);
     if authored || reads_hook_value {
@@ -20183,7 +20183,7 @@ fn as_number_serde_hooks(field: &Field, field_def: &FieldDef) -> Vec<syn::Attrib
         "chrono::serde::ts_milliseconds_option",
         "chrono::serde::ts_milliseconds",
     ];
-    #[cfg(feature = "jiff")]
+    #[cfg(all(feature = "jiff", not(feature = "chrono")))]
     const MODULES: [&str; 2] = [
         "jiff::fmt::serde::timestamp::millisecond::optional",
         "jiff::fmt::serde::timestamp::millisecond::required",

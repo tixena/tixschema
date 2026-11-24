@@ -99,6 +99,7 @@ pub const EPOCH_EXPECTED: &str = "a unix timestamp in milliseconds";
 /// What jiff's `millisecond::required` calls the epoch milliseconds of `as_number`, in a refusal.
 #[cfg(all(
     feature = "jiff",
+    not(feature = "chrono"),
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 pub const EPOCH_EXPECTED: &str = "an integer number of milliseconds from the Unix epoch";
@@ -112,6 +113,7 @@ pub const EPOCH_BEYOND: (&str, &str) = ("value is not a legal timestamp: ", "");
 /// The words jiff's `millisecond::required` writes around epoch milliseconds above an `i64`.
 #[cfg(all(
     feature = "jiff",
+    not(feature = "chrono"),
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 pub const EPOCH_BEYOND: (&str, &str) = (
@@ -527,7 +529,7 @@ impl FieldDefType {
     }
 
     /// Whether the type is jiff's `Timestamp`, the instant `as_number` writes as milliseconds.
-    #[cfg(feature = "jiff")]
+    #[cfg(all(feature = "jiff", not(feature = "chrono")))]
     pub const fn is_instant(&self) -> bool {
         matches!(self, Self::Timestamp)
     }
