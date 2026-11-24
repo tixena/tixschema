@@ -34,9 +34,9 @@ pub fn text_read(form: TextForm, text: &str) -> String {
     )
 }
 
-/// What the Dart client sends of `value`, a `String` it holds as `form`: the form serde writes,
-/// its `Z` dropped, its `T`, its seconds and its fraction written where the form says, and a refusal of a text no such
-/// rewrite turns into it.
+/// What the Dart client sends of `value`, a `String` it holds as `form`: the form serde writes, its
+/// `Z` dropped, its `T`, its seconds and its fraction written where the form says, and a refusal of
+/// a text no such rewrite turns into it.
 pub fn text_sent(form: TextForm, value: &str) -> String {
     let zoneless = if form.unzoned() {
         format!("({value}.endsWith('Z') ? {value}.substring(0, {value}.length - 1) : {value})")

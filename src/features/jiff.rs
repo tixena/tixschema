@@ -1,55 +1,41 @@
-//! jiff date/time type support.
+//! The TypeScript types and Zod schemas of jiff's date and time types.
 
-/// The statement of a preprocessor that writes the fraction ending `sent` in the fewest digits it
-/// needs, as jiff writes it, and no fraction for one of zeros alone.
+/// Writes the fraction ending `sent` as jiff writes it: in the fewest digits, and none for zeros.
 #[cfg(any(test, feature = "zod"))]
 const TRIMMED: &str =
     "return sent.replace(/\\.(\\d*?)0+$/, (_, kept) => kept ? `.${kept}` : \"\");";
 
-/// Generates TypeScript type name for `civil::Date`.
 pub fn get_civil_date_typescript_type() -> String {
     "string".to_owned()
 }
 
-/// Generates TypeScript type name for `civil::Time`.
 pub fn get_civil_time_typescript_type() -> String {
     "string".to_owned()
 }
 
-/// Generates TypeScript type name for `civil::DateTime`.
 pub fn get_civil_datetime_typescript_type() -> String {
     "string".to_owned()
 }
 
-/// Generates TypeScript type name for a `Timestamp` (native `Date` default).
 pub fn get_timestamp_typescript_type() -> String {
     "Date".to_owned()
 }
 
-/// Generates TypeScript type name for a `Timestamp` rendered with the
-/// `#[model_schema_prop(as_number)]` opt-out (epoch milliseconds).
 pub fn get_timestamp_number_typescript_type() -> String {
     "number".to_owned()
 }
 
-/// Generates TypeScript type name for `ZonedDateTime`, held as the one text jiff's serde
-/// writes, zone included.
 pub fn get_zoned_datetime_typescript_type() -> String {
     "string".to_owned()
 }
 
-/// Generates Zod schema for `civil::Date` (date validation).
-/// Uses Zod v4's `z.iso.date()` syntax (`z.string().date()` is deprecated).
 #[cfg(any(test, feature = "zod"))]
 pub fn get_civil_date_zod_schema() -> String {
     "z.iso.date()".to_owned()
 }
 
-/// Generates Zod schema for `civil::Time` (time validation).
-/// Stays a TS `string` (`z.iso.time()`) but the inline preprocessor also accepts
-/// millis-since-start-of-day, converting it to an `HH:MM:SS` string before validation, writes the
-/// seconds `HH:MM` leaves out, and the fraction in the fewest digits it needs, as jiff writes
-/// them. `z.string().time()` is deprecated.
+/// The preprocessor also reads milliseconds since the start of the day, and writes the seconds
+/// `HH:MM` leaves out and the fraction in the fewest digits, as jiff writes them.
 #[cfg(any(test, feature = "zod"))]
 pub fn get_civil_time_zod_schema() -> String {
     format!(
@@ -62,11 +48,9 @@ pub fn get_civil_time_zod_schema() -> String {
     )
 }
 
-/// Generates Zod schema for `civil::DateTime` (local date and time validation). The inline
-/// preprocessor writes a text in the form jiff writes: a `T` where jiff reads a space, the seconds
-/// `HH:MM` leaves out, and the fraction in the fewest digits it needs. The text is then held to
-/// that form whole, which refuses the `Z` jiff refuses on a civil date and time, and which
-/// `z.iso.datetime({ local: true })` reads.
+/// The preprocessor writes the text in the form jiff writes: a `T` where jiff reads a space, the
+/// seconds `HH:MM` leaves out, and the fraction in the fewest digits. The text is then held to
+/// that form whole, which refuses the `Z` jiff refuses on a civil date and time.
 #[cfg(feature = "zod")]
 pub fn get_civil_datetime_zod_schema() -> String {
     use crate::features::text_forms::{DATE, TIME_SENT};
@@ -79,21 +63,16 @@ pub fn get_civil_datetime_zod_schema() -> String {
     )
 }
 
-/// Generates Zod schema for `Timestamp` rendered as a native TS `Date` (default).
-/// A `Date` instance, an ISO string or epoch milliseconds is coerced to a `Date`, which a BSON
-/// `Date` is written from (`MongoDB` TTL). Anything else is refused before the coercion, because
-/// `z.coerce.date()` alone reads `null`, `true` and `false` as instants of 1970.
+/// Coerces a `Date`, an ISO string or epoch milliseconds to a `Date`, and refuses anything else
+/// first: `z.coerce.date()` alone reads `null`, `true` and `false` as instants of 1970.
 #[cfg(any(test, feature = "zod"))]
 pub fn get_timestamp_native_zod_schema() -> String {
     "z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date())".to_owned()
 }
 
-/// Generates Zod schema for a `Timestamp` rendered with the
-/// `#[model_schema_prop(as_number)]` opt-out (epoch milliseconds).
-///
-/// A self-contained inline coercer: `Date` → `getTime()`, ISO string → `Date.parse`,
-/// otherwise passed through to `z.number().int()`, which refuses a fraction of a millisecond, as
-/// serde does. No imported helper, so generated modules remain self-contained.
+/// The epoch milliseconds of `as_number`, coerced inline so a generated module imports no helper:
+/// `Date` → `getTime()`, ISO string → `Date.parse`, anything else to `z.number().int()`, which
+/// refuses a fraction of a millisecond, as serde does.
 #[cfg(any(test, feature = "zod"))]
 pub fn get_timestamp_number_zod_schema() -> String {
     "z.preprocess((arg) => { if (arg instanceof Date) return arg.getTime(); \
@@ -101,8 +80,7 @@ if (typeof arg === \"string\") return Date.parse(arg); return arg; }, z.number()
         .to_owned()
 }
 
-/// Generates Zod schema for `ZonedDateTime`, held as the one text jiff's serde writes, zone
-/// included. The text is validated whole against the RFC 9557 form jiff writes.
+/// Holds the text whole to the RFC 9557 form jiff writes, zone named.
 #[cfg(feature = "zod")]
 pub fn get_zoned_datetime_zod_schema() -> String {
     use crate::features::text_forms::zoned_text;

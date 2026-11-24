@@ -1057,8 +1057,9 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
     }
 }
 
-/// Whether `ty` is a `DateTime<Tz>` or a `Timestamp`, which the result declares a `Date` of: read off the RFC 3339
-/// text the dispatcher writes, where every other text-shaped type is the text itself.
+/// Whether `ty` is a `DateTime<Tz>` or a `Timestamp`, which the result declares a `Date` of: read
+/// off the RFC 3339 text the dispatcher writes, where every other text-shaped type is the text
+/// itself.
 fn reads_a_date(ty: &Type) -> bool {
     get_field_def("value", ty, "").field_type.is_instant()
 }

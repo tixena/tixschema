@@ -736,10 +736,10 @@ fn main() {
 //! The default is `web` and `jiff`. Three sets group the plain features: `web` is `zod` and
 //! `typescript`; `mobile` is `dart`, `swift` and `kotlin`; `mongo` is `mongodb`, `indexmap` and
 //! `arky`. `mongodb` turns on `bson`. `jiff` and `chrono` read the date and time types, and are
-//! never on together: a crate that names `chrono` sets `default-features = false`. A feature says what tixschema can generate, and a type's `enable` list says
-//! what it generates for that type. JSON Schema is no feature: a type that lists
-//! `enable = ["jsonschema"]` gets `T::json_schema()`, and the crate that declares it lists
-//! `serde_json`.
+//! never on together: a crate that names `chrono` sets `default-features = false`. A feature says
+//! what tixschema can generate, and a type's `enable` list says what it generates for that type.
+//! JSON Schema is no feature: a type that lists `enable = ["jsonschema"]` gets `T::json_schema()`,
+//! and the crate that declares it lists `serde_json`.
 //!
 //! | Feature | What it adds | What your crate lists |
 //! |---|---|---|

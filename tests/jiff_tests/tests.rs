@@ -160,8 +160,8 @@ struct EventWithDate {
     name: String,
 }
 
-// Test enum with DateTime variant (the original use case!). The content key is named because every
-// variant here wraps a scalar, and serde refuses to write one beside a bare tag.
+/// An enum with dates in its variants. Its content key is named: every variant wraps a scalar,
+/// which serde refuses to write beside a bare tag.
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", content = "value")]

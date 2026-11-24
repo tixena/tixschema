@@ -90,32 +90,26 @@ const WIDE_KEY_ZOD: &str = "z.custom<number>((key) => typeof key === \"string\")
 #[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "zod"))]
 const TIMESTAMP_KEY_ZOD: &str = "z.iso.datetime({ offset: true })";
 
-/// What serde names the epoch milliseconds `as_number` reads as, where it refuses another value:
-/// chrono's `ts_milliseconds` words it one way and jiff's `millisecond::required` another.
+/// What chrono's `ts_milliseconds` calls the epoch milliseconds `as_number` reads, in a refusal.
 #[cfg(all(
     feature = "chrono",
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 pub const EPOCH_EXPECTED: &str = "a unix timestamp in milliseconds";
-/// What serde names the epoch milliseconds `as_number` reads as, where it refuses another value:
-/// chrono's `ts_milliseconds` words it one way and jiff's `millisecond::required` another.
+/// What jiff's `millisecond::required` calls the epoch milliseconds of `as_number`, in a refusal.
 #[cfg(all(
     feature = "jiff",
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 pub const EPOCH_EXPECTED: &str = "an integer number of milliseconds from the Unix epoch";
 
-/// What serde writes before and after the digits of epoch milliseconds above an `i64`, where
-/// `as_number` refuses them: chrono's `ts_milliseconds` words it one way and jiff's
-/// `millisecond::required` another.
+/// The words chrono's `ts_milliseconds` writes around epoch milliseconds above an `i64`.
 #[cfg(all(
     feature = "chrono",
     any(feature = "dart", feature = "kotlin", feature = "swift")
 ))]
 pub const EPOCH_BEYOND: (&str, &str) = ("value is not a legal timestamp: ", "");
-/// What serde writes before and after the digits of epoch milliseconds above an `i64`, where
-/// `as_number` refuses them: chrono's `ts_milliseconds` words it one way and jiff's
-/// `millisecond::required` another.
+/// The words jiff's `millisecond::required` writes around epoch milliseconds above an `i64`.
 #[cfg(all(
     feature = "jiff",
     any(feature = "dart", feature = "kotlin", feature = "swift")
@@ -362,13 +356,10 @@ pub enum FieldDefType {
     /// one.
     Char,
     #[cfg(feature = "jiff")]
-    /// jiff `civil::Date` type - requires the "`jiff`" feature.
     CivilDate,
     #[cfg(feature = "jiff")]
-    /// jiff `civil::DateTime` type - requires the "`jiff`" feature.
     CivilDateTime,
     #[cfg(feature = "jiff")]
-    /// jiff `civil::Time` type - requires the "`jiff`" feature.
     CivilTime,
     #[cfg(feature = "chrono")]
     /// Chrono `DateTime<Tz>` type - requires "`chrono`" feature.
@@ -408,7 +399,6 @@ pub enum FieldDefType {
     /// "value") Maps to "value" in TS, z.literal("value") in Zod.
     StringLiteral(String),
     #[cfg(feature = "jiff")]
-    /// jiff `Timestamp` type - requires the "`jiff`" feature.
     Timestamp,
     /// Tuple type - generates anonymous object in TS/Zod.
     Tuple(Vec<FieldDef>),
@@ -425,7 +415,6 @@ pub enum FieldDefType {
     Unknown,
     Usize,
     #[cfg(feature = "jiff")]
-    /// jiff `Zoned` type - requires the "`jiff`" feature.
     ZonedDateTime,
 }
 
@@ -531,15 +520,13 @@ impl FieldDefType {
         }
     }
 
-    /// Whether the type is the instant of the date feature that is on, the one `as_number`
-    /// writes as its epoch milliseconds: chrono's `DateTime<Tz>`, or jiff's `Timestamp`.
+    /// Whether the type is chrono's `DateTime<Tz>`, the instant `as_number` writes as milliseconds.
     #[cfg(feature = "chrono")]
     pub const fn is_instant(&self) -> bool {
         matches!(self, Self::DateTime)
     }
 
-    /// Whether the type is the instant of the date feature that is on, the one `as_number`
-    /// writes as its epoch milliseconds: chrono's `DateTime<Tz>`, or jiff's `Timestamp`.
+    /// Whether the type is jiff's `Timestamp`, the instant `as_number` writes as milliseconds.
     #[cfg(feature = "jiff")]
     pub const fn is_instant(&self) -> bool {
         matches!(self, Self::Timestamp)

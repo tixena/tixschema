@@ -1,9 +1,9 @@
 //! A text serde reads in one form alone, which the Kotlin client holds as a `String`: a `char`, and
-//! a date, time, date and time, and date and time with its zone, of chrono or of jiff. Each is read and written
-//! through a serializer of the item's own. Its read throws `SerializationException` for a `char`
-//! of other than one code point, as serde refuses it, and for a date, a time or a date and time
-//! the Zod schema of it refuses: where serde and Zod part, the read follows Zod. Its write sends
-//! the form serde writes ([`TextForm`]), and throws for a text no rewrite turns into it.
+//! a date, time, date and time, and date and time with its zone, of chrono or of jiff. Each is read
+//! and written through a serializer of the item's own. Its read throws `SerializationException` for
+//! a `char` of other than one code point, as serde refuses it, and for a date, a time or a date and
+//! time the Zod schema of it refuses: where serde and Zod part, the read follows Zod. Its write
+//! sends the form serde writes ([`TextForm`]), and throws for a text no rewrite turns into it.
 //!
 //! A number and a `bool` are read through a serializer of the item's own as well: the JSON decoder
 //! of `kotlinx.serialization` reads a number or a `bool` written between quotes, which serde and

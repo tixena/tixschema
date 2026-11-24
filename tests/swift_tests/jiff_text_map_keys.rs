@@ -1,8 +1,9 @@
 //! What the Swift backend writes for a map under a key Swift holds as the text serde writes for it:
-//! a `Date`, a `Time`, a `DateTime` and a type parameter. The wrapper the map is read
-//! through binds that text as the key, with no `guard`: a date or a time once its read holds it to
-//! its form, and a type parameter's as it is. A key parsed from its text keeps the `guard` it had. `service_schema_emitted_client_tests/run_swift_text_map_keys.rs` compiles the
-//! models of `text_map_keys_models.rs` under a Swift toolchain and reads a payload of each.
+//! a `Date`, a `Time`, a `DateTime` and a type parameter. The wrapper the map is read through binds
+//! that text as the key, with no `guard`: a date or a time once its read holds it to its form, and
+//! a type parameter's as it is. A key parsed from its text keeps the `guard` it had.
+//! `service_schema_emitted_client_tests/run_swift_text_map_keys.rs` compiles the models of
+//! `text_map_keys_models.rs` under a Swift toolchain and reads a payload of each.
 
 use std::collections::HashMap;
 

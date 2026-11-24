@@ -1,4 +1,5 @@
-//! `from_bson_with` on structs and enums holding jiff dates, held to what plain serde says of the same document. Two binaries compile this module, each with the name `bson` bound to one major
+//! `from_bson_with` on structs and enums holding jiff dates, held to what plain serde says of the
+//! same document. Two binaries compile this module, each with the name `bson` bound to one major
 //! version of the library, so every case runs against both.
 //!
 //! An issue is asserted by its kind, its path, its expected type and the value it holds. Its
@@ -3284,7 +3285,8 @@ fn an_untagged_enums_constrained_member_is_read_through_its_hook() {
 }
 
 /// serde says which variant reads the document, and that variant alone is walked. A nonstrict
-/// enum's own struct variant reads past a key it does not declare; a strict model it holds does not.
+/// enum's own struct variant reads past a key it does not declare; a strict model it holds does
+/// not.
 #[test]
 fn an_untagged_value_is_walked_as_the_variant_serde_reads_it_as() {
     let email = doc! { "address": "ann@example.org", "legacy": true };
