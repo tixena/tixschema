@@ -1,9 +1,9 @@
 ## Chrono Date/Time Types
 
-Enable the `chrono` feature for chrono date/time type support. All chrono types map to `string` in TypeScript, with appropriate Zod validation for the specific date/time format.
+Enable the `chrono` feature for chrono date/time type support. All chrono types map to `string` in TypeScript, with appropriate Zod validation for the specific date/time format. `chrono` is never on with `jiff`, which is a default feature ([jiff dates and times](jiff.md#jiff-datetime-types)), so a crate that names `chrono` turns the default features off and names the sets it uses:
 
 ```toml
-tixschema = { version = "0.6", features = ["chrono"] }
+tixschema = { version = "0.7", default-features = false, features = ["web", "chrono"] }
 ```
 
 A consumer enabling `chrono` on tixschema must also enable `serde` on its own `chrono` dependency — `as_number` (below) injects a `chrono::serde::ts_milliseconds` hook that only exists there.

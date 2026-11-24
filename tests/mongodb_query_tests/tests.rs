@@ -5,6 +5,10 @@
 
 mod arms;
 mod function_body;
+#[cfg(feature = "chrono")]
+mod hooked;
+#[cfg(feature = "jiff")]
+#[path = "jiff_hooked.rs"]
 mod hooked;
 mod nested;
 // A build that describes a type refuses a renaming whose two directions name two keys.
@@ -18,6 +22,7 @@ mod nested;
 mod one_direction;
 mod one_value;
 mod operators;
+#[cfg(feature = "chrono")]
 mod readme;
 mod shadowing;
 mod shapes;

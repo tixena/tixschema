@@ -11,7 +11,13 @@
 
 use alloc::collections::BTreeMap;
 
+#[cfg(feature = "chrono")]
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+#[cfg(feature = "jiff")]
+use jiff::{
+    Timestamp, ZonedDateTime,
+    civil::{Date, DateTime, Time},
+};
 #[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 use serde::de::DeserializeOwned;
@@ -148,27 +154,34 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
     row("ConveyedLiteralCount", "214", "read", ALL_HANDED),
     row("ConveyedLiteralFlag", "true", "read", ALL_HANDED),
     row("ConveyedLiteralText", r#""val""#, "read", ALL_HANDED),
+    #[cfg(feature = "chrono")]
     row("ConveyedDay", r#""2024-01-05""#, "read", ALL_HANDED),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedDay",
         r#""2024-1-5""#,
         r#"read, written back as {"keyed":{"2024-01-05":true},"value":"2024-01-05","values":["2024-01-05"]}"#,
         ALL_REFUSED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedDay",
         r#""2023-02-29""#,
         "input is out of range at line 1 column 22",
         ALL_REFUSED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedDay",
         r#""hello""#,
         "input contains invalid characters at line 1 column 17",
         ALL_REFUSED,
     ),
+    #[cfg(feature = "chrono")]
     row("ConveyedHour", r#""10:20:30""#, "read", ALL_HANDED),
+    #[cfg(feature = "chrono")]
     row("ConveyedHour", r#""10:20:30.123""#, "read", ALL_HANDED),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedHour",
         r#""10:20""#,
@@ -180,6 +193,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::As(r#""10:20:00""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedHour",
         "37230000",
@@ -191,24 +205,28 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::As(r#""10:20:30""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedHour",
         r#""hello""#,
         "input contains invalid characters at line 1 column 17",
         ALL_REFUSED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""2024-01-05T10:20:30""#,
         "read",
         ALL_HANDED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""2024-01-05T10:20:30.123""#,
         "read",
         ALL_HANDED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""2024-01-05T10:20:30.000Z""#,
@@ -220,6 +238,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::As(r#""2024-01-05T10:20:30.000""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""2024-01-05T10:20""#,
@@ -231,6 +250,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::As(r#""2024-01-05T10:20:00""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""2024-01-05T10:20Z""#,
@@ -242,18 +262,21 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::As(r#""2024-01-05T10:20:00""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""2024-01-05 10:20:30""#,
         "input contains invalid characters at line 1 column 31",
         ALL_REFUSED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedStamp",
         r#""hello""#,
         "input contains invalid characters at line 1 column 17",
         ALL_REFUSED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20:30.000Z""#,
@@ -265,6 +288,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::Apart(r#""2024-01-05T10:20:30Z""#, r#""2024-01-05T10:20:30.000Z""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20:30Z""#,
@@ -276,12 +300,14 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::As(r#""2024-01-05T10:20:30Z""#),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20:30.500Z""#,
         "read",
         ALL_HANDED,
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20:30+02:00""#,
@@ -296,6 +322,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             ),
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""2026-10-22T13:07:11.032917""#,
@@ -307,6 +334,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::Refused,
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""2024-01-05T10:20Z""#,
@@ -318,6 +346,7 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::Refused,
         },
     ),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedInstant",
         r#""hello""#,
@@ -329,7 +358,9 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             typescript: Sends::Refused,
         },
     ),
+    #[cfg(feature = "chrono")]
     row("ConveyedMillis", "1704164645678", "read", ALL_HANDED),
+    #[cfg(feature = "chrono")]
     row(
         "ConveyedMillis",
         "1.5",
@@ -341,6 +372,293 @@ pub const WIRE_FORMS: &[WireFormRow] = &[
             swift: Sends::Unheld,
             typescript: Sends::Refused,
         },
+    ),
+    #[cfg(feature = "jiff")]
+    row("ConveyedDay", r#""2024-01-05""#, "read", ALL_HANDED),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedDay",
+        r#""2024-1-5""#,
+        "failed to parse two digit integer as month: invalid digit, expected 0-9 but got - at line 1 column 20",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedDay",
+        r#""2023-02-29""#,
+        "parsed date is not valid: parameter 'day' for `2023-02` is invalid, must be in range `1..=28` at line 1 column 22",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedDay",
+        r#""2026-11-20T00:00:00""#,
+        r#"read, written back as {"keyed":{"2026-11-20":true},"value":"2026-11-20","values":["2026-11-20"]}"#,
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedDay",
+        r#""hello""#,
+        "failed to parse four digit integer as year: invalid digit, expected 0-9 but got h at line 1 column 17",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row("ConveyedHour", r#""10:20:30""#, "read", ALL_HANDED),
+    #[cfg(feature = "jiff")]
+    row("ConveyedHour", r#""10:20:30.123""#, "read", ALL_HANDED),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedHour",
+        r#""10:20""#,
+        r#"read, written back as {"keyed":{"10:20:00":true},"value":"10:20:00","values":["10:20:00"]}"#,
+        Clients {
+            dart: Sends::As(r#""10:20:00""#),
+            kotlin: Sends::As(r#""10:20:00""#),
+            swift: Sends::As(r#""10:20:00""#),
+            typescript: Sends::As(r#""10:20:00""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedHour",
+        r#""10:20:30.500""#,
+        r#"read, written back as {"keyed":{"10:20:30.5":true},"value":"10:20:30.5","values":["10:20:30.5"]}"#,
+        Clients {
+            dart: Sends::As(r#""10:20:30.5""#),
+            kotlin: Sends::As(r#""10:20:30.5""#),
+            swift: Sends::As(r#""10:20:30.5""#),
+            typescript: Sends::As(r#""10:20:30.5""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedHour",
+        r#""10:20:30.000""#,
+        r#"read, written back as {"keyed":{"10:20:30":true},"value":"10:20:30","values":["10:20:30"]}"#,
+        Clients {
+            dart: Sends::As(r#""10:20:30""#),
+            kotlin: Sends::As(r#""10:20:30""#),
+            swift: Sends::As(r#""10:20:30""#),
+            typescript: Sends::As(r#""10:20:30""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedHour",
+        r#""10:20Z""#,
+        "cannot parse civil date/time from string with a Zulu offset, parse as a `jiff::Timestamp` first and convert to a civil date/time instead at line 1 column 18",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedHour",
+        r#""hello""#,
+        "failed to parse two digit integer as hour: invalid digit, expected 0-9 but got h at line 1 column 17",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05T10:20:30""#,
+        "read",
+        ALL_HANDED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05T10:20:30.123""#,
+        "read",
+        ALL_HANDED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05T10:20:30.000Z""#,
+        "cannot parse civil date/time from string with a Zulu offset, parse as a `jiff::Timestamp` first and convert to a civil date/time instead at line 1 column 36",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05T10:20""#,
+        r#"read, written back as {"keyed":{"2024-01-05T10:20:00":true},"value":"2024-01-05T10:20:00","values":["2024-01-05T10:20:00"]}"#,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:00""#),
+            kotlin: Sends::As(r#""2024-01-05T10:20:00""#),
+            swift: Sends::As(r#""2024-01-05T10:20:00""#),
+            typescript: Sends::As(r#""2024-01-05T10:20:00""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05 10:20:30""#,
+        r#"read, written back as {"keyed":{"2024-01-05T10:20:30":true},"value":"2024-01-05T10:20:30","values":["2024-01-05T10:20:30"]}"#,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30""#),
+            kotlin: Sends::As(r#""2024-01-05T10:20:30""#),
+            swift: Sends::As(r#""2024-01-05T10:20:30""#),
+            typescript: Sends::As(r#""2024-01-05T10:20:30""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05T10:20:30.500""#,
+        r#"read, written back as {"keyed":{"2024-01-05T10:20:30.5":true},"value":"2024-01-05T10:20:30.5","values":["2024-01-05T10:20:30.5"]}"#,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30.5""#),
+            kotlin: Sends::As(r#""2024-01-05T10:20:30.5""#),
+            swift: Sends::As(r#""2024-01-05T10:20:30.5""#),
+            typescript: Sends::As(r#""2024-01-05T10:20:30.5""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""2024-01-05T10:20Z""#,
+        "cannot parse civil date/time from string with a Zulu offset, parse as a `jiff::Timestamp` first and convert to a civil date/time instead at line 1 column 29",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedStamp",
+        r#""hello""#,
+        "failed to parse four digit integer as year: invalid digit, expected 0-9 but got h at line 1 column 17",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""2024-01-05T10:20:30.000Z""#,
+        r#"read, written back as {"keyed":{"2024-01-05T10:20:30Z":true},"value":"2024-01-05T10:20:30Z","values":["2024-01-05T10:20:30Z"]}"#,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            kotlin: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            typescript: Sends::Apart(r#""2024-01-05T10:20:30Z""#, r#""2024-01-05T10:20:30.000Z""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""2024-01-05T10:20:30Z""#,
+        "read",
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            kotlin: Sends::Handed,
+            swift: Sends::As(r#""2024-01-05T10:20:30Z""#),
+            typescript: Sends::As(r#""2024-01-05T10:20:30Z""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""2024-01-05T10:20:30.5Z""#,
+        "read",
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30.5Z""#),
+            kotlin: Sends::Handed,
+            swift: Sends::As(r#""2024-01-05T10:20:30.5Z""#),
+            typescript: Sends::As(r#""2024-01-05T10:20:30.5Z""#),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""2024-01-05T10:20:30.500Z""#,
+        r#"read, written back as {"keyed":{"2024-01-05T10:20:30.5Z":true},"value":"2024-01-05T10:20:30.5Z","values":["2024-01-05T10:20:30.5Z"]}"#,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T10:20:30.5Z""#),
+            kotlin: Sends::As(r#""2024-01-05T10:20:30.5Z""#),
+            swift: Sends::As(r#""2024-01-05T10:20:30.5Z""#),
+            typescript: Sends::Apart(
+                r#""2024-01-05T10:20:30.5Z""#,
+                r#""2024-01-05T10:20:30.500Z""#,
+            ),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""2024-01-05T10:20:30+02:00""#,
+        r#"read, written back as {"keyed":{"2024-01-05T08:20:30Z":true},"value":"2024-01-05T08:20:30Z","values":["2024-01-05T08:20:30Z"]}"#,
+        Clients {
+            dart: Sends::As(r#""2024-01-05T08:20:30Z""#),
+            kotlin: Sends::As(r#""2024-01-05T08:20:30Z""#),
+            swift: Sends::As(r#""2024-01-05T08:20:30Z""#),
+            typescript: Sends::Apart(
+                r#""2024-01-05T08:20:30Z""#,
+                r#""2024-01-05T10:20:30+02:00""#,
+            ),
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""2026-10-22T13:07:11.032917""#,
+        "failed to find offset component, which is required for parsing a timestamp at line 1 column 38",
+        Clients {
+            dart: Sends::As(r#""2026-10-22T13:07:11.032917Z""#),
+            kotlin: Sends::Refused,
+            swift: Sends::Unheld,
+            typescript: Sends::Refused,
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedInstant",
+        r#""hello""#,
+        "failed to parse four digit integer as year: invalid digit, expected 0-9 but got h at line 1 column 17",
+        Clients {
+            dart: Sends::Unheld,
+            kotlin: Sends::Refused,
+            swift: Sends::Unheld,
+            typescript: Sends::Refused,
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row("ConveyedMillis", "1704164645678", "read", ALL_HANDED),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedMillis",
+        "1.5",
+        "invalid type: floating point `1.5`, expected an integer number of milliseconds from the Unix epoch at line 1 column 12",
+        Clients {
+            dart: Sends::Unheld,
+            kotlin: Sends::Unheld,
+            swift: Sends::Unheld,
+            typescript: Sends::Refused,
+        },
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedZoned",
+        r#""2026-11-20T08:00:00-04:00[America/Santo_Domingo]""#,
+        "read",
+        ALL_HANDED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedZoned",
+        r#""2026-11-20T08:00:00.5-04:00[America/Santo_Domingo]""#,
+        "read",
+        ALL_HANDED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedZoned",
+        r#""2026-11-20T08:00:00-04:00""#,
+        "failed to find time zone annotation in square brackets, which is required for parsing a zoned datetime at line 1 column 36",
+        ALL_REFUSED,
+    ),
+    #[cfg(feature = "jiff")]
+    row(
+        "ConveyedZoned",
+        r#""hello""#,
+        "failed to parse four digit integer as year: invalid digit, expected 0-9 but got h at line 1 column 16",
+        ALL_REFUSED,
     ),
     row("ConveyedSlotted", r#""Daily""#, "read", ALL_HANDED),
     #[cfg(feature = "mongodb")]
@@ -632,6 +950,7 @@ pub struct ConveyedLiteralText {
 }
 
 /// A `NaiveDate`.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedDay {
@@ -641,6 +960,7 @@ pub struct ConveyedDay {
 }
 
 /// A `NaiveTime`.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedHour {
@@ -650,6 +970,7 @@ pub struct ConveyedHour {
 }
 
 /// A `NaiveDateTime`.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedStamp {
@@ -659,6 +980,7 @@ pub struct ConveyedStamp {
 }
 
 /// A `DateTime<Utc>`.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedInstant {
@@ -668,11 +990,71 @@ pub struct ConveyedInstant {
 }
 
 /// A `DateTime<Utc>` under `as_number`, which takes no other place.
+#[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConveyedMillis {
     #[model_schema_prop(as_number)]
     pub value: DateTime<Utc>,
+}
+
+/// A `jiff::civil::Date`.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConveyedDay {
+    pub keyed: BTreeMap<Date, bool>,
+    pub value: Date,
+    pub values: Vec<Date>,
+}
+
+/// A `jiff::civil::Time`.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConveyedHour {
+    pub keyed: BTreeMap<Time, bool>,
+    pub value: Time,
+    pub values: Vec<Time>,
+}
+
+/// A `jiff::civil::DateTime`.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConveyedStamp {
+    pub keyed: BTreeMap<DateTime, bool>,
+    pub value: DateTime,
+    pub values: Vec<DateTime>,
+}
+
+/// A `jiff::Timestamp`.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConveyedInstant {
+    pub keyed: BTreeMap<Timestamp, bool>,
+    pub value: Timestamp,
+    pub values: Vec<Timestamp>,
+}
+
+/// A `jiff::Timestamp` under `as_number`, which takes no other place.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConveyedMillis {
+    #[model_schema_prop(as_number)]
+    pub value: Timestamp,
+}
+
+/// A `jiff::ZonedDateTime`, which keys no map: the text jiff writes is not the order of its
+/// instants.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConveyedZoned {
+    pub value: ZonedDateTime,
+    pub values: Vec<ZonedDateTime>,
 }
 
 /// A plain enum, which keys a map by the name serde writes for it.
@@ -722,7 +1104,7 @@ const fn row(
 /// The places the model `held_by` holds its value in.
 pub fn places(held_by: &str) -> Places {
     match held_by {
-        "ConveyedF32" | "ConveyedF64" | "ConveyedObjectId" => Places::Listed,
+        "ConveyedF32" | "ConveyedF64" | "ConveyedObjectId" | "ConveyedZoned" => Places::Listed,
         "ConveyedLiteralCount"
         | "ConveyedLiteralFlag"
         | "ConveyedLiteralText"
@@ -793,6 +1175,8 @@ fn told_as(held_by: &str, json: &str) -> Option<String> {
         "ConveyedStamp" => Some(told::<ConveyedStamp>(json)),
         "ConveyedInstant" => Some(told::<ConveyedInstant>(json)),
         "ConveyedMillis" => Some(told::<ConveyedMillis>(json)),
+        #[cfg(feature = "jiff")]
+        "ConveyedZoned" => Some(told::<ConveyedZoned>(json)),
         "ConveyedSlotted" => Some(told::<ConveyedSlotted>(json)),
         #[cfg(feature = "mongodb")]
         "ConveyedObjectId" => Some(told::<ConveyedObjectId>(json)),
@@ -870,7 +1254,12 @@ fn a_date_a_client_sends_is_the_instant_it_was_handed() {
         let Ok(handed) = serde_json::from_str::<String>(row.handed) else {
             continue;
         };
+        #[cfg(feature = "chrono")]
         let Ok(instant) = DateTime::parse_from_rfc3339(&handed) else {
+            continue;
+        };
+        #[cfg(feature = "jiff")]
+        let Ok(instant) = handed.parse::<Timestamp>() else {
             continue;
         };
         for sent in row.sent() {

@@ -9,6 +9,10 @@ use std::collections::HashMap;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "jiff")]
+use jiff::civil;
+#[cfg(feature = "jiff")]
+use jiff::tz;
 use tixschema::model_schema;
 
 use super::unknown_keys::{plain_enum_read, plain_enum_reads, plain_enum_text};
@@ -145,6 +149,16 @@ pub struct Sample {
     pub day: chrono::NaiveDate,
     #[model_schema_prop(as_number)]
     pub logged_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sample {
+    pub created_at: jiff::Timestamp,
+    pub day: civil::Date,
+    #[model_schema_prop(as_number)]
+    pub logged_at: jiff::Timestamp,
 }
 
 #[model_schema(name = "Customer")]
@@ -321,6 +335,19 @@ fn test_sample_is_constructible() {
         logged_at: chrono::Utc::now(),
     };
     assert!(sample.created_at <= chrono::Utc::now());
+}
+
+#[test]
+#[cfg(feature = "jiff")]
+fn test_sample_is_constructible() {
+    let sample = SampleDraft {
+        created_at: jiff::Timestamp::now(),
+        day: jiff::Timestamp::now()
+            .to_zoned_datetime(tz::TimeZone::UTC)
+            .date(),
+        logged_at: jiff::Timestamp::now(),
+    };
+    assert!(sample.created_at <= jiff::Timestamp::now());
 }
 
 #[test]
@@ -718,7 +745,25 @@ fn test_datetime_maps_to_dart_datetime_by_default() {
 }
 
 #[test]
-#[cfg(feature = "chrono")]
+#[cfg(feature = "jiff")]
+fn test_datetime_maps_to_dart_datetime_by_default() {
+    let dart = sample_dart::dart_definition();
+    assert!(
+        dart.contains("final DateTime created_at;"),
+        "DateTime<Tz> should map to Dart's own DateTime. Got: {dart}"
+    );
+    assert!(dart.contains(
+        "created_at: _readAt(json, 'created_at', () => DateTime.parse(json['created_at'] as \
+         String)),"
+    ));
+    assert!(dart.contains(
+        "'created_at': (created_at).toUtc().toIso8601String().replaceFirstMapped(RegExp(r'\\.(\\d*?)0+Z$'), \
+         (found) => found[1]!.isEmpty ? 'Z' : '.${found[1]}Z'),"
+    ));
+}
+
+#[test]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn test_datetime_as_number_maps_to_int() {
     let dart = sample_dart::dart_definition();
     assert!(
@@ -734,6 +779,16 @@ fn test_naive_date_maps_to_string() {
     assert!(
         dart.contains("final String day;"),
         "NaiveDate should map to a plain ISO string. Got: {dart}"
+    );
+}
+
+#[test]
+#[cfg(feature = "jiff")]
+fn test_naive_date_maps_to_string() {
+    let dart = sample_dart::dart_definition();
+    assert!(
+        dart.contains("final String day;"),
+        "Date should map to a plain ISO string. Got: {dart}"
     );
 }
 

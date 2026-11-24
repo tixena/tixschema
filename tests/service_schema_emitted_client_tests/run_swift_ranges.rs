@@ -83,7 +83,7 @@ fn each_range_reads_and_writes_in_swift_as_serde_does() {
         stride_swift::swift_definition(),
         signposted_swift::swift_definition(),
         frontier_swift::swift_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         super::range_models::rostered_swift::swift_definition(),
         HARNESS.to_owned(),
         calls.join("\n"),

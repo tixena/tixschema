@@ -4,6 +4,8 @@
 
 use alloc::collections::BTreeMap;
 
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -24,7 +26,7 @@ const MORE_PAYLOADS: [(&str, &str, bool); 5] = [
 ];
 
 /// Payloads of the models keyed by a date, each with whether serde reads it.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 const DATED_PAYLOADS: [(&str, &str, bool); 6] = [
     ("Tidemarks", r#"{"2026-10-21":2}"#, true),
     ("Tidemarks", r#"{"x":2}"#, false),
@@ -35,7 +37,7 @@ const DATED_PAYLOADS: [(&str, &str, bool); 6] = [
 ];
 
 /// Each model keyed by a date, beside its JSON Schema and serde's read of a payload as it.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 const DATED: [(&str, Written, ReadAs); 2] = [
     ("Tidemarks", Tidemarks::json_schema, reads::<Tidemarks>),
     ("Tidedays", Tidedays::json_schema, reads::<Tidedays>),
@@ -95,6 +97,15 @@ pub struct Tidemarks {
     pub entries: BTreeMap<chrono::NaiveDate, u8>,
 }
 
+/// A map keyed by a date, which serde reads from the text of each key.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Tidemarks {
+    #[serde(flatten)]
+    pub entries: BTreeMap<civil::Date, u8>,
+}
+
 /// A brand over a date, which keys [`Tidedays`].
 #[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
@@ -102,8 +113,15 @@ pub struct Tidemarks {
 #[serde(transparent)]
 pub struct Tideday(chrono::NaiveDate);
 
+/// A brand over a date, which keys [`Tidedays`].
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Tideday(civil::Date);
+
 /// A map keyed by a brand over a date, which serde reads from the text of each key.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Tidedays {
@@ -172,7 +190,7 @@ fn a_map_keyed_by_an_enum_or_through_an_alias_admits_what_serde_reads() {
     }
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_map_keyed_by_a_date_or_a_brand_over_one_admits_what_serde_reads() {
     for (model, json, read) in DATED_PAYLOADS {

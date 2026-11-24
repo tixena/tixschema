@@ -9,6 +9,9 @@ use alloc::sync::Arc;
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
 
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
+
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -100,6 +103,19 @@ pub struct Stamped {
     pub at: DateTime<Utc>,
 }
 
+/// A date under `as_number`, which publishes a `number`.
+///
+/// ```rust example
+/// StampedDraft { at: jiff::Timestamp::from_millisecond(1_700_000_000_000)? }
+/// ```
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Stamped {
+    #[model_schema_prop(as_number)]
+    pub at: Timestamp,
+}
+
 /// A date written by a function of its author's, as the milliseconds of its epoch.
 ///
 /// ```rust example
@@ -112,6 +128,21 @@ pub struct Hooked {
     #[model_schema_prop(as_number)]
     #[serde(serialize_with = "millis")]
     pub at: DateTime<Utc>,
+    pub text: String,
+}
+
+/// A date written by a function of its author's, as the milliseconds of its epoch.
+///
+/// ```rust example
+/// HookedDraft { at: jiff::Timestamp::from_millisecond(1_700_000_000_000)?, text: "123".to_owned() }
+/// ```
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Hooked {
+    #[model_schema_prop(as_number)]
+    #[serde(serialize_with = "millis")]
+    pub at: Timestamp,
     pub text: String,
 }
 
@@ -278,6 +309,15 @@ where
     S: serde::Serializer,
 {
     serializer.serialize_i64(value.timestamp_millis())
+}
+
+/// A date as the milliseconds of its epoch, through the serializer it is handed.
+#[cfg(feature = "jiff")]
+pub fn millis<S>(value: &Timestamp, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_i64(value.as_millisecond())
 }
 
 /// The default of `pair`.

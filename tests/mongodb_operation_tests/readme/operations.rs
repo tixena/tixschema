@@ -7,6 +7,8 @@ use std::collections::HashMap;
 
 use bson::oid::ObjectId;
 use bson::{Bson, Document, doc};
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use mongodb::Collection;
 use mongodb::options::{ClientOptions, Collation, Hint};
 use mongodb::results::{DeleteResult, InsertOneResult, UpdateResult};
@@ -259,7 +261,7 @@ const SHOWN_KEYED_STORED: &str = r#"{ "by_key": { "8": "eight" } }"#;
 const SHOWN_ROSTER_OF_DECODE_WITH: &str = "**A type that lists `\"decode_with\"` alone builds with such a map** and reads it from JSON. Its `from_bson_piped` refuses a stored row that holds the map, with one `Undescribed` issue.";
 
 /// What the README says of the keys serde writes as text.
-const SHOWN_TEXT_KEYS: &str = "**A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` date or time, a plain enum, and a brand over a `String`.";
+const SHOWN_TEXT_KEYS: &str = "**A key serde writes as text is stored as that text and read back**: a `String`, a `char`, a `chrono` or `jiff` date or time, a plain enum, and a brand over a `String`.";
 
 /// The README's table of what a refused row is told by, for each `_id` a row may hold.
 const SHOWN_ROW_IDS: [&str; 5] = [
@@ -301,6 +303,16 @@ pub struct DatedRoster {
     pub dates: HashMap<chrono::NaiveDate, String>,
     pub moments: HashMap<chrono::DateTime<chrono::Utc>, String>,
     pub times: HashMap<chrono::NaiveTime, String>,
+}
+
+/// A map keyed by jiff dates and times, each written as its text.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["decode_with", "mongodb"])]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct DatedRoster {
+    pub dates: HashMap<civil::Date, String>,
+    pub moments: HashMap<jiff::Timestamp, String>,
+    pub times: HashMap<civil::Time, String>,
 }
 
 #[model_schema(enable = ["decode_with", "mongodb"], default_types(KeyType = String))]
@@ -726,6 +738,34 @@ fn a_map_keyed_by_a_chrono_date_or_time_stores_its_text() {
     let roster = DatedRosterDraft {
         dates: HashMap::from([(date, "Moca".to_owned())]),
         moments: HashMap::from([(date.and_time(time).and_utc(), "Moca".to_owned())]),
+        times: HashMap::from([(time, "Moca".to_owned())]),
+    }
+    .validate()
+    .unwrap();
+    let row = roster.mongo_written_row().unwrap();
+    assert_eq!(
+        row,
+        doc! {
+            "dates": { "2026-10-21": "Moca" },
+            "moments": { "2026-10-21T17:40:00Z": "Moca" },
+            "times": { "17:40:00": "Moca" },
+        }
+    );
+    assert_eq!(DatedRoster::mongo_read_row(row, &[]).unwrap(), roster);
+}
+
+/// A map keyed by a jiff date or time is stored as its text and read back.
+#[cfg(feature = "jiff")]
+#[test]
+fn a_map_keyed_by_a_jiff_date_or_time_stores_its_text() {
+    let date = civil::date(2026, 10, 21);
+    let time = civil::time(17, 40, 0, 0);
+    let roster = DatedRosterDraft {
+        dates: HashMap::from([(date, "Moca".to_owned())]),
+        moments: HashMap::from([(
+            "2026-10-21T17:40:00Z".parse::<jiff::Timestamp>().unwrap(),
+            "Moca".to_owned(),
+        )]),
         times: HashMap::from([(time, "Moca".to_owned())]),
     }
     .validate()

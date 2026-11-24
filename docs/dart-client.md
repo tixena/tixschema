@@ -222,8 +222,8 @@ consumer's view; this is what a change has to keep.
   names, `dart_read_refusals` finding them through `dart_refusals_of`, wherever the type is
   declared). The `mcp` server answers a refusal `_WsRefusal` names as `failed-validation` through
   `_WsIssue` as well.
-- **A number, a `char` and a chrono date, time and date and time are read and written in their
-  one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
+- **A number, a `char` and a chrono or jiff date, time and date and time are read and written in
+  their one form** (section 14), by `src/features/dart/forms.rs`, each an inline expression, so two
   types share nothing. `text_read` reads a `char` and a date or time held as a `String` wherever
   `dart_decode_at` reads one, and a map's key: a `switch` that answers the text where it
   matches `TextForm::read`, or is one code point for a `char`, and throws `FormatException('expected
@@ -274,16 +274,19 @@ consumer's view; this is what a change has to keep.
   `double`, so `_{service}…ReadText` pairs each number `jsonDecode`'s reviver visits, which it visits
   in the order the text writes them, with the literal at its place, and hands the read a `BigInt`.
   The integer read words it ``invalid value: integer `9223372036854775808`, expected i64``, and a
-  millisecond `DateTime` ``value is not a legal timestamp: 9223372036854775808``, as serde does; a
+  millisecond `DateTime` ``value is not a legal timestamp: 9223372036854775808`` under chrono and
+  ``got unsigned integer 9223372036854775808 milliseconds, which is too big to fit in a Jiff
+  `Timestamp` `` under jiff, as serde does; a
   float read takes a `BigInt` as the `double` of its digits. An integer below an `i64`, or above a
   `u64`, stays a `double` and is worded as the float serde reads it as. `fromJson` called by hand
   cannot keep them, since the caller decoded the text and the digits are gone, so it words such an
   integer as a float. A `DateTime<Tz>` under `as_number` is read through the integer read, as an
-  `i64` member is, with `a unix timestamp in milliseconds` for the type serde names. The `mcp` server reads each message through the same
+  `i64` member is, with `a unix timestamp in milliseconds` for the type serde names, and a jiff
+  `Timestamp` with `an integer number of milliseconds from the Unix epoch`. The `mcp` server reads each message through the same
   reviver, and answers one that holds such a number with `-32600`. It names the field of a refusal
   from the JSON schema of the message, and where the schema admits the value, `1.0` or `-0` for
   an integer, from the path the read refused at (`_{service}WsRefusedAt`). A `DateTime<Tz>` is written
-  `toUtc().toIso8601String()` with `.000Z` written as `Z` (`CHRONO_WHOLE_SECONDS`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
+  `toUtc().toIso8601String()` with `.000Z` written as `Z` under chrono, and the fraction's trailing zeros dropped under jiff (`SERDE_FRACTION`), as a value and as a map's key; a map read by a date key refuses two keys that read as one with `repeated key`. The WebSocket client writes and reads
   a header through the same codec. `run_dart_text_forms.rs` reads `TEXT_FORMS` under the Dart SDK,
   and `run_dart_wire_forms.rs` writes `WIRE_FORMS`.
 - **A declared type is read unjudged exactly where the holder's `validate()` runs it.** `Read` is

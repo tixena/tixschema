@@ -1,7 +1,7 @@
 //! The form each value crosses the wire in: what serde answers of each value a caller hands a
 //! client, and that serde and the JSON Schema read every payload a client sends.
 
-#![cfg(feature = "chrono")]
+#![cfg(any(feature = "chrono", feature = "jiff"))]
 
 extern crate alloc;
 

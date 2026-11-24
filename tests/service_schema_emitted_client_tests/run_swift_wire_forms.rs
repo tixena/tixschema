@@ -3,7 +3,7 @@
 //! through: each prints the payload it sends, or `refused`, as the table's Swift column states,
 //! and reads every payload any client sends. A `Date` is handed as the instant its text names.
 
-#![cfg(all(feature = "swift", feature = "chrono"))]
+#![cfg(all(feature = "swift", any(feature = "chrono", feature = "jiff")))]
 
 use chrono::DateTime;
 
@@ -123,6 +123,8 @@ fn each_value_is_sent_by_swift_in_the_form_every_target_reads() {
         conveyed_stamp_swift::swift_definition(),
         conveyed_instant_swift::swift_definition(),
         conveyed_millis_swift::swift_definition(),
+        #[cfg(feature = "jiff")]
+        super::wire_forms_models::conveyed_zoned_swift::swift_definition(),
         conveyed_slot_swift::swift_definition(),
         conveyed_slotted_swift::swift_definition(),
         PRINTERS.to_owned(),

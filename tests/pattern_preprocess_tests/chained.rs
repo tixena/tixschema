@@ -7,6 +7,9 @@ use alloc::sync::Arc;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tixschema::model_schema;
@@ -119,6 +122,15 @@ pub struct Stamped {
     pub at: DateTime<Utc>,
 }
 
+/// A date stored as the milliseconds since the epoch.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Stamped {
+    #[model_schema_prop(as_number, preprocess = ["asMillis"])]
+    pub at: Timestamp,
+}
+
 /// A slot of a tuple struct.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -128,7 +140,7 @@ pub struct Tagged(
 );
 
 /// A text of digits as the number it writes.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn as_millis(payload: Value) -> Value {
     if let Value::String(text) = &payload
         && let Ok(millis) = text.parse::<i64>()
@@ -344,6 +356,22 @@ fn the_bound_of_a_brand_measures_what_its_function_answered() {
 #[test]
 fn a_date_stored_as_a_number_is_read_from_the_corrected_payload() {
     let at = DateTime::from_timestamp_millis(1_700_000_000_000).unwrap();
+    for stored in [json!(1_700_000_000_000_i64), json!("1700000000000")] {
+        assert_eq!(
+            serde_json::from_value::<Stamped>(json!({ "at": stored })).unwrap(),
+            StampedDraft { at }.into()
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(StampedDraft { at }).unwrap(),
+        json!({ "at": 1_700_000_000_000_i64 })
+    );
+}
+
+#[cfg(feature = "jiff")]
+#[test]
+fn a_date_stored_as_a_number_is_read_from_the_corrected_payload() {
+    let at = Timestamp::from_millisecond(1_700_000_000_000).unwrap();
     for stored in [json!(1_700_000_000_000_i64), json!("1700000000000")] {
         assert_eq!(
             serde_json::from_value::<Stamped>(json!({ "at": stored })).unwrap(),

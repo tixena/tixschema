@@ -1,5 +1,5 @@
 //! The Dart expressions that hold a value the Dart client keeps in a wider type than the Rust one
-//! to what serde reads: a `char` and a chrono date or time, kept as a `String`, read as the Zod
+//! to what serde reads: a `char` and a date or time, kept as a `String`, read as the Zod
 //! schema of their form reads them and sent in the form serde writes ([`TextForm`]); an integer
 //! narrower than a Dart `int`, and an `f32`, kept as a `double`, read and sent within the range
 //! of the Rust type, an `f32` that is not finite sent as it is held. Each refuses with a
@@ -34,27 +34,41 @@ pub fn text_read(form: TextForm, text: &str) -> String {
     )
 }
 
-/// What the Dart client sends of `value`, a `String` it holds as `form`: the form serde writes,
-/// its `Z` dropped and its seconds written where the form says, and a refusal of a text no such
-/// rewrite turns into it.
+/// What the Dart client sends of `value`, a `String` it holds as `form`: the form serde writes, its
+/// `Z` dropped, its `T`, its seconds and its fraction written where the form says, and a refusal of
+/// a text no such rewrite turns into it.
 pub fn text_sent(form: TextForm, value: &str) -> String {
     let zoneless = if form.unzoned() {
         format!("({value}.endsWith('Z') ? {value}.substring(0, {value}.length - 1) : {value})")
     } else {
         value.to_owned()
     };
-    let current = form.unsecond().map_or_else(
-        || zoneless.clone(),
+    let joined = if form.spaced() {
+        format!("({zoneless}).replaceFirst(' ', 'T')")
+    } else {
+        zoneless
+    };
+    let seconded = form.unsecond().map_or_else(
+        || joined.clone(),
         |pattern| {
             let unzoned = declared("unzoned");
             let found = declared("found");
             format!(
-                "switch ({zoneless}) {{ final {unzoned} => switch ({}.firstMatch({unzoned})) {{ \
+                "switch ({joined}) {{ final {unzoned} => switch ({}.firstMatch({unzoned})) {{ \
                  final {found}? => '${{{found}[1]}}:00${{{found}[2] ?? ''}}', _ => {unzoned} }} }}",
                 whole(&pattern)
             )
         },
     );
+    let current = if form.trimmed() {
+        let found = declared("found");
+        format!(
+            "({seconded}).replaceFirstMapped(RegExp(r'\\.(\\d*?)0+$'), ({found}) => \
+             {found}[1]!.isEmpty ? '' : '.${{{found}[1]}}')"
+        )
+    } else {
+        seconded
+    };
     let sent = declared("sent");
     format!(
         "(switch ({current}) {{ final {sent} when {} => {sent}, _ => throw \

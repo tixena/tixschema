@@ -1,0 +1,134 @@
+//! What the Swift backend writes for the read of a brand whose value is a `DateTime<Tz>`: the value
+//! is read as the text jiff writes and parsed in a closure that throws, and the closure is called
+//! with `try`. `service_schema_emitted_client_tests/run_swift_brand_reads.rs` compiles these
+//! shapes under a Swift toolchain and reads a payload of each, and `run_swift_generic_dates.rs`
+//! the brand of `generic_dates.rs`.
+
+use core::marker::PhantomData;
+
+use jiff::Timestamp;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use tixschema::model_schema;
+
+/// How the date of a brand is parsed from the text it was read as.
+const PARSED: &str = "try Self.swiftSchemaParseIso8601Date($0, codingPath: decoder.codingPath)";
+
+/// A brand over a date.
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct PlainLandfall(Timestamp);
+
+/// A brand over a list of dates, which counts them.
+#[cfg(any(feature = "typescript", feature = "zod"))]
+#[model_schema(no_display, minLength = 1)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Landings(Vec<Timestamp>);
+
+/// A brand over a list of optional dates.
+#[model_schema(no_display)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Sightings(Vec<Option<Timestamp>>);
+
+/// A brand over a list of dates that declares a parameter.
+#[model_schema(no_display, default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Arrivals<Stowed> {
+    marker: PhantomData<Stowed>,
+    marks: Vec<Timestamp>,
+}
+
+/// The date `millis` milliseconds after the epoch.
+fn at(millis: i64) -> Timestamp {
+    Timestamp::from_millisecond(millis).unwrap()
+}
+
+/// The JSON serde writes for `held`, read back by serde as it was written.
+fn read_back<Held>(held: &Held) -> String
+where
+    Held: DeserializeOwned + Serialize,
+{
+    let written = serde_json::to_string(held).unwrap();
+    let read: Held = serde_json::from_str(&written).unwrap();
+    assert_eq!(serde_json::to_string(&read).unwrap(), written);
+    written
+}
+
+/// Each of `written` in `swift`.
+fn holds(swift: &str, written: &[&str]) {
+    for text in written {
+        assert!(swift.contains(text), "{text}\nin: {swift}");
+    }
+}
+
+#[test]
+fn each_brand_is_written_as_serde_writes_it() {
+    let first = at(1_704_164_645_678);
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    let second = at(1_709_208_000_100);
+    assert_eq!(
+        read_back(&PlainLandfall::new(first).unwrap()),
+        r#""2024-01-02T03:04:05.678Z""#
+    );
+    #[cfg(any(feature = "typescript", feature = "zod"))]
+    assert_eq!(
+        read_back(&Landings::new(vec![first, second]).unwrap()),
+        r#"["2024-01-02T03:04:05.678Z","2024-02-29T12:00:00.1Z"]"#
+    );
+    assert_eq!(
+        read_back(&Sightings::new(vec![Some(first), None]).unwrap()),
+        r#"["2024-01-02T03:04:05.678Z",null]"#
+    );
+    assert_eq!(
+        read_back(&Arrivals::<String>::new(vec![first]).unwrap()),
+        r#"["2024-01-02T03:04:05.678Z"]"#
+    );
+}
+
+#[test]
+fn a_brand_calls_the_closure_that_reads_a_date_with_try() {
+    for (swift, written) in [
+        (
+            plain_landfall_swift::swift_definition(),
+            "self.value = try { let wireValue = try container.decode(String.self); \
+             return try Self.swiftSchemaParseIso8601Date(wireValue, \
+             codingPath: decoder.codingPath) }() }; "
+                .to_owned(),
+        ),
+        #[cfg(any(feature = "typescript", feature = "zod"))]
+        (
+            landings_swift::swift_definition(),
+            format!(
+                "self.value = try {{ let wireValue = try container.decode([String].self); \
+                 return try wireValue.map {{ {PARSED} }} }}() }}; "
+            ),
+        ),
+        (
+            sightings_swift::swift_definition(),
+            format!(
+                "self.value = try {{ let wireValue = try container.decode([String?].self); \
+                 return try wireValue.map {{ try $0.map {{ {PARSED} }} }} }}() }}; "
+            ),
+        ),
+        (
+            arrivals_swift::swift_definition(),
+            format!(
+                "self.value = try {{ let wireValue = try container.decode([String].self); \
+                 return try wireValue.map {{ {PARSED} }} }}() }}; "
+            ),
+        ),
+        (
+            super::generic_dates::landfall_swift::swift_definition(),
+            "self.value = try { let wireValue = try container.decode(String.self); \
+             return try Self.swiftSchemaParseIso8601Date(wireValue, \
+             codingPath: decoder.codingPath) }() }; "
+                .to_owned(),
+        ),
+    ] {
+        holds(&swift, &[written.as_str()]);
+    }
+}

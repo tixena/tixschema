@@ -46,6 +46,16 @@ const SLOT_READ: &str = "let wireSlot0 = try container.decode(String.self); \
 /// How the date of the slot `slot0` is written.
 const SLOT_WRITTEN: &str = "try container.encode(Self.swiftSchemaFormatIso8601Date(slot0)); ";
 
+/// What serde writes of `second()`: its milliseconds in three digits under chrono, and in the
+/// fewest digits under jiff.
+#[cfg(feature = "chrono")]
+const SECOND: &str = "2024-02-29T12:00:00.100Z";
+
+/// What serde writes of `second()`: its milliseconds in three digits under chrono, and in the
+/// fewest digits under jiff.
+#[cfg(feature = "jiff")]
+const SECOND: &str = "2024-02-29T12:00:00.1Z";
+
 /// The JSON serde writes for `held`, read back by serde as it was written.
 fn read_back<Held>(held: &Held) -> String
 where
@@ -125,7 +135,8 @@ fn plain_chart() -> PlainChart {
 fn each_model_is_written_as_serde_writes_it() {
     assert_eq!(
         read_back(&plain_chart()),
-        r#"{"at":"2024-02-29T12:00:00.100Z","by_name":{"a":"2024-01-02T03:04:05.678Z"},"by_number":{"1":"2024-01-02T03:04:05.678Z"},"by_turn":{"-1":"2024-01-02T03:04:05.678Z"},"dated":{"held":"2024-01-02T03:04:05.678Z"},"marks_by_name":{"m":["2024-01-02T03:04:05.678Z"]},"maybe_by_name":{"n":null},"pair":["2024-01-02T03:04:05.678Z",1],"spans":[["2024-01-02T03:04:05.678Z"],"2024-02-29T12:00:00.100Z"],"swung":{"first":["2024-01-02T03:04:05.678Z"],"second":null}}"#
+        r#"{"at":"SECOND","by_name":{"a":"2024-01-02T03:04:05.678Z"},"by_number":{"1":"2024-01-02T03:04:05.678Z"},"by_turn":{"-1":"2024-01-02T03:04:05.678Z"},"dated":{"held":"2024-01-02T03:04:05.678Z"},"marks_by_name":{"m":["2024-01-02T03:04:05.678Z"]},"maybe_by_name":{"n":null},"pair":["2024-01-02T03:04:05.678Z",1],"spans":[["2024-01-02T03:04:05.678Z"],"SECOND"],"swung":{"first":["2024-01-02T03:04:05.678Z"],"second":null}}"#
+            .replace("SECOND", SECOND)
     );
     assert_eq!(
         read_back(&StowedChartDraft {
@@ -140,7 +151,8 @@ fn each_model_is_written_as_serde_writes_it() {
             held: "h".to_owned(),
             pair: (first(), "p".to_owned()),
         }),
-        r#"{"at":"2024-02-29T12:00:00.100Z","by_name":{},"by_number":{},"dated":{"first":"2024-01-02T03:04:05.678Z","second":"c"},"held":"h","pair":["2024-01-02T03:04:05.678Z","p"]}"#
+        r#"{"at":"SECOND","by_name":{},"by_number":{},"dated":{"first":"2024-01-02T03:04:05.678Z","second":"c"},"held":"h","pair":["2024-01-02T03:04:05.678Z","p"]}"#
+            .replace("SECOND", SECOND)
     );
     assert_eq!(
         read_back(&TockDraft(first(), 2)),

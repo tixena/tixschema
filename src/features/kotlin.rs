@@ -505,6 +505,12 @@ pub fn kotlin_refused_width(field: &FieldDef) -> Option<&'static str> {
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => None,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => None,
     }
 }
 
@@ -921,7 +927,7 @@ fn is_nullable_flag(field: &FieldDef) -> bool {
         .is_some_and(|meta| meta.nullable)
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn has_as_number(field: &FieldDef) -> bool {
     field
         .model_schema_prop_meta
@@ -1049,6 +1055,19 @@ fn kotlin_base(field: &FieldDef) -> String {
                 "String".to_owned()
             }
         }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => "String".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => {
+            if has_as_number(field) {
+                "Long".to_owned()
+            } else {
+                "String".to_owned()
+            }
+        }
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
         let item = if marked_nullable_at(field, level) {
@@ -1144,6 +1163,12 @@ fn field_reaches_type_parameter(field: &FieldDef, type_parameters: &[String]) ->
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => false,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => false,
     }
 }
 
@@ -1154,6 +1179,21 @@ fn kotlin_serializer_param_name(parameter: &str) -> String {
     format!(
         "{}Serializer",
         RenameRule::CamelCase.apply_to_variant(parameter)
+    )
+}
+
+/// The serializer of a date or a time: the one of its text form, and the epoch milliseconds
+/// `Long` of an instant under `as_number`.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn dated_serializer(field: &FieldDef, held: &FieldDef) -> String {
+    TextForm::of(field).map_or_else(
+        || {
+            texts::Primitive::of(field).map_or_else(
+                || format!("serializer<{}>()", kotlin_typename(held)),
+                texts::number_serializer,
+            )
+        },
+        texts::serializer,
     )
 }
 
@@ -1242,21 +1282,16 @@ fn kotlin_serializer_expr(field: &FieldDef, type_parameters: &[String]) -> Strin
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("serializer<{}>()", kotlin_typename(&held)),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate => texts::serializer(TextForm::Date),
-        #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDateTime => texts::serializer(TextForm::DateTime),
-        #[cfg(feature = "chrono")]
-        FieldDefType::NaiveTime => texts::serializer(TextForm::Time),
-        #[cfg(feature = "chrono")]
-        FieldDefType::DateTime => TextForm::of(field).map_or_else(
-            || {
-                texts::Primitive::of(field).map_or_else(
-                    || format!("serializer<{}>()", kotlin_typename(&held)),
-                    texts::number_serializer,
-                )
-            },
-            texts::serializer,
-        ),
+        FieldDefType::NaiveDate
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::NaiveTime
+        | FieldDefType::DateTime => dated_serializer(field, &held),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilDateTime
+        | FieldDefType::CivilTime
+        | FieldDefType::Timestamp
+        | FieldDefType::ZonedDateTime => dated_serializer(field, &held),
     };
     listed_serializer(field, scalar)
 }

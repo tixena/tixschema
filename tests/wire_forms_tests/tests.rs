@@ -3,6 +3,8 @@
 use super::documents::admits;
 #[cfg(feature = "mongodb")]
 use super::models::ConveyedObjectId;
+#[cfg(feature = "jiff")]
+use super::models::ConveyedZoned;
 use super::models::{
     ConveyedDay, ConveyedF32, ConveyedF64, ConveyedFlag, ConveyedHour, ConveyedI8, ConveyedI16,
     ConveyedI32, ConveyedI64, ConveyedInstant, ConveyedIsize, ConveyedLetter, ConveyedLiteralCount,
@@ -44,9 +46,15 @@ fn the_json_schema_refuses_a_value_in_another_form_than_serde_writes() {
             "ConveyedHour",
             r#"{"keyed":{"10:20:30Z":true},"value":"10:20:30","values":[]}"#,
         ),
+        #[cfg(feature = "chrono")]
         (
             "ConveyedStamp",
             r#"{"keyed":{},"value":"2024-01-05T10:20:30+00:00","values":[]}"#,
+        ),
+        #[cfg(feature = "jiff")]
+        (
+            "ConveyedStamp",
+            r#"{"keyed":{},"value":"2024-01-05T10:20:30Z","values":[]}"#,
         ),
     ] {
         let read = match held_by {
@@ -86,7 +94,10 @@ fn a_date_and_time_key_sent_as_handed_is_read_as_the_instant_serde_writes() {
         assert_eq!(read.keyed.keys().next(), Some(&read.value), "{sent}");
         held += 1_usize;
     }
+    #[cfg(feature = "chrono")]
     assert_eq!(held, 2_usize);
+    #[cfg(feature = "jiff")]
+    assert_eq!(held, 3_usize);
 }
 
 /// The JSON Schema of the model `held_by` names, and `None` where none has that name.
@@ -115,6 +126,8 @@ fn json_schema_of(held_by: &str) -> Option<serde_json::Value> {
         "ConveyedStamp" => Some(ConveyedStamp::json_schema()),
         "ConveyedInstant" => Some(ConveyedInstant::json_schema()),
         "ConveyedMillis" => Some(ConveyedMillis::json_schema()),
+        #[cfg(feature = "jiff")]
+        "ConveyedZoned" => Some(ConveyedZoned::json_schema()),
         "ConveyedSlotted" => Some(ConveyedSlotted::json_schema()),
         #[cfg(feature = "mongodb")]
         "ConveyedObjectId" => Some(ConveyedObjectId::json_schema()),

@@ -25,7 +25,7 @@ A function a `preprocess` names is called by the read alone of each language, ah
 | `preprocess = ["fn"]` | any, and a type | `z.preprocess(paired, z.preprocess(stage, ... z.preprocess(reboxed, ...)))` | — | every read of the type calls `fn` in snake case on the payload, a `serde_json::Value`, ahead of the value's read | in `fromJsonUnjudged`: `fn` on the payload, a `dynamic`, ahead of the value's read | in `init(swiftSchemaUnjudged:)`: `fn` on the payload, an `Any`, ahead of the value's read | in the read of `{Type}Unjudged`: `fn` on the payload, a `JsonElement`, ahead of the value's read |
 | `check = ["fn"]` | any, and a type | `.check((ctx) => { ... fn(own.value, own); ... })` | — | `validate()` calls `fn` in snake case, in every build, and the type's read refuses with its messages; an issue of the recovering decode | `validate()` calls `fn`, and `fromJson` throws `FormatException` with its messages | `validate()` calls `fn`, and `init(from:)` throws `DecodingError.dataCorrupted` with its messages | `validate()` calls `fn`, and `{Type}Serializer` throws `SerializationException` with its messages |
 | `ts_optional` | `Option<T>` | — | — | — (TypeScript-only) | — | — | — |
-| `as_number` | `DateTime<Tz>` | inline `z.preprocess(..., z.number().int())` | `{"type": "integer"}` | serde `with = chrono::serde::ts_milliseconds` injected | an `int` | an `Int64`, the number serde writes | a `Long` |
+| `as_number` | `DateTime<Tz>`, or a jiff `Timestamp` | inline `z.preprocess(..., z.number().int())` | `{"type": "integer"}` | serde `with = chrono::serde::ts_milliseconds` injected, or `jiff::fmt::serde::timestamp::millisecond::required` under jiff | an `int` | an `Int64`, the number serde writes | a `Long` |
 | `nullable` | `Option<T>` | `z.union([T, z.null()])`, key required | `anyOf: [T, {"type":"null"}]`, key required | guard: refuses a key-dropping serde attr | `T?`, the one spelling of an `Option` | the key always encoded, `nil` included | no `= null` default on the property |
 
 `docs/guide/preprocess-and-check.md`'s "Preprocess and check" section is the one place that states `preprocess` and `check`
@@ -372,22 +372,28 @@ else is a compile error) and is honored on a tuple-variant `DateTime<Tz>` enum p
 injects `#[serde(with = "chrono::serde::ts_milliseconds")]`
 (`ts_milliseconds_option` for `Option<DateTime<Utc>>`) so Rust writes the same epoch-milliseconds
 number every other surface describes — a consumer's own `chrono` dependency needs its `serde`
-feature enabled for that module to exist. What a change has to keep:
+feature enabled for that module to exist. Under `jiff` the instant is a `Timestamp` and the hook
+jiff's, `jiff::fmt::serde::timestamp::millisecond::required` (`millisecond::optional` for an
+`Option<Timestamp>`), from a dependency named `jiff` with its `serde` feature;
+`FieldDefType::is_instant` answers for whichever instant the build reads. What a change has to
+keep:
 
 - **`as_number_serde_hooks` is the one writer of the hook**, called by `process_field` (a struct's
   field, a tuple struct's slot, a tagged variant's member) and by `collect_untagged_variant_members`
-  (an untagged variant's member), after the member's def holds its meta. It hangs chrono's hook in
-  each direction the author writes or reads the member through no function of their own: `with`
+  (an untagged variant's member), after the member's def holds its meta. It hangs the date feature's
+  millisecond hook (`MODULES`) in each direction the author writes or reads the member through no function of their own: `with`
   where the author wrote neither, `deserialize_with = "...::deserialize"` beside the author's
   `serialize_with`, `serialize_with = "...::serialize"` beside the author's `deserialize_with`, and
   nothing beside the author's `with` or both. Where it hangs the read, a named `Option` with no
   `default` of its own also takes `#[serde(default)]`, as a bound's hook does
   (`needs_injected_default`), so an absent key is `None`. `serialized` in
-  `src/features/serde/defaults.rs` writes a default through `ts_milliseconds::serialize` wherever
-  the author wrote no writer.
-- **`as_number_hook_refusal` refuses the key on a date chrono's hook reads no value of**, in every
-  build with `chrono`, from `model_schema_prop_guard_errors`: anything but a
-  `DateTime<Utc>` or an `Option` of one (`names_a_utc_date`, `names_an_optional_utc_date`), unless
+  `src/features/serde/defaults.rs` writes a default through `ts_milliseconds::serialize`, or jiff's
+  `millisecond::required::serialize`, wherever the author wrote no writer.
+- **`as_number_hook_refusal` refuses the key on a date the hook reads no value of**, in every
+  build with a date feature, from `model_schema_prop_guard_errors`: under `chrono` anything but a
+  `DateTime<Utc>` or an `Option` of one (`names_a_utc_date`, `names_an_optional_utc_date`), under
+  `jiff` anything but a `Timestamp` or an `Option` of one (`names_a_jiff_timestamp`,
+  `names_an_optional_jiff_timestamp`), unless
   the author writes and reads the member through functions of their own. The refusal names the type
   as written.
 - **A refusal that names what serde writes reads a date under the key as an integer.**
@@ -401,7 +407,8 @@ feature enabled for that module to exist. What a change has to keep:
   refused by `check_fixed_shape_constraints` in the words of the milliseconds.
 - `tests/chrono_tests/untagged_millis_models.rs` holds `MILLIS_ROWS`, what serde, each client and
   Zod answer of a date under the key in an untagged member; `tests/chrono_tests/tests.rs` holds
-  serde and the JSON Schema to it and the hooks per direction,
+  serde and the JSON Schema to it and the hooks per direction, and `tests/jiff_tests/` the same
+  under `jiff`,
   `tests/generic_types_tests/declarations.rs` the Zod schema under `node`, and
   `run_untagged_millis.rs` each client.
 

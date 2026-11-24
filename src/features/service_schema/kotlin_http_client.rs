@@ -1485,6 +1485,14 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
             "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({raw})) }}.getOrNull()",
             read_serializer(base)
         ),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => format!(
+            "runCatching {{ Json.decodeFromJsonElement({}, JsonPrimitive({raw})) }}.getOrNull()",
+            read_serializer(base)
+        ),
         FieldDefType::BooleanLiteral(_)
         | FieldDefType::Map(_, _)
         | FieldDefType::NumberLiteral(_)
@@ -1499,6 +1507,8 @@ fn kotlin_header_out_decode(ty: &Type, raw: &str) -> String {
         FieldDefType::ObjectId => raw.to_owned(),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => raw.to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => raw.to_owned(),
     }
 }
 
@@ -1516,6 +1526,16 @@ fn kotlin_header_out_decode_is_fallible(ty: &Type) -> bool {
     if matches!(
         read.field_type,
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime
+    ) {
+        return true;
+    }
+    #[cfg(feature = "jiff")]
+    if matches!(
+        read.field_type,
+        FieldDefType::CivilDate
+            | FieldDefType::CivilTime
+            | FieldDefType::CivilDateTime
+            | FieldDefType::ZonedDateTime
     ) {
         return true;
     }

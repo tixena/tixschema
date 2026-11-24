@@ -361,6 +361,15 @@ pub struct QuotedMillis {
     pub at: chrono::DateTime<chrono::Utc>,
 }
 
+/// A date under `as_number`, which serde reads as epoch milliseconds.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuotedMillis {
+    #[model_schema_prop(as_number)]
+    pub at: jiff::Timestamp,
+}
+
 /// A number in each place a read reaches one: an item of a list, a map's value beside a map's
 /// number key, a range's bound, an arm of a `Result`, a position of a tuple, a type argument, an
 /// optional member and a brand.
@@ -475,10 +484,13 @@ fn quoted_at(base: &str, path: &str, quoted: &str) -> String {
 }
 
 /// The row of a date under `as_number` written between quotes, held to serde's refusal.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn millis_row() -> (String, &'static str, String, &'static str) {
     let json = r#"{"at":"7"}"#;
+    #[cfg(feature = "chrono")]
     let said = "invalid type: string \"7\", expected a unix timestamp in milliseconds";
+    #[cfg(feature = "jiff")]
+    let said = "invalid type: string \"7\", expected an integer number of milliseconds from the Unix epoch";
     let serde = serde_told::<QuotedMillis>(json);
     assert!(
         serde.starts_with(said),
@@ -525,7 +537,7 @@ fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
             "serde no longer refuses {json} as `{said}`: {serde}"
         );
     }
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     rows.push(millis_row());
     let mut expected = String::new();
     let mut main = String::from(THROWN);
@@ -560,7 +572,7 @@ fn a_number_between_quotes_is_refused_wherever_the_read_reaches_one() {
         quoted_holding_kotlin::kotlin_definition(),
         quoted_id_kotlin::kotlin_definition(),
         quoted_places_kotlin::kotlin_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         quoted_millis_kotlin::kotlin_definition(),
         main,
     ];

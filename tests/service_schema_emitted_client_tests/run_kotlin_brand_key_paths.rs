@@ -9,6 +9,8 @@
 use alloc::collections::BTreeMap;
 use core::fmt::Write as _;
 
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
@@ -34,7 +36,7 @@ fun loud(value: OuterTone): List<String> =
 "#;
 
 /// The check the brand over a date names.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 const DAY_CHECK: &str = r#"
 fun workday(value: KeyedDay): List<String> =
     if (value.value == "2024-01-06") listOf("2024-01-06 is a day of rest") else emptyList()
@@ -103,6 +105,13 @@ pub struct KeyedPitch(u32);
 #[serde(transparent)]
 pub struct KeyedDay(chrono::NaiveDate);
 
+/// A brand over a date a map is keyed by.
+#[cfg(feature = "jiff")]
+#[model_schema(check = ["workday"])]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct KeyedDay(civil::Date);
+
 /// A map keyed by the brand over a number, and one keyed by the brand over a text.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -119,7 +128,7 @@ pub struct Nested {
 }
 
 /// A map keyed by the brand over a date.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Calendar {
@@ -169,6 +178,16 @@ fn in_scale(value: &KeyedPitch) -> Result<(), Vec<String>> {
 #[cfg(feature = "chrono")]
 fn workday(value: &KeyedDay) -> Result<(), Vec<String>> {
     if *value.as_inner() == chrono::NaiveDate::from_ymd_opt(2024, 1, 6).unwrap() {
+        Err(vec!["2024-01-06 is a day of rest".to_owned()])
+    } else {
+        Ok(())
+    }
+}
+
+/// The check of [`KeyedDay`]: a day that is not the one day of rest.
+#[cfg(feature = "jiff")]
+fn workday(value: &KeyedDay) -> Result<(), Vec<String>> {
+    if *value.as_inner() == civil::date(2024, 1, 6) {
         Err(vec!["2024-01-06 is a day of rest".to_owned()])
     } else {
         Ok(())
@@ -248,7 +267,7 @@ fn rows() -> Vec<Row> {
     rows.into_iter().chain(dated_rows()).collect()
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn dated_rows() -> Vec<Row> {
     vec![
         row::<Calendar>("Calendar", r#"{"days":{"2024-01-02":1}}"#),
@@ -261,12 +280,12 @@ fn dated_rows() -> Vec<Row> {
     ]
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn dated_rows() -> Vec<Row> {
     Vec::new()
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn dated_serde_said() -> Vec<&'static str> {
     vec![
         r#"read {"days":{"2024-01-02":1}}"#,
@@ -275,7 +294,7 @@ fn dated_serde_said() -> Vec<&'static str> {
     ]
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn dated_serde_said() -> Vec<&'static str> {
     Vec::new()
 }
@@ -332,7 +351,7 @@ fn a_value_and_a_key_under_a_brand_key_are_refused_at_the_field_serde_names() {
         nested_kotlin::kotlin_definition(),
         CHECKS.to_owned(),
     ];
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     source.extend([
         keyed_day_kotlin::kotlin_definition(),
         calendar_kotlin::kotlin_definition(),

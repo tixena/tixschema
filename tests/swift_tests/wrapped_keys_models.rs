@@ -8,6 +8,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -42,6 +45,13 @@ pub struct Lanyard(Burgee);
 #[serde(transparent)]
 pub struct Postmark(DateTime<Utc>);
 
+/// A brand over a date a map is keyed by.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Postmark(Timestamp);
+
 /// A brand that derives no `Hash`, which no map is keyed by.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -64,6 +74,11 @@ pub type Hailer = Callsign;
 #[cfg(feature = "chrono")]
 #[model_schema()]
 pub type PostmarkKey = DateTime<Utc>;
+
+/// An alias of a date a map is keyed by.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+pub type PostmarkKey = Timestamp;
 
 /// A plain enum a map is keyed by.
 #[model_schema()]
@@ -88,7 +103,7 @@ pub struct Taskforce {
 }
 
 /// A map under a date key, a brand over a date and an alias of one, as a field.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Regatta {
@@ -239,7 +254,7 @@ pub struct Logroll(HashMap<Callsign, u8>);
 pub struct Logroster<Stowed>(HashMap<Hull, Stowed>);
 
 /// A map keyed by a brand over a date, by a date alias, in a type that declares a parameter.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StowedRegatta<Stowed> {
@@ -269,4 +284,10 @@ pub struct Dockage {
 #[cfg(feature = "chrono")]
 pub const fn first() -> DateTime<Utc> {
     DateTime::from_timestamp_millis(1_704_164_645_678).unwrap()
+}
+
+/// A date with a fraction of whole milliseconds, which jiff writes with three digits.
+#[cfg(feature = "jiff")]
+pub fn first() -> Timestamp {
+    Timestamp::from_millisecond(1_704_164_645_678).unwrap()
 }

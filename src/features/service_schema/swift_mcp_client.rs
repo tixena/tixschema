@@ -8,6 +8,7 @@ use super::swift_http_client::{
 use super::swift_type::swift_typename_of;
 use super::swift_ws_client::{header_in_params, sent_forms, sent_payload};
 use super::{left_to_http_rest, on_one_line};
+use crate::features::swift::SERDE_FRACTION;
 use crate::features::swift::{forms, swift_quoted};
 use crate::rename_rule::RenameRule;
 use crate::service_schema::mcp_tools::{
@@ -53,7 +54,7 @@ func @P@McpDatedEncoder() -> JSONEncoder {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     var container = encoder.singleValueContainer()
-    try container.encode(formatter.string(from: date).replacingOccurrences(of: ".000Z", with: "Z"))
+    try container.encode(formatter.string(from: date)@F@)
   }
   return encoder
 }
@@ -704,7 +705,10 @@ fn wrapped_marker(at: usize) -> String {
 }
 
 fn fill(template: &str, prefix: &str, named: &str) -> String {
-    template.replace("@P@", prefix).replace("@N@", named)
+    template
+        .replace("@P@", prefix)
+        .replace("@N@", named)
+        .replace("@F@", SERDE_FRACTION)
 }
 
 fn pascal(operation: &OperationDef) -> String {

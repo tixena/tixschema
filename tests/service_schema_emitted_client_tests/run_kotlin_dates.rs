@@ -2,7 +2,7 @@
 //! against serde: a date of whole seconds, of milliseconds, in a list, as a map's key and value, in
 //! //! a tuple's slot and in a variant's slot, and an optional date under `as_number`.
 
-#![cfg(all(feature = "kotlin", feature = "chrono"))]
+#![cfg(all(feature = "kotlin", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 

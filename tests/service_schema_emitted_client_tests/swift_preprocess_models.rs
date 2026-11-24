@@ -319,6 +319,15 @@ pub struct Timed {
     pub at: chrono::DateTime<chrono::Utc>,
 }
 
+/// A date that names a function.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Timed {
+    #[model_schema_prop(preprocess = ["unwrapped"])]
+    pub at: jiff::Timestamp,
+}
+
 /// A type that reaches itself through a member that names a function.
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -108,7 +108,8 @@ just docs
 ### The Gate (what a change is held to, here and in CI)
 ```bash
 just all
-# Runs, with every feature on: one clippy lint and one test run
+# Runs one clippy lint and one test run with every feature but chrono, and the same with every
+# feature but jiff: the two date features are never on together
 ```
 
 A pull request merges once `just all` passes on its branch merged with master. `just premerge` and

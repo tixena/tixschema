@@ -7,6 +7,10 @@ use chrono::NaiveDate;
 use chrono::{DateTime, NaiveDateTime, NaiveTime, Utc};
 use core::hash::BuildHasher;
 use core::iter::once;
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
+#[cfg(feature = "jiff")]
+use jiff::civil::{self, Date, DateTime, Time};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -338,10 +342,25 @@ enum LaterSlot {
 #[serde(transparent)]
 struct Day(NaiveDate);
 
+/// A brand over a jiff value: serde renders the inner into the key — `{"2020-01-02": …}` — the
+/// way it does for the bare jiff key.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+struct Day(Date);
+
 #[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoBrandKeyedMaps {
+    by_day: HashMap<Day, isize>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct JiffBrandKeyedMaps {
     by_day: HashMap<Day, isize>,
 }
 
@@ -350,6 +369,13 @@ struct ChronoBrandKeyedMaps {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoKeyedBrandTwin {
     by_day: HashMap<NaiveDate, isize>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct JiffKeyedBrandTwin {
+    by_day: HashMap<Date, isize>,
 }
 
 /// An alias of a stringifying scalar. A type path resolves straight through it, so serde writes a
@@ -398,10 +424,23 @@ struct ScalarKeyedAliasTwin {
 #[model_schema(enable = ["jsonschema"])]
 type DayKey = NaiveDate;
 
+/// An alias of a jiff value: serde renders the target into the key exactly as the bare jiff key
+/// renders, so the alias keys the same open object.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+type DayKey = Date;
+
 #[cfg(feature = "chrono")]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoAliasKeyedMaps {
+    by_day: HashMap<DayKey, isize>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct JiffAliasKeyedMaps {
     by_day: HashMap<DayKey, isize>,
 }
 
@@ -410,6 +449,13 @@ struct ChronoAliasKeyedMaps {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct ChronoKeyedAliasTwin {
     by_day: HashMap<NaiveDate, isize>,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct JiffKeyedAliasTwin {
+    by_day: HashMap<Date, isize>,
 }
 
 /// A brand over that brand: every link of the chain carries the same `"true"`/`"false"` wire.
@@ -451,7 +497,14 @@ struct BoolKeyedMaps {
 #[serde(transparent)]
 struct Stamp(DateTime<Utc>);
 
-#[cfg(feature = "chrono")]
+/// A brand over a `Timestamp`.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+struct Stamp(Timestamp);
+
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema(enable = ["jsonschema"])]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(transparent)]
@@ -461,11 +514,15 @@ struct StampRef(Stamp);
 #[model_schema(enable = ["jsonschema"])]
 type StampKey = DateTime<Utc>;
 
-#[cfg(feature = "chrono")]
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+type StampKey = Timestamp;
+
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema(enable = ["jsonschema"])]
 type StampKeyRef = StampKey;
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[model_schema(enable = ["jsonschema"])]
 type StampBrandKey = Stamp;
 
@@ -482,6 +539,21 @@ struct PropertyKeyedMaps {
     slots: HashMap<MetricSlot, isize>,
     strings: HashMap<String, isize>,
     times: HashMap<NaiveTime, isize>,
+}
+
+/// Every key kind whose value form already spells a TypeScript property key, in one place: each
+/// keeps that form, and the name a brand or alias adds over one keeps standing.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct PropertyKeyedMaps {
+    chars: HashMap<char, isize>,
+    dates: HashMap<Date, isize>,
+    datetimes: HashMap<DateTime, isize>,
+    numbers: HashMap<u32, isize>,
+    slots: HashMap<MetricSlot, isize>,
+    strings: HashMap<String, isize>,
+    times: HashMap<Time, isize>,
 }
 
 /// The `DateTime<Tz>` counterpart of [`BoolKeyedMaps`]. serde writes the key as the RFC 3339 string
@@ -502,6 +574,26 @@ struct DateTimeKeyedMaps {
     #[serde(skip_serializing_if = "Option::is_none")]
     optional: Option<HashMap<DateTime<Utc>, isize>>,
     samples: HashMap<DateTime<Utc>, MetricSample>,
+}
+
+/// The `Timestamp` counterpart of [`BoolKeyedMaps`]. serde writes the key as the RFC 3339 string
+/// it renders the value into; `Date` is no TypeScript property key, and the value-shaped
+/// `z.coerce.date()` rewrites every key it accepts into a locale-dependent rendering.
+#[cfg(feature = "jiff")]
+#[model_schema(enable = ["jsonschema"])]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+struct DateTimeKeyedMaps {
+    alias_of_brand: HashMap<StampBrandKey, isize>,
+    aliased: HashMap<StampKey, isize>,
+    aliased_chain: HashMap<StampKeyRef, isize>,
+    bare: HashMap<Timestamp, isize>,
+    branded: HashMap<Stamp, isize>,
+    branded_chain: HashMap<StampRef, isize>,
+    listed: Vec<HashMap<Timestamp, isize>>,
+    nested: HashMap<String, HashMap<Timestamp, isize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    optional: Option<HashMap<Timestamp, isize>>,
+    samples: HashMap<Timestamp, MetricSample>,
 }
 
 // A String key enumerates nothing, so one `additionalProperties` schema stands for every member —
@@ -2094,6 +2186,19 @@ fn test_chrono_brand_keyed_maps_constructible() {
     assert_eq!(twin.by_day[&day], maps.by_day[&Day::new(day).unwrap()]);
 }
 
+#[cfg(feature = "jiff")]
+#[test]
+fn test_jiff_brand_keyed_maps_constructible() {
+    let day = civil::date(2020, 1, 2);
+    let maps = JiffBrandKeyedMapsDraft {
+        by_day: HashMap::from([(Day::new(day).unwrap(), 1)]),
+    };
+    let twin = JiffKeyedBrandTwinDraft {
+        by_day: HashMap::from([(day, 1)]),
+    };
+    assert_eq!(twin.by_day[&day], maps.by_day[&Day::new(day).unwrap()]);
+}
+
 /// The keys of a map keyed by an integer, as the JSON Schema names them: the text serde writes.
 fn integer_keys() -> Value {
     serde_json::json!({ "type": "string", "pattern": "^(0|-?[1-9][0-9]*)$" })
@@ -2265,6 +2370,28 @@ fn test_chrono_brand_keyed_maps_describe_as_their_bare_inner_twin() {
 }
 
 #[test]
+#[cfg(feature = "jiff")]
+fn test_jiff_brand_keyed_maps_describe_as_their_bare_inner_twin() {
+    assert_eq!(
+        JiffBrandKeyedMaps::json_schema()["properties"],
+        JiffKeyedBrandTwin::json_schema()["properties"]
+    );
+
+    let day = civil::date(2020, 1, 2);
+    let maps = JiffBrandKeyedMapsDraft {
+        by_day: HashMap::from([(Day::new(day).unwrap(), 1)]),
+    };
+    let payload = serde_json::to_value(&maps).unwrap();
+    assert_eq!(
+        payload["by_day"],
+        serde_json::json!({ "2020-01-02": 1_i64 })
+    );
+
+    let read_back: JiffBrandKeyedMaps = serde_json::from_value(payload).unwrap();
+    assert_eq!(read_back, maps.validate().unwrap());
+}
+
+#[test]
 #[cfg(all(feature = "chrono", feature = "typescript", feature = "zod"))]
 fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
     let ts_definition = ChronoBrandKeyedMaps::ts_definition();
@@ -2273,6 +2400,21 @@ fn test_chrono_brand_keyed_maps_name_the_brand_as_the_key_type() {
         "got: {ts_definition}"
     );
     let zod_schema = ChronoBrandKeyedMaps::zod_schema();
+    assert!(
+        zod_schema.contains("by_day: z.record(Day$Schema, z.number().int())"),
+        "got: {zod_schema}"
+    );
+}
+
+#[test]
+#[cfg(all(feature = "jiff", feature = "typescript", feature = "zod"))]
+fn test_jiff_brand_keyed_maps_name_the_brand_as_the_key_type() {
+    let ts_definition = JiffBrandKeyedMaps::ts_definition();
+    assert!(
+        ts_definition.contains("by_day: Partial<Record<Day, number>>;"),
+        "got: {ts_definition}"
+    );
+    let zod_schema = JiffBrandKeyedMaps::zod_schema();
     assert!(
         zod_schema.contains("by_day: z.record(Day$Schema, z.number().int())"),
         "got: {zod_schema}"
@@ -2423,6 +2565,28 @@ fn test_chrono_alias_keyed_maps_describe_as_their_bare_target_twin() {
     assert_eq!(read_back, maps.validate().unwrap());
 }
 
+#[test]
+#[cfg(feature = "jiff")]
+fn test_jiff_alias_keyed_maps_describe_as_their_bare_target_twin() {
+    assert_eq!(
+        JiffAliasKeyedMaps::json_schema()["properties"],
+        JiffKeyedAliasTwin::json_schema()["properties"]
+    );
+
+    let day = civil::date(2020, 1, 2);
+    let maps = JiffAliasKeyedMapsDraft {
+        by_day: HashMap::from([(day, 1)]),
+    };
+    let payload = serde_json::to_value(&maps).unwrap();
+    assert_eq!(
+        payload["by_day"],
+        serde_json::json!({ "2020-01-02": 1_i64 })
+    );
+
+    let read_back: JiffAliasKeyedMaps = serde_json::from_value(payload).unwrap();
+    assert_eq!(read_back, maps.validate().unwrap());
+}
+
 #[cfg(feature = "chrono")]
 #[test]
 fn test_chrono_alias_keyed_maps_constructible() {
@@ -2431,6 +2595,19 @@ fn test_chrono_alias_keyed_maps_constructible() {
         by_day: HashMap::from([(day, 1)]),
     };
     let twin = ChronoKeyedAliasTwinDraft {
+        by_day: HashMap::from([(day, 1)]),
+    };
+    assert_eq!(twin.by_day[&day], maps.by_day[&day]);
+}
+
+#[cfg(feature = "jiff")]
+#[test]
+fn test_jiff_alias_keyed_maps_constructible() {
+    let day: DayKey = civil::date(2020, 1, 2);
+    let maps = JiffAliasKeyedMapsDraft {
+        by_day: HashMap::from([(day, 1)]),
+    };
+    let twin = JiffKeyedAliasTwinDraft {
         by_day: HashMap::from([(day, 1)]),
     };
     assert_eq!(twin.by_day[&day], maps.by_day[&day]);
@@ -2445,6 +2622,21 @@ fn test_chrono_alias_keyed_maps_name_the_alias_as_the_key_type() {
         "got: {ts_definition}"
     );
     let zod_schema = ChronoAliasKeyedMaps::zod_schema();
+    assert!(
+        zod_schema.contains("by_day: z.record(DayKeyType$Schema, z.number().int())"),
+        "got: {zod_schema}"
+    );
+}
+
+#[test]
+#[cfg(all(feature = "jiff", feature = "typescript", feature = "zod"))]
+fn test_jiff_alias_keyed_maps_name_the_alias_as_the_key_type() {
+    let ts_definition = JiffAliasKeyedMaps::ts_definition();
+    assert!(
+        ts_definition.contains("by_day: Partial<Record<DayKeyType, number>>;"),
+        "got: {ts_definition}"
+    );
+    let zod_schema = JiffAliasKeyedMaps::zod_schema();
     assert!(
         zod_schema.contains("by_day: z.record(DayKeyType$Schema, z.number().int())"),
         "got: {zod_schema}"
@@ -2814,8 +3006,34 @@ fn date_time_keyed_maps() -> DateTimeKeyedMaps {
     .into()
 }
 
+/// The value every `Timestamp`-keyed assertion below is read off.
+#[cfg(feature = "jiff")]
+fn date_time_keyed_maps() -> DateTimeKeyedMaps {
+    let stamp = Timestamp::from_second(1_700_000_000).unwrap();
+    DateTimeKeyedMapsDraft {
+        alias_of_brand: HashMap::from([(Stamp::new(stamp).unwrap(), 1)]),
+        aliased: HashMap::from([(stamp, 2)]),
+        aliased_chain: HashMap::from([(stamp, 3)]),
+        bare: HashMap::from([(stamp, 4)]),
+        branded: HashMap::from([(Stamp::new(stamp).unwrap(), 5)]),
+        branded_chain: HashMap::from([(StampRef::new(Stamp::new(stamp).unwrap()).unwrap(), 6)]),
+        listed: vec![HashMap::from([(stamp, 7)])],
+        nested: HashMap::from([("outer".to_owned(), HashMap::from([(stamp, 8)]))]),
+        optional: Some(HashMap::from([(stamp, 9)])),
+        samples: HashMap::from([(
+            stamp,
+            MetricSampleDraft {
+                label: "s".to_owned(),
+            }
+            .validate()
+            .unwrap(),
+        )]),
+    }
+    .into()
+}
+
 #[test]
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn test_date_time_keyed_maps_write_the_rfc_3339_key() {
     let maps = date_time_keyed_maps();
     let payload = serde_json::to_value(&maps).unwrap();
@@ -2852,7 +3070,7 @@ fn test_date_time_keyed_maps_write_the_rfc_3339_key() {
 }
 
 #[test]
-#[cfg(all(feature = "chrono", feature = "typescript"))]
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "typescript"))]
 fn test_date_time_keyed_maps_render_a_string_key_on_typescript() {
     let ts_definition = DateTimeKeyedMaps::ts_definition();
     for expected in [
@@ -2881,7 +3099,7 @@ fn test_date_time_keyed_maps_render_a_string_key_on_typescript() {
 }
 
 #[test]
-#[cfg(all(feature = "chrono", feature = "zod"))]
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "zod"))]
 fn test_date_time_keyed_maps_render_an_iso_string_key_on_zod() {
     let zod_schema = DateTimeKeyedMaps::zod_schema();
     let key = "z.iso.datetime({ offset: true })";
@@ -2920,7 +3138,7 @@ fn test_date_time_keyed_maps_render_an_iso_string_key_on_zod() {
 /// Each map keyed by a `DateTime<Tz>`, a brand or an alias over one, describes its values and
 /// names its keys by the description of a `DateTime<Tz>`.
 #[test]
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn test_date_time_keyed_maps_describe_their_values_under_their_text() {
     let schema = written_in_place(&DateTimeKeyedMaps::json_schema());
     let names = serde_json::json!({ "type": "string", "format": "date-time" });
@@ -2951,7 +3169,7 @@ fn test_date_time_keyed_maps_describe_their_values_under_their_text() {
 }
 
 #[test]
-#[cfg(all(feature = "chrono", feature = "typescript"))]
+#[cfg(all(any(feature = "chrono", feature = "jiff"), feature = "typescript"))]
 fn test_property_keyed_maps_keep_their_own_type_on_typescript() {
     let ts_definition = PropertyKeyedMaps::ts_definition();
     for expected in [
@@ -3002,6 +3220,37 @@ fn test_property_keyed_maps_keep_their_own_schema_on_zod() {
 }
 
 #[test]
+#[cfg(all(feature = "jiff", feature = "zod"))]
+fn test_property_keyed_maps_keep_their_own_schema_on_zod() {
+    let zod_schema = PropertyKeyedMaps::zod_schema();
+    for expected in [
+        "chars: z.record(z.string().length(1), z.number().int())",
+        "dates: z.record(z.iso.date(), z.number().int())",
+        "datetimes: z.record(z.preprocess((arg) => { if (typeof arg !== \"string\") return arg;",
+        r"T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]*[1-9])?)$/)), z.number().int())",
+        ".pipe(z.record(z.number().int().min(0).max(4294967295), z.number().int()))",
+        "slots: z.partialRecord(MetricSlot$Schema, z.number().int())",
+        "strings: z.record(z.string(), z.number().int())",
+        "times: z.record(z.preprocess((arg) => {",
+        ", z.iso.time()), z.number().int())",
+    ] {
+        assert!(
+            zod_schema.contains(expected),
+            "{expected} missing: {zod_schema}"
+        );
+    }
+    for spent in [
+        "z.enum([\"true\", \"false\"])",
+        "z.iso.datetime({ offset: true })",
+    ] {
+        assert!(
+            !zod_schema.contains(spent),
+            "no key here writes a form its own type does not spell: {zod_schema}"
+        );
+    }
+}
+
+#[test]
 #[cfg(feature = "chrono")]
 fn test_property_keyed_maps_write_the_keys_they_describe() {
     let maps = PropertyKeyedMapsDraft {
@@ -3018,6 +3267,34 @@ fn test_property_keyed_maps_write_the_keys_they_describe() {
         slots: HashMap::from([(MetricSlot::Daily, 5)]),
         strings: HashMap::from([("s".to_owned(), 6)]),
         times: HashMap::from([(NaiveTime::from_hms_opt(3, 4, 5).unwrap(), 7)]),
+    };
+    let payload = serde_json::to_value(&maps).unwrap();
+    assert_eq!(payload["chars"], serde_json::json!({ "a": 1_i64 }));
+    assert_eq!(payload["dates"], serde_json::json!({ "2020-01-02": 2_i64 }));
+    assert_eq!(
+        payload["datetimes"],
+        serde_json::json!({ "2020-01-02T03:04:05": 3_i64 })
+    );
+    assert_eq!(payload["numbers"], serde_json::json!({ "7": 4_i64 }));
+    assert_eq!(payload["slots"], serde_json::json!({ "Daily": 5_i64 }));
+    assert_eq!(payload["strings"], serde_json::json!({ "s": 6_i64 }));
+    assert_eq!(payload["times"], serde_json::json!({ "03:04:05": 7_i64 }));
+
+    let read_back: PropertyKeyedMaps = serde_json::from_value(payload).unwrap();
+    assert_eq!(read_back, maps.validate().unwrap());
+}
+
+#[test]
+#[cfg(feature = "jiff")]
+fn test_property_keyed_maps_write_the_keys_they_describe() {
+    let maps = PropertyKeyedMapsDraft {
+        chars: HashMap::from([('a', 1)]),
+        dates: HashMap::from([(civil::date(2020, 1, 2), 2)]),
+        datetimes: HashMap::from([(civil::date(2020, 1, 2).at(3, 4, 5, 0), 3)]),
+        numbers: HashMap::from([(7, 4)]),
+        slots: HashMap::from([(MetricSlot::Daily, 5)]),
+        strings: HashMap::from([("s".to_owned(), 6)]),
+        times: HashMap::from([(civil::time(3, 4, 5, 0), 7)]),
     };
     let payload = serde_json::to_value(&maps).unwrap();
     assert_eq!(payload["chars"], serde_json::json!({ "a": 1_i64 }));

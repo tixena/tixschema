@@ -275,14 +275,14 @@ to keep.
   included: Swift synthesizes none beside a written `init(from:)`.
 - **`encode(to:)` does not move.** `struct_body_content` writes it where it wrote it before
   (`needs_encode`), and Swift synthesizes it everywhere else. A member of a `char` or of a chrono
-  date or time held as a `String` is a `LeafConversion::Text`, so its type writes it.
+  or jiff date or time held as a `String` is a `LeafConversion::Text`, so its type writes it.
 - **A brand and a struct of one slot write their value through their own encoder**
   (`value_wrapper_tokens`): `try value.encode(to: encoder)`, as serde writes a newtype, so a
   flattened one joins its value's keys to the holder's object, which a single value written over
   it replaced. `Laden` in `tests/swift_tests/lone_slots_models.rs` flattens one of each.
-- **A `char` and a chrono date, time and date and time are read and written in their one form**
-  (section 14), by `src/features/swift/forms.rs`. `forms::read_call` reads the text through
-  `swiftSchemaRead{Char|Date|Time|Stamp}`, which throws `DecodingError.dataCorrupted` and
+- **A `char` and a chrono or jiff date, time and date and time are read and written in their one
+  form** (section 14), by `src/features/swift/forms.rs`. `forms::read_call` reads the text through
+  `swiftSchemaRead{Char|Date|Time|Stamp|Named}`, `Named` a jiff `ZonedDateTime`, which throws `DecodingError.dataCorrupted` and
   `expected {form}, found ...` for a text not of `TextForm::read`, and `forms::sent_call` writes it
   through `swiftSchemaSent…`, which drops the `Z`, writes the seconds and throws
   `EncodingError.invalidValue` in the same words for a text not of `TextForm::sent`, each under
@@ -291,8 +291,8 @@ to keep.
   date helpers; a map's wrapper reads and writes a key of a form through them. A pattern is
   written with `[0-9]` for `\d`: Foundation's `\d` takes a digit of any script. A `DateTime<Tz>`
   is a `Date`, read by a formatter with a fraction of a second or by one without
-  (`swiftSchemaWholeIso8601Formatter`, `isoWholeFormatterForKeys`), and written by the first with the `.000Z` of a date of whole seconds written as `Z`, as chrono writes it (`CHRONO_WHOLE_SECONDS`; the formatter options are `FRACTIONAL_OPTIONS` and `WHOLE_OPTIONS`, shared by the field helpers, the key wrapper and `validate()`'s `key_text`). A wrapper of a date key refuses a second key that reads as the first, which Swift's millisecond makes one; under
-  `as_number` it is an `Int64` read and written as the number serde writes, through `SwiftSchemaMillis` (`LeafConversion::Millis`, `MILLIS`), which words a float and an integer above an `i64` as serde does for a timestamp: ``expected a unix timestamp in milliseconds`` and ``value is not a legal timestamp: 9223372036854775808``.
+  (`swiftSchemaWholeIso8601Formatter`, `isoWholeFormatterForKeys`), and written by the first with the `.000Z` of a date of whole seconds written as `Z`, as chrono writes it, and under jiff with the fraction in its fewest digits (`SERDE_FRACTION`; the formatter options are `FRACTIONAL_OPTIONS` and `WHOLE_OPTIONS`, shared by the field helpers, the key wrapper and `validate()`'s `key_text`). A wrapper of a date key refuses a second key that reads as the first, which Swift's millisecond makes one; under
+  `as_number` it is an `Int64` read and written as the number serde writes, through `SwiftSchemaMillis` (`LeafConversion::Millis`, `millis()`), which words a float and an integer above an `i64` as serde does for a timestamp, in the words of the date feature (`EPOCH_EXPECTED`, `EPOCH_BEYOND`): ``expected a unix timestamp in milliseconds`` and ``value is not a legal timestamp: 9223372036854775808`` under chrono, ``expected an integer number of milliseconds from the Unix epoch`` and ``got unsigned integer 9223372036854775808 milliseconds, which is too big to fit in a Jiff `Timestamp` `` under jiff.
   `run_swift_text_forms.rs` reads `TEXT_FORMS` under the toolchain, and `run_swift_wire_forms.rs`
   writes `WIRE_FORMS`.
 - **A member serde never writes is read and encoded under no key.** `SwiftField::never_written`

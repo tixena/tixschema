@@ -19,7 +19,7 @@ let note = Note::try_from(&value)?;
 ```
 
 - **The write** is `TryFrom<&Note> for arky::parser::ast::Value`, through `arky::value::to_value`. It fails only where a member's own `Serialize` returns an error, or where a map key is not text, a number or a boolean.
-- **The read** is `TryFrom<&Value> for Note`, through `arky::value::from_value`. It is the type's own read, so it refuses what [`validate()`](validation.md#a-read-refuses-what-validate-refuses) refuses: a `title` written `""` is refused with `'title': too short: minimum length is 1, got 0`. A date, a time and a date-time the frontmatter holds are read as the text chrono reads.
+- **The read** is `TryFrom<&Value> for Note`, through `arky::value::from_value`. It is the type's own read, so it refuses what [`validate()`](validation.md#a-read-refuses-what-validate-refuses) refuses: a `title` written `""` is refused with `'title': too short: minimum length is 1, got 0`. A date, a time and a date-time the frontmatter holds are read as the text chrono or jiff reads.
 - **Both errors** are `arky::value::ValueError`.
 - **A type with parameters** converts at any filling. Each impl is bounded on the type itself: the write on `Tagged<Id>: Serialize`, the read on `Tagged<Id>: DeserializeOwned`.
 - **The recovering decode needs no entry of its own.** arky's `Value` turns into a `serde_json::Value`, and `from_value_with` reads it: `Note::from_value_with((&value).into(), decide)`, for a type that also lists `"decode_with"`.

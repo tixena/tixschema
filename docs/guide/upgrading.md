@@ -1,3 +1,13 @@
+#### From 0.6 to 0.7
+
+0.7 adds jiff's date and time types beside chrono's, and makes `jiff` a default feature. Five rules meet a crate that upgrades:
+
+- **`chrono` and `jiff` are never on together, and `jiff` is a default feature**: a manifest that writes `tixschema = { version = "0.7", features = ["chrono"] }` stops the build with ``error: tixschema's `chrono` and `jiff` features cannot be on together; `jiff` is a default feature, so a crate that names `chrono` sets `default-features = false` on the `tixschema` dependency``. Keep chrono with `tixschema = { version = "0.7", default-features = false, features = ["web", "chrono"] }`, naming the sets you use, or move to jiff's types and drop `chrono`. A crate that keeps chrono publishes what it published under 0.6.
+- **`mongo` no longer turns on `chrono`**: a crate on `features = ["mongo"]` that declares a `NaiveDate` builds jiff with the defaults, and stops with ``error: `NaiveDate` is read as a date under tixschema's `chrono` feature, and `jiff` is on: declare `jiff::civil::Date`, or turn `jiff` off and `chrono` on``. `NaiveTime`, `NaiveDateTime` and `DateTime<Tz>` are refused the same way, naming `jiff::civil::Time`, `jiff::civil::DateTime` and `jiff::Timestamp`. Write `default-features = false, features = ["web", "mongo", "chrono"]` to keep chrono.
+- **Under `jiff`, a bare `Date`, `Time`, `DateTime`, `Timestamp`, `ZonedDateTime` or `Zoned` is jiff's type**, where it was another type of that name: a `bson::DateTime` field is read as a `jiff::civil::DateTime`, a string in TypeScript, where it was a type of that name. A type of the crate's own under one of those names, declared with `#[model_schema()]` above the type that holds it, keeps the name. See [jiff dates and times](jiff.md#jiff-datetime-types).
+- **A jiff instant crosses as jiff writes it**: a `Timestamp` of half a second past is sent as `2024-01-05T10:20:30.5Z` by every client, where chrono writes `2024-01-05T10:20:30.500Z`, and a `civil::Time` and a `civil::DateTime` with the fraction in its fewest digits. Each text chrono wrote is one jiff reads, so a store written under 0.6 reads under 0.7.
+- **The recovering decode's `Expected` gains `CivilDate`, `CivilDateTime`, `CivilTime`, `Timestamp` and `ZonedDateTime`**: it is `#[non_exhaustive]`, so a `match` over it with a `_` arm builds as before, and one in a crate of tixschema's own tests without one answers ``error[E0004]: non-exhaustive patterns``.
+
 #### What an upgrade asks of your crate
 
 Two hundred and sixty-four rules meet a crate that upgrades. Each is stated with what a build or a read answers:

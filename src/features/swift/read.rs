@@ -15,6 +15,8 @@ use super::{
 use crate::field_type::{
     BUFFERED_WORDS, EXPECTED_VALUE, FieldDef, FieldDefType, is_sequence_wrapper,
 };
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+use crate::field_type::{EPOCH_BEYOND, EPOCH_EXPECTED};
 
 /// The key type a map is read entry by entry under, and a flattened unit variant's entry written
 /// under, written into each type that names it.
@@ -95,25 +97,6 @@ const FITTED: &str = "private struct SwiftSchemaFit<SwiftSchemaLeaf: Decodable>:
      return \"invalid value: integer `\\(text)`, expected \\(expected)\" }; guard let number = \
      Double(text), number.isFinite else { return \"number out of range\" }; return \
      floating(number) } }";
-
-/// The wire of a `DateTime<Tz>` under `as_number`: the `Int64` of epoch milliseconds, read through
-/// `SwiftSchemaFit`, whose refusals of a float and of an integer above an `i64` it words as
-/// serde words them for a timestamp.
-const MILLIS: &str = "private struct SwiftSchemaMillis: Codable { let value: Int64; \
-     init(value: Int64) { self.value = value }; \
-     init(from decoder: Decoder) throws { do { value = try SwiftSchemaFit<Int64>(from: decoder).value } \
-     catch DecodingError.dataCorrupted(let context) { throw \
-     DecodingError.dataCorrupted(DecodingError.Context(codingPath: context.codingPath, \
-     debugDescription: Self.worded(context.debugDescription), underlyingError: \
-     context.underlyingError)) } }; \
-     func encode(to encoder: Encoder) throws { var single = encoder.singleValueContainer(); try \
-     single.encode(value) }; \
-     private static func worded(_ said: String) -> String { if \
-     said.hasPrefix(\"invalid value: integer `\"), let end = said.lastIndex(of: \"`\") { return \
-     \"value is not a legal timestamp: \" + String(said.dropFirst(\"invalid value: integer `\".count)\
-     .prefix(upTo: end)) }; if said.hasSuffix(\", expected i64\") \
-     { return String(said.dropLast(\"i64\".count)) + \"a unix timestamp in milliseconds\" }; \
-     return said } }";
 
 /// What names, in the statements of a read, the keys the types around the type took: handed to
 /// what is read beside the type, or skipped by the read of a map's entries ([`read_entries`]).
@@ -661,6 +644,37 @@ fn narrowed(read_as: &str, wide: &str) -> String {
     format!("({wide}).{mapping}({{ {} }})", narrowed(held, "$0"))
 }
 
+/// The wire of a date under `as_number`: the `Int64` of epoch milliseconds, read through
+/// `SwiftSchemaFit`, whose refusals of a float and of an integer above an `i64` it words as
+/// serde words them for a timestamp.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn millis() -> String {
+    let (before, after) = EPOCH_BEYOND;
+    let tail = if after.is_empty() {
+        String::new()
+    } else {
+        format!(" + \"{after}\"")
+    };
+    format!(
+        "private struct SwiftSchemaMillis: Codable {{ let value: Int64; \
+         init(value: Int64) {{ self.value = value }}; \
+         init(from decoder: Decoder) throws {{ do {{ value = try \
+         SwiftSchemaFit<Int64>(from: decoder).value }} \
+         catch DecodingError.dataCorrupted(let context) {{ throw \
+         DecodingError.dataCorrupted(DecodingError.Context(codingPath: context.codingPath, \
+         debugDescription: Self.worded(context.debugDescription), underlyingError: \
+         context.underlyingError)) }} }}; \
+         func encode(to encoder: Encoder) throws {{ var single = encoder.singleValueContainer(); \
+         try single.encode(value) }}; \
+         private static func worded(_ said: String) -> String {{ if \
+         said.hasPrefix(\"invalid value: integer `\"), let end = said.lastIndex(of: \"`\") {{ \
+         return \"{before}\" + String(said.dropFirst(\"invalid value: integer `\".count)\
+         .prefix(upTo: end)){tail} }}; if said.hasSuffix(\", expected i64\") \
+         {{ return String(said.dropLast(\"i64\".count)) + \"{EPOCH_EXPECTED}\" }}; \
+         return said }} }}"
+    )
+}
+
 /// What a type holds whose flattened members [`flattened`] reads: the refusal of a value inside
 /// one, placed at the holder, and a value serde refuses as text that is not the document worded
 /// as a value of the wrong kind.
@@ -768,8 +782,9 @@ pub(super) fn helpers_for(read: &str) -> String {
         helpers.push_str(FITTED);
         helpers.push_str("; ");
     }
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     if read.contains("SwiftSchemaMillis") {
-        helpers.push_str(MILLIS);
+        helpers.push_str(&millis());
         helpers.push_str("; ");
     }
     if read.contains("swiftSchemaFlattened(") {
@@ -1309,6 +1324,12 @@ pub(super) fn unjudged(
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => held(source, &written_type(def, hint), sink),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime
+        | FieldDefType::Timestamp => held(source, &written_type(def, hint), sink),
     }
 }
 

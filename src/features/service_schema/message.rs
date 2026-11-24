@@ -129,11 +129,22 @@ const REFUSED_AS_A_NAME: [&str; 48] = [
     "yield",
 ];
 
+/// Appended to `toISOString()`: chrono writes a date of whole seconds with no fraction.
+#[cfg(not(feature = "jiff"))]
+pub const TS_SERDE_FRACTION: &str = ".replace(\".000Z\", \"Z\")";
+
+/// Appended to `toISOString()`: jiff writes the fraction in the fewest digits it needs, and none
+/// for a date of whole seconds.
+#[cfg(feature = "jiff")]
+pub const TS_SERDE_FRACTION: &str =
+    ".replace(/\\.(\\d*?)0+Z$/, (_, kept) => kept ? `.${kept}Z` : \"Z\")";
+
 /// The function named `function` that answers a value as it is written to the wire: each
 /// `bigint` in it, at any depth of a list or a plain object, through `JSON.rawJSON`, which
 /// `JSON.stringify` writes as the JSON number of its digits. Without `JSON.rawJSON` a `bigint` a
 /// `number` holds exactly is that `number`, and any other is refused with a `RangeError`. Each
-/// `Date` is answered as the text chrono writes: `toISOString()` with no `.000` on whole seconds.
+/// `Date` is answered as the text the date feature's serde writes: `toISOString()` with the
+/// fraction [`TS_SERDE_FRACTION`] writes.
 /// Each `Uint8Array` is answered as the plain array of its bytes. Every other value is answered
 /// as it is.
 pub fn wire_fn(function: &str) -> String {
@@ -143,8 +154,8 @@ pub fn wire_fn(function: &str) -> String {
          number of\n \
          * its digits. Without `JSON.rawJSON`, a `bigint` a `number` holds exactly is that \
          `number`, and any\n \
-         * other is refused. Each `Date` is its RFC 3339 text with no fraction on whole seconds, as\n \
-         * chrono writes it. Each `Uint8Array` is the plain array of its bytes.\n \
+         * other is refused. Each `Date` is its RFC 3339 text with the fraction serde writes. Each\n \
+         * `Uint8Array` is the plain array of its bytes.\n \
          */\n\
          function {function}(value: unknown): unknown {{\n  \
          if (typeof value === \"bigint\") {{\n    \
@@ -155,8 +166,8 @@ pub fn wire_fn(function: &str) -> String {
          runtime has not`);\n  \
          }}\n  \
          if (value instanceof Date) {{\n    \
-         return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \
-         \"Z\");\n  \
+         return Number.isNaN(value.getTime()) ? value : \
+         value.toISOString(){TS_SERDE_FRACTION};\n  \
          }}\n  \
          if (value instanceof Uint8Array) return Array.from(value);\n  \
          if (Array.isArray(value)) return value.map((held) => {function}(held));\n  \

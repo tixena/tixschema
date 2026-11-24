@@ -42,7 +42,7 @@ mod flattened_maps;
 
 /// The models of maps keyed by a value serde writes as text of its own, and the payloads serde
 /// reads and refuses for them.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[path = "../collection_tests/keyed_maps.rs"]
 mod keyed_maps;
 
@@ -60,6 +60,12 @@ mod corrected_options;
 /// the Kotlin read answer of each payload.
 #[cfg(feature = "chrono")]
 #[path = "../kotlin_tests/text_forms_models.rs"]
+mod text_forms;
+
+/// A `char` and a jiff date, time and date and time held in each place, and what serde, Zod and
+/// the Kotlin read answer of each payload.
+#[cfg(feature = "jiff")]
+#[path = "../kotlin_tests/jiff_text_forms_models.rs"]
 mod text_forms;
 
 /// Models whose names on the wire and doc comments hold the end of a comment, and what serde
@@ -101,9 +107,15 @@ mod deferred;
 #[path = "../chrono_tests/untagged_millis_models.rs"]
 mod untagged_millis;
 
+/// A date under `as_number` in a member of an untagged enum, and what serde and the Zod schema
+/// answer of each payload.
+#[cfg(feature = "jiff")]
+#[path = "../jiff_tests/untagged_millis_models.rs"]
+mod untagged_millis;
+
 /// A model per type the wire holds as a text, a number or a `bool`, and what each client sends of
 /// each value a caller hands it.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[path = "../wire_forms_tests/models.rs"]
 mod wire_forms;
 
@@ -170,12 +182,14 @@ mod null_holder_models;
 #[path = "null_holder_tests.rs"]
 mod null_holder_tests;
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use alloc::collections::BTreeSet;
 use core::fmt::Write as _;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 #[cfg(feature = "mongodb")]
 use mongodb::bson::oid::ObjectId;
 use serde::de::DeserializeOwned;
@@ -488,7 +502,7 @@ console.log(
 "#;
 
 /// What the dated driver prints: what each position that holds a date reads each input as.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 const DATED: &str = "{\"required\":{\"null\":\"refused\",\"true\":\"refused\",\"false\":\
                      \"refused\",\"text\":\"refused\",\"object\":\"refused\",\"date\":\
                      \"2026-10-12T12:00:00.000Z\",\"iso\":\"2026-10-12T12:00:00.000Z\",\
@@ -502,7 +516,7 @@ const DATED: &str = "{\"required\":{\"null\":\"refused\",\"true\":\"refused\",\"
 
 /// Loads the compiled bundle and parses through the struct that holds a date in each position:
 /// required, in an `Option`, under `nullable`, among a list's items, and in an untagged enum.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 const DATED_DRIVER: &str = r#"import { DeclaredStamped$Schema } from "./lib/index.js";
 
 const whole = { at: "2026-10-12T12:00:00Z", mark: true, paused: null, seen: [] };
@@ -1007,7 +1021,8 @@ console.log(printed.join("\n"));
 "#;
 
 /// Parses each payload of the ranges through the schema of the type it is read as, the declared
-/// default of one that declares a parameter, and prints what each read answers.
+/// default of one that declares a parameter, and prints what each read answers, a date as the text
+/// serde writes it.
 const RANGES_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 
 const schemas = {
@@ -1026,13 +1041,15 @@ const schemas = {
 const sorted = (value) =>
   Array.isArray(value)
     ? value.map(sorted)
-    : value !== null && typeof value === "object" && !(value instanceof Date)
-      ? Object.fromEntries(
-          Object.keys(value)
-            .sort()
-            .map((key) => [key, sorted(value[key])]),
-        )
-      : value;
+    : value instanceof Date
+      ? value.toISOString()SERDE_FRACTION
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, sorted(value[key])]),
+          )
+        : value;
 const printed = [];
 for (const [name, schema, payload] of PAYLOADS) {
   const read = schemas[schema].safeParse(JSON.parse(payload));
@@ -1068,7 +1085,8 @@ for (const [readAs, payload] of PAYLOADS) {
 "#;
 
 /// Parses each payload of the sets through the schema of the type it is read as, the declared
-/// default of one that declares a parameter, and prints what each read answers: `read`, or the
+/// default of one that declares a parameter, and prints what each read answers, a date as the text
+/// serde writes it. `read`, or the
 /// refusal with each issue under its path.
 const SETS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 
@@ -1227,6 +1245,17 @@ const SAFE_TALLY: &str = r#"{"boxed":-7,"grid":[1,1719624000000],"keyed":{"a":-7
 /// What serde writes of a `WideReached` with an `i64` in each place it holds one.
 const WIDE_REACHED: &str = r#"{"aliased":-1152921504606846976,"aliases":[1,9223372036854775807],"fixed":214,"from":{"start":-3},"inclusive":{"start":4,"end":5},"ranged":{"start":1,"end":1152921504606846976},"resulted":{"Ok":7},"to":{"end":6},"wrong":{"Err":[8,-9]}}"#;
 
+/// What the service code appends to `toISOString()`, as the date feature's serde writes the
+/// fraction of an instant: no `.000` on whole seconds under chrono, and the fewest digits under
+/// jiff.
+#[cfg(not(feature = "jiff"))]
+const SERDE_FRACTION: &str = ".replace(\".000Z\", \"Z\")";
+/// What the service code appends to `toISOString()`, as the date feature's serde writes the
+/// fraction of an instant: no `.000` on whole seconds under chrono, and the fewest digits under
+/// jiff.
+#[cfg(feature = "jiff")]
+const SERDE_FRACTION: &str = ".replace(/\\.(\\d*?)0+Z$/, (_, kept) => kept ? `.${kept}Z` : \"Z\")";
+
 /// The functions a client reads and writes JSON through, as the service code tixschema writes
 /// them: `exactJson` reads an integer a `number` does not hold exactly as a `bigint` from its
 /// source text, and `wireForm` writes each `bigint` through `JSON.rawJSON`, as the JSON number of
@@ -1244,7 +1273,7 @@ const WIRE_FORM: &str = "function exactJson(text) {
 function wireForm(value) {
   if (typeof value === \"bigint\") return JSON.rawJSON(value.toString());
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? value : value.toISOString().replace(\".000Z\", \"Z\");
+    return Number.isNaN(value.getTime()) ? value : value.toISOString()SERDE_FRACTION;
   }
   if (value instanceof Uint8Array) return Array.from(value);
   if (Array.isArray(value)) return value.map((held) => wireForm(held));
@@ -1296,7 +1325,8 @@ for (const [schema, payload] of PAYLOADS) {
 "#;
 
 /// Parses each payload of a `Result` through the schema of the type it is read as, the declared
-/// default of one that declares a parameter, and prints what each read answers: the value, or the
+/// default of one that declares a parameter, and prints what each read answers, a date as the text
+/// serde writes it. the value, or the
 /// refusal, with each issue under its path where the type judges a model it holds.
 const RESULTS_DRIVER: &str = r#"import * as lib from "./lib/index.js";
 
@@ -2286,6 +2316,17 @@ pub enum DeclaredMark {
     Set(bool),
 }
 
+/// A date beside a boolean in an untagged enum, the date first: an input that is no date has to
+/// reach the member after it.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeclaredMark {
+    At(Timestamp),
+    Set(bool),
+}
+
 /// A date in each position a schema writes one: required, in an `Option`, in that untagged enum,
 /// under `nullable`, and among the items of a list that may hold `null`.
 #[cfg(feature = "chrono")]
@@ -2299,6 +2340,21 @@ pub struct DeclaredStamped {
     #[model_schema_prop(nullable)]
     pub paused: Option<DateTime<Utc>>,
     pub seen: Vec<Option<DateTime<Utc>>>,
+}
+
+/// A date in each position a schema writes one: required, in an `Option`, in that untagged enum,
+/// under `nullable`, and among the items of a list that may hold `null`.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclaredStamped {
+    pub at: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended: Option<Timestamp>,
+    pub mark: DeclaredMark,
+    #[model_schema_prop(nullable)]
+    pub paused: Option<Timestamp>,
+    pub seen: Vec<Option<Timestamp>>,
 }
 
 /// `()` as a brand's value, which serde writes as `null`.
@@ -3278,9 +3334,9 @@ fn ranges() -> String {
         ranged::Signposted::zod_schema(),
         ranged::Frontier::ts_definition(),
         ranged::Frontier::zod_schema(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         ranged::Rostered::ts_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         ranged::Rostered::zod_schema(),
     ]
     .join("\n\n")
@@ -3439,7 +3495,7 @@ fn flattened_maps() -> String {
 
 /// The models of maps keyed by a value serde writes as text of its own, each declared ahead of the
 /// one that names it: a bundle of their own, compiled with `tsc --strict` before it is loaded.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn keyed_maps() -> String {
     [
         PREAMBLE.to_owned(),
@@ -3543,7 +3599,7 @@ fn skipped_variants_bundle() -> String {
 
 /// The holders of a text serde reads in one form alone: a bundle of their own, compiled with
 /// `tsc --strict` before it is loaded.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn text_forms_bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -3575,7 +3631,7 @@ fn text_forms_bundle() -> String {
 
 /// The enums of [`untagged_millis::MILLIS_ROWS`]: a bundle of their own, compiled with `tsc
 /// --strict` before it is loaded.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn untagged_millis_bundle() -> String {
     [
         PREAMBLE.to_owned(),
@@ -3641,7 +3697,7 @@ fn flattened_zod_bundle() -> String {
 
 /// The models of [`wire_forms::WIRE_FORMS`]: a bundle of their own, compiled with `tsc --strict`
 /// before it is loaded, beside the consumer's own `ObjectId`.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn wire_forms_bundle() -> String {
     let mut parts = vec![
         PREAMBLE.to_owned(),
@@ -3691,6 +3747,10 @@ fn wire_forms_bundle() -> String {
         wire_forms::ConveyedInstant::zod_schema(),
         wire_forms::ConveyedMillis::ts_definition(),
         wire_forms::ConveyedMillis::zod_schema(),
+        #[cfg(feature = "jiff")]
+        wire_forms::ConveyedZoned::ts_definition(),
+        #[cfg(feature = "jiff")]
+        wire_forms::ConveyedZoned::zod_schema(),
         wire_forms::ConveyedSlot::ts_definition(),
         wire_forms::ConveyedSlot::zod_schema(),
         wire_forms::ConveyedSlotted::ts_definition(),
@@ -3804,7 +3864,7 @@ fn wide_integers_bundle() -> String {
 /// The JavaScript value a row of [`wire_forms::WIRE_FORMS`] hands the Zod schema of its model:
 /// a `Date` for a `DateTime<Tz>`, read from the text handed, a `bigint` for an `i64` and a `u64`,
 /// and the JSON handed for any other.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn wire_form_handed(row: &wire_forms::WireFormRow) -> String {
     let value = if row.held_by == "ConveyedInstant" {
         format!("new Date({})", row.handed)
@@ -3829,7 +3889,7 @@ fn wire_form_handed(row: &wire_forms::WireFormRow) -> String {
 
 /// The schema the model `held_by` names publishes: its `$SchemaDefault` where it declares a
 /// parameter.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn wire_form_schema(held_by: &str) -> String {
     if matches!(held_by, "ConveyedU64" | "ConveyedUsize") {
         format!("{held_by}$SchemaDefault")
@@ -3912,7 +3972,7 @@ fn ranged_models() -> Vec<RangedModel> {
             serde_reads::<ranged::Positioned>,
             ranged::Positioned::json_schema,
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         (
             "Rostered",
             serde_reads::<ranged::Rostered>,
@@ -4003,7 +4063,7 @@ fn resulted_models() -> Vec<ResultedModel> {
 }
 
 /// The types that hold a date, which the bundle declares where `chrono` is on.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn dated() -> Vec<String> {
     vec![
         DeclaredMark::ts_definition(),
@@ -4013,7 +4073,7 @@ fn dated() -> Vec<String> {
     ]
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn dated() -> Vec<String> {
     Vec::new()
 }
@@ -4776,7 +4836,7 @@ fn type_check_a_check_on_a_holder_and_an_alias_ahead_of_its_type_load_and_answer
 
 /// `z.coerce.date()` alone reads `null` and `false` as the first instant of 1970, ahead of the
 /// `null` and the boolean a union lists after it.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn type_check_a_date_refuses_what_is_no_date_in_every_position_that_holds_one() {
     let Some((printed, failed)) = loaded("dated", DATED_DRIVER) else {
@@ -5120,7 +5180,9 @@ fn type_check_a_range_parses_under_zod_what_serde_writes() {
         .iter()
         .map(|payload| (payload.name, payload.read_as, payload.json.as_str()))
         .collect();
-    let driver = RANGES_DRIVER.replace("PAYLOADS", &serde_json::to_string(&listed).unwrap());
+    let driver = RANGES_DRIVER
+        .replace("PAYLOADS", &serde_json::to_string(&listed).unwrap())
+        .replace("SERDE_FRACTION", SERDE_FRACTION);
     let Some((printed, failed)) = loaded_from("ranges", &ranges(), &driver) else {
         return;
     };
@@ -5354,7 +5416,7 @@ fn type_check_a_set_refuses_a_repeat_under_zod() {
 /// Each payload of a `char` and of a chrono date, time and date and time is read by the Zod schema
 /// of its type under `node` exactly where [`text_forms::TEXT_FORMS`] states, which the Kotlin read
 /// is held to.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn type_check_a_text_of_one_form_is_read_under_zod_where_the_table_states() {
     let taken: Vec<bool> = text_forms::TEXT_FORMS.iter().map(|row| row.zod).collect();
@@ -5377,7 +5439,7 @@ fn type_check_a_text_of_one_form_is_read_under_zod_where_the_table_states() {
 /// to what the table states, the epoch milliseconds serde writes among them. Its output is typed
 /// `ZodType` of the enum's TypeScript type, which `tsc --strict` holds it to as the bundle
 /// compiles.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn type_check_an_untagged_member_under_as_number_is_parsed_as_the_number_serde_writes() {
     let listed: Vec<(String, &str)> = untagged_millis::MILLIS_ROWS
@@ -5493,7 +5555,7 @@ fn a_flattened_choice_with_no_check_writes_none_into_its_holder() {
 /// read as an infinity refused, as a client refuses it, and the schema
 /// reads every payload any client sends, read as a client reads it, but an integer TypeScript
 /// holds as a `number` that a `number` cannot hold, which it refuses.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
     let handed = wire_forms::WIRE_FORMS
@@ -5549,7 +5611,7 @@ fn type_check_each_value_is_sent_under_zod_in_the_form_every_target_reads() {
          console.log(JSON.stringify([\n{handed}]));\n\
          console.log(JSON.stringify({read}.map(([schema, payload]) => \
          lib[schema].safeParse(exactJson(payload)).success)));\n",
-        wire = WIRE_FORM,
+        wire = WIRE_FORM.replace("SERDE_FRACTION", SERDE_FRACTION),
         schemas = wire_forms::WIRE_FORMS
             .iter()
             .map(|row| wire_form_schema(row.held_by))
@@ -5618,7 +5680,10 @@ fn type_check_a_64_bit_integer_is_read_as_a_bigint_under_zod() {
     ];
     let driver = WIDE_DRIVER
         .replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap())
-        .replace("WIRE_FORM", WIRE_FORM)
+        .replace(
+            "WIRE_FORM",
+            &WIRE_FORM.replace("SERDE_FRACTION", SERDE_FRACTION),
+        )
         .replace("TALLY", &serde_json::to_string(WIDE_TALLY).unwrap());
     let Some((printed, failed)) = loaded_from("wide-integers", &wide_integers_bundle(), &driver)
     else {
@@ -5785,7 +5850,10 @@ fn type_check_a_64_bit_integer_in_each_place_its_holder_reaches_is_read_as_a_big
     ];
     let driver = WIDE_DRIVER
         .replace("PAYLOADS", &serde_json::to_string(&payloads).unwrap())
-        .replace("WIRE_FORM", WIRE_FORM)
+        .replace(
+            "WIRE_FORM",
+            &WIRE_FORM.replace("SERDE_FRACTION", SERDE_FRACTION),
+        )
         .replace("WideTally$Schema", "WideReached$Schema")
         .replace("TALLY", &serde_json::to_string(WIDE_REACHED).unwrap());
     let Some((printed, failed)) =
@@ -5882,7 +5950,7 @@ fn type_check_a_flattened_map_reads_under_zod_what_serde_reads() {
 /// Every payload of a map keyed by a value serde writes as text of its own is read by the Zod
 /// schema of its model under `node` as serde reads it, but where serde parts from Zod: the text of
 /// a number key Zod reads as the number, and an enum's content ahead of its tag.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn type_check_a_map_keyed_by_text_reads_under_zod_what_serde_reads() {
     let listed: Vec<(&str, String, &str)> = keyed_maps::PAYLOADS

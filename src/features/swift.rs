@@ -70,11 +70,17 @@ const KEY_TEXT_WRITE: &str = "private static func swiftSchemaKeyText(_ shortest:
      digits.dropFirst() : \"\") + \"e\" + (at > 0 ? \"+\" : \"\") + String(at) }; ";
 
 /// Appended to a formatted date: chrono writes a date of whole seconds with no fraction.
-#[cfg(feature = "chrono")]
-pub const CHRONO_WHOLE_SECONDS: &str = ".replacingOccurrences(of: \".000Z\", with: \"Z\")";
+#[cfg(not(feature = "jiff"))]
+pub const SERDE_FRACTION: &str = ".replacingOccurrences(of: \".000Z\", with: \"Z\")";
+
+/// Appended to a formatted date: jiff writes the fraction in the fewest digits it needs, and none
+/// for a date of whole seconds.
+#[cfg(feature = "jiff")]
+pub const SERDE_FRACTION: &str = ".replacingOccurrences(of: \"(\\\\.[0-9]*?)0+Z$\", with: \"$1Z\", \
+     options: .regularExpression).replacingOccurrences(of: \".Z\", with: \"Z\")";
 
 /// The options of the formatter that reads and writes a fraction of a second.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 pub const FRACTIONAL_OPTIONS: &str = ".withInternetDateTime, .withFractionalSeconds";
 
 /// The words Swift reserves in a declaration, a statement or an expression. A word reserved in one
@@ -134,7 +140,7 @@ const SWIFT_RESERVED: [&str; 51] = [
 ];
 
 /// The options of the formatter that reads a date of whole seconds.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 pub const WHOLE_OPTIONS: &str = ".withInternetDateTime";
 
 /// The read an untagged enum hands a variant's struct to where the enum is handed keys: it refuses a
@@ -350,7 +356,7 @@ struct VariantRead<'read> {
 enum LeafConversion {
     /// A `DateTime<Tz>` field: the wire is an ISO 8601 string with fractional seconds, which
     /// `JSONDecoder`'s default strategy cannot parse into `Date` without a formatter.
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     DateTimePlain,
     /// A map whose key is not written as a JSON object key can decode directly: `wrapper` names
     /// the per-field struct that carries the string round trip.
@@ -358,7 +364,7 @@ enum LeafConversion {
     /// A `DateTime<Tz>` field under `as_number`: the wire is the `Int64` of epoch milliseconds,
     /// read through `SwiftSchemaMillis`, which refuses a float and a number serde cannot read as a
     /// timestamp in the words serde uses for one.
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     Millis,
     /// The leaf reads and writes exactly as its own Swift type spells it.
     None,
@@ -1196,7 +1202,7 @@ fn enum_tag_attrs(attrs: &[syn::Attribute]) -> EnumTagAttrs {
 }
 
 /// Whether `field` carries `#[model_schema_prop(as_number)]`.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn has_as_number(field: &FieldDef) -> bool {
     field
         .model_schema_prop_meta
@@ -1228,6 +1234,8 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => "Date".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => "Date".to_owned(),
         FieldDefType::TypeParam(_)
         | FieldDefType::Unknown
         | FieldDefType::BooleanLiteral(_)
@@ -1243,6 +1251,11 @@ fn swift_map_key_scalar(key: &FieldDef) -> String {
         FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
             "String".to_owned()
         }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => "String".to_owned(),
     }
 }
 
@@ -1308,6 +1321,15 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
             forms::held_as_text(key)
                 .map_or_else(|| held.to_owned(), |form| forms::sent_call(form, held)),
         ),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => (
+            None,
+            forms::held_as_text(key)
+                .map_or_else(|| held.to_owned(), |form| forms::sent_call(form, held)),
+        ),
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => (
             Some(
@@ -1315,7 +1337,16 @@ fn swift_map_key_codec(key: &FieldDef, held: &str) -> (Option<String>, String) {
                  Self.isoWholeFormatterForKeys.date(from: wireKey)"
                     .to_owned(),
             ),
-            format!("Self.isoFormatterForKeys.string(from: {held}){CHRONO_WHOLE_SECONDS}"),
+            format!("Self.isoFormatterForKeys.string(from: {held}){SERDE_FRACTION}"),
+        ),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => (
+            Some(
+                "Self.isoFormatterForKeys.date(from: wireKey) ?? \
+                 Self.isoWholeFormatterForKeys.date(from: wireKey)"
+                    .to_owned(),
+            ),
+            format!("Self.isoFormatterForKeys.string(from: {held}){SERDE_FRACTION}"),
         ),
     }
 }
@@ -1394,8 +1425,8 @@ fn map_key_wrapper_struct(
     let written = value.written("value");
     // Static, as the read uses it before `storage` is set, and computed, as a generic type stores
     // no static property and a stored `ISO8601DateFormatter` is not `Sendable`.
-    #[cfg(feature = "chrono")]
-    let formatter_decl = if matches!(keys::leaf(key).field_type, FieldDefType::DateTime) {
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
+    let formatter_decl = if keys::leaf(key).field_type.is_instant() {
         format!(
             "private static var isoFormatterForKeys: ISO8601DateFormatter {{ let f = ISO8601DateFormatter(); f.formatOptions = [{FRACTIONAL_OPTIONS}]; return f }}; \
              private static var isoWholeFormatterForKeys: ISO8601DateFormatter {{ let f = ISO8601DateFormatter(); f.formatOptions = [{WHOLE_OPTIONS}]; return f }};"
@@ -1403,7 +1434,7 @@ fn map_key_wrapper_struct(
     } else {
         String::new()
     };
-    #[cfg(not(feature = "chrono"))]
+    #[cfg(not(any(feature = "chrono", feature = "jiff")))]
     let formatter_decl = String::new();
     let mut helpers = read::helpers_for(&format!("{own_read}{entries}"));
     if bound_key.contains("swiftSchemaKeyNumber(") {
@@ -1549,9 +1580,9 @@ fn number_bound_key(number: NumberKey, parsed: &str) -> String {
 
 /// A date key Swift holds to its millisecond: two keys finer than that read as one, so the read
 /// refuses the second instead of dropping an entry.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn refused_repeat_of_a_date_key(key: &FieldDef) -> &'static str {
-    if matches!(keys::leaf(key).field_type, FieldDefType::DateTime) {
+    if keys::leaf(key).field_type.is_instant() {
         "if result.keys.contains(key) { \
          throw DecodingError.dataCorruptedError(forKey: codingKey, in: container, debugDescription: \"repeated key \\(wireKey)\") }; "
     } else {
@@ -1559,7 +1590,7 @@ fn refused_repeat_of_a_date_key(key: &FieldDef) -> &'static str {
     }
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn refused_repeat_of_a_date_key(_key: &FieldDef) -> &'static str {
     ""
 }
@@ -1809,6 +1840,15 @@ fn written_shape(field: &FieldDef, name_hint: &str, aux: &mut Vec<String>) -> Sw
         }
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => datetime_shape(field),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => {
+            forms::held_as_text(field).map_or_else(|| direct_shape("String".to_owned()), text_shape)
+        }
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => datetime_shape(field),
     }
 }
 
@@ -1832,7 +1872,7 @@ fn direct_shape(swift_type: String) -> SwiftFieldShape {
 
 /// The `DateTime<Tz>` leaf: `Date` is the real type, the ISO 8601 string chrono writes is the wire
 /// type. Under `as_number` both are the `Int64` of epoch milliseconds serde writes.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn datetime_shape(field: &FieldDef) -> SwiftFieldShape {
     if has_as_number(field) {
         SwiftFieldShape {
@@ -2390,6 +2430,12 @@ fn map_keys(written: &FieldDef) -> MapKeys {
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => MapKeys::Wrapped,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => MapKeys::Wrapped,
     }
 }
 
@@ -2534,11 +2580,11 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
     match &shape.leaf_conversion {
         LeafConversion::None => expr.to_owned(),
         LeafConversion::MapWrapper(_) => format!("{expr}.storage"),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::DateTimePlain => {
             format!("try Self.swiftSchemaParseIso8601Date({expr}, codingPath: decoder.codingPath)")
         }
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::Millis => format!("{expr}.value"),
         LeafConversion::Text(form) => forms::read_call(*form, expr, "decoder.codingPath"),
         LeafConversion::Values(value) => format!(
@@ -2553,11 +2599,11 @@ fn decode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
 /// the values of a map Swift keys natively, and the storage of a map's wrapper does not.
 fn throws(conversion: &LeafConversion) -> bool {
     match conversion {
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::DateTimePlain => true,
         LeafConversion::Text(_) => true,
         LeafConversion::Values(value) => throws(&value.shape.leaf_conversion),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::Millis => false,
         LeafConversion::MapWrapper(_) | LeafConversion::None => false,
     }
@@ -2569,7 +2615,7 @@ fn writes_throw(conversion: &LeafConversion) -> bool {
     match conversion {
         LeafConversion::Text(_) => true,
         LeafConversion::Values(value) => writes_throw(&value.shape.leaf_conversion),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::DateTimePlain | LeafConversion::Millis => false,
         LeafConversion::MapWrapper(_) | LeafConversion::None => false,
     }
@@ -2601,9 +2647,9 @@ fn encode_leaf(shape: &SwiftFieldShape, expr: &str) -> String {
     match &shape.leaf_conversion {
         LeafConversion::None => expr.to_owned(),
         LeafConversion::MapWrapper(wrapper) => format!("{wrapper}(storage: {expr})"),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::DateTimePlain => format!("Self.swiftSchemaFormatIso8601Date({expr})"),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::Millis => format!("SwiftSchemaMillis(value: {expr})"),
         LeafConversion::Text(form) => forms::sent_call(*form, expr),
         LeafConversion::Values(value) => write_tried(
@@ -3483,7 +3529,7 @@ fn unit_entries_write(entries: &[UnitEntry], held: &str, written: &str) -> Strin
 /// and one without them, which reads the text chrono writes for a date of whole seconds.
 /// Swift refuses a static stored property in a generic type, so a type that declares a parameter
 /// builds its formatters on each call, and any other shares them.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
     let formatter = |named: &str, options: &str| {
         if declares_a_parameter {
@@ -3505,7 +3551,7 @@ fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
          swiftSchemaWholeIso8601Formatter.date(from: text) else {{ \
          throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: codingPath, debugDescription: \"bad ISO8601 date: \\(text)\")) }}; \
          return date }}; \
-         private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String {{ swiftSchemaIso8601Formatter.string(from: date){CHRONO_WHOLE_SECONDS} }} }};",
+         private static func swiftSchemaFormatIso8601Date(_ date: Date) -> String {{ swiftSchemaIso8601Formatter.string(from: date){SERDE_FRACTION} }} }};",
         formatter("swiftSchemaIso8601Formatter", FRACTIONAL_OPTIONS),
         formatter("swiftSchemaWholeIso8601Formatter", WHOLE_OPTIONS),
     )
@@ -3513,24 +3559,24 @@ fn datetime_helpers(export_name: &str, declares_a_parameter: bool) -> String {
 
 /// Whether reading a value of `shape` calls [`datetime_helpers`]: a `DateTime<Tz>` leaf under any
 /// list or optional, or one held as the value of a map Swift keys natively.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn reads_a_date(shape: &SwiftFieldShape) -> bool {
     match &shape.leaf_conversion {
         LeafConversion::DateTimePlain => true,
         LeafConversion::Values(value) => reads_a_date(&value.shape),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::Millis => false,
         LeafConversion::MapWrapper(_) | LeafConversion::None | LeafConversion::Text(_) => false,
     }
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn reads_a_date(_shape: &SwiftFieldShape) -> bool {
     false
 }
 
 /// [`datetime_helpers`] for `export_name`, where the read of one of `shapes` calls them.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn datetime_helpers_for(
     export_name: &str,
     generic_params: &str,
@@ -3543,7 +3589,7 @@ fn datetime_helpers_for(
     }
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn datetime_helpers_for(
     _export_name: &str,
     _generic_params: &str,
@@ -3562,7 +3608,7 @@ fn text_forms_of(shape: &SwiftFieldShape, found: &mut Vec<TextForm>) {
             }
         }
         LeafConversion::Values(value) => text_forms_of(&value.shape, found),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         LeafConversion::DateTimePlain | LeafConversion::Millis => {}
         LeafConversion::MapWrapper(_) | LeafConversion::None => {}
     }

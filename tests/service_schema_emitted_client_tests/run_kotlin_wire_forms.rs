@@ -3,7 +3,7 @@
 //! prints the payload it sends, or `refused`, as the table's Kotlin column states, and reads every
 //! payload any client sends.
 
-#![cfg(all(feature = "kotlin", feature = "chrono"))]
+#![cfg(all(feature = "kotlin", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 
@@ -126,6 +126,8 @@ fn each_value_is_sent_by_kotlin_in_the_form_every_target_reads() {
         conveyed_stamp_kotlin::kotlin_definition(),
         conveyed_instant_kotlin::kotlin_definition(),
         conveyed_millis_kotlin::kotlin_definition(),
+        #[cfg(feature = "jiff")]
+        super::wire_forms_models::conveyed_zoned_kotlin::kotlin_definition(),
         conveyed_slot_kotlin::kotlin_definition(),
         conveyed_slotted_kotlin::kotlin_definition(),
         main,

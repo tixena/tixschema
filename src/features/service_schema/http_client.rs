@@ -4,7 +4,7 @@
 
 use super::client::issues_fault_fn;
 use super::fault;
-use super::message;
+use super::message::{self, TS_SERDE_FRACTION};
 use super::result::result_name;
 use crate::field_type::FieldDefType;
 use crate::field_type::get_field_def;
@@ -1057,20 +1057,11 @@ fn header_out_invalid_expr(ty: &Type, raw: &str) -> Option<String> {
     }
 }
 
-/// Whether `ty` is a `DateTime<Tz>`, which the result declares a `Date` of: read off the RFC 3339
-/// text the dispatcher writes, where every other text-shaped type is the text itself.
-#[cfg(feature = "chrono")]
+/// Whether `ty` is a `DateTime<Tz>` or a `Timestamp`, which the result declares a `Date` of: read
+/// off the RFC 3339 text the dispatcher writes, where every other text-shaped type is the text
+/// itself.
 fn reads_a_date(ty: &Type) -> bool {
-    matches!(
-        get_field_def("value", ty, "").field_type,
-        FieldDefType::DateTime
-    )
-}
-
-/// No type is a `DateTime<Tz>` without `chrono`.
-#[cfg(not(feature = "chrono"))]
-const fn reads_a_date(_ty: &Type) -> bool {
-    false
+    get_field_def("value", ty, "").field_type.is_instant()
 }
 
 /// The four fault-building readers every method reaches for, plus the one-way throw pair where the
@@ -1135,15 +1126,15 @@ fn writes_a_text(operation: &OperationDef) -> bool {
 }
 
 /// The text a value carries in a path, a query, a header or a part, as the Rust dispatcher reads
-/// it: a `Date` as the RFC 3339 text chrono writes for it, and anything else as `String` writes
+/// it: a `Date` as the RFC 3339 text serde writes for it, and anything else as `String` writes
 /// it.
 fn wire_text_fn(prefix: &str) -> String {
     format!(
         "/** The text a value carries in a path, a query, a header or a part: a `Date` as the \
          RFC 3339\n \
-         * text chrono writes for it, anything else as `String` writes it. */\n\
+         * text serde writes for it, anything else as `String` writes it. */\n\
          function {prefix}HttpWireText(value: unknown): string {{\n  \
-         return value instanceof Date ? value.toISOString().replace(\".000Z\", \"Z\") : \
+         return value instanceof Date ? value.toISOString(){TS_SERDE_FRACTION} : \
          String(value);\n\
          }}"
     )

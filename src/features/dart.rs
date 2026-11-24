@@ -33,6 +33,8 @@ use crate::field_type::{
     dart_from_json_argument, dart_lower_camel, dart_to_json_argument, format_number_literal,
     get_field_def, is_plain_enum, is_sequence_wrapper,
 };
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+use crate::field_type::{EPOCH_BEYOND, EPOCH_EXPECTED};
 use crate::model_schema::parameter_walk;
 use crate::model_schema::valid_type::{Fixed, fixed_value};
 use crate::model_schema::{variant_field_rule, variant_wire_kind};
@@ -53,7 +55,12 @@ const BOUND_TEXT_HELPER: &str = "static String _boundText(Object held) => held i
 /// Appended to a UTC date's text: `toIso8601String` writes `.000Z` for a date of whole seconds,
 /// which chrono writes with no fraction.
 #[cfg(feature = "chrono")]
-const CHRONO_WHOLE_SECONDS: &str = ".replaceFirst('.000Z', 'Z')";
+const SERDE_FRACTION: &str = ".replaceFirst('.000Z', 'Z')";
+
+/// Appended to a UTC date's text under `jiff`: the fraction is written in the fewest digits it
+/// needs, the way serde writes a `jiff::Timestamp`, and whole seconds carry none.
+#[cfg(all(feature = "jiff", not(feature = "chrono")))]
+const SERDE_FRACTION: &str = ".replaceFirstMapped(RegExp(r'\\.(\\d*?)0+Z$'), (found) => found[1]!.isEmpty ? 'Z' : '.${found[1]}Z')";
 
 /// The core types a class member can take the name of.
 const DART_CORE_TYPES: [&str; 4] = ["int", "double", "num", "bool"];
@@ -976,6 +983,12 @@ fn parameter_reads(def: &FieldDef, parameter: &str, flattened: bool, reads: &mut
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => {}
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => {}
     }
 }
 
@@ -1882,7 +1895,7 @@ fn dart_core(core: &'static str) -> String {
 /// `FieldDef::has_as_number` answers privately for the other surfaces, read here directly off the
 /// public `model_schema_prop_meta` field since that private method is not reachable from this
 /// module.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn has_as_number(field: &FieldDef) -> bool {
     field
         .model_schema_prop_meta
@@ -1968,6 +1981,19 @@ fn dart_base(field: &FieldDef) -> String {
                 "DateTime".to_owned()
             }
         }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => "String".to_owned(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => {
+            if has_as_number(field) {
+                dart_core("int")
+            } else {
+                "DateTime".to_owned()
+            }
+        }
     };
     (0..field.array_depth).fold(scalar, |wrapped, level| {
         if level == 0 && field.writes_bytes() {
@@ -2006,7 +2032,7 @@ fn dart_map_key_typename(key: &FieldDef) -> String {
     }
     match key.map_key_wire() {
         MapKeyWire::Boolean => dart_core("bool"),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         MapKeyWire::Timestamp => "DateTime".to_owned(),
         MapKeyWire::Enumerated
         | MapKeyWire::Named
@@ -2234,7 +2260,7 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
             "(switch ({expr}) {{ \"true\" => true, \"false\" => false, final refused => throw \
              FormatException('Invalid bool key: $refused') }})"
         ),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         MapKeyWire::Timestamp => format!("DateTime.parse({expr})"),
         MapKeyWire::Enumerated => format!("{}.fromJson({expr})", dart_base(key)),
         MapKeyWire::Named | MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => {
@@ -2273,6 +2299,14 @@ fn dart_map_key_decode(key: &FieldDef, expr: &str) -> String {
                 }
                 #[cfg(feature = "chrono")]
                 FieldDefType::DateTime => dart_decode_expr(key, expr, Read::Judged),
+                #[cfg(feature = "jiff")]
+                FieldDefType::CivilDate
+                | FieldDefType::CivilTime
+                | FieldDefType::CivilDateTime
+                | FieldDefType::ZonedDateTime => TextForm::of(key)
+                    .map_or_else(|| expr.to_owned(), |form| forms::text_read(form, expr)),
+                #[cfg(feature = "jiff")]
+                FieldDefType::Timestamp => dart_decode_expr(key, expr, Read::Judged),
             }
         }
     }
@@ -2308,8 +2342,8 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
     }
     match key.map_key_wire() {
         MapKeyWire::Boolean => format!("({expr} ? \"true\" : \"false\")"),
-        #[cfg(feature = "chrono")]
-        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String(){CHRONO_WHOLE_SECONDS}"),
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        MapKeyWire::Timestamp => format!("{expr}.toUtc().toIso8601String(){SERDE_FRACTION}"),
         MapKeyWire::Enumerated => format!("({expr}).toJson()"),
         MapKeyWire::Named | MapKeyWire::Signed64 | MapKeyWire::Unsigned64 => {
             match &key.field_type {
@@ -2365,6 +2399,16 @@ fn dart_map_key_encode(key: &FieldDef, expr: &str) -> String {
                 }
                 #[cfg(feature = "chrono")]
                 FieldDefType::DateTime => {
+                    format!("({}) as String", dart_encode_expr(key, expr, false))
+                }
+                #[cfg(feature = "jiff")]
+                FieldDefType::CivilDate
+                | FieldDefType::CivilTime
+                | FieldDefType::CivilDateTime
+                | FieldDefType::ZonedDateTime => TextForm::of(key)
+                    .map_or_else(|| expr.to_owned(), |form| forms::text_sent(form, expr)),
+                #[cfg(feature = "jiff")]
+                FieldDefType::Timestamp => {
                     format!("({}) as String", dart_encode_expr(key, expr, false))
                 }
             }
@@ -2622,8 +2666,26 @@ fn dart_decode_at(field: &FieldDef, level: u8, expr: &str, read: Read) -> String
         #[cfg(feature = "chrono")]
         FieldDefType::DateTime => {
             if has_as_number(field) {
-                integer_read_as("a unix timestamp in milliseconds", expr, |number| {
-                    format!("value is not a legal timestamp: ${{{number}}}")
+                integer_read_as(EPOCH_EXPECTED, expr, |number| {
+                    format!("{}${{{number}}}{}", EPOCH_BEYOND.0, EPOCH_BEYOND.1)
+                })
+            } else {
+                format!("DateTime.parse({expr} as String)")
+            }
+        }
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => TextForm::of(field).map_or_else(
+            || format!("{expr} as String"),
+            |form| forms::text_read(form, &format!("{expr} as String")),
+        ),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp => {
+            if has_as_number(field) {
+                integer_read_as(EPOCH_EXPECTED, expr, |number| {
+                    format!("{}${{{number}}}{}", EPOCH_BEYOND.0, EPOCH_BEYOND.1)
                 })
             } else {
                 format!("DateTime.parse({expr} as String)")
@@ -2640,7 +2702,7 @@ fn map_decode(key: &FieldDef, value: &FieldDef, object: &str, read: Read) -> Str
     let value_ty = dart_typename(value);
     let key_decode = dart_map_key_decode(key, "e.key");
     let value_decode = read_under("null", "e.key", &dart_decode_expr(value, "e.value", read));
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     if matches!(key.map_key_wire(), MapKeyWire::Timestamp) {
         let source = declared("source");
         let held = declared("held");
@@ -3196,6 +3258,22 @@ fn dart_encode_expr(field: &FieldDef, expr: &str, promoted: bool) -> String {
     format!("({expr} == null ? null : {asserted})")
 }
 
+/// What `toJson` writes of `expr`, a date or a time: an instant in UTC with the fraction serde
+/// writes, or its epoch milliseconds under `as_number`, and any other in the text form serde
+/// writes.
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+fn dated_sent(field: &FieldDef, expr: &str) -> String {
+    if !field.field_type.is_instant() {
+        return TextForm::of(field)
+            .map_or_else(|| expr.to_owned(), |form| forms::text_sent(form, expr));
+    }
+    if has_as_number(field) {
+        expr.to_owned()
+    } else {
+        format!("({expr}).toUtc().toIso8601String(){SERDE_FRACTION}")
+    }
+}
+
 /// [`dart_encode_expr`] before the outer optionality — the encode counterpart of [`dart_decode_at`].
 fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
     if level > 0 {
@@ -3277,18 +3355,16 @@ fn dart_encode_at(field: &FieldDef, level: u8, expr: &str) -> String {
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => format!("({expr}).toJson()"),
         #[cfg(feature = "chrono")]
-        FieldDefType::NaiveDate | FieldDefType::NaiveTime | FieldDefType::NaiveDateTime => {
-            TextForm::of(field).map_or_else(|| expr.to_owned(), |form| forms::text_sent(form, expr))
-        }
-        // A `DateTime` of no zone is written with its zone, as serde reads a `DateTime<Tz>`.
-        #[cfg(feature = "chrono")]
-        FieldDefType::DateTime => {
-            if has_as_number(field) {
-                expr.to_owned()
-            } else {
-                format!("({expr}).toUtc().toIso8601String(){CHRONO_WHOLE_SECONDS}")
-            }
-        }
+        FieldDefType::NaiveDate
+        | FieldDefType::NaiveTime
+        | FieldDefType::NaiveDateTime
+        | FieldDefType::DateTime => dated_sent(field, expr),
+        #[cfg(feature = "jiff")]
+        FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::Timestamp
+        | FieldDefType::ZonedDateTime => dated_sent(field, expr),
     }
 }
 
@@ -3542,6 +3618,12 @@ fn measured_elements(
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => Vec::new(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => Vec::new(),
     }
 }
 
@@ -3792,6 +3874,12 @@ fn held_at(
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime
         | FieldDefType::DateTime => Vec::new(),
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => Vec::new(),
     }
 }
 

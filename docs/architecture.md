@@ -185,7 +185,8 @@ The crate uses optional features for minimal dependencies. A feature adds the ou
 - `mongodb`: Enables MongoDB ObjectId type support; turns on `bson`. On a type that lists `"mongodb"` in `enable = ["decode_with", "mongodb"]` it also generates the typed field paths (`MONGO_FIELDS`, one function per field, `nest` below a nested type, and `<tag>__<value>()` for each arm of an enum under a tag), the filters and updates they build, and the operations over a `mongodb::Collection<bson::Document>` of the type's rows. A consuming crate that declares such a type lists the `mongodb` driver, built for the major version of `bson` it lists, and writes `tixschema::mongodb_foundation!();` at its root beside `tixschema::decode_with_foundation!();`
 - `bson`: BSON support, turned on by `mongodb`. Generates `from_bson_with` and `from_bson_piped`, methods of `DecodeWith`, on every type that lists `"decode_with"`, whether it lists `"mongodb"` or not, and the BSON pieces of the `decode_with` library. A crate that declares a flagged type names `bson`, and lists it, in every build with this feature on; it needs no `mongodb` unless a type lists `"mongodb"`
 - `typescript`: Enables TypeScript type generation
-- `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`)
+- `chrono`: Enables chrono date/time type support (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`). Never on with `jiff`: `src/lib.rs` stops a build with both at a `compile_error!`
+- `jiff`: Enables jiff date/time type support (`civil::Date`, `civil::Time`, `civil::DateTime`, `Timestamp`, `ZonedDateTime`), read as the `FieldDefType` variants `CivilDate`, `CivilTime`, `CivilDateTime`, `Timestamp` and `ZonedDateTime`. A bare name is jiff's unless the crate declared a type of its own under it (`is_declared_ident`). `TextForm` gives jiff's date, time and date and time chrono's forms, with jiff's rewrites (`spaced`, `trimmed`), and a `ZonedDateTime` the form `Named`; `FieldDefType::is_instant` answers for chrono's `DateTime<Tz>` or jiff's `Timestamp`, whichever is on. Each client writes an instant's fraction through `SERDE_FRACTION`, which each date feature defines
 - `indexmap`: Enables indexmap type support: `IndexMap` as a map, `IndexSet` as a list. It adds no dependency: the generated code names the types of the crate that declares them. With the feature off a type written `IndexMap<_, _>` or `IndexSet<_>` is refused at `exec_model_schema` with the feature named (`indexmap_feature_errors`), unless the crate declared a type of its own under the name above
 - `dart`: Enables Dart type generation with a JSON codec whose read calls each `preprocess` and refuses what `validate()` refuses, a `validationIssues()` on every type and a draft and a valid type for each model, and the Dart HTTP client
 - `swift`: Enables Swift type generation with a `Codable` codec, and `validate()` on every emitted type: the bounds and the checks, run as the Rust `validate()` runs them. `init(from:)` of each type calls it on the value it read and refuses what it refuses. The read of a type calls the functions a `preprocess` names, on the type and on a member, ahead of the value it builds
@@ -194,9 +195,9 @@ The crate uses optional features for minimal dependencies. A feature adds the ou
 
 **JSON Schema is no feature**: `json_schema()` and `json_schema_within()` are written for a type whose `enable` list holds `"jsonschema"` (`Enabled::jsonschema`), and every model type such a type holds lists the entry too, its document calling each held type's `json_schema_within`. The JSON Schema code compiles in every build. A crate that lists the entry on no type needs no `serde_json` for it.
 
-**Feature sets**: `web` (the default: `zod`, `typescript`), `mobile` (`dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `chrono`, `indexmap`, `arky`). Every push and pull request to `master` runs the gate, `just all`, with every feature on, then `just check-mix`, which compiles the library with each feature by itself and runs `tests/every_build_validation_tests.rs` in five builds. The scheduled Full Pipeline lints and tests every combination of the sets (`just lint-sets`, `just test-sets`) every third day; `just test` runs the powerset of the plain features locally. [testing.md](testing.md) lists each step
+**Feature sets**: `web` (the default: `zod`, `typescript`), `mobile` (`dart`, `swift`, `kotlin`) and `mongo` (`mongodb`, `indexmap`, `arky`); `chrono` and `jiff` belong to no set, and the powerset of the sets takes each as it is, never together. Every push and pull request to `master` runs the gate, `just all`, with every feature on but `chrono` and with every feature on but `jiff`, then `just check-mix`, which compiles the library with each feature by itself and runs `tests/every_build_validation_tests.rs` in five builds. The scheduled Full Pipeline lints and tests every combination of the sets (`just lint-sets`, `just test-sets`) every third day; `just test` runs the powerset of the plain features locally. [testing.md](testing.md) lists each step
 
-**Default configuration**: `zod`, `typescript` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in)
+**Default configuration**: `zod`, `typescript`, `jiff` (the `mongodb`, `bson`, `chrono`, `indexmap`, `dart`, `swift` and `kotlin` features are opt-in, `chrono` with the defaults off)
 
 ## TypeScript Generation Pattern
 
@@ -297,7 +298,8 @@ tixschema/
 │   │   ├── zod.rs                # Zod schema generation
 │   │   ├── jsonschema.rs         # JSON schema generation
 │   │   ├── object_id.rs          # ObjectId support
-│   │   ├── text_forms.rs         # The one form of a char and a chrono text, which each client reads and sends
+│   │   ├── jiff.rs               # jiff's TypeScript types and Zod schemas
+│   │   ├── text_forms.rs         # The one form of a char and a chrono or jiff text, which each client reads and sends
 │   │   ├── recovering_decode.rs  # enable: the entry points, the walkers, the two support libraries, the probes
 │   │   ├── recovering_decode/
 │   │   │   ├── enums.rs          # The walkers of an enum
@@ -309,7 +311,7 @@ tixschema/
 │   │   ├── swift.rs              # Swift types and their Codable codec
 │   │   ├── swift/
 │   │   │   ├── aliases.rs        # The names serde reads a variant and a member under beside the one it writes
-│   │   │   ├── forms.rs          # A char and a chrono text read and written in their one form
+│   │   │   ├── forms.rs          # A char and a chrono or jiff text read and written in their one form
 │   │   │   ├── preprocess.rs     # preprocess in the Swift read: the payload type, the calls, the keys taken
 │   │   │   ├── read.rs           # The two reads of every Swift type: its own, and the one that judges
 │   │   │   └── validate.rs       # validate() of every Swift type: bounds, checks, holders

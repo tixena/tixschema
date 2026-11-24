@@ -22,7 +22,8 @@
 //! to the text tixschema writes into each error, beside notes rustc words differently.
 
 // Every `.stderr` but the one in `foundation_refusals/const_argument_without_a_feature/`, whose
-// crate turns no feature on, was written with every feature on, the build the gate runs.
+// crate turns no feature on, was written with every feature on but one date feature, as the gate
+// builds.
 #![cfg(all(
     feature = "zod",
     feature = "typescript",
@@ -30,7 +31,7 @@
     feature = "swift",
     feature = "kotlin",
     feature = "mongodb",
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     feature = "indexmap"
 ))]
 
@@ -46,8 +47,22 @@ mod tests {
     use trybuild::TestCases;
 
     /// The features the cases are built with: the ones this file is compiled under.
+    #[cfg(feature = "chrono")]
     const FEATURES: &str =
         r#""zod", "typescript", "dart", "swift", "kotlin", "mongodb", "chrono", "indexmap""#;
+    /// The features the cases are built with: the ones this file is compiled under.
+    #[cfg(feature = "jiff")]
+    const FEATURES: &str =
+        r#""zod", "typescript", "dart", "swift", "kotlin", "mongodb", "jiff", "indexmap""#;
+
+    /// The date crates a case built with every feature depends on, beside tixschema.
+    #[cfg(feature = "chrono")]
+    const DATES: &str = "bson2 = { package = \"bson\", version = \"2.15\", features = \
+                         [\"chrono-0_4\"] }\nchrono = { version = \">=0.4.40\", features = \
+                         [\"serde\"] }\n";
+    /// The date crates a case built with every feature depends on, beside tixschema.
+    #[cfg(feature = "jiff")]
+    const DATES: &str = "bson2 = { package = \"bson\", version = \"2.15\" }\n";
 
     #[test]
     fn each_case_fails_with_the_errors_written_beside_it() {
@@ -204,8 +219,7 @@ mod tests {
     fn every_feature_dependencies() -> String {
         format!(
             "tixschema = {{ path = {:?}, default-features = false, features = [{FEATURES}] }}\n\
-             bson2 = {{ package = \"bson\", version = \"2.15\", features = [\"chrono-0_4\"] }}\n\
-             chrono = {{ version = \">=0.4.40\", features = [\"serde\"] }}\n\
+             {DATES}\
              serde = {{ version = \"1\", features = [\"derive\"] }}\n\
              serde_json = \"1\"\n",
             env!("CARGO_MANIFEST_DIR")

@@ -275,6 +275,15 @@ pub struct Timed {
     pub at: chrono::DateTime<chrono::Utc>,
 }
 
+/// A date that names a function.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Timed {
+    #[model_schema_prop(preprocess = ["unwrapped"])]
+    pub at: jiff::Timestamp,
+}
+
 /// `unnamed` for a payload that holds nothing, and any other payload as it is.
 fn or_unnamed(payload: Value) -> Value {
     if payload.is_null() {
@@ -654,7 +663,7 @@ fn a_member_is_read_from_what_its_functions_answer_in_the_way_it_was_read() {
 }
 
 /// A date is read from what its function answers through the text it is written as.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_date_is_read_from_what_its_function_answers_as_the_text_it_is_written_as() {
     holds(
@@ -1298,10 +1307,13 @@ fn every_enum_of_this_file_is_read_by_serde_through_its_functions() {
 }
 
 /// serde reads a date through the function the Swift read calls.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_date_is_read_by_serde_through_its_function() {
     let read: Timed =
         serde_json::from_value(json!({ "at": { "payload": "2023-11-14T22:13:20Z" } })).unwrap();
-    assert_eq!(read.at.timestamp(), 1_700_000_000);
+    assert_eq!(
+        serde_json::to_value(read.at).unwrap(),
+        json!("2023-11-14T22:13:20Z")
+    );
 }

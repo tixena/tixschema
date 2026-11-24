@@ -601,7 +601,12 @@ fn serialized(attrs: &[Attribute], held: &TokenStream) -> Built {
             .ok()
             .map(|module| syn::parse_quote! { #module::serialize })
     } else if parse_model_schema_prop_attributes(attrs).as_number {
-        Some(syn::parse_quote! { chrono::serde::ts_milliseconds::serialize })
+        #[cfg(not(feature = "jiff"))]
+        let hook = syn::parse_quote! { chrono::serde::ts_milliseconds::serialize };
+        #[cfg(feature = "jiff")]
+        let hook =
+            syn::parse_quote! { jiff::fmt::serde::timestamp::millisecond::required::serialize };
+        Some(hook)
     } else {
         None
     };

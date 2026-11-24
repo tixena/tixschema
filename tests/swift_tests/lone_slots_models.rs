@@ -12,6 +12,9 @@ use std::collections::HashMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use tixschema::model_schema;
 
@@ -78,11 +81,23 @@ pub struct LabelsByNumber(pub HashMap<u32, String>);
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Ticked(pub DateTime<Utc>);
 
+/// A date.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Ticked(pub Timestamp);
+
 /// A date under `as_number`, which serde writes as a number.
 #[cfg(feature = "chrono")]
 #[model_schema()]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TickedMillis(#[model_schema_prop(as_number)] pub DateTime<Utc>);
+
+/// A date under `as_number`, which serde writes as a number.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TickedMillis(#[model_schema_prop(as_number)] pub Timestamp);
 
 /// A tuple that holds a model.
 #[model_schema()]
@@ -137,6 +152,12 @@ pub struct StowedByNumber<Stowed>(pub HashMap<u32, Stowed>);
 #[model_schema(default_types(Stowed = String))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StowedStamp<Stowed>(pub (DateTime<Utc>, Stowed));
+
+/// A date beside the parameter.
+#[cfg(feature = "jiff")]
+#[model_schema(default_types(Stowed = String))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StowedStamp<Stowed>(pub (Timestamp, Stowed));
 
 /// A model with a rule beside the parameter.
 #[model_schema(default_types(Stowed = String))]

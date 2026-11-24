@@ -15,7 +15,7 @@ use super::wrapped_keys_models::{
     hailer_swift, hull_swift, lanyard_swift, logroll_swift, signal_swift, stowed_taskforce_swift,
     taskforce_swift, unhashed_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::wrapped_keys_models::{postmark_swift, regatta_swift, stowed_regatta_swift};
 
 /// The broken rules of a key's brand, each placed under the path of the key's entry.
@@ -28,6 +28,17 @@ const KEY_PLACED: &str = concat!(
     r#""'\(at).\(said[said.index(after: said.startIndex)..<end])'\(said[said.index(after: "#,
     r#"end)...])" } }()"#,
 );
+
+/// What Swift appends to the text its formatter writes of a date key, as the date feature's serde
+/// writes the fraction: no `.000` on whole seconds under chrono, and the fewest digits under jiff.
+#[cfg(feature = "chrono")]
+const FRACTION: &str = ".replacingOccurrences(of: \".000Z\", with: \"Z\")";
+
+/// What Swift appends to the text its formatter writes of a date key, as the date feature's serde
+/// writes the fraction: no `.000` on whole seconds under chrono, and the fewest digits under jiff.
+#[cfg(feature = "jiff")]
+const FRACTION: &str = ".replacingOccurrences(of: \"(\\\\.[0-9]*?)0+Z$\", with: \"$1Z\", options: \
+                        .regularExpression).replacingOccurrences(of: \".Z\", with: \"Z\")";
 
 /// A brand over a string with a check, which a brand with a check holds.
 #[model_schema(check = ["turning"])]
@@ -77,7 +88,7 @@ fn a_brand_that_derives_hash_declares_hashable_and_one_that_does_not_keeps_its_t
     assert!(!unhashed_swift::swift_definition().contains("Hashable"));
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_brand_over_a_date_declares_hashable() {
     holds(
@@ -174,7 +185,7 @@ fn a_map_of_models_under_a_brand_is_walked_by_the_inner_text_and_in_its_order() 
     );
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn a_brand_over_a_date_and_an_alias_of_one_declare_the_formatters_of_a_date_key() {
     for swift in [
@@ -189,12 +200,12 @@ fn a_brand_over_a_date_and_an_alias_of_one_declare_the_formatters_of_a_date_key(
                 "guard let key = ((Self.isoFormatterForKeys.date(from: wireKey) ?? \
                  Self.isoWholeFormatterForKeys.date(from: wireKey)).map { Postmark(value: $0) }) \
                  else {",
-                "let wireKey = Self.isoFormatterForKeys.string(from: key.value)\
-                 .replacingOccurrences(of: \".000Z\", with: \"Z\"); ",
+                &format!(
+                    "let wireKey = Self.isoFormatterForKeys.string(from: key.value){FRACTION}; "
+                ),
                 "guard let key = Self.isoFormatterForKeys.date(from: wireKey) ?? \
                  Self.isoWholeFormatterForKeys.date(from: wireKey) else {",
-                "let wireKey = Self.isoFormatterForKeys.string(from: key)\
-                 .replacingOccurrences(of: \".000Z\", with: \"Z\"); ",
+                &format!("let wireKey = Self.isoFormatterForKeys.string(from: key){FRACTION}; "),
             ],
         );
     }

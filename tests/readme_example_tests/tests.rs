@@ -3,6 +3,8 @@
 #![cfg(feature = "typescript")]
 
 mod services;
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tixschema::model_schema;
@@ -64,6 +66,7 @@ fn readme() -> &'static str {
         include_str!("../../docs/guide/examples.md"),
         include_str!("../../docs/guide/object-id.md"),
         include_str!("../../docs/guide/chrono.md"),
+        include_str!("../../docs/guide/jiff.md"),
         include_str!("../../docs/guide/serde-attributes.md")
     )
 }
@@ -384,6 +387,66 @@ fn test_the_chrono_example_is_declarable_and_shows_what_it_emits() {
             "  updated_at: z.union([z.null().transform(() => undefined), z.union([z.date(), z.string(), z.number()]).pipe(z.coerce.date()), z.undefined()]).prefault(undefined),",
         ],
     );
+}
+
+#[test]
+#[cfg(feature = "jiff")]
+fn test_the_jiff_example_is_declarable_and_shows_what_it_emits() {
+    use jiff::Timestamp;
+    use jiff::civil::{Date, DateTime, Time};
+
+    #[model_schema()]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Event {
+        pub created_at: Timestamp,
+        pub date: Date,
+        #[model_schema_prop(as_number)]
+        pub epoch_ms: Timestamp,
+        pub local_datetime: DateTime,
+        pub name: String,
+        pub time: Time,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub updated_at: Option<Timestamp>,
+    }
+
+    assert_readme_declares_and_shows(
+        "    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub updated_at: Option<Timestamp>,\n",
+        &Event::ts_definition(),
+        &[
+            "export type EventDraft = {",
+            "  name: string;",
+            "  date: string;",
+            "  time: string;",
+            "  local_datetime: string;",
+            "  created_at: Date;",
+            "  epoch_ms: number;",
+            "  updated_at: Date | undefined;",
+            "};",
+        ],
+    );
+    let event = EventDraft {
+        created_at: "2026-11-20T12:00:00.5Z".parse().unwrap(),
+        date: civil::date(2026, 11, 20),
+        epoch_ms: "2026-11-20T12:00:00.123Z".parse().unwrap(),
+        local_datetime: civil::date(2026, 11, 20).at(8, 0, 0, 0),
+        name: "launch".to_owned(),
+        time: civil::time(8, 0, 0, 0),
+        updated_at: None,
+    };
+    let written = serde_json::to_string(&event).unwrap();
+    for shown in [
+        r#""created_at":"2026-11-20T12:00:00.5Z""#,
+        r#""epoch_ms":1795176000123"#,
+    ] {
+        assert!(
+            written.contains(shown),
+            "serde no longer writes {shown}: {written}"
+        );
+        assert!(
+            include_str!("../../docs/guide/jiff.md").contains(&format!("`{shown}`")),
+            "the guide no longer shows {shown}"
+        );
+    }
 }
 
 /// The README declares this, and the block beside it is the emission whole — held as one block

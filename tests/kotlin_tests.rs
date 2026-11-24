@@ -130,10 +130,23 @@ mod aliased;
 #[path = "kotlin_tests/text_forms_models.rs"]
 mod text_forms_models;
 
+/// A `char` and a jiff date, time and date and time held in each place, and what serde, Zod and
+/// the Kotlin read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "jiff"))]
+#[path = "kotlin_tests/jiff_text_forms_models.rs"]
+mod text_forms_models;
+
 /// What the Kotlin emitter writes for a `char` and a chrono date, time and date and time.
 #[cfg(test)]
 #[cfg(all(feature = "kotlin", feature = "chrono"))]
 #[path = "kotlin_tests/text_forms.rs"]
+mod text_forms;
+
+/// What the Kotlin emitter writes for a `char` and a jiff date, time and date and time.
+#[cfg(test)]
+#[cfg(all(feature = "kotlin", feature = "jiff"))]
+#[path = "kotlin_tests/jiff_text_forms.rs"]
 mod text_forms;
 
 /// `()` held in each place a value is, and a tuple struct of no slot beside it.

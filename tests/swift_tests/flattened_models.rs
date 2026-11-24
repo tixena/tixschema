@@ -22,6 +22,9 @@ use alloc::collections::BTreeMap;
 
 #[cfg(feature = "chrono")]
 use chrono::{DateTime, Utc};
+
+#[cfg(feature = "jiff")]
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tixschema::model_schema;
@@ -54,7 +57,7 @@ pub const WORMING: &str = r#"{"north":{"mark":"x"}}"#;
 pub const FAKING: &str = r#"{"North":{"mark":"x"}}"#;
 
 /// What [`Serving`] is read from.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 pub const SERVING: &str = r#"{"north":"2024-01-02T03:04:05.678Z"}"#;
 
 /// What [`Snaking`] is read from.
@@ -205,6 +208,15 @@ pub struct Faking {
 pub struct Serving {
     #[serde(flatten)]
     pub rest: BTreeMap<String, DateTime<Utc>>,
+}
+
+/// A map of dates, which Swift reads from the text serde writes.
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Serving {
+    #[serde(flatten)]
+    pub rest: BTreeMap<String, Timestamp>,
 }
 
 /// A map that names a function, which serde hands every key.
@@ -530,7 +542,7 @@ fn serde_hands_a_map_alone_every_key() {
 }
 
 /// A map of dates alone holds every key.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn serde_hands_a_map_of_dates_alone_every_key() {
     assert_eq!(written(&read::<Serving>(SERVING).rest), SERVING);

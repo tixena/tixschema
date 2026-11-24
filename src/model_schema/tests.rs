@@ -95,6 +95,14 @@ macro_rules! refused_beside_serde {
     }};
 }
 
+/// What `as_number` on a member that is not the date feature's instant is refused with.
+#[cfg(not(feature = "jiff"))]
+const AS_NUMBER_REFUSAL: &str =
+    "#[model_schema_prop(as_number)] requires a chrono DateTime<Tz> field";
+/// What `as_number` on a member that is not the date feature's instant is refused with.
+#[cfg(feature = "jiff")]
+const AS_NUMBER_REFUSAL: &str = "#[model_schema_prop(as_number)] requires a jiff Timestamp field";
+
 /// The variants of [`rendered_discriminated_union`]'s enum, in the order they are declared.
 const DECLARED_VARIANTS: [&str; 6] = ["Upload", "Generate", "Delete", "Rename", "Move", "Archive"];
 
@@ -503,8 +511,7 @@ fn as_number_ok_when_flag_unset() {
 #[test]
 fn as_number_err_on_non_datetime_field() {
     let err = validate_as_number_flag(&FieldDefType::String, true).unwrap_err();
-    assert!(err.contains("as_number"));
-    assert!(err.contains("DateTime<Tz>"));
+    assert_eq!(err, AS_NUMBER_REFUSAL);
 }
 
 /// The refusal of `as_number` on a date the hook it hangs reads no value of, `written` naming it.
@@ -596,6 +603,93 @@ fn a_bound_on_a_date_under_as_number_is_refused_as_the_milliseconds_it_is_writte
     assert!(
         include_str!("../../docs/guide/chrono.md").contains(&answered),
         "the README no longer quotes: {answered}"
+    );
+}
+
+/// The refusal of `as_number` on a jiff date the hook it hangs reads no value of, `written`
+/// naming it.
+#[cfg(feature = "jiff")]
+fn jiff_as_number_hook_refusal(written: &str) -> String {
+    format!(
+        "model_schema: field `stamp`: `#[model_schema_prop(as_number)]` writes and reads the field \
+         through jiff's `millisecond::required` hook, which takes a `jiff::Timestamp`, or an \
+         `Option<jiff::Timestamp>` through `millisecond::optional`, and the field is a \
+         `{written}`. Declare the field as one of those two, or write and read it through \
+         functions of your own: a `with`, or a `serialize_with` beside a `deserialize_with`."
+    )
+}
+
+/// `as_number` hangs jiff's millisecond hook on a `Timestamp` and an `Option` of one, and is
+/// refused on any other date the field holds where its author reads and writes it through no
+/// function of their own.
+#[cfg(feature = "jiff")]
+#[test]
+fn as_number_is_refused_on_a_timestamp_the_millisecond_hook_reads_no_value_of() {
+    for (field, written) in [
+        ("pub stamp: Vec<Timestamp>", "Vec<Timestamp>"),
+        ("pub stamp: Box<jiff::Timestamp>", "Box<jiff::Timestamp>"),
+    ] {
+        assert_eq!(
+            refusal_texts(&expansion_over(&format!(
+                "#[derive(Serialize, Deserialize)] pub struct Stamped {{ \
+                 #[model_schema_prop(as_number)] {field} }}"
+            ))),
+            [jiff_as_number_hook_refusal(written)],
+            "for `{field}`"
+        );
+    }
+    let answered = format!("error: {}", jiff_as_number_hook_refusal("Vec<Timestamp>"));
+    assert!(
+        include_str!("../../docs/guide/jiff.md").contains(&answered),
+        "the guide no longer quotes: {answered}"
+    );
+    for field in [
+        "pub stamp: Timestamp",
+        "pub stamp: jiff::Timestamp",
+        "#[serde(skip_serializing_if = \"Option::is_none\")] pub stamp: Option<Timestamp>",
+        "#[serde(serialize_with = \"shown\", deserialize_with = \"read\")] pub stamp: \
+         Vec<Timestamp>",
+    ] {
+        let expanded = expansion_over(&format!(
+            "#[derive(Serialize, Deserialize)] pub struct Stamped {{ \
+             #[model_schema_prop(as_number)] {field} }}"
+        ));
+        assert_eq!(
+            compile_error_count(&expanded),
+            0,
+            "for `{field}`, got: {expanded}"
+        );
+    }
+}
+
+/// A bound on a `Timestamp` under `as_number` is refused in the words of the epoch milliseconds
+/// it is written as, and one on any other in the words of the text it is written as.
+#[cfg(feature = "jiff")]
+#[test]
+fn a_bound_on_a_timestamp_under_as_number_is_refused_as_the_milliseconds_it_is_written_as() {
+    let refused = refusal_texts(&expansion_over(
+        "pub struct Stamped { #[model_schema_prop(as_number, minimum = 0)] pub stamp: \
+         Timestamp, #[model_schema_prop(maximum = 2)] pub plain: Timestamp }",
+    ));
+    assert_eq!(
+        refused,
+        [
+            "model_schema: field `stamp`: `minimum` cannot apply to `jiff::Timestamp` under \
+             `as_number` \u{2014} no surface reads a bound beside a date, the epoch milliseconds \
+             `as_number` writes it as among them: the constraint would reach neither Zod, nor the \
+             JSON schema, nor the generated validator. Drop it, or carry the milliseconds in an \
+             `i64` field, which `minimum` and `maximum` bound.",
+            "model_schema: field `plain`: `maximum` cannot apply to `jiff::Timestamp` \u{2014} \
+             this crate writes that type's schema whole, not as the plain string or number a \
+             bound is spelled against, and no surface reads a bound beside it: the constraint \
+             would reach neither Zod, nor the JSON schema, nor the generated validator. Drop it, \
+             or carry the value in a `String` field the bound can measure.",
+        ]
+    );
+    let answered = format!("error: {}", refused[0]);
+    assert!(
+        include_str!("../../docs/guide/jiff.md").contains(&answered),
+        "the guide no longer quotes: {answered}"
     );
 }
 
@@ -9406,7 +9500,7 @@ fn the_field_prop_misuses_leave_by_the_guard_channel() {
         ),
         (
             quote::quote! { #[model_schema_prop(as_number)] name: u32 },
-            "requires a chrono DateTime<Tz> field",
+            AS_NUMBER_REFUSAL,
         ),
         (
             quote::quote! { #[model_schema_prop(as = String, preprocess = ["trim"])] name: String },
@@ -10011,15 +10105,15 @@ fn a_refused_brand_inner_points_at_the_written_inner() {
 }
 
 /// Every shape [`super::branded_json_inner`] resolves to, so the dispatch is covered whole. The
-/// `Slot` and `Chrono` shapes build their bodies through [`super::branded_slot_json_schema`] and
-/// [`super::branded_chrono_schema`], which is where a stray `cfg` attribute would land unseen.
+/// `Slot` and `Text` shapes build their bodies through [`super::branded_slot_json_schema`] and
+/// [`super::branded_text_schema`], which is where a stray `cfg` attribute would land unseen.
 fn branded_json_inners() -> Vec<super::BrandedJsonInner> {
     let composite: syn::Type = syn::parse_quote!(Vec<String>);
     vec![
-        #[cfg(feature = "chrono")]
-        super::BrandedJsonInner::Chrono(super::ChronoText::Format("date-time")),
-        #[cfg(feature = "chrono")]
-        super::BrandedJsonInner::Chrono(super::ChronoText::Pattern("^\\d$".to_owned())),
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        super::BrandedJsonInner::Text(super::TextSchema::Format("date-time")),
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        super::BrandedJsonInner::Text(super::TextSchema::Pattern("^\\d$".to_owned())),
         #[cfg(feature = "mongodb")]
         super::BrandedJsonInner::ObjectId,
         super::BrandedJsonInner::Scalar("string".to_owned()),
@@ -15845,7 +15939,7 @@ fn an_index_map_written_with_the_feature_off_is_refused_with_the_feature_named()
 fn the_readme_shows_the_refusal_of_an_index_map_written_with_the_feature_off() {
     let shown = format!(
         "error: {}\n --> src/main.rs:8:15",
-        super::gated_name_message("IndexMap", "indexmap", "a map")
+        super::gated_name_message(gated("IndexMap"))
     );
     assert!(
         include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
@@ -15941,7 +16035,6 @@ fn a_type_of_the_crates_own_keeps_a_name_the_indexmap_feature_reads() {
 
 /// The sentence a name a feature reads earns with the feature off, told as the `compile_error!` it
 /// is, and the source text its span points at.
-#[cfg(any(not(feature = "chrono"), not(feature = "mongodb")))]
 fn assert_refused_naming_the_feature(source: &str, refused: &str, sentence: &str) {
     let refusals = super::gated_name_errors(&syn::parse_str(source).unwrap());
     assert_eq!(refusals.len(), 1, "for {source}: {refusals:?}");
@@ -15957,35 +16050,126 @@ fn assert_refused_naming_the_feature(source: &str, refused: &str, sentence: &str
     );
 }
 
-#[cfg(not(feature = "chrono"))]
+/// The table's entry for `name`.
+#[cfg(any(not(feature = "indexmap"), not(feature = "mongodb"), feature = "jiff"))]
+fn gated(name: &str) -> &'static super::GatedName {
+    super::GATED_NAMES
+        .iter()
+        .find(|gated| gated.name == name)
+        .unwrap()
+}
+
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 #[test]
 fn a_chrono_type_written_with_the_feature_off_is_refused_with_the_feature_named() {
-    for (field, name) in [
-        ("NaiveDate", "NaiveDate"),
-        ("NaiveTime", "NaiveTime"),
-        ("NaiveDateTime", "NaiveDateTime"),
-        ("DateTime<Utc>", "DateTime"),
-        ("Option<chrono::NaiveDate>", "NaiveDate"),
-        ("Vec<DateTime<chrono::Utc>>", "DateTime"),
+    for (field, name, read_as) in [
+        ("NaiveDate", "NaiveDate", "a date"),
+        ("NaiveTime", "NaiveTime", "a time"),
+        ("NaiveDateTime", "NaiveDateTime", "a date and time"),
+        ("DateTime<Utc>", "DateTime", "an instant"),
+        ("Option<chrono::NaiveDate>", "NaiveDate", "a date"),
+        ("Vec<DateTime<chrono::Utc>>", "DateTime", "an instant"),
     ] {
         assert_refused_naming_the_feature(
             &format!("pub struct Visit {{ pub day: {field} }}"),
             name,
             &format!(
-                "`{name}` is read as a date or a time under tixschema's `chrono` feature: add \
-                 `features = [\"chrono\"]` to the `tixschema` dependency"
+                "`{name}` is read as {read_as} under tixschema's `chrono` feature: add `features = \
+                 [\"chrono\"]` to the `tixschema` dependency"
+            ),
+        );
+    }
+}
+
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
+#[test]
+fn a_jiff_type_written_with_the_feature_off_is_refused_with_the_feature_named() {
+    for (field, name, read_as) in [
+        ("Timestamp", "Timestamp", "an instant"),
+        ("jiff::Zoned", "Zoned", "a date and time with its time zone"),
+        (
+            "Option<ZonedDateTime>",
+            "ZonedDateTime",
+            "a date and time with its time zone",
+        ),
+    ] {
+        assert_refused_naming_the_feature(
+            &format!("pub struct Visit {{ pub at: {field} }}"),
+            name,
+            &format!(
+                "`{name}` is read as {read_as} under tixschema's `jiff` feature: add `features = \
+                 [\"jiff\"]` to the `tixschema` dependency"
+            ),
+        );
+    }
+}
+
+#[cfg(feature = "jiff")]
+#[test]
+fn a_chrono_type_written_under_jiff_is_refused_naming_the_jiff_type() {
+    for (field, name, read_as, counterpart) in [
+        ("NaiveDate", "NaiveDate", "a date", "jiff::civil::Date"),
+        ("NaiveTime", "NaiveTime", "a time", "jiff::civil::Time"),
+        (
+            "NaiveDateTime",
+            "NaiveDateTime",
+            "a date and time",
+            "jiff::civil::DateTime",
+        ),
+        ("DateTime<Utc>", "DateTime", "an instant", "jiff::Timestamp"),
+        (
+            "Option<chrono::NaiveDate>",
+            "NaiveDate",
+            "a date",
+            "jiff::civil::Date",
+        ),
+        (
+            "Vec<DateTime<chrono::Utc>>",
+            "DateTime",
+            "an instant",
+            "jiff::Timestamp",
+        ),
+    ] {
+        assert_refused_naming_the_feature(
+            &format!("pub struct Visit {{ pub day: {field} }}"),
+            name,
+            &format!(
+                "`{name}` is read as {read_as} under tixschema's `chrono` feature, and `jiff` is \
+                 on: declare `{counterpart}`, or turn `jiff` off and `chrono` on"
+            ),
+        );
+    }
+}
+
+#[cfg(feature = "chrono")]
+#[test]
+fn a_jiff_type_written_under_chrono_is_refused_naming_the_chrono_type() {
+    assert_refused_naming_the_feature(
+        "pub struct Visit { pub at: jiff::Timestamp }",
+        "Timestamp",
+        "`Timestamp` is read as an instant under tixschema's `jiff` feature, and `chrono` is on: \
+         declare `chrono::DateTime<Utc>`, or turn `chrono` off and `jiff` on",
+    );
+    for name in ["Zoned", "ZonedDateTime"] {
+        assert_refused_naming_the_feature(
+            &format!("pub struct Visit {{ pub at: Option<{name}> }}"),
+            name,
+            &format!(
+                "`{name}` is read as a date and time with its time zone under tixschema's `jiff` \
+                 feature, and `chrono` is on: `chrono` has no type that takes its place, so turn \
+                 `chrono` off and `jiff` on"
             ),
         );
     }
 }
 
 /// The README prints each refusal as the compiler does, held here to what the guard says.
-#[cfg(not(feature = "chrono"))]
+#[cfg(feature = "jiff")]
 #[test]
-fn the_readme_shows_the_refusal_of_a_chrono_type_written_with_the_feature_off() {
+fn the_readme_shows_the_refusal_of_a_chrono_type_written_under_jiff() {
     let shown = format!(
         "error: {}\n --> src/main.rs:8:14",
-        super::gated_name_message("NaiveDate", "chrono", "a date or a time")
+        super::gated_name_message(gated("NaiveDate"))
     );
     assert!(
         include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
@@ -15998,7 +16182,7 @@ fn the_readme_shows_the_refusal_of_a_chrono_type_written_with_the_feature_off() 
 fn the_readme_shows_the_refusal_of_an_object_id_written_with_the_feature_off() {
     let shown = format!(
         "error: {}\n --> src/main.rs:8:13",
-        super::gated_name_message("ObjectId", "mongodb", "a MongoDB ObjectId")
+        super::gated_name_message(gated("ObjectId"))
     );
     assert!(
         include_str!("../../docs/guide/troubleshooting.md").contains(&shown),
@@ -16055,12 +16239,14 @@ fn a_type_of_the_crates_own_keeps_a_name_the_mongodb_feature_reads() {
 fn a_table_of_gated_names_refuses_each_name_with_its_own_feature() {
     static TABLE: &[super::GatedName] = &[
         super::GatedName {
+            counterpart: None,
             feature: "dates",
             least_arguments: 0,
             name: "Stamp",
             read_as: "a date",
         },
         super::GatedName {
+            counterpart: None,
             feature: "zones",
             least_arguments: 1,
             name: "Zoned",

@@ -639,7 +639,7 @@ The remaining refusals are all one rule: a JSON object key is a string, and `ser
 
 All of them are covered under [Compilation Errors](troubleshooting.md#compilation-errors), with the exact diagnostic each produces.
 
-Every other key is neither open nor enumerable, and none of them is refused: serde stringifies each one into a key for you. serde writes the object with the key's string form for its keys: `7` becomes `"7"`, `true` becomes `"true"`, a chrono `NaiveDate` its ISO rendering. The JSON schema describes such a map at every position, [flattened](flatten.md#intersection-types-serdeflatten) or under a key, as it describes a map keyed by a `String`, its values in `additionalProperties`, and names its keys by that text in `propertyNames`:
+Every other key is neither open nor enumerable, and none of them is refused: serde stringifies each one into a key for you. serde writes the object with the key's string form for its keys: `7` becomes `"7"`, `true` becomes `"true"`, a chrono `NaiveDate` or a jiff `civil::Date` its ISO rendering. The JSON schema describes such a map at every position, [flattened](flatten.md#intersection-types-serdeflatten) or under a key, as it describes a map keyed by a `String`, its values in `additionalProperties`, and names its keys by that text in `propertyNames`:
 
 | key | `propertyNames` |
 |-----|-----------------|
@@ -680,7 +680,7 @@ A JSON object is written with its keys in an order. The three maps describe as t
 `indexmap::IndexMap<K, V>` and the list beside it, `indexmap::IndexSet<T>`, are read under the `indexmap` feature. The feature adds no dependency to tixschema: the generated code names the types of the crate that declares them, so that crate lists `indexmap` itself, with its `serde` feature.
 
 ```toml
-tixschema = { version = "0.6", features = ["indexmap"] }
+tixschema = { version = "0.7", features = ["indexmap"] }
 indexmap = { version = "2", features = ["serde"] }
 ```
 

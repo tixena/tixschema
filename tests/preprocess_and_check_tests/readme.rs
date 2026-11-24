@@ -422,6 +422,7 @@ fn chapter(name: &str) -> Option<&'static str> {
         "enums.md" => Some(include_str!("../../docs/guide/enums.md")),
         "flatten.md" => Some(include_str!("../../docs/guide/flatten.md")),
         "generics-and-brands.md" => Some(include_str!("../../docs/guide/generics-and-brands.md")),
+        "jiff.md" => Some(include_str!("../../docs/guide/jiff.md")),
         "kotlin.md" => Some(include_str!("../../docs/guide/kotlin.md")),
         "models.md" => Some(include_str!("../../docs/guide/models.md")),
         "nested-recursive-and-aliased-types.md" => Some(include_str!(

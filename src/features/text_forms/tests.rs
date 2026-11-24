@@ -98,3 +98,73 @@ fn each_chrono_text_is_read_as_zod_reads_it_and_sent_as_serde_writes_it() {
         assert_eq!(form.sends(text).as_deref(), sent, "{form:?} sends {text}");
     }
 }
+
+#[cfg(feature = "jiff")]
+#[test]
+fn each_jiff_text_is_read_as_zod_reads_it_and_sent_as_serde_writes_it() {
+    for (form, text, read, sent) in [
+        (TextForm::Date, "2024-01-05", true, Some("2024-01-05")),
+        (TextForm::Date, "2026-11-20T00:00:00", false, None),
+        (TextForm::Date, "2024-1-5", false, None),
+        (TextForm::Time, "10:20:30", true, Some("10:20:30")),
+        (TextForm::Time, "10:20:30.500", true, Some("10:20:30.5")),
+        (TextForm::Time, "10:20:30.000", true, Some("10:20:30")),
+        (TextForm::Time, "10:20:30.123", true, Some("10:20:30.123")),
+        (TextForm::Time, "10:20", true, Some("10:20:00")),
+        (TextForm::Time, "10:20:30Z", false, None),
+        (
+            TextForm::DateTime,
+            "2024-01-05T10:20:30",
+            true,
+            Some("2024-01-05T10:20:30"),
+        ),
+        (
+            TextForm::DateTime,
+            "2024-01-05 10:20:30",
+            true,
+            Some("2024-01-05T10:20:30"),
+        ),
+        (
+            TextForm::DateTime,
+            "2024-01-05T10:20",
+            true,
+            Some("2024-01-05T10:20:00"),
+        ),
+        (
+            TextForm::DateTime,
+            "2024-01-05 10:20",
+            true,
+            Some("2024-01-05T10:20:00"),
+        ),
+        (
+            TextForm::DateTime,
+            "2024-01-05T10:20:30.500",
+            true,
+            Some("2024-01-05T10:20:30.5"),
+        ),
+        (TextForm::DateTime, "2024-01-05T10:20:30.000Z", false, None),
+        (
+            TextForm::Zoned,
+            "2024-01-05T10:20:30.500Z",
+            true,
+            Some("2024-01-05T10:20:30.500Z"),
+        ),
+        (
+            TextForm::Named,
+            "2026-11-20T08:00:00-04:00[America/Santo_Domingo]",
+            true,
+            Some("2026-11-20T08:00:00-04:00[America/Santo_Domingo]"),
+        ),
+        (
+            TextForm::Named,
+            "2026-11-20T12:00:00+00:00[UTC]",
+            true,
+            Some("2026-11-20T12:00:00+00:00[UTC]"),
+        ),
+        (TextForm::Named, "2026-11-20T08:00:00-04:00", false, None),
+        (TextForm::Named, "hello", false, None),
+    ] {
+        assert_eq!(reads(form, text), read, "{form:?} reads {text}");
+        assert_eq!(form.sends(text).as_deref(), sent, "{form:?} sends {text}");
+    }
+}

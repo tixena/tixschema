@@ -132,6 +132,12 @@ pub(super) fn hashable(value: &FieldDef) -> bool {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveTime
         | FieldDefType::NaiveDateTime => true,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => true,
         #[cfg(feature = "mongodb")]
         FieldDefType::ObjectId => true,
         FieldDefType::StringLiteral(_)

@@ -311,8 +311,8 @@ the consumer's view; this is what a change has to keep.
   reads each payload under kotlinc with both `Json`s, beside serde's read and what Zod answers
   under node; the rows of `run_kotlin_flattened.rs` that hold a key serde reads past are pinned to
   the Kotlin read, the Zod read.
-- **A `char` and a chrono date, time and date and time are read in their one form, and written
-  in the form serde writes**, by `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`,
+- **A `char` and a chrono or jiff date, time and date and time are read in their one form, and
+  written in the form serde writes**, by `src/features/kotlin/texts.rs`. Kotlin holds each as a `String`,
   and `TextForm` (`src/features/text_forms.rs`, section 14) names its form. `texts::serializer`
   declares, once per item and form, `object KotlinText{N}{Crate} : KSerializer<String>` into the queue
   the tuple wrappers are written from (`KOTLIN_TEXTS`, cleared with them), which throws
@@ -322,14 +322,19 @@ the consumer's view; this is what a change has to keep.
   the regexes of Zod 4.6.5. Where serde and Zod part on a date, the read follows Zod: serde reads
   more forms than Zod, years outside 0000 to 9999 and leap seconds among them, and refuses a date
   and time under `Z` or with no seconds, which Zod reads. The write drops that `Z`
-  (`TextForm::unzoned`), writes the seconds (`TextForm::unsecond`), and throws in the words of
+  (`TextForm::unzoned`), writes the `T` jiff writes where jiff reads a space
+  (`TextForm::spaced`), writes the seconds (`TextForm::unsecond`), drops the trailing zeros of a
+  jiff fraction (`TextForm::trimmed`), and throws in the words of
   the read for a text that is then not of `TextForm::sent`. A `DateTime<Tz>` held as its text is
   `TextForm::Zoned`, or `TextForm::Offset` where its zone is not `Utc` (`FieldDef::keeps_offset`,
   read from the zone the type names): read as any text, as Zod reads any text a JavaScript
   `Date` reads, and written through `java.time.OffsetDateTime.parse` as chrono writes it, in UTC
   for `Zoned` and in the offset it was handed for `Offset`, with whole seconds, a fraction of
   three, six or nine digits only where there is one, and `Z` for no offset; `expected a date and
-  time with its zone, found "x"` for a text that does not parse.
+  time with its zone, found "x"` for a text that does not parse. A jiff `Timestamp` is
+  `TextForm::Zoned` too, written in UTC with the fraction in its fewest digits, as jiff writes it,
+  and a jiff `ZonedDateTime` is `TextForm::Named`, read and written as the one text jiff writes,
+  its zone named.
   - Where the plugin reads, the declaration names the serializer. `read::plugin_read` writes
     `@Serializable(with = KotlinText{N}{Crate}::class)` at each place `texts::declared` finds a form, the
     value itself, inside a list, a nullable, a map's key and value, a type argument, a range's
@@ -352,7 +357,8 @@ the consumer's view; this is what a change has to keep.
     (`kotlin_header_out_decode`). `run_kotlin_service_forms.rs` reads a reply of a date and a
     header of a `char` under kotlinc.
   - `tests/kotlin_tests/text_forms_models.rs` holds `TEXT_FORMS`, what serde, Zod and the Kotlin,
-    Dart and Swift reads answer of each payload of a `char` and of each chrono type in each place.
+    Dart and Swift reads answer of each payload of a `char` and of each chrono type in each place;
+    `tests/wire_forms_tests/models.rs` holds `WIRE_FORMS`, which has the jiff rows.
     `tests/kotlin_tests/text_forms.rs` pins the text, `run_kotlin_text_forms.rs` reads each payload
     under kotlinc, `tests/generic_types_tests/declarations.rs` holds Zod to the table under `node`,
     and `src/features/kotlin/tests/texts.rs` pins each shape and each limit.
@@ -369,7 +375,8 @@ the consumer's view; this is what a change has to keep.
   It reads the element through `decodeJsonElement()` and throws `SerializationException("invalid
   type: string \"7\", expected i64")` for a string primitive, in the words serde uses with the
   Rust type of the member (`a boolean` for a `bool`, `a unix timestamp in milliseconds` under
-  `as_number`), and hands anything else to the library's serializer. The places are the text
+  `as_number` and chrono, `an integer number of milliseconds from the Unix epoch` under jiff), and
+  hands anything else to the library's serializer. The places are the text
   forms': `texts::found` walks them (`Annotated::numbers` names the serializer where the plugin
   reads, `kotlin_serializer_expr` composes it where the emitter writes the read), and a map's key
   is the one place it is skipped (`texts::found`'s `key` flag, `key_serializer_expr`), since JSON

@@ -1,8 +1,8 @@
-//! A `char` and a chrono date, time and date and time read by the emitted Dart types under the
+//! A `char` and a date, time and date and time read by the emitted Dart types under the
 //! Dart SDK: each payload of [`TEXT_FORMS`] is read, or refused with `FormatException`, where the
 //! table states.
 
-#![cfg(all(feature = "dart", feature = "chrono"))]
+#![cfg(all(feature = "dart", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 

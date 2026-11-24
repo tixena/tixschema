@@ -62,7 +62,7 @@
 //! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | any |
 //! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | none; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |
 //! | `MongoDB` typed paths, filters, updates and operations | `enable = ["decode_with", "mongodb"]` and `tixschema::mongodb_foundation!()`, giving `T::MONGO_FIELDS`, `T::find_one`, `T::find`, `T::count`, `value.insert_one`, `T::update_one`, `T::delete_one` and their siblings | `mongodb` |
-//! | `ObjectId` fields, chrono dates and times, `IndexMap` and `IndexSet` | a field of that type | `mongodb`, `chrono`, `indexmap` |
+//! | `ObjectId` fields, jiff or chrono dates and times, `IndexMap` and `IndexSet` | a field of that type | `mongodb`, `jiff` (a default) or `chrono`, `indexmap` |
 //! | Conversions to and from arky's frontmatter `Value` | `enable = ["arky"]`, giving `TryFrom` in both directions | `arky` |
 //! | A service: the trait, its messages and its fault type | [`#[service_schema]`](attr.service_schema.html) and [`#[service_schema_op]`](attr.service_schema_op.html) on a trait | none |
 //! | Rust dispatchers and clients for `amqp_rpc`, `http_rest` and `ws_rpc` | `#[service_schema(transports = [...])]`, then the `{service}_{transport}_dispatcher!()` and `{service}_{transport}_client!()` macros it writes, and `{service}_amqp_rpc_server!()` | none |
@@ -86,7 +86,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! tixschema = "0.6"
+//! tixschema = "0.7"
 //! serde = { version = "1", features = ["derive"] }
 //! serde_json = "1"
 //! ```
@@ -733,12 +733,13 @@ fn main() {
 //!
 //! # Features
 //!
-//! The default is `web`. Three sets group the plain features: `web` is `zod` and `typescript`;
-//! `mobile` is `dart`, `swift` and `kotlin`; `mongo` is `mongodb`, `chrono`, `indexmap` and
-//! `arky`. `mongodb` turns on `bson`. A feature says what tixschema can generate, and a type's `enable` list says
-//! what it generates for that type. JSON Schema is no feature: a type that lists
-//! `enable = ["jsonschema"]` gets `T::json_schema()`, and the crate that declares it lists
-//! `serde_json`.
+//! The default is `web` and `jiff`. Three sets group the plain features: `web` is `zod` and
+//! `typescript`; `mobile` is `dart`, `swift` and `kotlin`; `mongo` is `mongodb`, `indexmap` and
+//! `arky`. `mongodb` turns on `bson`. `jiff` and `chrono` read the date and time types, and are
+//! never on together: a crate that names `chrono` sets `default-features = false`. A feature says
+//! what tixschema can generate, and a type's `enable` list says what it generates for that type.
+//! JSON Schema is no feature: a type that lists `enable = ["jsonschema"]` gets `T::json_schema()`,
+//! and the crate that declares it lists `serde_json`.
 //!
 //! | Feature | What it adds | What your crate lists |
 //! |---|---|---|
@@ -750,13 +751,14 @@ fn main() {
 //! | `kotlin` | `{type}_kotlin::kotlin_definition()`, and the Kotlin service clients. | Nothing in Rust. The Kotlin build applies the `kotlin("plugin.serialization")` plugin and depends on `kotlinx-serialization-json`. The Kotlin file imports `kotlinx.serialization.*` and its `builtins`, `descriptors`, `encoding` and `json` packages, and the build step writes its `package` line. `kotlin_ws_client()`, and the `kotlin_http_client()` of a service with a `body = "stream"` operation, also need `kotlinx-coroutines-core`. |
 //! | `bson` | `T::from_bson_with` and `T::from_bson_piped`, methods of `DecodeWith`, on a type whose `enable` list holds `"decode_with"`. | `bson`, under that name, in every crate with such a type. |
 //! | `mongodb` | The `ObjectId` mapping, and `MONGO_FIELDS`, filters, updates and operations on a type whose `enable` list holds `"mongodb"`. | `mongodb`, and `bson` at the major version the driver is built for: `mongodb = "3.9"` with `bson = "2.15"`. |
-//! | `chrono` | `NaiveDate`, `NaiveTime`, `NaiveDateTime` and `DateTime<Tz>` fields, and `#[model_schema_prop(as_number)]`. | `chrono` with its `serde` feature. |
+//! | `jiff` | `civil::Date`, `civil::Time`, `civil::DateTime`, `Timestamp` and `ZonedDateTime` fields, and `#[model_schema_prop(as_number)]`. A default feature. | `jiff` with its `serde` feature. |
+//! | `chrono` | `NaiveDate`, `NaiveTime`, `NaiveDateTime` and `DateTime<Tz>` fields, and `#[model_schema_prop(as_number)]`. Never on with `jiff`. | `chrono` with its `serde` feature. |
 //! | `indexmap` | `IndexMap` read as a map and `IndexSet` as a list. | `indexmap` with its `serde` feature. |
 //! | `arky` | `TryFrom` conversions to and from `arky::parser::ast::Value` on a type whose `enable` list holds `"arky"`. | `arky`. |
 //!
 //! ```toml
 //! # Web and mobile clients, and MongoDB.
-//! tixschema = { version = "0.6", features = ["web", "mobile", "mongo"] }
+//! tixschema = { version = "0.7", features = ["web", "mobile", "mongo"] }
 //! ```
 //!
 //! Some crates are listed whatever the features. A type that names a `preprocess` or has a
@@ -796,8 +798,8 @@ fn main() {
 //!   inside a function body is not found. Several emitters also read what earlier expansions
 //!   recorded, such as the untagged enum a later type flattens.
 //! - **Names are matched as written.** A type named `ObjectId` is read as the BSON id under
-//!   `mongodb`, and `IndexMap`, `IndexSet` and the chrono types are recognized only with their
-//!   feature on. Two `#[model_schema]` types with one Rust name in two modules publish one
+//!   `mongodb`, and `IndexMap`, `IndexSet` and the jiff and chrono types are recognized only with
+//!   their feature on. Two `#[model_schema]` types with one Rust name in two modules publish one
 //!   TypeScript name, and nothing refuses them.
 //! - **A `pattern` must read the same in every engine it reaches**: the Rust `regex` crate, the
 //!   JavaScript regex Zod and JSON Schema use, and Dart, Swift and Kotlin. A construct they read
@@ -855,12 +857,18 @@ fn main() {
 //! - Storage: [Recovering Decode](https://github.com/tixena/tixschema/blob/master/docs/guide/recovering-decode.md#recovering-decode-decode_with),
 //!   [`MongoDB` Operations and Typed Filters](https://github.com/tixena/tixschema/blob/master/docs/guide/mongodb-operations.md#mongodb-operations-and-typed-filters),
 //!   [`MongoDB` `ObjectId` Support](https://github.com/tixena/tixschema/blob/master/docs/guide/object-id.md#mongodb-objectid-support),
+//!   [jiff Dates and Times](https://github.com/tixena/tixschema/blob/master/docs/guide/jiff.md#jiff-datetime-types),
 //!   [Chrono Dates and Times](https://github.com/tixena/tixschema/blob/master/docs/guide/chrono.md#chrono-datetime-types)
 //!   and [arky Frontmatter Conversions](https://github.com/tixena/tixschema/blob/master/docs/guide/arky.md#arky-frontmatter-conversions-arky).
 //! - Setup: [Feature Flags](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#feature-flags),
 //!   [Generating TypeScript Files](https://github.com/tixena/tixschema/blob/master/docs/guide/features.md#generating-typescript-files),
 //!   [`u64` Under `swift` or `kotlin`](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#u64-under-swift-or-kotlin)
 //!   and [Error Handling and Troubleshooting](https://github.com/tixena/tixschema/blob/master/docs/guide/troubleshooting.md#error-handling--troubleshooting).
+
+#[cfg(all(feature = "chrono", feature = "jiff"))]
+compile_error!(
+    "tixschema's `chrono` and `jiff` features cannot be on together; `jiff` is a default feature, so a crate that names `chrono` sets `default-features = false` on the `tixschema` dependency"
+);
 
 mod bound_message;
 #[cfg(test)]
@@ -1328,6 +1336,8 @@ export function safeDecodeEvent(
 ///   `null` or missing, and in JSON Schema a key left out of `required`. A named `Option`
 ///   field carries `skip_serializing_if`, `skip_serializing` or `skip`, or
 ///   `#[model_schema_prop(nullable)]`.
+/// - Under `jiff`, `civil::Date`, `civil::Time`, `civil::DateTime` and `ZonedDateTime` are strings,
+///   and `Timestamp` is a TypeScript `Date` that Zod coerces from a `Date`, a string or a number.
 /// - Under `chrono`, `NaiveDate`, `NaiveTime` and `NaiveDateTime` are strings, and `DateTime<Tz>`
 ///   is a TypeScript `Date` that Zod coerces from a `Date`, a string or a number.
 /// - Under `indexmap`, `IndexMap` is a map and `IndexSet` a list.
@@ -1551,6 +1561,7 @@ export function safeDecodeDocument(
 /// [Type Parameters](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#type-parameters),
 /// [Branded Newtypes](https://github.com/tixena/tixschema/blob/master/docs/guide/generics-and-brands.md#branded-newtypes),
 /// [Compiler-Validated Examples](https://github.com/tixena/tixschema/blob/master/docs/guide/examples.md#compiler-validated-examples),
+/// [jiff Dates and Times](https://github.com/tixena/tixschema/blob/master/docs/guide/jiff.md#jiff-datetime-types),
 /// [Chrono Dates and Times](https://github.com/tixena/tixschema/blob/master/docs/guide/chrono.md#chrono-datetime-types)
 /// and [Serde Attribute Support](https://github.com/tixena/tixschema/blob/master/docs/guide/serde-attributes.md#serde-attribute-support).
 #[proc_macro_attribute]
@@ -1830,10 +1841,12 @@ pub fn mongodb_foundation(input: TokenStream) -> TokenStream {
 /// - `nullable`: on an `Option<T>` field, `T | null` with the key always written, on TypeScript,
 ///   Zod and JSON Schema. The field carries no key-dropping attribute, and
 ///   `ts_optional` beside it is refused.
-/// - `as_number`: on a `DateTime<Tz>` field under the `chrono` feature, epoch milliseconds as a
-///   `number` in place of a `Date`. The macro hangs `chrono::serde::ts_milliseconds`
-///   on a `DateTime<Utc>` field and `chrono::serde::ts_milliseconds_option` on an `Option` of one,
-///   unless the field carries its own `#[serde(with = ...)]`.
+/// - `as_number`: on a `DateTime<Tz>` field under the `chrono` feature, or a `Timestamp` field
+///   under `jiff`, epoch milliseconds as a `number` in place of a `Date`. The macro hangs
+///   `chrono::serde::ts_milliseconds` on a `DateTime<Utc>` field and
+///   `chrono::serde::ts_milliseconds_option` on an `Option` of one, or jiff's
+///   `jiff::fmt::serde::timestamp::millisecond::{required, optional}`, unless the field carries its
+///   own `#[serde(with = ...)]`.
 ///
 /// A key written where it means nothing, such as `minimum` on a string, `pattern` on a list or
 /// `ts_optional` on a field that is no `Option`, is refused at the key.

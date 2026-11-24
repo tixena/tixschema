@@ -9,10 +9,23 @@ extern crate alloc;
 #[path = "kotlin_tests/text_forms_models.rs"]
 mod text_forms_models;
 
+/// A `char` and a jiff date, time and date and time held in each place, and what serde, Zod and
+/// each client's read answer of each payload.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "jiff"))]
+#[path = "kotlin_tests/jiff_text_forms_models.rs"]
+mod text_forms_models;
+
 /// What the Dart emitter writes for a `char` and a chrono date, time and date and time.
 #[cfg(test)]
 #[cfg(all(feature = "dart", feature = "chrono"))]
 #[path = "dart_tests/text_forms.rs"]
+mod text_forms;
+
+/// What the Dart emitter writes for a `char` and a jiff date, time and date and time.
+#[cfg(test)]
+#[cfg(all(feature = "dart", feature = "jiff"))]
+#[path = "dart_tests/jiff_text_forms.rs"]
 mod text_forms;
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 //! each call prints the request the transport was handed, or `refused` where the client refused
 //! the value before the transport was reached, and the Rust dispatcher reads each request.
 
-#![cfg(all(feature = "dart", feature = "chrono"))]
+#![cfg(all(feature = "dart", any(feature = "chrono", feature = "jiff")))]
 
 use core::fmt::Write as _;
 

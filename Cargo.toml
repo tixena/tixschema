@@ -1,6 +1,6 @@
 [package]
 name = "tixschema"
-version = "0.6.2"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.91.1"
 authors = ["Eduardo Burgos <eduardo@tixena.com>"]
@@ -13,7 +13,8 @@ keywords = ["typescript", "json-schema", "codegen", "rpc", "mobile"]
 include = ["/src/**/*.rs", "/src/**/*.md", "/README.md", "/LICENSE", "/THIRD-PARTY-NOTICES"]
 
 [package.metadata.docs.rs]
-all-features = true
+# Every feature but `chrono`, which is never on with `jiff`.
+features = ["web", "mobile", "mongo", "jiff"]
 
 [lib]
 proc-macro = true
@@ -41,6 +42,9 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 serde_path_to_error = "0.1"
 chrono = { version = ">=0.4.40", features = ["serde"] }
+# Test-only: the tests declare jiff's date and time types, and `as_number` writes jiff's millisecond
+# hook by the path `jiff::…`.
+jiff = { version = "1", features = ["serde"] }
 # Test-only: the tests declare `IndexMap` and `IndexSet` fields. The `indexmap` feature below adds no
 # dependency: the generated code names the consumer's own.
 indexmap = { version = "2", features = ["serde"] }
@@ -122,13 +126,14 @@ required-features = ["mongodb"]
 
 
 [features]
-default = ["web"]
+default = ["web", "jiff"]
 
 # Feature sets: the four surfaces a consumer picks from. Every plain feature below belongs to
-# one of them, and CI tests the powerset of the sets rather than of the plain features.
+# one of them, except chrono and jiff, which the powerset of the sets takes as they are, never
+# together. CI tests the powerset of the sets rather than of the plain features.
 web = ["zod", "typescript"]
 mobile = ["dart", "swift", "kotlin"]
-mongo = ["mongodb", "chrono", "indexmap", "arky"]
+mongo = ["mongodb", "indexmap", "arky"]
 
 # Core features
 zod = [] # Zod schema generation alongside TypeScript types
@@ -136,7 +141,8 @@ mongodb = ["bson"] # MongoDB support: the ObjectId type, and bson
 bson = [] # BSON support: from_bson_with on types that opt in
 typescript = [] # TypeScript type generation and TypeScript-style Zod schemas
 chrono = [
-] # Chrono date/time type support (NaiveDate, NaiveTime, NaiveDateTime, DateTime)
+] # Chrono date/time type support (NaiveDate, NaiveTime, NaiveDateTime, DateTime); never with jiff
+jiff = [] # jiff date/time type support (Timestamp, civil::Date, civil::Time, civil::DateTime, ZonedDateTime); never with chrono
 indexmap = [] # indexmap type support: IndexMap as a map, IndexSet as a list
 dart = [] # Dart type generation and a JSON fromJson/toJson codec, beside the TypeScript output
 swift = [] # Swift type generation with a Codable codec

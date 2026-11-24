@@ -5,7 +5,7 @@
 //! and its header hold.
 
 #![cfg(all(
-    feature = "chrono",
+    any(feature = "chrono", feature = "jiff"),
     any(
         all(feature = "typescript", feature = "zod"),
         feature = "dart",

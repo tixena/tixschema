@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "jiff")]
+use jiff::civil;
 use tixschema::model_schema;
 
 use crate::swift_plain_enum::{plain_enum_reads, refusal};
@@ -172,6 +174,18 @@ pub struct Timestamps {
     #[model_schema_prop(as_number)]
     pub instant_millis: chrono::DateTime<chrono::Utc>,
     pub time: chrono::NaiveTime,
+}
+
+#[cfg(feature = "jiff")]
+#[model_schema()]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Timestamps {
+    pub date: civil::Date,
+    pub date_time: civil::DateTime,
+    pub instant: jiff::Timestamp,
+    #[model_schema_prop(as_number)]
+    pub instant_millis: jiff::Timestamp,
+    pub time: civil::Time,
 }
 
 /// Members named after words the client languages reserve, and one none of them does.
@@ -487,7 +501,7 @@ fn object_id_maps_to_a_bare_reference() {
     assert!(swift.contains("public var id: ObjectId"), "got: {swift}");
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 #[test]
 fn naive_dates_are_plain_strings_and_datetime_is_date_with_a_fractional_second_formatter() {
     let swift = timestamps_swift::swift_definition();
@@ -597,20 +611,37 @@ fn every_fixture_constructs_and_round_trips_through_serde_json() {
     })
     .unwrap();
 
-    #[cfg(feature = "chrono")]
-    {
-        let timestamps = TimestampsDraft {
-            date: chrono::NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
-            date_time: chrono::NaiveDate::from_ymd_opt(2026, 9, 21)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap(),
-            instant_millis: chrono::Utc::now(),
-            instant: chrono::Utc::now(),
-            time: chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-        };
-        serde_json::to_string(&timestamps).unwrap();
-    }
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
+    timestamps_round_trip();
+}
+
+/// A `Timestamps` built and written by serde.
+#[cfg(feature = "chrono")]
+fn timestamps_round_trip() {
+    let timestamps = TimestampsDraft {
+        date: chrono::NaiveDate::from_ymd_opt(2026, 9, 21).unwrap(),
+        date_time: chrono::NaiveDate::from_ymd_opt(2026, 9, 21)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap(),
+        instant_millis: chrono::Utc::now(),
+        instant: chrono::Utc::now(),
+        time: chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+    };
+    serde_json::to_string(&timestamps).unwrap();
+}
+
+/// A `Timestamps` built and written by serde.
+#[cfg(feature = "jiff")]
+fn timestamps_round_trip() {
+    let timestamps = TimestampsDraft {
+        date: civil::date(2026, 9, 21),
+        date_time: civil::date(2026, 9, 21).at(0, 0, 0, 0),
+        instant_millis: jiff::Timestamp::now(),
+        instant: jiff::Timestamp::now(),
+        time: civil::time(0, 0, 0, 0),
+    };
+    serde_json::to_string(&timestamps).unwrap();
 }
 
 #[test]

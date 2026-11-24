@@ -3475,9 +3475,8 @@ fn bson_stored_items() -> TokenStream {
     }
 }
 
-/// The types a callback works with, and beside its verdict what a resolver answers with.
-fn callback_items() -> TokenStream {
-    let resolvers = resolver_items();
+/// The type an issue names what serde expected by: each type a field can be written as.
+fn expected_item() -> TokenStream {
     quote! {
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
@@ -3486,6 +3485,9 @@ fn callback_items() -> TokenStream {
             Boolean,
             BooleanLiteral(bool),
             Char,
+            CivilDate,
+            CivilDateTime,
+            CivilTime,
             DateTime,
             F32,
             F64,
@@ -3509,6 +3511,7 @@ fn callback_items() -> TokenStream {
             Range(&'static str, ::std::boxed::Box<Expected>),
             String,
             StringLiteral(&'static str),
+            Timestamp,
             Tuple(::std::vec::Vec<Expected>),
             /// One of the type's own type parameters, by its name.
             TypeParam(&'static str),
@@ -3520,7 +3523,17 @@ fn callback_items() -> TokenStream {
             Usize,
             /// The tag values a tagged enum accepts, for a tag naming none of them.
             Variants(&'static [&'static str]),
+            ZonedDateTime,
         }
+    }
+}
+
+/// The types a callback works with, and beside its verdict what a resolver answers with.
+fn callback_items() -> TokenStream {
+    let resolvers = resolver_items();
+    let expected = expected_item();
+    quote! {
+        #expected
 
         #[derive(Clone, Debug, PartialEq)]
         #[non_exhaustive]
@@ -3847,6 +3860,9 @@ fn handoff_items() -> TokenStream {
                 "Boolean" => Expected::Boolean,
                 "BooleanLiteral" => Expected::BooleanLiteral(name == "true"),
                 "Char" => Expected::Char,
+                "CivilDate" => Expected::CivilDate,
+                "CivilDateTime" => Expected::CivilDateTime,
+                "CivilTime" => Expected::CivilTime,
                 "DateTime" => Expected::DateTime,
                 "F32" => Expected::F32,
                 "F64" => Expected::F64,
@@ -3866,6 +3882,7 @@ fn handoff_items() -> TokenStream {
                 "Range" => Expected::Range(name, first(&mut under)),
                 "String" => Expected::String,
                 "StringLiteral" => Expected::StringLiteral(name),
+                "Timestamp" => Expected::Timestamp,
                 "Tuple" => Expected::Tuple(under),
                 "TypeParam" => Expected::TypeParam(name),
                 "U8" => Expected::U8,
@@ -3874,6 +3891,7 @@ fn handoff_items() -> TokenStream {
                 "U64" => Expected::U64,
                 "Usize" => Expected::Usize,
                 "Variants" => Expected::Variants(names),
+                "ZonedDateTime" => Expected::ZonedDateTime,
                 _ => Expected::Unknown,
             }
         }

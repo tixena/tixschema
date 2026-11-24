@@ -493,7 +493,7 @@ The three checks are written on a branded newtype, and on [an enum](enums.md#a-c
 
 A bound written here holds every value of the brand. One that should hold a single field is written on that field instead, and the brand keeps none: see [A field typed with a branded string](validation.md#a-field-typed-with-a-branded-string).
 
-**The inner type has to be one whose schema is a string, or a list** — `String`, `PathBuf`, `ObjectId`, a chrono date/time type, a named type whose own schema is one of those, or a list written on the brand itself. A numeric, boolean, map, tuple or opaque inner is rejected at expansion time, because the three constraints are string checks and each surface would read them differently: Zod's `.min`/`.max` become bounds on the value itself, JSON Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and `validate()` measures the inner's `Display` rendering.
+**The inner type has to be one whose schema is a string, or a list** — `String`, `PathBuf`, `ObjectId`, a chrono or jiff date/time type, a named type whose own schema is one of those, or a list written on the brand itself. A numeric, boolean, map, tuple or opaque inner is rejected at expansion time, because the three constraints are string checks and each surface would read them differently: Zod's `.min`/`.max` become bounds on the value itself, JSON Schema ignores `minLength`/`maxLength`/`pattern` outside `"type": "string"`, and `validate()` measures the inner's `Display` rendering.
 
 **A brand over a list takes `minLength` and `maxLength`, which count its items**, as they do on [a list field](validation.md#list-length-minlength-maxlength):
 

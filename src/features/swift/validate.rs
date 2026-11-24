@@ -1032,6 +1032,12 @@ fn number_kind(leaf: &FieldDefType) -> Option<Number> {
         | FieldDefType::NaiveDate
         | FieldDefType::NaiveDateTime
         | FieldDefType::NaiveTime => None,
+        #[cfg(feature = "jiff")]
+        FieldDefType::Timestamp
+        | FieldDefType::CivilDate
+        | FieldDefType::CivilTime
+        | FieldDefType::CivilDateTime
+        | FieldDefType::ZonedDateTime => None,
     }
 }
 
@@ -1304,12 +1310,12 @@ fn key_text(written: &FieldDef, named: &str) -> String {
     if matches!(key.field_type, FieldDefType::Boolean) {
         return format!("{named} ? \"true\" : \"false\"");
     }
-    #[cfg(feature = "chrono")]
-    if matches!(key.field_type, FieldDefType::DateTime) {
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
+    if key.field_type.is_instant() {
         return format!(
             "{{ let f = ISO8601DateFormatter(); f.formatOptions = [{}]; return f }}().string(from: {named}){}",
             super::FRACTIONAL_OPTIONS,
-            super::CHRONO_WHOLE_SECONDS
+            super::SERDE_FRACTION
         );
     }
     if matches!(key.field_type, FieldDefType::SiblingType(_, _)) {

@@ -4,7 +4,7 @@
 
 use super::fault;
 use super::mcp_scopes::{ReadUri, ScopeTable};
-use super::message;
+use super::message::{self, TS_SERDE_FRACTION};
 use super::service::enveloped_impl;
 use crate::field_type::{EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE};
 use crate::rename_rule::RenameRule;
@@ -127,14 +127,14 @@ class __N__McpRaw {
 
 /**
  * `value` as JSON text with the keys of every object in order, as serde_json writes them: a
- * `bigint` and a `JSON.rawJSON` holder as its digits, a `Date` as the text chrono writes, a
+ * `bigint` and a `JSON.rawJSON` holder as its digits, a `Date` as the text serde writes, a
  * `Uint8Array` as the array of its bytes and a raw text as it stands.
  */
 function __p__McpText(value: unknown): string {
   if (value instanceof __N__McpRaw) return value.text;
   if (typeof value === "bigint") return value.toString();
   if (value instanceof Date) {
-    const sent = Number.isNaN(value.getTime()) ? value : value.toISOString().replace(".000Z", "Z");
+    const sent = Number.isNaN(value.getTime()) ? value : value.toISOString()__F__;
     return JSON.stringify(sent);
   }
   const isRaw: unknown = Reflect.get(JSON, "isRawJSON");
@@ -1851,7 +1851,10 @@ pub fn wrapped_marker(operation: &OperationDef) -> String {
 
 /// `template` with the service's name and its camelCase prefix written in.
 pub fn filled(template: &str, named: &str, prefix: &str) -> String {
-    template.replace("__N__", named).replace("__p__", prefix)
+    template
+        .replace("__N__", named)
+        .replace("__p__", prefix)
+        .replace("__F__", TS_SERDE_FRACTION)
 }
 
 pub fn emit(declared: &ServiceDef) -> Vec<String> {

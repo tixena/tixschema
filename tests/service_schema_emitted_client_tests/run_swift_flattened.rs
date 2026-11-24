@@ -36,7 +36,7 @@ use super::swift_flattened_models::{
     pennant_swift, pointing_swift, quarter_swift, reeving_swift, seaming_swift, snaking_swift,
     splaying_swift, stopping_swift, stropping_swift, toggling_swift, twinning_swift, worming_swift,
 };
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 use super::swift_flattened_models::{SERVING, Serving, serving_swift};
 
 /// Names the runtime to run, for a machine that has one somewhere other than `PATH`.
@@ -209,7 +209,7 @@ fn alone_rows() -> Vec<Row> {
                 refused::<Seaming>,
             )
         },
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         row("serving", "Serving", SERVING, written_back::<Serving>),
     ]
 }
@@ -321,7 +321,7 @@ fn printed_alone(rows: &[Row]) -> Option<String> {
         snaking_swift::swift_definition(),
         stropping_swift::swift_definition(),
         seaming_swift::swift_definition(),
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         serving_swift::swift_definition(),
     ];
     printed_of(&definitions, &main_of(rows))
@@ -447,9 +447,9 @@ fn a_type_of_flattened_members_alone_reads_and_writes_in_swift_as_serde_does() {
          seaming: {\"label\":\"n\",\"mark\":\"x\"}\n\
          worming refused: 'north.mark': too short: minimum length is 1, got 0\n\
          seaming refused: 'mark': too short: minimum length is 1, got 0\n";
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     let dates = "serving: {\"north\":\"2024-01-02T03:04:05.678Z\"}\n";
-    #[cfg(not(feature = "chrono"))]
+    #[cfg(not(any(feature = "chrono", feature = "jiff")))]
     let dates = "";
     assert_eq!(expected, format!("{shared}{dates}"));
     let Some(printed) = printed_alone(&rows) else {

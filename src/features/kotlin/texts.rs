@@ -1,9 +1,9 @@
 //! A text serde reads in one form alone, which the Kotlin client holds as a `String`: a `char`, and
-//! a chrono date, time, date and time, and date and time with its zone. Each is read and written
-//! through a serializer of the item's own. Its read throws `SerializationException` for a `char`
-//! of other than one code point, as serde refuses it, and for a date, a time or a date and time
-//! the Zod schema of it refuses: where serde and Zod part, the read follows Zod. Its write sends
-//! the form serde writes ([`TextForm`]), and throws for a text no rewrite turns into it.
+//! a date, time, date and time, and date and time with its zone, of chrono or of jiff. Each is read
+//! and written through a serializer of the item's own. Its read throws `SerializationException` for
+//! a `char` of other than one code point, as serde refuses it, and for a date, a time or a date and
+//! time the Zod schema of it refuses: where serde and Zod part, the read follows Zod. Its write
+//! sends the form serde writes ([`TextForm`]), and throws for a text no rewrite turns into it.
 //!
 //! A number and a `bool` are read through a serializer of the item's own as well: the JSON decoder
 //! of `kotlinx.serialization` reads a number or a `bool` written between quotes, which serde and
@@ -20,6 +20,8 @@ use std::collections::{HashMap, HashSet};
 use super::read::PATHED;
 use super::{KOTLIN_TUPLE_AUX, KOTLIN_TUPLE_COUNTER, kotlin_quoted, kotlin_template_text};
 use crate::features::text_forms::TextForm;
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+use crate::field_type::{EPOCH_BEYOND, EPOCH_EXPECTED};
 use crate::field_type::{
     EXPECTED_NUMERIC_KEY, EXPECTED_QUOTE, FieldDef, FieldDefType, INVALID_NUMBER,
     NUMBER_OUT_OF_RANGE, is_sequence_wrapper,
@@ -53,7 +55,13 @@ const U64_MOST: &str = "18446744073709551615";
 /// The member that writes a date and time with its zone as chrono does: whole seconds, then a
 /// fraction of three, six or nine digits where it has one, then `Z` for no offset. `utc` converts
 /// to UTC first.
+#[cfg(not(feature = "jiff"))]
 const ZONED_WRITER: &str = r#"private fun written(text: String, utc: Boolean): String { val moment = try { java.time.OffsetDateTime.parse(text.replace(Regex("(\\.\\d{9})\\d+"), "\$1")) } catch (refused: java.time.format.DateTimeParseException) { throw SerializationException("expected a date and time with its zone, found " + JsonPrimitive(text)) }; val at = if (utc) moment.withOffsetSameInstant(java.time.ZoneOffset.UTC) else moment; val nanos = at.nano; val fraction = when { nanos == 0 -> ""; nanos % 1000000 == 0 -> "." + (nanos / 1000000).toString().padStart(3, '0'); nanos % 1000 == 0 -> "." + (nanos / 1000).toString().padStart(6, '0'); else -> "." + nanos.toString().padStart(9, '0') }; val seconds = at.offset.totalSeconds; val zone = if (seconds == 0) "Z" else (if (seconds < 0) "-" else "+") + String.format(java.util.Locale.ROOT, "%02d:%02d", kotlin.math.abs(seconds) / 3600, kotlin.math.abs(seconds) % 3600 / 60); return at.format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss")) + fraction + zone }; "#;
+
+/// The member that writes a `Timestamp` as jiff does: in UTC, whole seconds, then a fraction in
+/// the fewest digits it needs where it has one, then `Z`.
+#[cfg(feature = "jiff")]
+const ZONED_WRITER: &str = r#"private fun written(text: String, utc: Boolean): String { val moment = try { java.time.OffsetDateTime.parse(text.replace(Regex("(\\.\\d{9})\\d+"), "\$1")) } catch (refused: java.time.format.DateTimeParseException) { throw SerializationException("expected a date and time with its zone, found " + JsonPrimitive(text)) }; val at = if (utc) moment.withOffsetSameInstant(java.time.ZoneOffset.UTC) else moment; val nanos = at.nano; val fraction = if (nanos == 0) "" else "." + nanos.toString().padStart(9, '0').trimEnd('0'); val seconds = at.offset.totalSeconds; val zone = if (seconds == 0) "Z" else (if (seconds < 0) "-" else "+") + String.format(java.util.Locale.ROOT, "%02d:%02d", kotlin.math.abs(seconds) / 3600, kotlin.math.abs(seconds) % 3600 / 60); return at.format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss")) + fraction + zone }; "#;
 
 /// The private function of an integer's serializer that spells a float as serde does: its shortest
 /// digits, laid out plainly from `0.00001` to below `1e16`, with `.0` where they hold no fraction.
@@ -87,8 +95,9 @@ pub enum Primitive {
     I64,
     I8,
     Isize,
-    /// A `DateTime<Tz>` under `as_number`: the epoch milliseconds, held as a `Long`.
-    #[cfg(feature = "chrono")]
+    /// A `DateTime<Tz>` or a `Timestamp` under `as_number`: the epoch milliseconds, held as a
+    /// `Long`.
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     Millis,
     U16,
     U32,
@@ -115,7 +124,7 @@ impl Primitive {
             Self::U32 => ("0", "4294967295"),
             Self::Usize => ("0", U64_MOST),
             Self::I64 | Self::Isize => (I64_LEAST, "9223372036854775807"),
-            #[cfg(feature = "chrono")]
+            #[cfg(any(feature = "chrono", feature = "jiff"))]
             Self::Millis => (I64_LEAST, "9223372036854775807"),
             Self::Bool | Self::BoolKey | Self::F32 | Self::F32Key | Self::F64 | Self::F64Key => {
                 ("0", "0")
@@ -130,7 +139,7 @@ impl Primitive {
 
     /// The primitive a value typed `field` is at its innermost level. A `u64` is refused under
     /// `kotlin` before it is read.
-    #[cfg(feature = "chrono")]
+    #[cfg(any(feature = "chrono", feature = "jiff"))]
     pub fn of(field: &FieldDef) -> Option<Self> {
         match &field.field_type {
             FieldDefType::Boolean => Some(Self::Bool),
@@ -154,12 +163,21 @@ impl Primitive {
             {
                 Some(Self::Millis)
             }
+            #[cfg(feature = "jiff")]
+            FieldDefType::Timestamp
+                if field
+                    .model_schema_prop_meta
+                    .as_ref()
+                    .is_some_and(|meta| meta.as_number) =>
+            {
+                Some(Self::Millis)
+            }
             _ => None,
         }
     }
 
     /// The primitive a value typed `field` is at its innermost level, with no timestamp form.
-    #[cfg(not(feature = "chrono"))]
+    #[cfg(not(any(feature = "chrono", feature = "jiff")))]
     pub const fn of(field: &FieldDef) -> Option<Self> {
         match &field.field_type {
             FieldDefType::Boolean => Some(Self::Bool),
@@ -207,8 +225,8 @@ impl Primitive {
             Self::Usize => ("ULong", "usize"),
             Self::F32 | Self::F32Key => ("Float", "f32"),
             Self::F64 | Self::F64Key => ("Double", "f64"),
-            #[cfg(feature = "chrono")]
-            Self::Millis => ("Long", "a unix timestamp in milliseconds"),
+            #[cfg(any(feature = "chrono", feature = "jiff"))]
+            Self::Millis => ("Long", EPOCH_EXPECTED),
         }
     }
 }
@@ -216,15 +234,14 @@ impl Primitive {
 /// What an integer's serializer runs ahead of the library's read: a number written with a
 /// fraction, an exponent or as `-0` refused as serde refuses the float it reads it as, plain
 /// digits beyond `bounds` refused as serde refuses them (as a float past the `u64` and `i64`
-/// range serde reads an integer in, as an out-of-range integer within it), any other text left to
-/// the library.
-fn integral(expected: &str, bounds: (&str, &str), timestamp: bool) -> String {
+/// range serde reads an integer in, as an out-of-range integer within it, between the words
+/// `beyond` holds where serde words it otherwise), any other text left to the library.
+fn integral(expected: &str, bounds: (&str, &str), beyond: Option<(&str, &str)>) -> String {
     let (least, most) = bounds;
-    let within = if timestamp {
-        "\"value is not a legal timestamp: \" + text".to_owned()
-    } else {
-        format!("\"invalid value: integer `\" + text + \"`, expected {expected}\"")
-    };
+    let within = beyond.map_or_else(
+        || format!("\"invalid value: integer `\" + text + \"`, expected {expected}\""),
+        |(before, after)| format!("\"{before}\" + text + \"{after}\""),
+    );
     format!(
         "val text = element.content; val wide = text.toDoubleOrNull(); if (wide != null && (text \
          == \"-0\" || text.any {{ it == '.' || it == 'e' || it == 'E' }})) {{ if \
@@ -304,9 +321,12 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
         | Primitive::U16
         | Primitive::U32
         | Primitive::U8
-        | Primitive::Usize => (integral(expected, primitive.bounds(), false), FLOATING),
-        #[cfg(feature = "chrono")]
-        Primitive::Millis => (integral(expected, primitive.bounds(), true), FLOATING),
+        | Primitive::Usize => (integral(expected, primitive.bounds(), None), FLOATING),
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
+        Primitive::Millis => (
+            integral(expected, primitive.bounds(), Some(EPOCH_BEYOND)),
+            FLOATING,
+        ),
         Primitive::Bool | Primitive::BoolKey | Primitive::F32Key | Primitive::F64Key => {
             (String::new(), "")
         }
@@ -329,16 +349,19 @@ fn number_declared(primitive: Primitive, named: &str) -> String {
 }
 
 /// Whether a text of `form` is written through [`ZONED_WRITER`], and if so, in UTC.
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 const fn zone_written(form: TextForm) -> Option<bool> {
     match form {
         TextForm::Zoned => Some(true),
+        #[cfg(feature = "chrono")]
         TextForm::Offset => Some(false),
+        #[cfg(feature = "jiff")]
+        TextForm::Named => None,
         TextForm::Char | TextForm::Date | TextForm::DateTime | TextForm::Time => None,
     }
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn zone_written(_form: TextForm) -> Option<bool> {
     None
 }
@@ -366,7 +389,7 @@ fn object_declared(form: TextForm, named: &str) -> String {
         }
         (_, None) => None,
     };
-    let (mut steps, zoneless) = if form.unzoned() {
+    let (mut steps, mut current) = if form.unzoned() {
         (
             "val unzoned = value.removeSuffix(\"Z\"); ".to_owned(),
             "unzoned",
@@ -374,15 +397,27 @@ fn object_declared(form: TextForm, named: &str) -> String {
     } else {
         (String::new(), "value")
     };
-    let current = form.unsecond().map_or(zoneless, |pattern| {
+    if form.spaced() {
+        let _ = write!(steps, "val joined = {current}.replaceFirst(\" \", \"T\"); ");
+        current = "joined";
+    }
+    if let Some(pattern) = form.unsecond() {
         members.push_str(&matched("unsecond", &pattern));
         let _ = write!(
             steps,
-            "val sent = unsecond.matchEntire({zoneless})?.let {{ it.groupValues[1] + \":00\" + \
-             it.groupValues[2] }} ?: {zoneless}; "
+            "val sent = unsecond.matchEntire({current})?.let {{ it.groupValues[1] + \":00\" + \
+             it.groupValues[2] }} ?: {current}; "
         );
-        "sent"
-    });
+        current = "sent";
+    }
+    if form.trimmed() {
+        let _ = write!(
+            steps,
+            "val trimmed = {current}.replace(Regex(\"\\\\.(\\\\d*?)0+$\")) {{ if \
+             (it.groupValues[1].isEmpty()) \"\" else \".\" + it.groupValues[1] }}; "
+        );
+        current = "trimmed";
+    }
     let held = sending.map_or_else(
         || format!("{current}.codePointCount(0, {current}.length) != 1"),
         |pattern| format!("!{pattern}.matches({current})"),
@@ -510,12 +545,12 @@ pub fn key_leaf(key: &FieldDef) -> Option<KeyLeaf> {
     }
 }
 
-#[cfg(feature = "chrono")]
+#[cfg(any(feature = "chrono", feature = "jiff"))]
 fn is_epoch(primitive: Primitive) -> bool {
     primitive == Primitive::Millis
 }
 
-#[cfg(not(feature = "chrono"))]
+#[cfg(not(any(feature = "chrono", feature = "jiff")))]
 const fn is_epoch(_: Primitive) -> bool {
     false
 }
@@ -643,7 +678,7 @@ pub const fn as_key(primitive: Primitive) -> Option<Primitive> {
         | Primitive::U32
         | Primitive::U8
         | Primitive::Usize => None,
-        #[cfg(feature = "chrono")]
+        #[cfg(any(feature = "chrono", feature = "jiff"))]
         Primitive::Millis => None,
     }
 }
