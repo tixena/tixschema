@@ -3699,7 +3699,7 @@ fn flattened_zod_bundle() -> String {
 /// before it is loaded, beside the consumer's own `ObjectId`.
 #[cfg(any(feature = "chrono", feature = "jiff"))]
 fn wire_forms_bundle() -> String {
-    let mut parts = vec![
+    [
         PREAMBLE.to_owned(),
         wire_forms::ConveyedFlag::ts_definition(),
         wire_forms::ConveyedFlag::zod_schema(),
@@ -3755,14 +3755,14 @@ fn wire_forms_bundle() -> String {
         wire_forms::ConveyedSlot::zod_schema(),
         wire_forms::ConveyedSlotted::ts_definition(),
         wire_forms::ConveyedSlotted::zod_schema(),
-    ];
-    #[cfg(feature = "mongodb")]
-    parts.extend([
+        #[cfg(feature = "mongodb")]
         "type ObjectId = { $oid: string };".to_owned(),
+        #[cfg(feature = "mongodb")]
         wire_forms::ConveyedObjectId::ts_definition(),
+        #[cfg(feature = "mongodb")]
         wire_forms::ConveyedObjectId::zod_schema(),
-    ]);
-    parts.join("\n\n")
+    ]
+    .join("\n\n")
 }
 
 /// The models of [`wide_keyed`]: a bundle of their own, compiled with `tsc --strict` and read by
