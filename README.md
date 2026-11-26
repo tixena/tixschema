@@ -40,6 +40,10 @@ npm install zod@^4.3.2
 yarn add zod@^4.3.2
 ```
 
+### Python Dependencies
+
+**Python 3.12 or later** runs the generated types, which name the standard library alone: no package is installed beside them.
+
 ### Kotlin Dependencies
 
 **Kotlin 2.0.20 or later** compiles the generated types: the valid class of a model type is `@ConsistentCopyVisibility`, which makes its `copy()` as private as its constructor, and Kotlin declares it from 2.0.20.
@@ -117,6 +121,7 @@ The guide is one file per topic, under `docs/guide/`, in the order a crate meets
 - [`validate()` and the read in Dart](docs/guide/dart.md): What the Dart read refuses, and `preprocess` and `check` in Dart.
 - [`validate()` and the read in Kotlin](docs/guide/kotlin.md): What the Kotlin read refuses, and `preprocess` and `check` in Kotlin.
 - [`validate()` and the read in Swift](docs/guide/swift.md): What the Swift read refuses, and `preprocess` and `check` in Swift.
+- [The Python target](docs/guide/python.md): What `python_definition()` writes, the read and the write held to serde, and the shapes it writes so far.
 - [Literal values and type names](docs/guide/literals-and-type-names.md): `literal` and `as`.
 - [Preprocessing](docs/guide/preprocess.md): `preprocess`: the function a read calls first, on every surface.
 - [Optional and nullable keys](docs/guide/optional-and-nullable-keys.md): `ts_optional` and `nullable`.

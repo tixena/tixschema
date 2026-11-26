@@ -58,6 +58,7 @@
 //! | Dart classes with `fromJson`, `toJson` and `validate()` | `{type}_dart::dart_definition()` | `dart` |
 //! | Swift `Codable` types with `validate()` | `{type}_swift::swift_definition()` | `swift` |
 //! | Kotlin `kotlinx.serialization` classes with `validate()` | `{type}_kotlin::kotlin_definition()` | `kotlin` |
+//! | Python dataclasses with type hints and a JSON codec, for the shapes it writes so far | `{type}_python::python_definition()` | `python` |
 //! | Serde renames, tags, flattening and defaults, read on every surface | the `#[serde(...)]` attributes already on the type | none |
 //! | Field and type rules | `#[model_schema_prop(...)]` on a field and `#[model_schema(check = [...])]` on the type, giving `T::validate()` and a serde read that refuses what `validate()` refuses | any |
 //! | Recovering decode of old or untrusted values | `#[model_schema(enable = ["decode_with"])]` and `tixschema::decode_with_foundation!()`, giving `T::from_value_with` and `T::from_value_piped` through the crate's `DecodeWith` trait | none; `bson` adds `T::from_bson_with` and `T::from_bson_piped` |

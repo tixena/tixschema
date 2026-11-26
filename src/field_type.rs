@@ -123,7 +123,7 @@ pub const EPOCH_BEYOND: (&str, &str) = (
 
 /// The magnitude every `f32` serde reads stays below: a larger one is read as an infinity, which
 /// serde then writes as `null`. The midpoint between `f32::MAX` and the next power of two.
-#[cfg(any(feature = "zod", feature = "dart"))]
+#[cfg(any(feature = "zod", feature = "dart", feature = "python"))]
 pub const F32_READ_BOUND: &str = "3.4028235677973366e38";
 
 /// What the Data words of serde read a value `held` as: the Rust type it names in an
@@ -1426,7 +1426,12 @@ impl FieldDef {
 
     /// Names `Self` as the enclosing type, then erases the item's own type parameters: what a
     /// client emitter does to every member it builds.
-    #[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+    #[cfg(any(
+        feature = "dart",
+        feature = "kotlin",
+        feature = "python",
+        feature = "swift"
+    ))]
     pub fn named_within(&mut self, type_name: &str, parameters: &[String]) {
         self.resolve_self_references(type_name, parameters);
         self.erase_type_parameters(parameters);

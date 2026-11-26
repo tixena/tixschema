@@ -7,18 +7,21 @@ kotlin_libs := env("TIXSCHEMA_KOTLIN_LIBS", home_directory() / ".local/share/tix
 zod_version := "4.6.5"
 ws_version := "8.21.3"
 typescript_version := "5.9.3"
+pyright_version := "1.1.407"
 node_modules := env("TIXSCHEMA_NODE_MODULES", home_directory() / ".local/share/tixschema/node-modules")
 node_tsc := node_modules / "node_modules/.bin/tsc"
+node_pyright := node_modules / "node_modules/.bin/pyright"
 
 # Every feature but one date feature: `chrono` and `jiff` are never on together, so each build that
 # turns every feature on is two builds, one without each. `bson3/` names its features the same.
-every_but_chrono := "--no-default-features --features web,mobile,mongo,jiff"
-every_but_jiff := "--no-default-features --features web,mobile,mongo,chrono"
+every_but_chrono := "--no-default-features --features web,mobile,mongo,scripting,jiff"
+every_but_jiff := "--no-default-features --features web,mobile,mongo,scripting,chrono"
 
 # Every recipe reads the modules `just node-libs` installs, as CI reads its own, unless the
 # environment names others.
 export TIXSCHEMA_NODE_MODULES := node_modules
 export TIXSCHEMA_TSC := env("TIXSCHEMA_TSC", if path_exists(node_tsc) == "true" { node_tsc } else { "tsc" })
+export TIXSCHEMA_PYRIGHT := env("TIXSCHEMA_PYRIGHT", if path_exists(node_pyright) == "true" { node_pyright } else { "pyright" })
 
 # `bson3/` is a package of its own, built against version 3 of the `bson` library: each recipe that
 # tests, lints, checks, formats, audits or cleans this package runs the same line over it.
@@ -38,22 +41,22 @@ install-tools:
 # `test-sets` is what CI runs.
 test:
     @echo "Testing all feature combinations..."
-    cargo hack test --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff
-    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff
+    cargo hack test --feature-powerset --exclude-features web,mobile,mongo,scripting --mutually-exclusive-features chrono,jiff
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo,scripting --mutually-exclusive-features chrono,jiff
     @echo "✅ All feature combinations passed!"
 
 # Test all combinations with verbose output
 test-verbose:
     @echo "Testing all feature combinations (verbose)..."
-    cargo hack test --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --verbose
-    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --verbose
+    cargo hack test --feature-powerset --exclude-features web,mobile,mongo,scripting --mutually-exclusive-features chrono,jiff --verbose
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo,scripting --mutually-exclusive-features chrono,jiff --verbose
     @echo "✅ All feature combinations passed!"
 
-# Test the powerset of the feature sets (`web`, `mobile`, `mongo`), plus the default set.
+# Test the powerset of the feature sets (`web`, `mobile`, `mongo`, `scripting`), plus the default set.
 test-sets:
     @echo "Testing every combination of the feature sets..."
-    cargo hack test --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff
-    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff
+    cargo hack test --feature-powerset --include-features web,mobile,mongo,scripting,chrono,jiff --mutually-exclusive-features chrono,jiff
+    cargo hack test --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo,scripting,chrono,jiff --mutually-exclusive-features chrono,jiff
     @echo "✅ All feature-set combinations passed!"
 
 # Test specific feature combinations manually
@@ -123,18 +126,19 @@ lint:
 # warning in any toggle, including feature-gated test code that `lint` (default features) misses.
 lint-all:
     @echo "Linting all feature combinations..."
-    cargo hack clippy --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
-    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
+    cargo hack clippy --feature-powerset --exclude-features web,mobile,mongo,scripting --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
+    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --exclude-features web,mobile,mongo,scripting --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
     @echo "✅ All feature combinations lint passed!"
 
 # Lint the powerset of the feature sets, the counterpart of `test-sets`; what CI runs.
 lint-sets:
     @echo "Linting every combination of the feature sets..."
-    cargo hack clippy --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
-    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo,chrono,jiff --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
-    cargo hack clippy --each-feature --include-features typescript,zod,dart,swift,kotlin --exclude-no-default-features --exclude-all-features --all-targets -- -D warnings
+    cargo hack clippy --feature-powerset --include-features web,mobile,mongo,scripting,chrono,jiff --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
+    cargo hack clippy --manifest-path bson3/Cargo.toml --feature-powerset --include-features web,mobile,mongo,scripting,chrono,jiff --mutually-exclusive-features chrono,jiff --all-targets -- -D warnings
+    cargo hack clippy --each-feature --include-features typescript,zod,dart,swift,kotlin,python --exclude-no-default-features --exclude-all-features --all-targets -- -D warnings
     cargo clippy --all-targets --no-default-features --features typescript,zod -- -D warnings
     cargo clippy --all-targets --no-default-features --features dart,swift,kotlin -- -D warnings
+    cargo clippy --all-targets --no-default-features --features python -- -D warnings
     @echo "✅ All feature-set combinations lint passed!"
 
 # Type-check the emitted TypeScript with a real compiler; refuses to stand down. Set TIXSCHEMA_TSC
@@ -178,14 +182,16 @@ kotlin-libs:
     fetch kotlinx-coroutines-core-jvm {{kotlinx_coroutines_version}}
     echo "Kotlin jars in $libs"
 
-# Install zod, ws and typescript, which the emitted TypeScript runs and type-checks against, into
-# ~/.local/share/tixschema/node-modules, at the versions CI installs.
+# Install zod, ws and typescript, which the emitted TypeScript runs and type-checks against, and
+# pyright, which type-checks the emitted Python, into ~/.local/share/tixschema/node-modules, at the
+# versions CI installs.
 node-libs:
-    npm install --no-save --no-package-lock --prefix "{{node_modules}}" zod@{{zod_version}} ws@{{ws_version}} typescript@{{typescript_version}}
+    npm install --no-save --no-package-lock --prefix "{{node_modules}}" zod@{{zod_version}} ws@{{ws_version}} typescript@{{typescript_version}} pyright@{{pyright_version}}
     @echo "Node modules in {{node_modules}}"
 
 # Run the emitted clients through their own language's runtime; refuses to stand down. Set
-# TIXSCHEMA_NODE, TIXSCHEMA_DART, TIXSCHEMA_SWIFT, TIXSCHEMA_KOTLINC or TIXSCHEMA_JAVA to one off PATH.
+# TIXSCHEMA_NODE, TIXSCHEMA_DART, TIXSCHEMA_SWIFT, TIXSCHEMA_KOTLINC, TIXSCHEMA_JAVA, TIXSCHEMA_PYTHON or
+# TIXSCHEMA_PYRIGHT to one off PATH.
 test-emitted cfg="":
     @command -v "${TIXSCHEMA_NODE:-node}" >/dev/null 2>&1 || { echo "No node: put \`node\` on PATH, or set TIXSCHEMA_NODE to one." >&2; exit 1; }
     @echo "Running the emitted TypeScript client with $(command -v "${TIXSCHEMA_NODE:-node}")..."
@@ -219,9 +225,14 @@ test-emitted cfg="":
     TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests run_swift
     @command -v "${TIXSCHEMA_KOTLINC:-kotlinc}" >/dev/null 2>&1 || { echo "No kotlinc: put \`kotlinc\` on PATH, or set TIXSCHEMA_KOTLINC to one." >&2; exit 1; }
     @[ -d "{{kotlin_libs}}" ] || { echo "No Kotlin jars at {{kotlin_libs}}: run \`just kotlin-libs\`, or set TIXSCHEMA_KOTLIN_LIBS to a directory holding them." >&2; exit 1; }
-    @echo "Running every test of the emitted-client binary, with the TypeScript, Dart, Swift and Kotlin toolchains set (Kotlin with $(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}"))..."
-    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests
-    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests
+    @command -v "${TIXSCHEMA_PYTHON:-python3}" >/dev/null 2>&1 || { echo "No Python: put \`python3\` on PATH, or set TIXSCHEMA_PYTHON to one." >&2; exit 1; }
+    @command -v "${TIXSCHEMA_PYRIGHT:-pyright}" >/dev/null 2>&1 || { echo "No pyright: run \`just node-libs\`, put \`pyright\` on PATH, or set TIXSCHEMA_PYRIGHT to one." >&2; exit 1; }
+    @echo "Running the emitted Python with $(command -v "${TIXSCHEMA_PYTHON:-python3}") and checking it with $(command -v "${TIXSCHEMA_PYRIGHT:-pyright}")..."
+    TIXSCHEMA_PYTHON="$(command -v "${TIXSCHEMA_PYTHON:-python3}")" TIXSCHEMA_PYRIGHT="$(command -v "${TIXSCHEMA_PYRIGHT:-pyright}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests run_python
+    TIXSCHEMA_PYTHON="$(command -v "${TIXSCHEMA_PYTHON:-python3}")" TIXSCHEMA_PYRIGHT="$(command -v "${TIXSCHEMA_PYRIGHT:-pyright}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests run_python
+    @echo "Running every test of the emitted-client binary, with the TypeScript, Dart, Swift, Kotlin and Python toolchains set (Kotlin with $(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}"))..."
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" TIXSCHEMA_PYTHON="$(command -v "${TIXSCHEMA_PYTHON:-python3}")" TIXSCHEMA_PYRIGHT="$(command -v "${TIXSCHEMA_PYRIGHT:-pyright}")" cargo test {{cfg}} {{every_but_chrono}} --test service_schema_emitted_client_tests
+    TIXSCHEMA_NODE="$(command -v "${TIXSCHEMA_NODE:-node}")" TIXSCHEMA_DART="$(command -v "${TIXSCHEMA_DART:-dart}")" TIXSCHEMA_SWIFT="$(command -v "${TIXSCHEMA_SWIFT:-swift}")" TIXSCHEMA_KOTLIN_LIBS="{{kotlin_libs}}" TIXSCHEMA_KOTLINC="$(command -v "${TIXSCHEMA_KOTLINC:-kotlinc}")" TIXSCHEMA_PYTHON="$(command -v "${TIXSCHEMA_PYTHON:-python3}")" TIXSCHEMA_PYRIGHT="$(command -v "${TIXSCHEMA_PYRIGHT:-pyright}")" cargo test {{cfg}} {{every_but_jiff}} --test service_schema_emitted_client_tests
     @echo "✅ The emitted clients build the URLs they claim to!"
 
 # The tests that wait on a real clock compile only under `cfg(slow_tests)`, which no other
@@ -280,6 +291,7 @@ check-mix:
     cargo test --no-default-features --features mobile --test every_build_validation_tests
     cargo test --no-default-features --features mongo --test every_build_validation_tests
     cargo test --no-default-features --features mobile,mongo --test every_build_validation_tests
+    cargo test --no-default-features --features scripting --test every_build_validation_tests
 
 # Check the library on the floor, `rust-version` in Cargo.toml.
 check-msrv:

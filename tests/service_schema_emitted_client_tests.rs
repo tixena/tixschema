@@ -265,6 +265,12 @@ mod run_kotlin_validate;
 #[path = "service_schema_emitted_client_tests/run_kotlin_read.rs"]
 mod run_kotlin_read;
 
+/// The emitted Python types, read and written under a Python interpreter and held to serde, and
+/// checked by `pyright` in strict mode.
+#[cfg(test)]
+#[path = "service_schema_emitted_client_tests/run_python.rs"]
+mod run_python;
+
 #[cfg(test)]
 #[path = "service_schema_emitted_client_tests/runtime.rs"]
 mod runtime;

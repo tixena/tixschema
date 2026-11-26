@@ -220,6 +220,8 @@ use crate::features::swift::{SwiftTypeArgs, refuses_swift, swift_schema_dispatch
 
 #[cfg(feature = "kotlin")]
 use crate::features::kotlin::{KotlinArgs, kotlin_refused_width, kotlin_schema_dispatch};
+#[cfg(feature = "python")]
+use crate::features::python::{PythonArgs, python_schema_dispatch};
 
 #[cfg(any(feature = "typescript", feature = "zod"))]
 use crate::utils::get_enum_docs;
@@ -2612,13 +2614,14 @@ pub fn exec_model_schema(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_refusals = swift_width_refusals(&item);
     // Same independence as the Dart and Swift tokens above.
     let kotlin_tokens = kotlin_suffix_tokens(&item, &parsed_args);
+    let python_tokens = python_suffix_tokens(&item, &parsed_args);
     let wrapper_tokens = needs_wrapper_tokens(&item, &parsed_args);
     let expanded =
         doctest_examples::ready_for_rustdoc(valid_type::settle(process_item(item, &parsed_args)));
     let deferred = with_prefixed_tokens(expanded, &deferred_shape_refusals(registering.as_ref()));
     let bound = with_prefixed_tokens(deferred, &filling_bound_checks);
     let width_checked = with_prefixed_tokens(bound, &swift_refusals);
-    quote! { #width_checked #wrapper_tokens #dart_tokens #swift_tokens #kotlin_tokens }
+    quote! { #width_checked #wrapper_tokens #dart_tokens #swift_tokens #kotlin_tokens #python_tokens }
 }
 
 /// The items `item` earns that holders and services read, which every build with serde writes:
@@ -2664,7 +2667,12 @@ fn process_shape(item: Item, args: &ModelSchemaArgs) -> TokenStream {
 }
 
 /// The Rust name of the item a client emitter writes, which a member written `Self` is named as.
-#[cfg(any(feature = "dart", feature = "kotlin", feature = "swift"))]
+#[cfg(any(
+    feature = "dart",
+    feature = "kotlin",
+    feature = "python",
+    feature = "swift"
+))]
 fn item_rust_name(item: &Item) -> String {
     let ident = if let Item::Struct(item_struct) = item {
         &item_struct.ident
@@ -2764,6 +2772,29 @@ fn kotlin_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
 
 #[cfg(not(feature = "kotlin"))]
 fn kotlin_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
+    TokenStream::new()
+}
+
+/// The Python tokens `item` earns, or nothing without the `python` feature — the same always-
+/// callable shape as [`dart_suffix_tokens`]. The emitter is handed what it reads of `args`: the
+/// name, the checks and the `preprocess` it withholds a type over, and each member's bounds.
+#[cfg(feature = "python")]
+fn python_suffix_tokens(item: &Item, args: &ModelSchemaArgs) -> TokenStream {
+    let enum_args = matches!(item, Item::Enum(_)).then_some(args);
+    python_schema_dispatch(
+        item,
+        &PythonArgs {
+            check: &args.check,
+            member_meta: &|member| member_prop_meta(member, enum_args),
+            name_override: args.name_override.as_deref(),
+            preprocess: &args.preprocess,
+            type_name: &item_rust_name(item),
+        },
+    )
+}
+
+#[cfg(not(feature = "python"))]
+fn python_suffix_tokens(_item: &Item, _args: &ModelSchemaArgs) -> TokenStream {
     TokenStream::new()
 }
 

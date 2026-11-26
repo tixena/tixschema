@@ -64,6 +64,15 @@ pub const JAVA_VAR: &str = "TIXSCHEMA_JAVA";
 #[cfg(feature = "kotlin")]
 pub const KOTLIN_LIBS_VAR: &str = "TIXSCHEMA_KOTLIN_LIBS";
 
+/// Names the type checker [`checked_by_pyright`] runs: `pyright`, which `just node-libs` installs.
+#[cfg(feature = "python")]
+pub const PYRIGHT_VAR: &str = "TIXSCHEMA_PYRIGHT";
+
+/// The project [`checked_by_pyright`] checks: strict, on the oldest Python the emitted text is
+/// written for.
+#[cfg(feature = "python")]
+const PYRIGHT_PROJECT: &str = "{ \"typeCheckingMode\": \"strict\", \"pythonVersion\": \"3.12\" }\n";
+
 /// What one run answered: whether it succeeded, and what it wrote to each stream.
 #[cfg(feature = "swift")]
 pub struct Judged {
@@ -307,6 +316,40 @@ pub fn compiled_with_modules(
             run.unwrap_err()
         );
         stand_down(var, "tsc");
+        return None;
+    };
+    Some((
+        reported.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&reported.stdout),
+            String::from_utf8_lossy(&reported.stderr)
+        ),
+    ))
+}
+
+/// Writes `source` into a workspace of its own as `main.py` and checks it with the `pyright` that
+/// [`PYRIGHT_VAR`] names, in strict mode, answering whether it passed and what it said. `None` and a
+/// checker named in [`PYRIGHT_VAR`] that cannot be started are what they are to [`run_in`].
+#[cfg(feature = "python")]
+pub fn checked_by_pyright(named: &str, source: &str) -> Option<(bool, String)> {
+    let at = workspace(named);
+    fs::write(at.join("pyrightconfig.json"), PYRIGHT_PROJECT).unwrap();
+    fs::write(at.join("main.py"), source).unwrap();
+    let chosen = env::var(PYRIGHT_VAR).ok();
+    let checker = chosen.clone().unwrap_or_else(|| "pyright".to_owned());
+    let run = Command::new(&checker)
+        .arg("main.py")
+        .current_dir(&at)
+        .output();
+    fs::remove_dir_all(&at).unwrap();
+    let Ok(reported) = run else {
+        assert!(
+            chosen.is_none(),
+            "{PYRIGHT_VAR} names `{checker}`, and no checker could be started there: {}",
+            run.unwrap_err()
+        );
+        stand_down(PYRIGHT_VAR, "pyright");
         return None;
     };
     Some((

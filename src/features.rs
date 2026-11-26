@@ -48,6 +48,9 @@ pub mod swift;
 #[cfg(feature = "kotlin")]
 pub mod kotlin;
 
+#[cfg(feature = "python")]
+pub mod python;
+
 #[cfg(feature = "arky")]
 pub mod arky;
 
@@ -95,6 +98,9 @@ impl Features {
         if Self::has_kotlin() {
             features.push("kotlin");
         }
+        if Self::has_python() {
+            features.push("python");
+        }
         if Self::has_arky() {
             features.push("arky");
         }
@@ -137,6 +143,11 @@ impl Features {
     /// Check if `mongodb` feature is enabled.
     pub const fn has_mongodb() -> bool {
         cfg!(feature = "mongodb")
+    }
+
+    /// Check if `python` feature is enabled.
+    pub const fn has_python() -> bool {
+        cfg!(feature = "python")
     }
 
     pub const fn has_swift() -> bool {

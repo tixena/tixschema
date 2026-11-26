@@ -14,7 +14,7 @@ include = ["/src/**/*.rs", "/src/**/*.md", "/README.md", "/LICENSE", "/THIRD-PAR
 
 [package.metadata.docs.rs]
 # Every feature but `chrono`, which is never on with `jiff`.
-features = ["web", "mobile", "mongo", "jiff"]
+features = ["web", "mobile", "mongo", "scripting", "jiff"]
 
 [lib]
 proc-macro = true
@@ -134,6 +134,7 @@ default = ["web", "jiff"]
 web = ["zod", "typescript"]
 mobile = ["dart", "swift", "kotlin"]
 mongo = ["mongodb", "indexmap", "arky"]
+scripting = ["python"]
 
 # Core features
 zod = [] # Zod schema generation alongside TypeScript types
@@ -147,6 +148,7 @@ indexmap = [] # indexmap type support: IndexMap as a map, IndexSet as a list
 dart = [] # Dart type generation and a JSON fromJson/toJson codec, beside the TypeScript output
 swift = [] # Swift type generation with a Codable codec
 kotlin = [] # Kotlin type generation with kotlinx.serialization annotations
+python = [] # Python type generation with type hints and a JSON codec of the standard library
 arky = [] # Conversions to and from arky's frontmatter Value on types that opt in
 
 [lints.rust]

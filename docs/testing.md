@@ -297,30 +297,30 @@ Each workflow installs beta, which `rust-toolchain.toml` pins and the code is de
 
 A change is held to the gate, [.github/workflows/ci.yml](../.github/workflows/ci.yml), on every push and pull request to `master`. It is `just all`, a lint and a test run with every feature on but one date feature, then `just check-mix`. `chrono` and `jiff` are never on together, and a build with both stops at a `compile_error!`, so `--all-features` builds nothing and each run is two builds, one with every feature but `chrono` and one with every feature but `jiff`:
 
-1. `cargo clippy --all-targets --no-default-features --features web,mobile,mongo,jiff -- -D warnings`, then the same with `chrono` in place of `jiff`, on beta
-2. `cargo test --no-default-features --features web,mobile,mongo,jiff`, then the same with `chrono`, on beta
+1. `cargo clippy --all-targets --no-default-features --features web,mobile,mongo,scripting,jiff -- -D warnings`, then the same with `chrono` in place of `jiff`, on beta
+2. `cargo test --no-default-features --features web,mobile,mongo,scripting,jiff`, then the same with `chrono`, on beta
 3. `just check-mix`, not part of `just all`, on beta, in three steps:
    - `cargo hack check --each-feature --exclude-all-features` compiles this package's library, no test, once with no feature, once with the default, and once with each feature by itself
    - the same line over `bson3/`, with `--tests`, compiles that package's tests, against version 3 of the `bson` library, and tixschema, a dev-dependency there, under the same features; no test runs
-   - `tests/every_build_validation_tests.rs` runs with no feature and under `web`, `mobile`, `mongo` and `mobile,mongo`
+   - `tests/every_build_validation_tests.rs` runs with no feature and under `web`, `mobile`, `mongo`, `mobile,mongo` and `scripting`
 4. Discord notification with build status
 
 The full run, [.github/workflows/full.yml](../.github/workflows/full.yml), is started every three days and by hand. No change waits for it:
 
 1. `just check` (cargo check of this package and of the tests of `bson3/`, then clippy)
-2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature alone and in `typescript,zod` and `dart,swift,kotlin`)
+2. `just lint-sets` (clippy over every combination of the feature sets, in this package and in `bson3/`, and over each output feature alone and in `typescript,zod`, `dart,swift,kotlin` and `python`)
 3. `cargo test --verbose` (basic tests)
-4. `just test-sets` (every combination of the `web`, `mobile` and `mongo` feature sets, each with no date feature, with `chrono` and with `jiff`, via cargo-hack's `--mutually-exclusive-features chrono,jiff`, in this package and in `bson3/`)
+4. `just test-sets` (every combination of the `web`, `mobile`, `mongo` and `scripting` feature sets, each with no date feature, with `chrono` and with `jiff`, via cargo-hack's `--mutually-exclusive-features chrono,jiff`, in this package and in `bson3/`)
 5. `just typecheck-ts` (the emitted TypeScript through a real `tsc` under `strict` and every other type-checking flag it has, `isolatedDeclarations` with `declaration` among them, and a second package compiled against the declarations emitted for it)
-6. `just lint-slow`, then `just run-slow`, both on beta (the emitted Node, Dart, Swift and Kotlin clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
+6. `just lint-slow`, then `just run-slow`, both on beta (the emitted Node, Dart, Swift, Kotlin and Python clients run under their own toolchains, through `test-emitted`, with the tests that wait on a real clock)
 7. `just audit` (`cargo audit` over a lock file generated for each package, this one and `bson3/`)
 8. Discord notification with build status
 
-The gate lints and tests one feature selection of one package. `just check-mix` compiles the library, and the tests of `bson3/`, the package that tests against version 3 of the `bson` library, under every feature by itself, so a declaration and its use that carry different features fail on the next push, and runs the every-build validation tests in five builds, so a rule that one of them stops holding fails there too. What only the full run reaches: the lints of each combination of the `web`, `mobile` and `mongo` sets, every other test in those combinations, the lints of `bson3/`, and the run of its tests. A break there is found at the next full run.
+The gate lints and tests one feature selection of one package. `just check-mix` compiles the library, and the tests of `bson3/`, the package that tests against version 3 of the `bson` library, under every feature by itself, so a declaration and its use that carry different features fail on the next push, and runs the every-build validation tests in six builds, so a rule that one of them stops holding fails there too. What only the full run reaches: the lints of each combination of the `web`, `mobile`, `mongo` and `scripting` sets, every other test in those combinations, the lints of `bson3/`, and the run of its tests. A break there is found at the next full run.
 
 `just check-all` builds what the first two lines of `just check-mix` build, over every combination of the features in place of each feature by itself: this package's library, then the tests of `bson3/` and tixschema. `just ci` runs it, and neither workflow does.
 
-Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws` and `typescript`, Dart, and the Kotlin jars; Swift, Kotlin and a JRE come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `run-slow`.
+Both workflows install every toolchain the emitted-client groups need: Node with `zod`, `ws`, `typescript` and `pyright`, Dart, and the Kotlin jars; Swift, Kotlin, a JRE and Python come with the runner image. Inside a plain `cargo test` those groups stand down and pass when their toolchain is missing, so only `just typecheck-ts` and `just test-emitted` prove anything: both refuse to stand down, and both are in the full run, `test-emitted` through `run-slow`.
 
 The MongoDB operations' live checks stand down the same way where `TIXSCHEMA_MONGODB_URI` names no server, and CI names none: `just test-mongodb` is the recipe that refuses to, and no step of either workflow runs it.
 
