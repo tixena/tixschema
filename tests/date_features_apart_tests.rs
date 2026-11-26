@@ -57,6 +57,10 @@ mod tests {
             .filter_map(|read| read["message"]["message"].as_str().map(str::to_owned))
             .filter(|message| !message.starts_with("aborting due to"))
             .collect();
-        assert_eq!(errors, [REFUSED], "the build with both date features answered otherwise");
+        assert_eq!(
+            errors,
+            [REFUSED],
+            "the build with both date features answered otherwise"
+        );
     }
 }
